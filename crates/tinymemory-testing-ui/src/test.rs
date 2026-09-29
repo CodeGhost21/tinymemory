@@ -1868,3 +1868,254 @@ fn browser_upload_workflow_contract_executes() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+// ── Engines, hosted answers, credits and migration ──────────────────────────
+
+async fn get_json(router: &Router, uri: &str) -> (StatusCode, Value) {
+    let response = router
+        .clone()
+        .oneshot(Request::get(uri).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    (status, json_body(response).await)
+}
+
+async fn post_json(router: &Router, uri: &str, body: Value) -> (StatusCode, Value) {
+    let response = router
+        .clone()
+        .oneshot(json_request(Method::POST, uri, body))
+        .await
+        .unwrap();
+    let status = response.status();
+    (status, json_body(response).await)
+}
+
+/// A `/memory/*` double that answers, or refuses with 402 when `out_of_credits`.
+async fn hosted_answer_backend(out_of_credits: bool) -> String {
+    use axum::routing::post;
+    let recall = post(|| async {
+        Json(json!({
+            "success": true,
+            "data": { "pack_id": "pack-1", "layers": { "events": [] } }
+        }))
+    });
+    let answer = post(move || async move {
+        if out_of_credits {
+            (
+                StatusCode::PAYMENT_REQUIRED,
+                Json(json!({
+                    "success": false,
+                    "error": "not enough credits",
+                    "errorCode": "USER_INSUFFICIENT_CREDITS"
+                })),
+            )
+        } else {
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "data": {
+                        "answer": "the user prefers dark mode",
+                        "citations": [],
+                        "context_block": "",
+                        "diagnostics": { "answer_model": "m" }
+                    }
+                })),
+            )
+        }
+    });
+    let app = Router::new()
+        .route("/memory/recall", recall)
+        .route("/memory/answer", answer);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    endpoint
+}
+
+#[tokio::test]
+async fn engines_endpoint_lists_the_compiled_in_engines() {
+    let (status, body) = get_json(&test_app(empty_state()), "/api/engines").await;
+    assert_eq!(status, StatusCode::OK);
+    let engines = body.as_array().expect("an array of descriptors");
+    let by_id = |id: &str| engines.iter().find(|e| e["id"] == id);
+    for id in [
+        "tinycortex",
+        "supermemory",
+        "mem0",
+        "cognee",
+        "cortex",
+        "agentmemory",
+        "tinyhumans",
+    ] {
+        assert!(by_id(id).is_some(), "missing engine {id}: {body}");
+    }
+    let hosted = by_id("tinyhumans").unwrap();
+    assert_eq!(hosted["label"], "CortexDB (via TinyHumans)");
+    assert_eq!(hosted["hosted"], true);
+    assert_eq!(hosted["default_endpoint"], "https://api.tinyhumans.ai");
+    assert_eq!(by_id("tinycortex").unwrap()["label"], "TinyCortex (local)");
+    assert_eq!(
+        by_id("mem0").unwrap()["deployments"],
+        json!(["cloud", "self_hosted"])
+    );
+}
+
+#[tokio::test]
+async fn status_reports_the_connected_engine_and_answer_capability() {
+    let router = test_app(empty_state());
+    connect_local(&router).await;
+    let (_, body) = get_json(&router, "/api/status").await;
+    assert_eq!(body["engine"], "tinycortex");
+    assert_eq!(body["has_answer"], false);
+
+    let endpoint = hosted_answer_backend(false).await;
+    let (status, body) = post_json(
+        &router,
+        "/api/connect",
+        json!({ "engine": "tinyhumans", "endpoint": endpoint, "api_key": "tiny_live_test" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["driver_id"], "tinyhumans");
+    assert_eq!(body["engine"], "tinyhumans");
+    assert_eq!(body["has_answer"], true);
+    let (_, body) = get_json(&router, "/api/status").await;
+    assert_eq!(body["engine"], "tinyhumans");
+}
+
+#[tokio::test]
+async fn tinyhumans_needs_a_bearer_and_refuses_cleartext_off_loopback() {
+    let router = test_app(empty_state());
+    let (status, body) =
+        post_json(&router, "/api/connect", json!({ "engine": "tinyhumans" })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("bearer"), "{body}");
+
+    let (status, _) = post_json(
+        &router,
+        "/api/connect",
+        json!({ "engine": "tinyhumans", "endpoint": "http://api.example.com", "api_key": "k" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn answer_is_refused_when_the_engine_cannot_answer() {
+    let router = test_app(empty_state());
+    let (status, _) = post_json(&router, "/api/answer", json!({ "query": "q" })).await;
+    assert_eq!(status, StatusCode::CONFLICT, "needs a connection first");
+
+    connect_local(&router).await;
+    let (status, body) = post_json(&router, "/api/answer", json!({ "query": "q" })).await;
+    assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
+    assert!(body["error"].as_str().unwrap().contains("answers"));
+}
+
+#[tokio::test]
+async fn a_hosted_answer_round_trips_through_the_http_api() {
+    let router = test_app(empty_state());
+    let endpoint = hosted_answer_backend(false).await;
+    post_json(
+        &router,
+        "/api/connect",
+        json!({ "engine": "tinyhumans", "endpoint": endpoint, "api_key": "tiny_live_test" }),
+    )
+    .await;
+    let (status, body) = post_json(
+        &router,
+        "/api/answer",
+        json!({ "query": "what does the user prefer?", "instructions": "be brief" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["answer"], "the user prefers dark mode");
+}
+
+#[tokio::test]
+async fn insufficient_credits_maps_to_402_with_a_code() {
+    let router = test_app(empty_state());
+    let endpoint = hosted_answer_backend(true).await;
+    post_json(
+        &router,
+        "/api/connect",
+        json!({ "engine": "tinyhumans", "endpoint": endpoint, "api_key": "tiny_live_test" }),
+    )
+    .await;
+    let (status, body) = post_json(&router, "/api/answer", json!({ "query": "q" })).await;
+    assert_eq!(status, StatusCode::PAYMENT_REQUIRED, "{body}");
+    assert_eq!(body["code"], "USER_INSUFFICIENT_CREDITS");
+    assert!(!body.to_string().contains("tiny_live_test"), "token leaked");
+
+    // A plain `BudgetExceeded` (an over-size document) keeps its own status.
+    let too_large = ApiError::from(MemoryError::BudgetExceeded("large".into()));
+    assert_eq!(too_large.0, StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+#[tokio::test]
+async fn migrating_copies_every_record_and_switches_the_active_engine() {
+    let router = test_app(empty_state());
+    let (status, _) = post_json(
+        &router,
+        "/api/migrate",
+        json!({ "to": { "engine": "tinycortex" } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "nothing to copy from yet");
+
+    connect_local(&router).await;
+    for (namespace, key, content) in [("notes", "a", "alpha"), ("notes", "b", "beta")] {
+        let (status, _) = post_json(
+            &router,
+            "/api/store",
+            json!({ "namespace": namespace, "key": key, "content": content }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+    }
+
+    let (status, body) = post_json(
+        &router,
+        "/api/migrate",
+        json!({ "to": { "engine": "tinycortex" } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["report"]["records"], 2);
+    assert_eq!(body["report"]["imported"], 2);
+    assert_eq!(body["report"]["failed"], 0);
+    assert_eq!(body["status"]["driver_id"], "tinycortex");
+
+    let (status, entry) = get_json(&router, "/api/get?namespace=notes&key=b").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(entry["content"], "beta");
+}
+
+#[tokio::test]
+async fn a_migration_to_an_unbuildable_target_leaves_the_active_engine_alone() {
+    let router = test_app(empty_state());
+    connect_local(&router).await;
+    post_json(
+        &router,
+        "/api/store",
+        json!({ "namespace": "notes", "key": "a", "content": "alpha" }),
+    )
+    .await;
+
+    let (status, body) = post_json(
+        &router,
+        "/api/migrate",
+        json!({ "to": { "engine": "tinyhumans" } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    let (_, entry) = get_json(&router, "/api/get?namespace=notes&key=a").await;
+    assert_eq!(
+        entry["content"], "alpha",
+        "the source engine is still active"
+    );
+}
