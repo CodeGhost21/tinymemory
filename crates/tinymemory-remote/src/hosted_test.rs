@@ -320,16 +320,18 @@ async fn every_operation_maps_to_a_memory_path_and_never_a_v1_one() {
     assert!(p.forget("ns", "k").await.expect("forget"));
     assert!(matches!(p.health().await, MemoryHealth::Ready), "health is a cheap scopes listing");
     p.ingest_document(item("doc-1", "a document")).await.expect("document");
-    p.ingest_learning(
-        serde_json::from_value(json!({
-            "class": "style",
-            "key": "tone",
-            "value": "terse",
-            "initial_confidence": 0.9,
-            "observed_at": 1_700_000_000.0
-        }))
-        .expect("learning"),
-    )
+    p.ingest_learning(LearningCandidate {
+        class: FacetClass::Tooling,
+        key: "tone".to_string(),
+        value: "terse".to_string(),
+        cue_family: CueFamily::Explicit,
+        evidence: EvidenceRef::ToolCall {
+            tool_name: "shell".to_string(),
+            episodic_id: 7,
+        },
+        initial_confidence: 0.9,
+        observed_at: 1_700_000_000.0,
+    })
     .await
     .expect("learning");
     p.ingest_event(RawMemoryEvent {
