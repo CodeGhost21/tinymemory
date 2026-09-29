@@ -29,8 +29,9 @@
 //! ```
 //!
 //! The mandatory three are supertraits, so "mandatory" is enforced by the type
-//! system rather than by a runtime check. The optional seventeen are accessors
-//! that default to `None`, so absence is the default and presence is opt-in.
+//! system rather than by a runtime check. The optional twenty-three are
+//! accessors that default to `None`, so absence is the default and presence is
+//! opt-in.
 //!
 //! ## Rules that bind every family
 //!
@@ -61,9 +62,9 @@
 //! [`crate::null::NullMemoryProvider`] implements every family directly for
 //! conformance testing:
 //! `/dev/null` semantics for the mandatory three, and
-//! [`crate::error::MemoryError::Unsupported`] for the other seventeen, which it
-//! does not advertise. It is what a compiled-out or unconfigured memory subsystem
-//! binds to, and it doubles as the proof that the mandatory set is
+//! [`crate::error::MemoryError::Unsupported`] for the other twenty-three, which
+//! it does not advertise. It is what a compiled-out or unconfigured memory
+//! subsystem binds to, and it doubles as the proof that the mandatory set is
 //! implementable without a storage engine.
 
 pub mod audit;

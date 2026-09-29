@@ -211,8 +211,8 @@ for assistant-memory workloads; wrong for high-volume keyed storage.
 
 `MemoryProvider` is an object-safe trait with **three mandatory** capability
 families and independently negotiated optional ones. The mandatory three are supertraits, so
-a driver missing any of them cannot be constructed; the optional seventeen are
-reached through `as_ingest()` / `as_tree()` / … accessors that default to `None`,
+a driver missing any of them cannot be constructed; the optional twenty-three
+are reached through `as_ingest()` / `as_tree()` / … accessors that default to `None`,
 so a minimal driver implements what it supports and inherits correct absence for
 everything else.
 
