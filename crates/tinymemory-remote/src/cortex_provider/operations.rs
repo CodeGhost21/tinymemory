@@ -25,7 +25,7 @@ use tinymemory_api::types::{
 };
 
 use crate::common::{encode, Attempts};
-use crate::cortex::{CortexDialect, CortexMemory, CortexWire, Route, CORTEX_DRIVER_ID};
+use crate::cortex::{CortexDialect, CortexMemory, CortexWire, Route, CORTEX_DRIVER_ID, TINYHUMANS_DRIVER_ID};
 
 use super::types::ExperienceInput;
 
@@ -51,7 +51,7 @@ impl CortexProvider {
     pub(crate) fn new(memory: CortexMemory) -> Self {
         let dialect = memory.operation_dialect();
         Self {
-            mandatory: MemoryTraitProvider::new(Arc::new(memory), CORTEX_DRIVER_ID),
+            mandatory: MemoryTraitProvider::new(Arc::new(memory), driver_id(dialect.wire)),
             dialect,
         }
     }
@@ -126,6 +126,13 @@ impl CortexProvider {
             },
             "idempotency_key": idempotency_key(idempotency_seed),
         }))
+    }
+}
+
+fn driver_id(wire: CortexWire) -> &'static str {
+    match wire {
+        CortexWire::Direct => CORTEX_DRIVER_ID,
+        CortexWire::TinyHumans => TINYHUMANS_DRIVER_ID,
     }
 }
 
@@ -681,7 +688,7 @@ pub(super) fn ingest_count(count: usize) -> Result<u32, MemoryError> {
 #[async_trait]
 impl MemoryProvider for CortexProvider {
     fn driver_id(&self) -> &str {
-        CORTEX_DRIVER_ID
+        driver_id(self.dialect.wire)
     }
 
     fn capabilities(&self) -> Capabilities {

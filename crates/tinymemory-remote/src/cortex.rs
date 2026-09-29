@@ -91,6 +91,7 @@ use crate::common::{Attempts, BearerSource, Dialect, HttpClient, RemoteMemory, S
 
 /// Stable driver id used by configuration and status output.
 pub use tinymemory_api::drivers::CORTEX_DRIVER_ID;
+pub use tinymemory_api::drivers::TINYHUMANS_DRIVER_ID;
 
 /// Default base URL for CortexDB's managed API.
 pub const CORTEX_API_ENDPOINT: &str = "https://api-v1.cortexdb.ai";
@@ -931,7 +932,10 @@ fn urlencoding(value: &str) -> String {
 #[async_trait]
 impl Dialect for CortexDialect {
     fn name(&self) -> &'static str {
-        CORTEX_DRIVER_ID
+        match self.wire {
+            CortexWire::Direct => CORTEX_DRIVER_ID,
+            CortexWire::TinyHumans => TINYHUMANS_DRIVER_ID,
+        }
     }
 
     /// Appends a new event carrying the record.

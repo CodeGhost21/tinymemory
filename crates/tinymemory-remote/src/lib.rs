@@ -25,7 +25,7 @@ pub use agentmemory::{AgentMemoryMemory, AGENTMEMORY_API_ENDPOINT, AGENTMEMORY_D
 pub use cognee::{CogneeMemory, COGNEE_DRIVER_ID};
 pub use cognee_graph::CogneeGraph;
 pub use common::{BearerSource, StaticBearer};
-pub use cortex::{CortexMemory, CortexWire, CORTEX_API_ENDPOINT, CORTEX_DRIVER_ID};
+pub use cortex::{CortexMemory, CortexWire, CORTEX_API_ENDPOINT, CORTEX_DRIVER_ID, TINYHUMANS_DRIVER_ID};
 pub use hosted::{error_code, is_insufficient_credits, INSUFFICIENT_CREDITS_CODE};
 pub use cortex_provider::CortexProvider;
 pub use graph_provider::GraphMemoryProvider;
@@ -72,8 +72,7 @@ pub fn cortex_provider(memory: CortexMemory) -> CortexProvider {
 /// `backend_base_url` is the backend origin (for example
 /// `https://api.tinyhumans.ai`); `bearer` supplies the session JWT or
 /// `tiny_live_` API key on every request. Capabilities are those of
-/// [`CortexProvider`]. The provider still reports the `cortex` driver id; the
-/// facade's `tinyhumans` id is the registry name for this deployment.
+/// [`CortexProvider`]; it reports the `tinyhumans` driver id.
 ///
 /// # Errors
 ///
