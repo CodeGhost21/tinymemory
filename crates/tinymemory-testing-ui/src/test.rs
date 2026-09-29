@@ -148,7 +148,8 @@ async fn local_connect_status_and_disconnect_are_consistent() {
             "connected": false,
             "driver_id": null,
             "engine": null,
-            "has_graph": false
+            "has_graph": false,
+            "has_answer": false
         })
     );
 }
@@ -574,7 +575,7 @@ async fn document_formats_report_conversion_and_connection_route() {
 }
 
 #[tokio::test]
-async fn graph_provider_status_advertises_graph_without_claiming_an_engine_name() {
+async fn graph_provider_status_advertises_graph_and_reports_the_engine() {
     let state = state_with_provider(RecordingProvider::default());
     let response = test_app(state)
         .oneshot(Request::get("/api/status").body(Body::empty()).unwrap())
@@ -586,8 +587,9 @@ async fn graph_provider_status_advertises_graph_without_claiming_an_engine_name(
         json!({
             "connected": true,
             "driver_id": "recording",
-            "engine": null,
-            "has_graph": true
+            "engine": "recording",
+            "has_graph": true,
+            "has_answer": false
         })
     );
 }
