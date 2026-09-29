@@ -594,7 +594,7 @@ async fn the_cognee_double_actually_retains() {
 #[derive(Default)]
 pub(crate) struct CortexLog {
     /// Every event ever appended, in order. Never mutated — that is the point.
-    events: Vec<Value>,
+    pub(crate) events: Vec<Value>,
     /// `idempotency_key` -> the body it was first seen with, and the id of the
     /// event that body produced. The id is stored rather than looked up by
     /// content, because two keys may legitimately carry identical text and a
