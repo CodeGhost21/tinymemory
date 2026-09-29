@@ -168,6 +168,12 @@ pub struct MemoryDriverConfig {
     /// bind succeeds (kernel.md §3.4).
     #[serde(default = "default_trust_state")]
     pub trust_state: String,
+
+    /// Which deployment of the engine to bind, for engines that have more than
+    /// one (`"cloud"` / `"self_hosted"`). `None` lets the engine's factory pick
+    /// from the endpoint. Not a secret, so shown in `Debug`.
+    #[serde(default)]
+    pub deployment: Option<String>,
 }
 
 fn default_trust_state() -> String {
@@ -182,6 +188,7 @@ impl Default for MemoryDriverConfig {
             endpoint: None,
             credential_ref: None,
             trust_state: default_trust_state(),
+            deployment: None,
         }
     }
 }
@@ -205,6 +212,7 @@ impl std::fmt::Debug for MemoryDriverConfig {
                 &self.credential_ref.as_ref().map(|_| "<redacted>"),
             )
             .field("trust_state", &self.trust_state)
+            .field("deployment", &self.deployment)
             .finish()
     }
 }

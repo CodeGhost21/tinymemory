@@ -31,6 +31,7 @@ fn memory_driver_config_debug_never_leaks_credential_ref() {
         endpoint: Some("https://api.supermemory.ai".into()),
         credential_ref: Some("keychain:supermemory-super-secret-value".into()),
         trust_state: "untrusted".into(),
+        deployment: None,
     };
     let debug_output = format!("{driver:?}");
     assert!(
