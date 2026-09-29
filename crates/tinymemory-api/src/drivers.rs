@@ -46,5 +46,12 @@ pub const COGNEE_DRIVER_ID: &str = "cognee";
 /// Driver id of the native CortexDB HTTP adapter.
 pub const CORTEX_DRIVER_ID: &str = "cortex";
 
+/// Driver id of CortexDB hosted by the TinyHumans backend (`/memory/*`).
+///
+/// The same adapter as [`CORTEX_DRIVER_ID`] speaking the hosted dialect, kept
+/// as its own id because it is admitted and configured differently: the
+/// credential comes from the host's session, not from a key the user typed.
+pub const TINYHUMANS_DRIVER_ID: &str = "tinyhumans";
+
 /// Driver id of the local AgentMemory HTTP adapter.
 pub const AGENTMEMORY_DRIVER_ID: &str = "agentmemory";
