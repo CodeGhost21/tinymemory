@@ -108,15 +108,6 @@ fn mem0_picks_cloud_or_self_hosted_and_advertises_graph() {
         EngineCredential::None
     )
     .is_err());
-    assert!(
-        build(
-            "mem0",
-            &config(Some("http://127.0.0.1:9"), Some("cloud")),
-            key("k")
-        )
-        .is_err()
-            || true
-    );
     let cloud = build(
         "mem0",
         &config(Some("https://api.mem0.ai"), None),

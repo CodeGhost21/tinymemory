@@ -16,6 +16,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::{json, Value};
 use tinymemory_api::error::MemoryError;
+use tinymemory_api::health::MemoryHealth;
 use tinymemory_api::provider::types::IngestItem;
 use tinymemory_api::provider::{
     AnswerRequest, MemoryConversationIngest, MemoryCore, MemoryDocumentIngest, MemoryEventIngest,
@@ -277,14 +278,24 @@ fn provider(endpoint: &str) -> crate::CortexProvider {
 
 fn item(source: &str, content: &str) -> IngestItem {
     IngestItem {
-        source_id: source.to_string(),
-        content: content.to_string(),
         namespace: None,
-        author: None,
+        source: tinymemory_api::chunks::DataSource::Conversation,
+        source_id: source.to_string(),
+        owner: "test-user".to_string(),
+        source_ref: None,
+        content: content.to_string(),
+        mime: Some("text/plain".to_string()),
         timestamp: None,
         tags: vec![],
+        author: None,
+        channel_label: None,
+        platform: Some("tinymemory-test".to_string()),
+        to: Vec::new(),
+        cc: Vec::new(),
+        subject: None,
+        list_unsubscribe: None,
         taint: MemoryTaint::Internal,
-        ..IngestItem::default()
+        path_scope: None,
     }
 }
 
@@ -307,7 +318,7 @@ async fn every_operation_maps_to_a_memory_path_and_never_a_v1_one() {
     p.list(Some("ns"), None, None).await.expect("list");
     p.namespaces().await.expect("namespaces");
     assert!(p.forget("ns", "k").await.expect("forget"));
-    assert!(p.health().await.is_healthy(), "health is a cheap scopes listing");
+    assert!(matches!(p.health().await, MemoryHealth::Ready), "health is a cheap scopes listing");
     p.ingest_document(item("doc-1", "a document")).await.expect("document");
     p.ingest_learning(
         serde_json::from_value(json!({
@@ -328,8 +339,8 @@ async fn every_operation_maps_to_a_memory_path_and_never_a_v1_one() {
         content: "something happened".into(),
         session_id: None,
         occurred_at: None,
+        metadata: json!({}),
         taint: MemoryTaint::Internal,
-        ..RawMemoryEvent::default()
     })
     .await
     .expect("event");
