@@ -42,7 +42,7 @@ Base is the backend origin (default `https://api.tinyhumans.ai`), no `/v1`.
 | delete | `POST v1/forget` | `POST memory/forget` |
 | answer | `POST v1/answer` | `POST memory/answer` |
 | scopes | `GET v1/scopes/list?limit=N` | `GET memory/scopes` |
-| health | `GET v1/admin/health` | `GET memory/scopes?prefix=__health__` |
+| health | `GET v1/admin/health` | `GET memory/scopes?prefix=zz_health` |
 
 Every body carries `scope`. Responses are `{"success":true,"data":<body>}`; the
 transport unwraps `data`. A 2xx body without the envelope is a `Backend` error.

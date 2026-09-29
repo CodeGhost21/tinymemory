@@ -138,6 +138,13 @@ const PAGE_SIZE: usize = 200;
 /// reports success and is then invisible to the next read.
 const VISIBILITY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// Longest gap between hosted visibility polls (they start at
+/// [`VISIBILITY_POLL`] and double).
+const HOSTED_POLL_CEILING: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// How many times a hosted write is sent before giving up on a transient fault.
+const HOSTED_WRITE_ATTEMPTS: usize = 3;
+
 /// Gap between visibility polls. Short enough not to dominate the wait.
 const VISIBILITY_POLL: std::time::Duration = std::time::Duration::from_millis(250);
 
@@ -221,6 +228,9 @@ impl CortexWire {
         }
     }
 }
+
+/// CortexDB's default page for `scopes/list` when no `limit` is honoured.
+const HOSTED_DEFAULT_SCOPE_PAGE: usize = 50;
 
 /// CortexDB, adapted to TinyMemory's keyed contract.
 #[derive(Clone, Debug)]
@@ -550,6 +560,7 @@ impl CortexDialect {
         let deadline = std::time::Instant::now() + VISIBILITY_TIMEOUT;
 
         // Phase one: the keyed read path, which folds the scope listing.
+        let mut delay = VISIBILITY_POLL;
         loop {
             // Newest first, so one page is enough to see a write just made.
             let path = format!(
@@ -557,15 +568,22 @@ impl CortexDialect {
                 base = self.wire.path(Route::Events),
                 scope = urlencoding(scope)
             );
-            let page: Value = self
+            let listing: anyhow::Result<Value> = self
                 .client
                 .json(Method::GET, &path, None, Attempts::RetryTransient)
-                .await?;
-            if Self::carries(page.get("items"), event_id) {
-                break;
+                .await;
+            match listing {
+                Ok(page) if Self::carries(page.get("items"), event_id) => break,
+                Ok(_) => {}
+                // Hosted: a 429 (or 5xx) while waiting means "not yet", not
+                // "the write failed" — it was accepted and is durable. Keep
+                // waiting until the deadline.
+                Err(error) if self.wire == CortexWire::TinyHumans && Self::is_transient(&error) => {}
+                Err(error) => return Err(error),
             }
             Self::still_waiting(deadline, event_id, scope)?;
-            tokio::time::sleep(VISIBILITY_POLL).await;
+            tokio::time::sleep(delay).await;
+            delay = self.next_poll_delay(delay);
         }
 
         // Phase two: ranked recall, a separate index that settles later.
@@ -579,6 +597,7 @@ impl CortexDialect {
         // report a successful, readable store as an error.
         let query: String = text.chars().take(RECALL_QUERY_CAP).collect();
         let settle_by = std::time::Instant::now() + RECALL_SETTLE_TIMEOUT;
+        let mut delay = VISIBILITY_POLL;
         while std::time::Instant::now() < settle_by {
             let probe = self
                 .client
@@ -600,9 +619,46 @@ impl CortexDialect {
             if Self::carries(answer.pointer("/layers/events"), event_id) {
                 break;
             }
-            tokio::time::sleep(VISIBILITY_POLL).await;
+            tokio::time::sleep(delay).await;
+            delay = self.next_poll_delay(delay);
         }
         Ok(())
+    }
+
+    /// The next visibility-poll gap. Direct mode polls at a fixed gap; hosted
+    /// mode doubles it up to [`HOSTED_POLL_CEILING`], because the backend
+    /// rate-limits a user to 300 requests a minute and a fixed 250ms poll would
+    /// spend a fifth of that on one write.
+    fn next_poll_delay(&self, current: std::time::Duration) -> std::time::Duration {
+        match self.wire {
+            CortexWire::Direct => current,
+            CortexWire::TinyHumans => (current * 2).min(HOSTED_POLL_CEILING),
+        }
+    }
+
+    /// Whether an error is the typed transient class (timeout, unreachable,
+    /// rate limited or 5xx) rather than a refusal that will not change.
+    fn is_transient(error: &anyhow::Error) -> bool {
+        matches!(
+            error.downcast_ref::<tinymemory_api::error::MemoryError>(),
+            Some(
+                tinymemory_api::error::MemoryError::Timeout(_)
+                    | tinymemory_api::error::MemoryError::Unreachable(_)
+                    | tinymemory_api::error::MemoryError::Unavailable(_)
+            )
+        )
+    }
+
+    /// Whether an error is the hosted API refusing a replayed `Idempotency-Key`
+    /// (HTTP 409, code `CONFLICT`): the first attempt was claimed, so its
+    /// outcome is unknown rather than failed.
+    fn is_claim_conflict(error: &anyhow::Error) -> bool {
+        error
+            .downcast_ref::<tinymemory_api::error::MemoryError>()
+            .is_some_and(|e| {
+                matches!(e, tinymemory_api::error::MemoryError::Invalid(_))
+                    && crate::hosted::error_code(e) == Some("CONFLICT")
+            })
     }
 
     /// Whether a listing or recall answer contains this event id.
@@ -742,15 +798,83 @@ impl CortexDialect {
                     .await
             }
             CortexWire::TinyHumans => {
-                let accepted: Value = self
-                    .client
-                    .json(Method::POST, base, Some(request), Attempts::Once)
-                    .await?;
+                let accepted = self.send_hosted_write(request).await?;
                 if wait_indexed {
                     self.wait_for_receipt(request, &accepted).await?;
                 }
                 Ok(accepted)
             }
+        }
+    }
+
+    /// Sends one hosted write, retrying transient faults under one
+    /// `Idempotency-Key`.
+    ///
+    /// The header is a per-call random claim, not the body's content key. The
+    /// memory API answers any replay of a claimed key with 409 and never
+    /// forwards it, and a transport failure leaves the claim dangling — so a
+    /// 409 on a *retry* means the earlier attempt may have been applied. That is
+    /// success-unknown, not failure: the event is looked up by the text just
+    /// written, and the body's own key (which the engine dedupes on) makes a
+    /// genuine miss safe to report as an error.
+    async fn send_hosted_write(&self, request: &Value) -> anyhow::Result<Value> {
+        let path = self.wire.path(Route::Experience);
+        let claim = fresh_idempotency_key();
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            match self
+                .client
+                .json_keyed(Method::POST, path, Some(request), &claim)
+                .await
+            {
+                Ok(accepted) => return Ok(accepted),
+                Err(error) if attempt > 1 && Self::is_claim_conflict(&error) => {
+                    return self.recover_unknown_write(request).await;
+                }
+                Err(error) if attempt < HOSTED_WRITE_ATTEMPTS && Self::is_transient(&error) => {
+                    tokio::time::sleep(VISIBILITY_POLL * 2_u32.pow(attempt as u32 - 1)).await;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    /// Finds the event a possibly-applied write produced, by its text.
+    async fn recover_unknown_write(&self, request: &Value) -> anyhow::Result<Value> {
+        let (Some(scope), Some(text)) = (
+            request.get("scope").and_then(Value::as_str),
+            request.pointer("/content/text").and_then(Value::as_str),
+        ) else {
+            anyhow::bail!("a retried write was claimed but carries no scope or text to look up");
+        };
+        let deadline = std::time::Instant::now() + VISIBILITY_POLL * 8;
+        loop {
+            let path = format!(
+                "{base}?scope={scope}&limit={PAGE_SIZE}",
+                base = self.wire.path(Route::Events),
+                scope = urlencoding(scope)
+            );
+            let page: Value = self
+                .client
+                .json(Method::GET, &path, None, Attempts::RetryTransient)
+                .await?;
+            let found = page
+                .get("items")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .find(|e| e.pointer("/content/text").and_then(Value::as_str) == Some(text))
+                .and_then(|e| e.get("id").and_then(Value::as_str));
+            if let Some(id) = found {
+                return Ok(json!({ "event_id": id, "replayed_from_idempotency": true }));
+            }
+            anyhow::ensure!(
+                std::time::Instant::now() < deadline,
+                "a retried write was refused as already claimed, but no matching event \
+                 appeared in scope `{scope}`; its outcome is unknown"
+            );
+            tokio::time::sleep(VISIBILITY_POLL).await;
         }
     }
 
@@ -783,8 +907,18 @@ impl CortexDialect {
                 for item in items {
                     results.push(self.submit_experience(item, false).await?);
                 }
+                // The log is ordered, so the last accepted event becoming
+                // visible implies the earlier ones are; one wait, not N.
                 if wait_indexed {
-                    for (item, accepted) in items.iter().zip(&results) {
+                    if let Some((item, accepted)) = items
+                        .iter()
+                        .zip(&results)
+                        .rev()
+                        .find(|(_, a)| {
+                            a.get("replayed_from_idempotency").and_then(Value::as_bool)
+                                != Some(true)
+                        })
+                    {
                         self.wait_for_receipt(item, accepted).await?;
                     }
                 }
@@ -816,6 +950,18 @@ impl CortexDialect {
         self.await_readable(scope, id, text).await
     }
 
+    /// Whether a scope listing carries proof it is complete: `has_more: false`,
+    /// a `next_cursor` that is explicitly null, or a `total` no larger than what
+    /// was returned.
+    fn listing_is_complete(listing: &Value, returned: usize) -> bool {
+        listing.get("has_more").and_then(Value::as_bool) == Some(false)
+            || listing.get("next_cursor").is_some_and(Value::is_null)
+            || listing
+                .get("total")
+                .and_then(Value::as_u64)
+                .is_some_and(|total| total <= returned as u64)
+    }
+
     /// Every scope this deployment holds that this adapter wrote.
     ///
     /// Asks for [`SCOPE_LIST_LIMIT`] explicitly. Without it the engine returns
@@ -836,14 +982,10 @@ impl CortexDialect {
             .client
             .json(
                 Method::GET,
-                &match self.wire {
-                    CortexWire::Direct => {
-                        format!("{}?limit={SCOPE_LIST_LIMIT}", self.wire.path(Route::Scopes))
-                    }
-                    // The hosted route documents `prefix` only, so no `limit`
-                    // is sent: an unknown parameter is not ours to gamble on.
-                    CortexWire::TinyHumans => self.wire.path(Route::Scopes).to_string(),
-                },
+                &format!(
+                    "{}?limit={SCOPE_LIST_LIMIT}",
+                    self.wire.path(Route::Scopes)
+                ),
                 None,
                 Attempts::RetryTransient,
             )
@@ -860,6 +1002,25 @@ impl CortexDialect {
                  distinguished from a truncated one and enumerating namespaces would \
                  silently skip whatever came after"
             );
+        }
+        // The hosted backend validates `/memory/scopes` without `limit`, so it
+        // may strip the parameter and serve CortexDB's default page of fifty. A
+        // listing of exactly that size is refused unless the response proves it
+        // is whole (`has_more: false`, or a `total` that fits), because a silent
+        // subset would make `namespaces()`, `count()` and `export_page` quietly
+        // incomplete.
+        if self.wire == CortexWire::TinyHumans
+            && items.len() == HOSTED_DEFAULT_SCOPE_PAGE
+            && !Self::listing_is_complete(&listing, items.len())
+        {
+            return Err(anyhow::Error::new(tinymemory_api::error::MemoryError::Backend(
+                format!(
+                    "the hosted scope listing returned {HOSTED_DEFAULT_SCOPE_PAGE} entries, \
+                     the default page size, and does not say whether more exist; the \
+                     backend may be ignoring `limit`. Refusing to enumerate namespaces \
+                     from a possibly truncated listing"
+                ),
+            )));
         }
         Ok(items
             .iter()
@@ -887,7 +1048,7 @@ impl CortexDialect {
 /// No new dependency: `RandomState` is seeded by the OS per process, which is
 /// exactly the entropy needed here, and a vendored crate should not grow a
 /// dependency for one string.
-fn fresh_idempotency_key() -> String {
+pub(crate) fn fresh_idempotency_key() -> String {
     use std::hash::{BuildHasher, Hasher};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::OnceLock;
@@ -1150,7 +1311,7 @@ impl Dialect for CortexDialect {
             CortexWire::TinyHumans => {
                 self.client
                     .probe(&format!(
-                        "{}?prefix=__health__",
+                        "{}?prefix=zz_health",
                         self.wire.path(Route::Scopes)
                     ))
                     .await

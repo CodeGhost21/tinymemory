@@ -378,7 +378,16 @@ impl HttpClient {
                         "the bearer source returned an empty credential".to_string(),
                     )));
                 }
-                request.bearer_auth(token.trim())
+                // Through `credential_header`, so a token holding CR/LF (header
+                // injection) is refused as a credential fault, and the value is
+                // marked sensitive.
+                let header = credential_header(&format!("Bearer {}", token.trim())).map_err(|_| {
+                    anyhow::Error::new(MemoryError::Unauthorized(
+                        "the bearer source returned a credential that is not a valid header value"
+                            .to_string(),
+                    ))
+                })?;
+                request.header(AUTHORIZATION, header)
             }
             Auth::ApiKey(key) => request.header("X-API-Key", credential_header(key)?),
             Auth::Token(key) => {
@@ -557,10 +566,39 @@ impl HttpClient {
         attempts: Attempts,
     ) -> anyhow::Result<T> {
         if matches!(attempts, Attempts::Once) {
-            return self.json_attempt(method, path, body).await;
+            // Hosted writes claim a fresh, random `Idempotency-Key` per logical
+            // call. Reads (`RetryTransient`) send none: the memory API rejects
+            // every replay of a key, so a retried read would fail on its own key.
+            let key = self.write_key(&method);
+            return self
+                .json_attempt(method, path, body, key.as_deref())
+                .await;
         }
-        self.with_read_retry(|| self.json_attempt(method.clone(), path, body))
+        self.with_read_retry(|| self.json_attempt(method.clone(), path, body, None))
             .await
+    }
+
+    /// A fresh random `Idempotency-Key` for a hosted POST write, else `None`.
+    ///
+    /// Never derived from content: the hosted memory API treats the header as
+    /// a metering claim and answers every replay of a key with 409, so a
+    /// content hash would make re-ingesting identical content fail. The body's
+    /// own key still carries the engine-level dedupe.
+    fn write_key(&self, method: &Method) -> Option<String> {
+        (self.hosted && *method == Method::POST).then(crate::cortex::fresh_idempotency_key)
+    }
+
+    /// One attempt of a JSON write under a caller-chosen `Idempotency-Key`, so
+    /// the caller can reuse the same key across its own retries of one logical
+    /// call and recognise the 409 the memory API answers a replay with.
+    pub(crate) async fn json_keyed<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&serde_json::Value>,
+        key: &str,
+    ) -> anyhow::Result<T> {
+        self.json_attempt(method, path, body, Some(key)).await
     }
 
     /// One send of a JSON request — the body `json` retries (or not, per its
@@ -570,12 +608,10 @@ impl HttpClient {
         method: Method,
         path: &str,
         body: Option<&serde_json::Value>,
+        idempotency: Option<&str>,
     ) -> anyhow::Result<T> {
-        let idempotency = (self.hosted && method == Method::POST)
-            .then(|| body.and_then(crate::hosted::idempotency_header))
-            .flatten();
         let mut request = self.request(method, path).await?;
-        if let Some(key) = idempotency {
+        if let Some(key) = idempotency.filter(|_| self.hosted) {
             request = request.header("Idempotency-Key", key);
         }
         if let Some(body) = body {
@@ -635,7 +671,11 @@ impl HttpClient {
         path: &str,
         body: Option<&serde_json::Value>,
     ) -> anyhow::Result<StatusCode> {
+        let key = self.write_key(&method);
         let mut request = self.request(method, path).await?;
+        if let Some(key) = key {
+            request = request.header("Idempotency-Key", key);
+        }
         if let Some(body) = body {
             request = request.json(body);
         }
@@ -647,6 +687,12 @@ impl HttpClient {
         if !status.is_success() {
             let body = read_error_body(response).await;
             return Err(self.status_error(path, status, &body));
+        }
+        if self.hosted {
+            // A 2xx can still carry `{success:false}`. The body is not needed,
+            // so a missing `data` is tolerated here.
+            let body = read_capped(response, path).await?;
+            crate::hosted::check_envelope(&self.endpoint, path, status, &body)?;
         }
         Ok(status)
     }
@@ -703,6 +749,10 @@ impl HttpClient {
         if !status.is_success() {
             let body = read_error_body(response).await;
             return Err(self.status_error(path, status, &body));
+        }
+        if self.hosted {
+            let body = read_capped(response, path).await?;
+            crate::hosted::unwrap_envelope(&self.endpoint, path, status, &body)?;
         }
         Ok(())
     }

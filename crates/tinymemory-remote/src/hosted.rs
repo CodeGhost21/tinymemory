@@ -56,6 +56,12 @@ fn message_of(error: &MemoryError) -> Option<&str> {
 }
 
 /// The TinyHumans `errorCode` a hosted failure carried, when it has one.
+///
+/// `MemoryError` has no field for it, so hosted failures carry the code as a
+/// `[CODE] ` prefix on their message and this function parses that prefix back
+/// out. It returns `None` for any error that did not come from the hosted
+/// dialect, and for a message that was rewritten so it no longer starts with
+/// the prefix.
 #[must_use]
 pub fn error_code(error: &MemoryError) -> Option<&str> {
     let message = message_of(error)?;
@@ -85,7 +91,9 @@ fn typed(host: &str, path: &str, status: StatusCode, code: &str, message: &str) 
         402 => MemoryError::BudgetExceeded(format!("{tagged} — insufficient credits")),
         404 => MemoryError::NotFound(tagged),
         400 | 409 | 413 | 422 => MemoryError::Invalid(tagged),
-        429 | 502 | 503 | 504 => MemoryError::Unavailable(tagged),
+        // 500 is retryable on reads too: the hosted proxy answers it for a
+        // transient upstream fault.
+        429 | 500 | 502 | 503 | 504 => MemoryError::Unavailable(tagged),
         _ => MemoryError::Backend(tagged),
     })
 }
@@ -121,7 +129,8 @@ fn default_code(status: StatusCode) -> String {
     }
 }
 
-/// Unwraps `{success:true,data}` and turns `{success:false,...}` into an error.
+/// Unwraps `{success:true,data}`; `{success:false,...}`, a missing `data` and a
+/// bare body are all errors.
 pub(crate) fn unwrap_envelope(
     endpoint: &Url,
     path: &str,
@@ -129,27 +138,40 @@ pub(crate) fn unwrap_envelope(
     body: &[u8],
 ) -> anyhow::Result<Value> {
     let host = endpoint.host_str().unwrap_or("<endpoint>");
-    let mut value: Value = serde_json::from_slice(body)
+    let mut value = parse_envelope(endpoint, path, status, body)?;
+    match value.get_mut("data") {
+        Some(data) => Ok(data.take()),
+        None => Err(anyhow::Error::new(MemoryError::Backend(format!(
+            "memory API {path} on {host} answered success without a `data` field"
+        )))),
+    }
+}
+
+/// Checks only that a 2xx body is a `{success:true}` envelope, for calls whose
+/// response body is not needed.
+pub(crate) fn check_envelope(
+    endpoint: &Url,
+    path: &str,
+    status: StatusCode,
+    body: &[u8],
+) -> anyhow::Result<()> {
+    parse_envelope(endpoint, path, status, body).map(|_| ())
+}
+
+fn parse_envelope(
+    endpoint: &Url,
+    path: &str,
+    status: StatusCode,
+    body: &[u8],
+) -> anyhow::Result<Value> {
+    let host = endpoint.host_str().unwrap_or("<endpoint>");
+    let value: Value = serde_json::from_slice(body)
         .map_err(|_| anyhow::anyhow!("memory API {path} returned invalid JSON"))?;
     match value.get("success").and_then(Value::as_bool) {
-        Some(true) => Ok(value.get_mut("data").map_or(Value::Null, Value::take)),
+        Some(true) => Ok(value),
         Some(false) => Err(status_error(host, path, status, &value.to_string())),
         None => Err(anyhow::Error::new(MemoryError::Backend(format!(
             "memory API {path} on {host} answered without the success envelope"
         )))),
     }
-}
-
-/// The `Idempotency-Key` header value for a write body, when it has a valid one.
-///
-/// The backend accepts `^[A-Za-z0-9_.:-]{1,128}$`; anything else is left out
-/// rather than sent, so a malformed key cannot turn a write into a 400.
-pub(crate) fn idempotency_header(body: &Value) -> Option<String> {
-    let key = body.get("idempotency_key")?.as_str()?;
-    let valid = !key.is_empty()
-        && key.len() <= 128
-        && key
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-'));
-    valid.then(|| key.to_string())
 }

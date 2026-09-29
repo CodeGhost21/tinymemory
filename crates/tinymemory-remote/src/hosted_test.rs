@@ -387,7 +387,7 @@ async fn every_operation_maps_to_a_memory_path_and_never_a_v1_one() {
         "/memory/recall",
         "/memory/forget",
         "/memory/scopes",
-        "/memory/scopes?prefix=__health__",
+        "/memory/scopes?prefix=zz_health",
         "/memory/answer",
     ] {
         assert!(
