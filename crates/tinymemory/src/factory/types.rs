@@ -136,7 +136,9 @@ pub fn list_engines() -> Vec<EngineDescriptor> {
         id: tinymemory_api::drivers::CORTEX_DRIVER_ID,
         label: "CortexDB",
         description: "CortexDB, managed or self-hosted, with your own API key.",
-        needs_endpoint: true,
+        // Cloud needs none (it defaults); self-hosted supplies one. That
+        // split is expressed by `deployments`, not by this flag.
+        needs_endpoint: false,
         needs_key: true,
         key_optional: false,
         deployments: vec!["cloud", "self_hosted"],

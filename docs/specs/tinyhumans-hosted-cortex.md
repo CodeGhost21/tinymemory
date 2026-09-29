@@ -78,17 +78,20 @@ are unchanged; the code survives in the message, not as a wire field.
 
 ### Idempotency
 
-Every write body already carries an `idempotency_key` (a fresh unique key for
-keyed writes, a content hash for ingestion). In hosted mode the same value is
-also sent as `Idempotency-Key` when it matches `^[A-Za-z0-9_.:-]{1,128}$`.
+The memory API treats the `Idempotency-Key` **header** only as a per-tenant
+metering claim: it is taken before forwarding, any replay of a key is a 409
+`CONFLICT` that is never forwarded, and a transport failure leaves the claim
+dangling. So the header is never a content hash. Hosted writes send a random
+`tm-...` key per logical call, reused across that call's own retries; reads send
+none. The body still carries the engine-level key (a content hash for
+ingestion), which CortexDB dedupes on, so re-ingesting identical content
+succeeds and reports `already_ingested`.
 
-### Read-your-writes
-
-The backend drops `?wait=indexed`. Hosted mode reproduces it client side with
-the wait keyed writes already use: poll `memory/events` until the accepted event
-id is listed (fatal after 30 s), then poll `memory/recall` until it is ranked
-(best effort, 10 s). A replayed write (`replayed_from_idempotency`) is not
-waited on.
+A 409 on a **retry** of a write means the earlier attempt may have been applied.
+That is success-unknown: the event is looked up in the scope by the text just
+written and the write proceeds to the visibility wait. A partially applied
+conversation completes on retry, because the already-written messages replay on
+their body keys.
 
 ### Answer
 
@@ -138,9 +141,14 @@ reports `pages`, `records`, `imported`, `skipped`, `failed`.
 
 ## Open questions
 
-- `memory/scopes` documents only `prefix`. Hosted mode sends no `limit`, so a
-  backend default page size would truncate `namespaces()` without an error.
-  Confirm the default with the backend, or add a cursor.
-- Hosted rate limit is 300 requests per minute per user. Per-item bulk writes
-  and the visibility poll spend it faster than the direct path; batching support
-  in the backend would remove the per-item cost.
+- The backend validates `/memory/scopes` without `limit`, so it strips it.
+  Hosted mode still sends `limit=10000` (it takes effect once the backend
+  forwards it) and treats a listing of exactly 50 entries, CortexDB's default
+  page, as possibly truncated unless the response proves completeness
+  (`has_more: false`, a null `next_cursor`, or a `total` that fits). It then
+  fails with a `Backend` error instead of returning a subset. A deployment with
+  exactly 50 scopes is refused until the backend forwards `limit`.
+- The health probe prefix `zz_health` is lowercase-first and grammar-safe
+  (`[a-z][a-z0-9_]*`); confirm the memory API accepts a bare prefix.
+- Hosted rate limit is 300 requests per minute per user; per-item bulk writes
+  spend it faster than the direct path.

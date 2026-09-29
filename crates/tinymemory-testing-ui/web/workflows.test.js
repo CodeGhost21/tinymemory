@@ -247,6 +247,13 @@ test("field visibility follows the engine descriptor", async () => {
   const options = page.document.getElementById("deployment").innerHTML;
   assert.ok(options.includes('value="cloud"') && options.includes('value="self_hosted"'));
 
+  // CortexDB: cloud defaults its endpoint, self-hosted needs one, so it shows.
+  await pick("cortex");
+  assert.deepEqual(
+    [active(page, "field-deployment"), active(page, "field-endpoint"), active(page, "field-key")],
+    [true, true, true],
+  );
+
   await pick("tinyhumans");
   assert.deepEqual(
     [active(page, "field-deployment"), active(page, "field-endpoint"), active(page, "field-key")],

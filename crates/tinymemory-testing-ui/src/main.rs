@@ -218,6 +218,20 @@ async fn migrate_to(
                 Err(other) => ApiError(StatusCode::BAD_GATEWAY, other.to_string()),
             },
         )?;
+    // A partial copy must not silently become the active engine: the source
+    // still holds everything, so stay on it and say what failed.
+    if report.failed > 0 {
+        return Err(ApiError(
+            StatusCode::BAD_GATEWAY,
+            format!(
+                "migration copied {} of {} records and {} failed ({}); the active engine was not changed",
+                report.imported,
+                report.records,
+                report.failed,
+                report.errors.join("; ")
+            ),
+        ));
+    }
     let status = EngineStatus::of(&target);
     *state.active.write().await = Some(target);
     Ok(Json(serde_json::json!({

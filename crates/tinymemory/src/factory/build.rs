@@ -158,12 +158,14 @@ fn cortex(config: &EngineConfig, credential: &EngineCredential) -> Built {
         None => endpoint.is_none_or(|e| e == tinymemory_remote::CORTEX_API_ENDPOINT),
         Some(other) => bail!("unknown CortexDB deployment: {other}"),
     };
-    let memory = if is_cloud {
-        tinymemory_remote::CortexMemory::cloud(key)
-    } else {
-        let endpoint = endpoint
-            .ok_or_else(|| anyhow::anyhow!("self-hosted CortexDB requires an endpoint URL"))?;
-        tinymemory_remote::CortexMemory::self_hosted(endpoint, key)
+    let memory = match (is_cloud, endpoint) {
+        // Managed API at its default address.
+        (true, None) => tinymemory_remote::CortexMemory::cloud(key),
+        // An explicit endpoint is honoured for either deployment (a staging or
+        // regional managed endpoint is still a bearer-key `api` endpoint),
+        // never silently replaced by the default.
+        (_, Some(endpoint)) => tinymemory_remote::CortexMemory::api(endpoint, key),
+        (false, None) => bail!("self-hosted CortexDB requires an endpoint URL"),
     }?;
     Ok(Arc::new(tinymemory_remote::cortex_provider(memory)))
 }

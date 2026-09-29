@@ -2067,7 +2067,16 @@ async fn migrating_copies_every_record_and_switches_the_active_engine() {
     .await;
     assert_eq!(status, StatusCode::CONFLICT, "nothing to copy from yet");
 
-    connect_local(&router).await;
+    // Keep a handle on the source so it can be written to after the switch.
+    let source: Arc<dyn MemoryProvider> = factory::build_provider(
+        "tinycortex",
+        &EngineConfig::default(),
+        EngineCredential::None,
+    )
+    .unwrap();
+    let state = empty_state();
+    *state.active.write().await = Some(source.clone());
+    let router = test_app(state);
     for (namespace, key, content) in [("notes", "a", "alpha"), ("notes", "b", "beta")] {
         let (status, _) = post_json(
             &router,
@@ -2093,6 +2102,27 @@ async fn migrating_copies_every_record_and_switches_the_active_engine() {
     let (status, entry) = get_json(&router, "/api/get?namespace=notes&key=b").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(entry["content"], "beta");
+
+    // The active engine is a different store: a record written to the old one
+    // afterwards must not appear in it.
+    source
+        .store(
+            "notes",
+            "sentinel",
+            "only in the old engine",
+            MemoryCategory::Core,
+            None,
+            MemoryTaint::Internal,
+        )
+        .await
+        .unwrap();
+    let (status, entry) = get_json(&router, "/api/get?namespace=notes&key=sentinel").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        entry,
+        Value::Null,
+        "the active engine must not be the source"
+    );
 }
 
 #[tokio::test]

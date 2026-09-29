@@ -875,3 +875,50 @@ async fn the_answer_body_holds_only_keys_the_strict_schema_allows() {
     with.instructions = Some("be brief".into());
     answerer.answer(with).await.expect("with instructions");
 }
+
+#[tokio::test]
+async fn a_token_that_is_not_a_valid_header_is_unauthorized_without_a_request() {
+    let (endpoint, state) = hosted_backend().await;
+    let p = tinyhumans_provider(
+        &endpoint,
+        Arc::new(StaticBearer::new("abc\r\nX-Injected: 1")),
+    )
+    .expect("builds");
+    let error = p.namespaces().await.expect_err("CR/LF must be refused");
+    assert!(matches!(error, MemoryError::Unauthorized(_)), "{error:?}");
+    assert!(!error.to_string().contains("X-Injected"), "{error}");
+    assert!(state.seen.lock().expect("seen").requests.is_empty());
+}
+
+#[tokio::test]
+async fn a_success_envelope_without_data_or_with_success_false_is_an_error() {
+    let missing = Router::new().route(
+        "/memory/scopes",
+        get(|| async { Json(json!({ "success": true })) }),
+    );
+    let error = provider(&serve(missing).await)
+        .namespaces()
+        .await
+        .expect_err("no data field");
+    assert!(matches!(error, MemoryError::Backend(_)), "{error:?}");
+
+    // A 2xx health probe whose body says `success:false` is not healthy.
+    let refused = Router::new().route(
+        "/memory/scopes",
+        get(|| async {
+            Json(json!({ "success": false, "error": "no", "errorCode": "VALIDATION_ERROR" }))
+        }),
+    );
+    let health = provider(&serve(refused).await).health().await;
+    assert!(!matches!(health, MemoryHealth::Ready), "{health:?}");
+}
+
+#[tokio::test]
+async fn a_500_is_retryable_unavailable() {
+    let (endpoint, state) = hosted_backend().await;
+    *state.fail_all.lock().expect("fail") = Some((500, "INTERNAL"));
+    let error = provider(&endpoint).namespaces().await.expect_err("500");
+    assert!(matches!(error, MemoryError::Unavailable(_)), "{error:?}");
+    let attempts = state.seen.lock().expect("seen").requests.len();
+    assert_eq!(attempts, 3, "a read is retried on 500");
+}

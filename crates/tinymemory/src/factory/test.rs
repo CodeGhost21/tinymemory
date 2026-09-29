@@ -38,13 +38,35 @@ fn an_unknown_engine_is_refused() {
     assert!(error.to_string().contains("unknown engine"), "{error}");
 }
 
+/// The smallest config and credential that lets each engine build.
+fn minimal(id: &str) -> (EngineConfig, EngineCredential) {
+    match id {
+        "supermemory" | "cognee" => (
+            config(Some("http://127.0.0.1:9"), None),
+            EngineCredential::None,
+        ),
+        "mem0" => (
+            config(Some("http://127.0.0.1:9"), Some("self_hosted")),
+            EngineCredential::None,
+        ),
+        "cortex" | "tinyhumans" => (EngineConfig::default(), key("a-key")),
+        _ => (EngineConfig::default(), EngineCredential::None),
+    }
+}
+
 #[test]
-fn every_listed_engine_has_a_unique_id_and_is_buildable_or_needs_config() {
+fn every_listed_engine_has_a_unique_id_and_builds_with_a_minimal_config() {
     let engines = list_engines();
     let mut ids: Vec<_> = engines.iter().map(|e| e.id).collect();
     ids.sort_unstable();
     ids.dedup();
-    assert_eq!(ids.len(), engines.len());
+    assert_eq!(ids.len(), engines.len(), "ids are unique");
+    for engine in &engines {
+        let (config, credential) = minimal(engine.id);
+        let provider = build(engine.id, &config, credential)
+            .unwrap_or_else(|error| panic!("{} did not build: {error}", engine.id));
+        assert_eq!(provider.driver_id(), engine.id);
+    }
 }
 
 #[cfg(feature = "tinycortex")]
@@ -167,6 +189,22 @@ fn cortex_needs_a_key_and_a_self_hosted_endpoint() {
     assert_eq!(cloud.driver_id(), "cortex");
     assert!(cloud.as_answer().is_some());
     assert!(build("cortex", &config(None, Some("self_hosted")), key("cx-key")).is_err());
+    // A custom endpoint under `cloud` is honoured, not silently discarded.
+    assert!(
+        build(
+            "cortex",
+            &config(Some("http://memory.example.com"), Some("cloud")),
+            key("cx-key")
+        )
+        .is_err(),
+        "the endpoint was used, so cleartext HTTP was refused"
+    );
+    assert!(build(
+        "cortex",
+        &config(Some("https://staging.example.com"), Some("cloud")),
+        key("cx-key")
+    )
+    .is_ok());
     assert!(build(
         "cortex",
         &config(Some("http://127.0.0.1:3141"), Some("self_hosted")),

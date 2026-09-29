@@ -19,7 +19,7 @@ pub const PAGE_LIMIT: usize = 500;
 
 /// A hard stop on pages, so a source that never ends its cursor cannot loop
 /// forever.
-const MAX_PAGES: usize = 1_000_000;
+const MAX_PAGES: usize = 100_000;
 
 /// Progress after each page is imported.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -56,7 +56,8 @@ pub struct MigrateReport {
 /// # Errors
 ///
 /// Fails if the source cannot be exported, the target cannot import a page, or
-/// the source's cursor never terminates. Records already imported stay
+/// the source's cursor never terminates (a cursor equal to the one just used,
+/// or one already seen, is refused rather than followed). Records already imported stay
 /// imported; rerunning is safe because targets skip records they recognise.
 pub async fn copy(
     from: &dyn MemoryProvider,
@@ -65,6 +66,7 @@ pub async fn copy(
 ) -> anyhow::Result<MigrateReport> {
     let mut report = MigrateReport::default();
     let mut cursor: Option<String> = None;
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     loop {
         anyhow::ensure!(
             report.pages < MAX_PAGES,
@@ -90,7 +92,16 @@ pub async fn copy(
             imported: report.imported,
         });
         match page.next_cursor {
-            Some(next) => cursor = Some(next),
+            Some(next) => {
+                // A source that hands back a cursor it already issued would
+                // otherwise re-export the same pages until the page cap.
+                anyhow::ensure!(
+                    cursor.as_deref() != Some(next.as_str()) && seen.insert(next.clone()),
+                    "the source's export cursor repeated after {} pages; refusing to loop",
+                    report.pages
+                );
+                cursor = Some(next);
+            }
             None => return Ok(report),
         }
     }

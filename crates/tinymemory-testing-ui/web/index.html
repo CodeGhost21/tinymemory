@@ -535,7 +535,9 @@ function updateEngineFields() {
     const saved = loadValue(`deployment:${engine}`, DEFAULT_DEPLOYMENTS[engine] || d.deployments[0]);
     $("deployment").value = d.deployments.includes(saved) ? saved : d.deployments[0];
   }
-  const showEndpoint = d.needs_endpoint || d.hosted;
+  // An engine with deployments (Mem0, Cognee, CortexDB) always shows the
+  // endpoint: cloud prefills a default, self-hosted needs one.
+  const showEndpoint = d.needs_endpoint || d.hosted || hasDeploymentChoice;
   const showKey = d.needs_key || d.hosted;
   $("field-deployment").classList.toggle("active", hasDeploymentChoice);
   $("field-endpoint").classList.toggle("active", showEndpoint);
