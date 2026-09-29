@@ -1,6 +1,6 @@
 //! Factory tests: listing, per-engine construction, and refusals.
 
-#![allow(clippy::expect_used)]
+#![allow(clippy::expect_used, clippy::panic)]
 
 use std::sync::Arc;
 

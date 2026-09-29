@@ -1,6 +1,10 @@
 //! `migrate::copy` between two in-memory providers.
 
-#![allow(clippy::expect_used)]
+#![allow(
+    clippy::expect_used,
+    clippy::many_single_char_names,
+    clippy::unnecessary_literal_bound
+)]
 
 use tinymemory_conformance::InMemoryProvider;
 
