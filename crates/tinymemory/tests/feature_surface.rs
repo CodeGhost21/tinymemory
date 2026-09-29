@@ -26,7 +26,8 @@ compile_error!("contacts must imply core");
         feature = "mem0",
         feature = "cognee",
         feature = "cortex",
-        feature = "agentmemory"
+        feature = "agentmemory",
+        feature = "tinyhumans"
     ))
 ))]
 compile_error!("engines must expose every engine adapter");
@@ -49,3 +50,6 @@ compile_error!("full must imply every production feature group");
 fn conformance_feature_exposes_the_reference_provider() {
     let _ = tinymemory::conformance::InMemoryProvider::new();
 }
+
+#[cfg(all(feature = "tinyhumans", not(feature = "cortex")))]
+compile_error!("tinyhumans must imply cortex");

@@ -100,7 +100,8 @@ pub use tinymemory_tinycortex as tinycortex;
     feature = "cognee",
     feature = "cortex",
     feature = "agentmemory",
-    feature = "livingbrain"
+    feature = "livingbrain",
+    feature = "factory"
 ))]
 pub use tinymemory_remote as remote;
 
@@ -147,6 +148,9 @@ pub use tinymemory_documents as documents;
 #[cfg(feature = "conformance")]
 pub use tinymemory_conformance as conformance;
 
+#[cfg(feature = "factory")]
+pub mod factory;
+pub mod migrate;
 pub mod registry;
 pub mod routing;
 pub use routing::MemoryApi;

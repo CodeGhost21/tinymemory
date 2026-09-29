@@ -92,13 +92,22 @@ mem0 = ["dep:tinymemory-remote"]
 cognee = ["dep:tinymemory-remote"]
 cortex = ["dep:tinymemory-remote"]
 agentmemory = ["dep:tinymemory-remote"]
+# CortexDB hosted by the TinyHumans backend (`/memory/*`): the same adapter as
+# `cortex`, speaking the hosted dialect. Implies `cortex`.
+tinyhumans = ["cortex"]
 # LivingBrain exposes a brain-scoped remote API client, not an exact-record
 # `MemoryProvider`; see docs/specs/livingbrain-remote-api.md.
 livingbrain = ["dep:tinymemory-remote"]
 # Every engine at once. A host that binds its driver from configuration rather
 # than at compile time wants this: `DriverRegistry` admission is a static policy
 # table, so which adapters are compiled in decides what it can actually bind.
-engines = ["tinycortex", "supermemory", "mem0", "cognee", "cortex", "agentmemory"]
+engines = ["tinycortex", "supermemory", "mem0", "cognee", "cortex", "agentmemory", "tinyhumans"]
+
+# Config-driven engine construction (`tinymemory::factory`): list the engines
+# compiled in and build a provider from an id, endpoint and credential. Each
+# engine arm is gated on that engine's own feature, so this adds only the
+# shared HTTP adapter crate (for `BearerSource`), never an engine by itself.
+factory = ["dep:tinymemory-remote"]
 
 # --- Subsystems ------------------------------------------------------------
 # The workspace crates that are not adapters, each re-exported as a module of

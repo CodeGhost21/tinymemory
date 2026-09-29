@@ -25,6 +25,9 @@ use reqwest::{StatusCode, Url};
 use serde_json::Value;
 use tinymemory_api::error::MemoryError;
 
+/// Default origin of the TinyHumans backend that hosts CortexDB.
+pub const TINYHUMANS_API_ENDPOINT: &str = "https://api.tinyhumans.ai";
+
 /// The backend's code for an exhausted credit balance (HTTP 402).
 pub const INSUFFICIENT_CREDITS_CODE: &str = "USER_INSUFFICIENT_CREDITS";
 
