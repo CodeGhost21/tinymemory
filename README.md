@@ -92,7 +92,7 @@ composition — no storage engine, no HTTP stack, no native library.
 | `memory-git` | git-backed diff snapshots (implies `tinycortex`; links libgit2) |
 | `contacts` | the macOS address-book seeding path (implies `core`) |
 | `test-support` | the workspace's test doubles and helpers |
-| `full` | every feature above except `test-support` |
+| `full` | `engines`, `core`, `sync`, `sources-network`, `documents-network`, `conformance`, and `memory-git`; not `factory`, `livingbrain`, `contacts`, or `test-support` |
 
 Capability features imply the engine that serves them, so asking for a
 capability cannot produce a build where nothing implements it. `test-support`
