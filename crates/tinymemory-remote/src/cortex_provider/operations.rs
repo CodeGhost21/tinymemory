@@ -25,7 +25,9 @@ use tinymemory_api::types::{
 };
 
 use crate::common::{encode, Attempts};
-use crate::cortex::{CortexDialect, CortexMemory, CortexWire, Route, CORTEX_DRIVER_ID, TINYHUMANS_DRIVER_ID};
+use crate::cortex::{
+    CortexDialect, CortexMemory, CortexWire, Route, CORTEX_DRIVER_ID, TINYHUMANS_DRIVER_ID,
+};
 
 use super::types::ExperienceInput;
 

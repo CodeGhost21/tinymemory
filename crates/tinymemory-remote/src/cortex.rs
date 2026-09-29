@@ -1149,7 +1149,10 @@ impl Dialect for CortexDialect {
             // credential and (via 402/429) account state in one round trip.
             CortexWire::TinyHumans => {
                 self.client
-                    .probe(&format!("{}?prefix=__health__", self.wire.path(Route::Scopes)))
+                    .probe(&format!(
+                        "{}?prefix=__health__",
+                        self.wire.path(Route::Scopes)
+                    ))
                     .await
             }
         }

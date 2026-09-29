@@ -105,13 +105,10 @@ pub(crate) fn status_error(
         .map(clean_code)
         .filter(|c| !c.is_empty())
         .unwrap_or_else(|| default_code(status));
-    let message = parsed
-        .as_ref()
-        .and_then(|v| v.get("error"))
-        .map_or_else(
-            || body.to_string(),
-            |e| e.as_str().map_or_else(|| e.to_string(), str::to_string),
-        );
+    let message = parsed.as_ref().and_then(|v| v.get("error")).map_or_else(
+        || body.to_string(),
+        |e| e.as_str().map_or_else(|| e.to_string(), str::to_string),
+    );
     typed(host, path, status, &code, &message)
 }
 
