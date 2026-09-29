@@ -547,12 +547,10 @@ function updateEngineFields() {
   $("api-key-label").textContent = d.hosted
     ? "Session token or API key (required)"
     : (keyRequired ? "API key (required)" : "API key (optional)");
-  const key = connectionKey(engine);
   $("endpoint").value = showEndpoint
     ? loadValue(engineEndpointKey(engine), defaultEndpoint(engine))
     : "";
   $("api-key").value = showKey ? loadValue(engineApiKeyKey(engine), "") : "";
-  void key;
 }
 
 function wireEngineControls() {
