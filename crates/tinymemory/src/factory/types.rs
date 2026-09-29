@@ -157,7 +157,8 @@ pub fn list_engines() -> Vec<EngineDescriptor> {
     engines.push(EngineDescriptor {
         id: tinymemory_api::drivers::TINYHUMANS_DRIVER_ID,
         label: "CortexDB (via TinyHumans)",
-        description: "CortexDB hosted by TinyHumans. The credential is the host's signed-in session.",
+        description:
+            "CortexDB hosted by TinyHumans. The credential is the host's signed-in session.",
         needs_endpoint: false,
         needs_key: false,
         key_optional: false,

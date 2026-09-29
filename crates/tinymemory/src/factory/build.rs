@@ -13,13 +13,30 @@ use super::{EngineConfig, EngineCredential};
 use tinymemory_api::drivers as ids;
 
 /// The endpoint from `config`, treating blank as absent.
-#[cfg(any(feature = "supermemory", feature = "mem0", feature = "cognee", feature = "cortex", feature = "agentmemory", feature = "tinyhumans"))]
+#[cfg(any(
+    feature = "supermemory",
+    feature = "mem0",
+    feature = "cognee",
+    feature = "cortex",
+    feature = "agentmemory",
+    feature = "tinyhumans"
+))]
 fn endpoint_of(config: &EngineConfig) -> Option<&str> {
-    config.endpoint.as_deref().map(str::trim).filter(|s| !s.is_empty())
+    config
+        .endpoint
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
 }
 
 /// Refuses a dynamic credential for an engine that takes a fixed key.
-#[cfg(any(feature = "supermemory", feature = "mem0", feature = "cognee", feature = "cortex", feature = "agentmemory"))]
+#[cfg(any(
+    feature = "supermemory",
+    feature = "mem0",
+    feature = "cognee",
+    feature = "cortex",
+    feature = "agentmemory"
+))]
 fn reject_dynamic(id: &str, credential: &EngineCredential) -> anyhow::Result<()> {
     if matches!(credential, EngineCredential::Dynamic(_)) {
         bail!("{id} takes a fixed key; a dynamic bearer source is only supported by tinyhumans");
@@ -56,16 +73,17 @@ pub fn build_provider(
         #[cfg(feature = "supermemory")]
         ids::SUPERMEMORY_DRIVER_ID => {
             reject_dynamic(id, &credential)?;
-            let endpoint =
-                endpoint_of(config).ok_or_else(|| anyhow::anyhow!("supermemory requires an endpoint URL"))?;
-            let memory = tinymemory_remote::SupermemoryMemory::new(endpoint, credential.static_value())?;
+            let endpoint = endpoint_of(config)
+                .ok_or_else(|| anyhow::anyhow!("supermemory requires an endpoint URL"))?;
+            let memory =
+                tinymemory_remote::SupermemoryMemory::new(endpoint, credential.static_value())?;
             Ok(Arc::new(tinymemory_remote::supermemory_provider(memory)))
         }
         #[cfg(feature = "mem0")]
         ids::MEM0_DRIVER_ID => {
             reject_dynamic(id, &credential)?;
-            let endpoint =
-                endpoint_of(config).ok_or_else(|| anyhow::anyhow!("mem0 requires an endpoint URL"))?;
+            let endpoint = endpoint_of(config)
+                .ok_or_else(|| anyhow::anyhow!("mem0 requires an endpoint URL"))?;
             let key = credential.static_value();
             let is_cloud = match config.deployment.as_deref() {
                 Some("cloud") => true,
@@ -88,8 +106,8 @@ pub fn build_provider(
         #[cfg(feature = "cognee")]
         ids::COGNEE_DRIVER_ID => {
             reject_dynamic(id, &credential)?;
-            let endpoint =
-                endpoint_of(config).ok_or_else(|| anyhow::anyhow!("cognee requires an endpoint URL"))?;
+            let endpoint = endpoint_of(config)
+                .ok_or_else(|| anyhow::anyhow!("cognee requires an endpoint URL"))?;
             let key = credential.static_value();
             let is_cloud = match config.deployment.as_deref() {
                 Some("cloud") => true,
@@ -107,7 +125,11 @@ pub fn build_provider(
             // Cognee is graph-native, so its provider also advertises Graph
             // (relations only; see `CogneeGraph` for the exact split).
             let provider = if is_cloud {
-                tinymemory_remote::cognee_api_graph_provider(memory, endpoint, key.unwrap_or_default())
+                tinymemory_remote::cognee_api_graph_provider(
+                    memory,
+                    endpoint,
+                    key.unwrap_or_default(),
+                )
             } else {
                 tinymemory_remote::cognee_graph_provider(memory, endpoint, key)
             }?;
@@ -130,8 +152,9 @@ pub fn build_provider(
             let memory = if is_cloud {
                 tinymemory_remote::CortexMemory::cloud(key)
             } else {
-                let endpoint = endpoint
-                    .ok_or_else(|| anyhow::anyhow!("self-hosted CortexDB requires an endpoint URL"))?;
+                let endpoint = endpoint.ok_or_else(|| {
+                    anyhow::anyhow!("self-hosted CortexDB requires an endpoint URL")
+                })?;
                 tinymemory_remote::CortexMemory::self_hosted(endpoint, key)
             }?;
             Ok(Arc::new(tinymemory_remote::cortex_provider(memory)))
@@ -139,8 +162,10 @@ pub fn build_provider(
         #[cfg(feature = "agentmemory")]
         ids::AGENTMEMORY_DRIVER_ID => {
             reject_dynamic(id, &credential)?;
-            let endpoint = endpoint_of(config).unwrap_or(tinymemory_remote::AGENTMEMORY_API_ENDPOINT);
-            let memory = tinymemory_remote::AgentMemoryMemory::new(endpoint, credential.static_value())?;
+            let endpoint =
+                endpoint_of(config).unwrap_or(tinymemory_remote::AGENTMEMORY_API_ENDPOINT);
+            let memory =
+                tinymemory_remote::AgentMemoryMemory::new(endpoint, credential.static_value())?;
             Ok(Arc::new(tinymemory_remote::agentmemory_provider(memory)))
         }
         #[cfg(feature = "tinyhumans")]
@@ -155,8 +180,11 @@ pub fn build_provider(
                      or a dynamic source)"
                 ),
             };
-            let endpoint = endpoint_of(config).unwrap_or(tinymemory_remote::TINYHUMANS_API_ENDPOINT);
-            Ok(Arc::new(tinymemory_remote::tinyhumans_provider(endpoint, source)?))
+            let endpoint =
+                endpoint_of(config).unwrap_or(tinymemory_remote::TINYHUMANS_API_ENDPOINT);
+            Ok(Arc::new(tinymemory_remote::tinyhumans_provider(
+                endpoint, source,
+            )?))
         }
         other => bail!("unknown engine: {other}"),
     }
