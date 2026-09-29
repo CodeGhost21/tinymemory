@@ -141,6 +141,18 @@
   .output-label { font-size: 12px; color: var(--muted); margin-top: 16px; }
   .field-group { display: none; }
   .field-group.active { display: block; }
+  .banner {
+    display: none;
+    margin: 12px 0;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--err);
+    color: var(--err);
+    font-size: 13px;
+  }
+  .banner.active { display: block; }
+  .check { display: flex; align-items: center; gap: 6px; }
+  .check input { width: auto; }
 </style>
 </head>
 <body>
@@ -154,19 +166,11 @@
     <h2>Connect an engine</h2>
 
     <label for="engine">Memory engine</label>
-    <select id="engine">
-      <option value="local">Local (in-process, no network)</option>
-      <option value="supermemory">Supermemory</option>
-      <option value="mem0">Mem0</option>
-      <option value="cognee">Cognee</option>
-    </select>
+    <select id="engine"></select>
 
     <div id="field-deployment" class="field-group">
       <label for="deployment">Deployment</label>
-      <select id="deployment">
-        <option value="self_hosted">Self-hosted</option>
-        <option value="cloud">Cloud</option>
-      </select>
+      <select id="deployment"></select>
     </div>
     <div id="field-endpoint" class="field-group">
       <label for="endpoint">Endpoint URL</label>
@@ -176,11 +180,16 @@
       <label for="api-key" id="api-key-label">API key (optional)</label>
       <input id="api-key" type="password" placeholder="sm_...">
     </div>
-    <p class="hint" id="engine-hint">Runs entirely in this server's process; nothing persists across a restart.</p>
+    <p class="hint" id="engine-hint"></p>
+    <div id="field-migrate" class="field-group">
+      <label class="check"><input type="checkbox" id="migrate-copy">Switch &amp; copy memories from the current engine</label>
+      <p class="hint">Exports every record from the connected engine, imports it into the one selected above, then switches to it. The old engine is left untouched.</p>
+    </div>
 
     <button id="connect-btn">Connect</button>
     <button id="disconnect-btn" class="secondary">Disconnect</button>
     <div id="connect-msg" class="msg"></div>
+    <div id="credits-banner" class="banner" role="alert">Out of credits: the hosted memory service refused the request because the account has no credits left. Top up your TinyHumans account and try again.</div>
   </section>
 
   <section class="panel">
@@ -195,6 +204,7 @@
       <button type="button" class="tab" data-op="forget">Forget</button>
       <button type="button" class="tab" data-op="export">Export</button>
       <button type="button" class="tab" data-op="graph" id="tab-graph" style="display:none;">Graph</button>
+      <button type="button" class="tab" data-op="answer" id="tab-answer" style="display:none;">Answer</button>
     </div>
 
     <div class="op active" id="op-store">
@@ -325,6 +335,19 @@
       <button id="graph-btn">List relations</button>
     </div>
 
+    <div class="op" id="op-answer">
+      <p class="hint">Asks the engine to recall evidence and write a grounded answer. Hosted engines spend credits.</p>
+      <label for="answer-query">Question</label>
+      <input id="answer-query" value="What does the user prefer?">
+      <div class="row">
+        <div><label for="answer-namespace">Namespace (optional)</label><input id="answer-namespace"></div>
+        <div><label for="answer-limit">Evidence limit</label><input id="answer-limit" type="number" value="12"></div>
+      </div>
+      <label for="answer-instructions">Instructions (optional)</label>
+      <textarea id="answer-instructions"></textarea>
+      <button id="answer-btn">Answer</button>
+    </div>
+
     <div class="output-label">Response</div>
     <pre id="output">nothing yet</pre>
   </section>
@@ -346,12 +369,49 @@ async function call(path, opts) {
   try { body = text ? JSON.parse(text) : null; } catch { body = text; }
   if (!res.ok) {
     const message = (body && body.error) ? body.error : `HTTP ${res.status}`;
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = res.status;
+    error.code = body && body.code;
+    throw error;
   }
   return body;
 }
 
-function setStatus(connected, driverId, hasGraph) {
+// A 402 means the hosted engine refused for lack of credits. Say so loudly
+// rather than leaving it as one more line of red text.
+function showCreditsBanner(visible) {
+  $("credits-banner").classList.toggle("active", Boolean(visible));
+}
+
+let connected = false;
+let ENGINES = [];
+const engineById = (id) => ENGINES.find((e) => e.id === id) || null;
+
+function esc(value) {
+  return String(value).replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+
+function deploymentLabel(name) {
+  return name === "cloud" ? "Cloud" : name === "self_hosted" ? "Self-hosted" : name;
+}
+
+// Shows a capability tab only while the connected engine advertises it; if the
+// tab was open when the capability went away, fall back to Store.
+function toggleTab(tabId, opId, visible) {
+  const tab = $(tabId);
+  tab.style.display = visible ? "" : "none";
+  if (!visible && tab.classList.contains("active")) {
+    tab.classList.remove("active");
+    document.querySelector('.tab[data-op="store"]').classList.add("active");
+    document.querySelectorAll(".op").forEach((o) => o.classList.remove("active"));
+    $("op-store").classList.add("active");
+  }
+}
+
+function setStatus(isConnected, driverId, hasGraph, hasAnswer) {
+  connected = Boolean(isConnected);
   const badge = $("status-badge");
   if (connected) {
     badge.textContent = `connected: ${driverId}`;
@@ -360,43 +420,44 @@ function setStatus(connected, driverId, hasGraph) {
     badge.textContent = "not connected";
     badge.classList.remove("connected");
   }
-  const graphTab = $("tab-graph");
-  graphTab.style.display = hasGraph ? "" : "none";
-  if (!hasGraph && graphTab.classList.contains("active")) {
-    graphTab.classList.remove("active");
-    document.querySelector('.tab[data-op="store"]').classList.add("active");
-    document.querySelectorAll(".op").forEach((o) => o.classList.remove("active"));
-    $("op-store").classList.add("active");
-  }
+  toggleTab("tab-graph", "op-graph", hasGraph);
+  toggleTab("tab-answer", "op-answer", hasAnswer);
+  $("field-migrate").classList.toggle("active", connected);
+  if (!connected) $("migrate-copy").checked = false;
+}
+
+function applyStatus(s) {
+  setStatus(s.connected, s.driver_id, s.has_graph, s.has_answer);
 }
 
 async function refreshStatus() {
   try {
-    const s = await call("/status");
-    setStatus(s.connected, s.driver_id, s.has_graph);
+    applyStatus(await call("/status"));
   } catch (e) {
-    setStatus(false, null, false);
+    setStatus(false, null, false, false);
   }
 }
 
-const ENGINE_HINTS = {
-  local: "Runs entirely in this server's process (a TinyCortex in-memory store); nothing persists across a restart, and no endpoint or key is needed.",
+// Extra guidance per engine id; anything not listed shows the server's own
+// one-line description.
+const ENGINE_NOTES = {
+  tinycortex: "Runs entirely in this server's process (a TinyCortex in-memory store); nothing persists across a restart, and no endpoint or key is needed.",
   supermemory: "Defaults to Supermemory's hosted API. Needs an API key. Note: this adapter was built and verified against Supermemory's self-hosted dialect (see integration/remote-engines/README.md) — if the hosted API has diverged from it, requests may fail or behave oddly. Point it at a self-hosted instance instead if so.",
   mem0: "Choose Cloud for Mem0's hosted API and Token authentication, or self-hosted for an OSS server using X-API-Key.",
   cognee: "Choose Cloud for a tenant URL using X-Api-Key, or self-hosted for a server using bearer-token authentication.",
+  cortex: "Choose Cloud for CortexDB's managed API, or self-hosted for your own server. Both need an API key.",
+  tinyhumans: "CortexDB hosted by TinyHumans. Paste a TinyHumans session token or a tiny_live_ API key; it is sent as a bearer token. Calls spend credits and are rate limited.",
 };
 
-// Best-known hosted API base URLs; edit freely, and per-engine edits are
-// remembered (see the persistence block below).
-const DEFAULT_ENDPOINTS = {
-  supermemory: "https://api.supermemory.ai",
-  "mem0:cloud": "https://api.mem0.ai",
+// Self-hosted defaults that are conventions rather than facts the server
+// knows. Hosted defaults come from the engine list itself.
+const SELF_HOSTED_ENDPOINTS = {
   "mem0:self_hosted": "http://localhost:8888",
-  "cognee:cloud": "",
   "cognee:self_hosted": "http://localhost:8001",
+  "cortex:self_hosted": "http://localhost:3141",
 };
 
-const DEFAULT_DEPLOYMENTS = { mem0: "cloud", cognee: "self_hosted" };
+const DEFAULT_DEPLOYMENTS = { mem0: "cloud", cognee: "self_hosted", cortex: "cloud" };
 
 // --- Persistence -----------------------------------------------------------
 // Everything typed into this page (endpoints, API keys, namespaces, keys,
@@ -416,13 +477,25 @@ function saveValue(key, value) {
   else localStorage.removeItem(STORE_PREFIX + key);
 }
 
+function hasDeployments(engine) {
+  const d = engineById(engine);
+  return Boolean(d && d.deployments.length > 0);
+}
+
 function deploymentFor(engine) {
-  return (engine === "mem0" || engine === "cognee") ? $("deployment").value : "self_hosted";
+  return hasDeployments(engine) ? $("deployment").value : null;
 }
 
 function connectionKey(engine) {
-  const deployment = deploymentFor(engine);
-  return (engine === "mem0" || engine === "cognee") ? `${engine}:${deployment}` : engine;
+  return hasDeployments(engine) ? `${engine}:${$("deployment").value}` : engine;
+}
+
+function defaultEndpoint(engine) {
+  const key = connectionKey(engine);
+  if (Object.hasOwn(SELF_HOSTED_ENDPOINTS, key)) return SELF_HOSTED_ENDPOINTS[key];
+  if (key === "cognee:cloud") return "";
+  const d = engineById(engine);
+  return (d && d.default_endpoint) || "";
 }
 
 function engineEndpointKey(engine) { return `endpoint:${connectionKey(engine)}`; }
@@ -432,7 +505,7 @@ function engineApiKeyKey(engine) { return `api-key:${connectionKey(engine)}`; }
 // categories, session ids, …): restore on load, save on every change. File
 // inputs and the connect-panel fields (handled specially above) are skipped.
 function wirePersistentFields() {
-  const skip = new Set(["engine", "deployment", "endpoint", "api-key"]);
+  const skip = new Set(["engine", "deployment", "endpoint", "api-key", "migrate-copy"]);
   document.querySelectorAll("input, select, textarea").forEach((el) => {
     if (!el.id || skip.has(el.id) || el.type === "file") return;
     const saved = loadValue("field:" + el.id, null);
@@ -448,57 +521,83 @@ function wirePersistentFields() {
 }
 wirePersistentFields();
 
+// Field visibility and labels come from the engine descriptor the server sent,
+// not from a hard-coded list of engine ids.
 function updateEngineFields() {
   const engine = $("engine").value;
-  const needsRemote = engine !== "local";
-  const hasDeploymentChoice = engine === "mem0" || engine === "cognee";
-  $("field-deployment").classList.toggle("active", hasDeploymentChoice);
-  $("field-endpoint").classList.toggle("active", needsRemote);
-  $("field-key").classList.toggle("active", needsRemote);
-  $("engine-hint").textContent = ENGINE_HINTS[engine];
-  $("api-key-label").textContent = deploymentFor(engine) === "cloud"
-    ? "API key (required)"
-    : "API key (optional)";
-  if (needsRemote) {
-    const key = connectionKey(engine);
-    $("endpoint").value = loadValue(engineEndpointKey(engine), DEFAULT_ENDPOINTS[key] || "");
-    $("api-key").value = loadValue(engineApiKeyKey(engine), "");
+  const d = engineById(engine);
+  if (!d) return;
+  const hasDeploymentChoice = d.deployments.length > 0;
+  if (hasDeploymentChoice) {
+    $("deployment").innerHTML = d.deployments
+      .map((name) => `<option value="${esc(name)}">${esc(deploymentLabel(name))}</option>`)
+      .join("");
+    const saved = loadValue(`deployment:${engine}`, DEFAULT_DEPLOYMENTS[engine] || d.deployments[0]);
+    $("deployment").value = d.deployments.includes(saved) ? saved : d.deployments[0];
   }
+  const showEndpoint = d.needs_endpoint || d.hosted;
+  const showKey = d.needs_key || d.hosted;
+  $("field-deployment").classList.toggle("active", hasDeploymentChoice);
+  $("field-endpoint").classList.toggle("active", showEndpoint);
+  $("field-key").classList.toggle("active", showKey);
+  $("engine-hint").textContent = ENGINE_NOTES[engine] || d.description;
+  const keyRequired = d.hosted
+    || (d.needs_key && !d.key_optional)
+    || (hasDeploymentChoice && $("deployment").value === "cloud");
+  $("api-key-label").textContent = d.hosted
+    ? "Session token or API key (required)"
+    : (keyRequired ? "API key (required)" : "API key (optional)");
+  const key = connectionKey(engine);
+  $("endpoint").value = showEndpoint
+    ? loadValue(engineEndpointKey(engine), defaultEndpoint(engine))
+    : "";
+  $("api-key").value = showKey ? loadValue(engineApiKeyKey(engine), "") : "";
+  void key;
 }
 
-// Restore the last-selected engine before wiring the change handler.
-$("engine").value = loadValue("engine", $("engine").value);
-const initialEngine = $("engine").value;
-$("deployment").value = loadValue(
-  `deployment:${initialEngine}`,
-  DEFAULT_DEPLOYMENTS[initialEngine] || "self_hosted",
-);
-$("engine").addEventListener("change", () => {
-  const engine = $("engine").value;
-  saveValue("engine", engine);
-  $("deployment").value = loadValue(
-    `deployment:${engine}`,
-    DEFAULT_DEPLOYMENTS[engine] || "self_hosted",
-  );
-  updateEngineFields();
-});
-$("deployment").addEventListener("change", () => {
-  saveValue(`deployment:${$("engine").value}`, $("deployment").value);
-  updateEngineFields();
-});
-updateEngineFields();
+function wireEngineControls() {
+  $("engine").addEventListener("change", () => {
+    saveValue("engine", $("engine").value);
+    updateEngineFields();
+  });
+  $("deployment").addEventListener("change", () => {
+    saveValue(`deployment:${$("engine").value}`, $("deployment").value);
+    updateEngineFields();
+  });
+  $("endpoint").addEventListener("input", () => {
+    saveValue(engineEndpointKey($("engine").value), $("endpoint").value);
+  });
+  $("api-key").addEventListener("input", () => {
+    saveValue(engineApiKeyKey($("engine").value), $("api-key").value);
+  });
+}
+wireEngineControls();
 
-$("endpoint").addEventListener("input", () => {
-  saveValue(engineEndpointKey($("engine").value), $("endpoint").value);
-});
-$("api-key").addEventListener("input", () => {
-  saveValue(engineApiKeyKey($("engine").value), $("api-key").value);
-});
+// Builds the engine picker from `GET /api/engines`, so an engine that is not
+// compiled into this server never appears.
+async function loadEngines() {
+  try {
+    ENGINES = await call("/engines");
+  } catch (e) {
+    ENGINES = [];
+    $("connect-msg").textContent = "Could not load the engine list: " + e.message;
+    $("connect-msg").className = "msg err";
+  }
+  $("engine").innerHTML = ENGINES
+    .map((d) => `<option value="${esc(d.id)}">${esc(d.label)}</option>`)
+    .join("");
+  // "local" was this picker's old id for the in-process engine.
+  const remembered = loadValue("engine", "");
+  const wanted = remembered === "local" ? "tinycortex" : remembered;
+  $("engine").value = engineById(wanted) ? wanted : (ENGINES[0] ? ENGINES[0].id : "");
+  updateEngineFields();
+}
 
 $("connect-btn").addEventListener("click", async () => {
   const msg = $("connect-msg");
   msg.textContent = "";
   msg.className = "msg";
+  showCreditsBanner(false);
   try {
     const engine = $("engine").value;
     const body = {
@@ -510,15 +609,25 @@ $("connect-btn").addEventListener("click", async () => {
     saveValue("engine", engine);
     saveValue(engineEndpointKey(engine), $("endpoint").value);
     saveValue(engineApiKeyKey(engine), $("api-key").value);
-    const status = await call("/connect", {
+    const migrate = connected && $("migrate-copy").checked;
+    const result = await call(migrate ? "/migrate" : "/connect", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(migrate ? { to: body } : body),
     });
-    setStatus(status.connected, status.driver_id, status.has_graph);
-    msg.textContent = `Connected to "${status.driver_id}".`;
+    const status = migrate ? result.status : result;
+    applyStatus(status);
+    if (migrate) {
+      const r = result.report;
+      msg.textContent = `Switched to "${status.driver_id}": copied ${r.imported} of ${r.records} records`
+        + (r.failed ? `, ${r.failed} failed` : "") + ".";
+      $("migrate-copy").checked = false;
+    } else {
+      msg.textContent = `Connected to "${status.driver_id}".`;
+    }
     msg.classList.add("ok");
   } catch (e) {
+    showCreditsBanner(e.status === 402);
     msg.textContent = e.message;
     msg.classList.add("err");
   }
@@ -526,7 +635,7 @@ $("connect-btn").addEventListener("click", async () => {
 
 $("disconnect-btn").addEventListener("click", async () => {
   const status = await call("/disconnect", { method: "POST" });
-  setStatus(status.connected, status.driver_id, status.has_graph);
+  applyStatus(status);
   $("connect-msg").textContent = "Disconnected.";
   $("connect-msg").className = "msg";
 });
@@ -552,8 +661,10 @@ function qs(params) {
 async function run(fn) {
   try {
     const result = await fn();
+    showCreditsBanner(false);
     setOutput(result === undefined ? "ok (no content)" : result);
   } catch (e) {
+    showCreditsBanner(e.status === 402);
     setOutput("Error: " + e.message);
   }
 }
@@ -641,7 +752,20 @@ $("graph-btn").addEventListener("click", () => run(() =>
   }))
 ));
 
-refreshStatus();
+$("answer-btn").addEventListener("click", () => run(() =>
+  call("/answer", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      query: $("answer-query").value,
+      limit: Number($("answer-limit").value) || 12,
+      namespace: $("answer-namespace").value || null,
+      instructions: $("answer-instructions").value || null,
+    }),
+  })
+));
+
+loadEngines().then(refreshStatus);
 </script>
 </body>
 </html>
