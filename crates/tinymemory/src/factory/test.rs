@@ -10,6 +10,7 @@ use super::*;
 #[allow(unused_imports)]
 use crate::provider::MemoryCore;
 
+#[allow(dead_code)]
 fn config(endpoint: Option<&str>, deployment: Option<&str>) -> EngineConfig {
     EngineConfig {
         endpoint: endpoint.map(str::to_owned),
@@ -193,6 +194,7 @@ fn agentmemory_defaults_to_the_local_endpoint() {
     assert_eq!(provider.driver_id(), "agentmemory");
 }
 
+#[allow(dead_code)]
 struct Fixed(&'static str);
 
 #[async_trait]
