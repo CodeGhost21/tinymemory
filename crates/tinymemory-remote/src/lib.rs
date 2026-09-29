@@ -14,6 +14,7 @@ mod common;
 pub mod cortex;
 mod cortex_provider;
 mod graph_provider;
+mod hosted;
 pub mod livingbrain;
 pub mod mem0;
 mod mem0_graph;
