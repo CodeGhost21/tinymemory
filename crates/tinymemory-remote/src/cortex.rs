@@ -578,7 +578,8 @@ impl CortexDialect {
                 // Hosted: a 429 (or 5xx) while waiting means "not yet", not
                 // "the write failed" — it was accepted and is durable. Keep
                 // waiting until the deadline.
-                Err(error) if self.wire == CortexWire::TinyHumans && Self::is_transient(&error) => {}
+                Err(error) if self.wire == CortexWire::TinyHumans && Self::is_transient(&error) => {
+                }
                 Err(error) => return Err(error),
             }
             Self::still_waiting(deadline, event_id, scope)?;
@@ -910,11 +911,8 @@ impl CortexDialect {
                 // The log is ordered, so the last accepted event becoming
                 // visible implies the earlier ones are; one wait, not N.
                 if wait_indexed {
-                    if let Some((item, accepted)) = items
-                        .iter()
-                        .zip(&results)
-                        .rev()
-                        .find(|(_, a)| {
+                    if let Some((item, accepted)) =
+                        items.iter().zip(&results).rev().find(|(_, a)| {
                             a.get("replayed_from_idempotency").and_then(Value::as_bool)
                                 != Some(true)
                         })
@@ -982,10 +980,7 @@ impl CortexDialect {
             .client
             .json(
                 Method::GET,
-                &format!(
-                    "{}?limit={SCOPE_LIST_LIMIT}",
-                    self.wire.path(Route::Scopes)
-                ),
+                &format!("{}?limit={SCOPE_LIST_LIMIT}", self.wire.path(Route::Scopes)),
                 None,
                 Attempts::RetryTransient,
             )
@@ -1013,14 +1008,14 @@ impl CortexDialect {
             && items.len() == HOSTED_DEFAULT_SCOPE_PAGE
             && !Self::listing_is_complete(&listing, items.len())
         {
-            return Err(anyhow::Error::new(tinymemory_api::error::MemoryError::Backend(
-                format!(
+            return Err(anyhow::Error::new(
+                tinymemory_api::error::MemoryError::Backend(format!(
                     "the hosted scope listing returned {HOSTED_DEFAULT_SCOPE_PAGE} entries, \
                      the default page size, and does not say whether more exist; the \
                      backend may be ignoring `limit`. Refusing to enumerate namespaces \
                      from a possibly truncated listing"
-                ),
-            )));
+                )),
+            ));
         }
         Ok(items
             .iter()

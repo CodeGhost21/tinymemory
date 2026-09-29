@@ -381,12 +381,13 @@ impl HttpClient {
                 // Through `credential_header`, so a token holding CR/LF (header
                 // injection) is refused as a credential fault, and the value is
                 // marked sensitive.
-                let header = credential_header(&format!("Bearer {}", token.trim())).map_err(|_| {
-                    anyhow::Error::new(MemoryError::Unauthorized(
+                let header =
+                    credential_header(&format!("Bearer {}", token.trim())).map_err(|_| {
+                        anyhow::Error::new(MemoryError::Unauthorized(
                         "the bearer source returned a credential that is not a valid header value"
                             .to_string(),
                     ))
-                })?;
+                    })?;
                 request.header(AUTHORIZATION, header)
             }
             Auth::ApiKey(key) => request.header("X-API-Key", credential_header(key)?),
@@ -570,9 +571,7 @@ impl HttpClient {
             // call. Reads (`RetryTransient`) send none: the memory API rejects
             // every replay of a key, so a retried read would fail on its own key.
             let key = self.write_key(&method);
-            return self
-                .json_attempt(method, path, body, key.as_deref())
-                .await;
+            return self.json_attempt(method, path, body, key.as_deref()).await;
         }
         self.with_read_retry(|| self.json_attempt(method.clone(), path, body, None))
             .await

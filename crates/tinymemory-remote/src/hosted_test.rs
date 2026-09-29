@@ -6,7 +6,8 @@
 
 #![allow(clippy::expect_used, clippy::panic)]
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -70,6 +71,17 @@ struct Hosted {
     fail_all: Mutex<Option<(u16, &'static str)>>,
     /// The token the double accepts; `None` accepts any non-empty bearer.
     accept_token: Mutex<Option<String>>,
+    /// `Idempotency-Key` values already claimed. Like the memory API, any
+    /// replay of a claimed key is a 409 and is never forwarded.
+    claimed: Mutex<HashSet<String>>,
+    /// Apply the next N experience writes, then answer 503 (a transport fault
+    /// after the claim was taken and the work done).
+    apply_then_fail: AtomicUsize,
+    /// Answer the Nth experience request (1-based) with a 400, unapplied.
+    fail_nth_experience: AtomicUsize,
+    experience_calls: AtomicUsize,
+    /// Behave like a backend that strips `limit` from `/memory/scopes`.
+    ignore_scope_limit: AtomicBool,
 }
 
 type Shared = Arc<Hosted>;
@@ -134,16 +146,44 @@ async fn experience(
     if let Some(early) = gate(&state, "POST", &uri, &headers) {
         return early;
     }
+    let claim = headers
+        .get("idempotency-key")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
     state.seen.lock().expect("seen").idempotency.push((
         body.get("idempotency_key")
             .and_then(Value::as_str)
             .map(str::to_owned),
-        headers
-            .get("idempotency-key")
-            .and_then(|v| v.to_str().ok())
-            .map(str::to_owned),
+        claim.clone(),
     ));
+    if let Some(claim) = claim {
+        if !state.claimed.lock().expect("claimed").insert(claim) {
+            return (
+                StatusCode::CONFLICT,
+                Json(
+                    json!({ "success": false, "error": "already claimed", "errorCode": "CONFLICT" }),
+                ),
+            );
+        }
+    }
+    let call = state.experience_calls.fetch_add(1, Ordering::SeqCst) + 1;
+    if state.fail_nth_experience.load(Ordering::SeqCst) == call {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "success": false, "error": "rejected", "errorCode": "VALIDATION_ERROR" })),
+        );
+    }
     let (status, Json(value)) = cortex_experience(State(state.log.clone()), Json(body)).await;
+    if state
+        .apply_then_fail
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+        .is_ok()
+    {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "success": false, "error": "lost", "errorCode": "UNAVAILABLE" })),
+        );
+    }
     envelope(status, value)
 }
 
@@ -213,6 +253,10 @@ async fn scopes(
     if let Some(early) = gate(&state, "GET", &uri, &headers) {
         return early;
     }
+    let mut params = params;
+    if state.ignore_scope_limit.load(Ordering::SeqCst) {
+        params.remove("limit");
+    }
     let Json(value) = cortex_scopes(State(state.log.clone()), Query(params)).await;
     envelope(StatusCode::OK, value)
 }
@@ -268,6 +312,11 @@ async fn hosted_backend() -> (String, Shared) {
         rate_limit_events: AtomicUsize::new(0),
         fail_all: Mutex::new(None),
         accept_token: Mutex::new(None),
+        claimed: Mutex::new(HashSet::new()),
+        apply_then_fail: AtomicUsize::new(0),
+        fail_nth_experience: AtomicUsize::new(0),
+        experience_calls: AtomicUsize::new(0),
+        ignore_scope_limit: AtomicBool::new(false),
     });
     let app = Router::new()
         .route("/memory/experience", post(experience))
@@ -376,34 +425,38 @@ async fn every_operation_maps_to_a_memory_path_and_never_a_v1_one() {
     assert_eq!(answered.answer, "grounded");
 
     let seen = state.seen.lock().expect("seen");
-    let paths: Vec<&str> = seen
+    // "METHOD /path?sorted,query,keys": the exact set of routes and query
+    // parameters used, with values (scopes, cursors) left out.
+    let shapes: std::collections::BTreeSet<String> = seen
         .requests
         .iter()
-        .map(|r| r.split_once(' ').expect("method path").1)
+        .map(|request| {
+            let (method, target) = request.split_once(' ').expect("method target");
+            let (path, query) = target.split_once('?').unwrap_or((target, ""));
+            let mut keys: Vec<&str> = query
+                .split('&')
+                .filter(|pair| !pair.is_empty())
+                .map(|pair| pair.split_once('=').map_or(pair, |(k, _)| k))
+                .collect();
+            keys.sort_unstable();
+            format!("{method} {path}?{}", keys.join(","))
+        })
         .collect();
-    for expected in [
-        "/memory/experience",
-        "/memory/events?",
-        "/memory/recall",
-        "/memory/forget",
-        "/memory/scopes",
-        "/memory/scopes?prefix=zz_health",
-        "/memory/answer",
-    ] {
-        assert!(
-            paths.iter().any(|p| p.starts_with(expected)),
-            "no request to {expected}; saw {paths:?}"
-        );
-    }
-    assert!(
-        paths.iter().all(|p| p.starts_with("/memory/")),
-        "a request left the /memory/ surface: {paths:?}"
-    );
-    assert!(
-        !paths
-            .iter()
-            .any(|p| p.contains("wait=") || p.contains("bulk")),
-        "wait=indexed and bulk are not forwarded by the backend: {paths:?}"
+    let expected: std::collections::BTreeSet<String> = [
+        "POST /memory/experience?",
+        "GET /memory/events?limit,scope",
+        "POST /memory/recall?",
+        "POST /memory/forget?",
+        "GET /memory/scopes?limit",
+        "GET /memory/scopes?prefix",
+        "POST /memory/answer?",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
+    assert_eq!(
+        shapes, expected,
+        "the hosted routes and query parameters used"
     );
 }
 
@@ -559,7 +612,7 @@ async fn a_response_without_the_envelope_is_a_backend_error() {
 }
 
 #[tokio::test]
-async fn writes_carry_an_idempotency_key_header_matching_the_body() {
+async fn write_headers_are_random_per_call_and_never_the_content_key() {
     let (endpoint, state) = hosted_backend().await;
     let p = provider(&endpoint);
     p.store(
@@ -575,14 +628,182 @@ async fn writes_carry_an_idempotency_key_header_matching_the_body() {
     p.ingest_document(item("doc", "text")).await.expect("doc");
     let seen = state.seen.lock().expect("seen");
     assert!(seen.idempotency.len() >= 2);
+    let mut headers = HashSet::new();
     for (body_key, header) in &seen.idempotency {
         let header = header.as_deref().expect("Idempotency-Key header present");
-        assert_eq!(Some(header), body_key.as_deref());
+        assert_ne!(
+            Some(header),
+            body_key.as_deref(),
+            "header must not be the content key"
+        );
+        assert!(header.starts_with("tm-"));
         assert!(header.len() <= 128);
         assert!(header
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-')));
+        assert!(
+            headers.insert(header.to_string()),
+            "header reused: {header}"
+        );
     }
+}
+
+#[tokio::test]
+async fn reingesting_identical_content_succeeds_in_hosted_mode() {
+    let (endpoint, state) = hosted_backend().await;
+    let p = provider(&endpoint);
+    let first = p
+        .ingest_document(item("doc-same", "same text"))
+        .await
+        .expect("first");
+    assert_eq!(first.written, 1);
+    let second = p
+        .ingest_document(item("doc-same", "same text"))
+        .await
+        .expect("an identical re-ingest must not 409 on the metering claim");
+    assert!(
+        second.already_ingested,
+        "the engine dedupes on the body key: {second:?}"
+    );
+    assert_eq!(state.log.lock().expect("log").events.len(), 1);
+}
+
+#[tokio::test]
+async fn a_write_applied_before_a_transport_fault_is_recovered_not_failed() {
+    let (endpoint, state) = hosted_backend().await;
+    state.apply_then_fail.store(1, Ordering::SeqCst);
+    let p = provider(&endpoint);
+    let outcome = p
+        .ingest_document(item("doc-lost", "applied then the response was lost"))
+        .await
+        .expect("the retry's 409 is success-unknown, resolved by looking the event up");
+    assert_eq!(outcome.ids.len() + usize::from(outcome.already_ingested), 1);
+    assert_eq!(
+        state.log.lock().expect("log").events.len(),
+        1,
+        "exactly one event: the retry was never forwarded"
+    );
+    let seen = state.seen.lock().expect("seen");
+    let headers: Vec<_> = seen.idempotency.iter().map(|(_, h)| h.clone()).collect();
+    assert_eq!(headers.len(), 2);
+    assert_eq!(
+        headers[0], headers[1],
+        "one logical call reuses its claim across retries"
+    );
+}
+
+#[tokio::test]
+async fn a_partially_applied_conversation_completes_on_retry() {
+    let (endpoint, state) = hosted_backend().await;
+    let p = provider(&endpoint);
+    let messages = || -> Vec<IngestItem> {
+        ["one", "two", "three"]
+            .iter()
+            .map(|text| {
+                let mut m = item("thread-retry", text);
+                m.author = Some("user".into());
+                m
+            })
+            .collect()
+    };
+    state.fail_nth_experience.store(3, Ordering::SeqCst);
+    p.ingest_conversation(messages())
+        .await
+        .expect_err("third message rejected");
+    assert_eq!(state.log.lock().expect("log").events.len(), 2);
+
+    state.fail_nth_experience.store(0, Ordering::SeqCst);
+    let outcome = p
+        .ingest_conversation(messages())
+        .await
+        .expect("the retry completes the batch");
+    assert_eq!(
+        outcome.written, 1,
+        "only the missing message is new: {outcome:?}"
+    );
+    assert_eq!(state.log.lock().expect("log").events.len(), 3);
+}
+
+#[tokio::test]
+async fn a_conversation_waits_on_its_last_event_only() {
+    let (endpoint, state) = hosted_backend().await;
+    let p = provider(&endpoint);
+    let messages: Vec<IngestItem> = ["a", "b", "c", "d"]
+        .iter()
+        .map(|text| {
+            let mut m = item("thread-wait", text);
+            m.author = Some("user".into());
+            m
+        })
+        .collect();
+    p.ingest_conversation(messages).await.expect("conversation");
+    let seen = state.seen.lock().expect("seen");
+    let listings = seen
+        .requests
+        .iter()
+        .filter(|r| r.starts_with("GET /memory/events"))
+        .count();
+    assert_eq!(
+        listings, 1,
+        "one visibility wait for the whole batch: {:?}",
+        seen.requests
+    );
+}
+
+#[tokio::test]
+async fn a_429_while_waiting_for_visibility_does_not_fail_the_write() {
+    let (endpoint, state) = hosted_backend().await;
+    // Each listing is retried three times inside the transport, so four 429s
+    // exhaust the first poll and leak into the second.
+    state.rate_limit_events.store(4, Ordering::SeqCst);
+    provider(&endpoint)
+        .ingest_document(item("doc-429", "rate limited while waiting"))
+        .await
+        .expect("the write was accepted; keep waiting until the deadline");
+}
+
+#[tokio::test]
+async fn a_full_default_page_of_scopes_is_refused_not_silently_truncated() {
+    let (endpoint, state) = hosted_backend().await;
+    let p = provider(&endpoint);
+    for i in 0..51 {
+        p.store(
+            &format!("ns{i}"),
+            "k",
+            "v",
+            MemoryCategory::Core,
+            None,
+            MemoryTaint::Internal,
+        )
+        .await
+        .expect("store");
+    }
+    state.ignore_scope_limit.store(true, Ordering::SeqCst);
+    let error = p
+        .namespaces()
+        .await
+        .expect_err("a 50-entry page may be a truncation");
+    assert!(matches!(error, MemoryError::Backend(_)), "{error:?}");
+    assert!(error.to_string().contains("truncated"), "{error}");
+}
+
+#[tokio::test]
+async fn scopes_are_all_returned_once_the_backend_honours_limit() {
+    let (endpoint, _state) = hosted_backend().await;
+    let p = provider(&endpoint);
+    for i in 0..51 {
+        p.store(
+            &format!("ns{i}"),
+            "k",
+            "v",
+            MemoryCategory::Core,
+            None,
+            MemoryTaint::Internal,
+        )
+        .await
+        .expect("store");
+    }
+    assert_eq!(p.namespaces().await.expect("all 51").len(), 51);
 }
 
 #[tokio::test]
