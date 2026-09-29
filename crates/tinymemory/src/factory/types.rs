@@ -53,6 +53,7 @@ impl EngineCredential {
 }
 
 /// One selectable engine, for a picker UI or a config validator.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct EngineDescriptor {
     /// The stable id passed to [`super::build_provider`].

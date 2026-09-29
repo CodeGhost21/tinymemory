@@ -824,7 +824,10 @@ pub(crate) async fn cortex_forget(
     )
 }
 
-pub(crate) async fn cortex_recall(State(store): State<CortexStore>, Json(body): Json<Value>) -> Json<Value> {
+pub(crate) async fn cortex_recall(
+    State(store): State<CortexStore>,
+    Json(body): Json<Value>,
+) -> Json<Value> {
     let log = store.lock().expect("cortex log");
     let scope = body
         .get("scope")

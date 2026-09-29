@@ -24,7 +24,7 @@
 //!
 //! Where `deployment` is `None`, `mem0` infers cloud from the endpoint being
 //! Mem0's own API URL, `cognee` defaults to self-hosted, and `cortex` infers
-//! cloud from a missing endpoint or CortexDB's own API URL.
+//! cloud from a missing endpoint or `CortexDB`'s own API URL.
 
 mod build;
 mod types;

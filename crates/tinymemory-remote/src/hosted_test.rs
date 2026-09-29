@@ -17,8 +17,8 @@ use axum::{Json, Router};
 use serde_json::{json, Value};
 use tinymemory_api::error::MemoryError;
 use tinymemory_api::evidence::EvidenceRef;
-use tinymemory_api::learning::{CueFamily, FacetClass, LearningCandidate};
 use tinymemory_api::health::MemoryHealth;
+use tinymemory_api::learning::{CueFamily, FacetClass, LearningCandidate};
 use tinymemory_api::provider::types::IngestItem;
 use tinymemory_api::provider::{
     AnswerRequest, MemoryConversationIngest, MemoryCore, MemoryDocumentIngest, MemoryEventIngest,
@@ -84,7 +84,9 @@ fn envelope(status: StatusCode, body: Value) -> (StatusCode, Json<Value>) {
             .unwrap_or("VALIDATION_ERROR");
         (
             status,
-            Json(json!({ "success": false, "error": format!("failed: {code}"), "errorCode": code })),
+            Json(
+                json!({ "success": false, "error": format!("failed: {code}"), "errorCode": code }),
+            ),
         )
     }
 }
@@ -236,10 +238,15 @@ async fn answer(
             })),
         );
     }
-    if object.get("answer_instructions").is_some_and(Value::is_null) {
+    if object
+        .get("answer_instructions")
+        .is_some_and(Value::is_null)
+    {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": "null instructions", "errorCode": "VALIDATION_ERROR" })),
+            Json(
+                json!({ "success": false, "error": "null instructions", "errorCode": "VALIDATION_ERROR" }),
+            ),
         );
     }
     envelope(
@@ -313,15 +320,27 @@ async fn every_operation_maps_to_a_memory_path_and_never_a_v1_one() {
     let p = provider(&endpoint);
     assert_eq!(p.driver_id(), TINYHUMANS_DRIVER_ID);
 
-    p.store("ns", "k", "hello world", MemoryCategory::Core, None, MemoryTaint::Internal)
-        .await
-        .expect("store");
+    p.store(
+        "ns",
+        "k",
+        "hello world",
+        MemoryCategory::Core,
+        None,
+        MemoryTaint::Internal,
+    )
+    .await
+    .expect("store");
     assert!(p.get("ns", "k").await.expect("get").is_some());
     p.list(Some("ns"), None, None).await.expect("list");
     p.namespaces().await.expect("namespaces");
     assert!(p.forget("ns", "k").await.expect("forget"));
-    assert!(matches!(p.health().await, MemoryHealth::Ready), "health is a cheap scopes listing");
-    p.ingest_document(item("doc-1", "a document")).await.expect("document");
+    assert!(
+        matches!(p.health().await, MemoryHealth::Ready),
+        "health is a cheap scopes listing"
+    );
+    p.ingest_document(item("doc-1", "a document"))
+        .await
+        .expect("document");
     p.ingest_learning(LearningCandidate {
         class: FacetClass::Tooling,
         key: "tone".to_string(),
@@ -381,7 +400,9 @@ async fn every_operation_maps_to_a_memory_path_and_never_a_v1_one() {
         "a request left the /memory/ surface: {paths:?}"
     );
     assert!(
-        !paths.iter().any(|p| p.contains("wait=") || p.contains("bulk")),
+        !paths
+            .iter()
+            .any(|p| p.contains("wait=") || p.contains("bulk")),
         "wait=indexed and bulk are not forwarded by the backend: {paths:?}"
     );
 }
@@ -396,7 +417,8 @@ async fn the_bearer_is_resolved_on_every_request() {
         }
     }
     let (endpoint, state) = hosted_backend().await;
-    let p = tinyhumans_provider(&endpoint, Arc::new(Rotating(AtomicUsize::new(0)))).expect("builds");
+    let p =
+        tinyhumans_provider(&endpoint, Arc::new(Rotating(AtomicUsize::new(0)))).expect("builds");
     p.list(Some("ns"), None, None).await.expect("first");
     p.list(Some("ns"), None, None).await.expect("second");
     p.namespaces().await.expect("third");
@@ -453,20 +475,33 @@ async fn a_402_is_insufficient_credits_with_its_code() {
     *state.fail_all.lock().expect("fail") = Some((402, "USER_INSUFFICIENT_CREDITS"));
     let p = provider(&endpoint);
     let error = p
-        .store("ns", "k", "v", MemoryCategory::Core, None, MemoryTaint::Internal)
+        .store(
+            "ns",
+            "k",
+            "v",
+            MemoryCategory::Core,
+            None,
+            MemoryTaint::Internal,
+        )
         .await
         .expect_err("out of credits");
     assert!(matches!(error, MemoryError::BudgetExceeded(_)), "{error:?}");
     assert!(is_insufficient_credits(&error));
     assert_eq!(error_code(&error), Some("USER_INSUFFICIENT_CREDITS"));
-    assert!(!error.to_string().contains("tiny_live_test"), "token leaked");
+    assert!(
+        !error.to_string().contains("tiny_live_test"),
+        "token leaked"
+    );
 }
 
 #[tokio::test]
 async fn a_401_is_unauthorized_and_a_400_is_invalid_with_codes() {
     let (endpoint, state) = hosted_backend().await;
     *state.accept_token.lock().expect("token") = Some("a-different-token".into());
-    let error = provider(&endpoint).namespaces().await.expect_err("rejected");
+    let error = provider(&endpoint)
+        .namespaces()
+        .await
+        .expect_err("rejected");
     assert!(matches!(error, MemoryError::Unauthorized(_)), "{error:?}");
     assert_eq!(error_code(&error), Some("UNAUTHORIZED"));
 
@@ -482,11 +517,22 @@ async fn a_401_is_unauthorized_and_a_400_is_invalid_with_codes() {
 async fn a_429_on_a_read_is_retried_and_then_succeeds() {
     let (endpoint, state) = hosted_backend().await;
     let p = provider(&endpoint);
-    p.store("ns", "k", "v", MemoryCategory::Core, None, MemoryTaint::Internal)
-        .await
-        .expect("store");
+    p.store(
+        "ns",
+        "k",
+        "v",
+        MemoryCategory::Core,
+        None,
+        MemoryTaint::Internal,
+    )
+    .await
+    .expect("store");
     state.rate_limit_events.store(2, Ordering::SeqCst);
-    assert!(p.get("ns", "k").await.expect("retried past the 429s").is_some());
+    assert!(p
+        .get("ns", "k")
+        .await
+        .expect("retried past the 429s")
+        .is_some());
 }
 
 #[tokio::test]
@@ -505,7 +551,10 @@ async fn a_response_without_the_envelope_is_a_backend_error() {
         get(|| async { Json(json!({ "items": [] })) }),
     );
     let endpoint = serve(app).await;
-    let error = provider(&endpoint).namespaces().await.expect_err("bare body");
+    let error = provider(&endpoint)
+        .namespaces()
+        .await
+        .expect_err("bare body");
     assert!(matches!(error, MemoryError::Backend(_)), "{error:?}");
 }
 
@@ -513,9 +562,16 @@ async fn a_response_without_the_envelope_is_a_backend_error() {
 async fn writes_carry_an_idempotency_key_header_matching_the_body() {
     let (endpoint, state) = hosted_backend().await;
     let p = provider(&endpoint);
-    p.store("ns", "k", "v", MemoryCategory::Core, None, MemoryTaint::Internal)
-        .await
-        .expect("store");
+    p.store(
+        "ns",
+        "k",
+        "v",
+        MemoryCategory::Core,
+        None,
+        MemoryTaint::Internal,
+    )
+    .await
+    .expect("store");
     p.ingest_document(item("doc", "text")).await.expect("doc");
     let seen = state.seen.lock().expect("seen");
     assert!(seen.idempotency.len() >= 2);
@@ -551,7 +607,12 @@ async fn a_conversation_batch_falls_back_to_ordered_per_item_writes() {
         .iter()
         .filter(|r| r.starts_with("POST /memory/experience"))
         .collect();
-    assert_eq!(writes.len(), 3, "one write per message: {:?}", seen.requests);
+    assert_eq!(
+        writes.len(),
+        3,
+        "one write per message: {:?}",
+        seen.requests
+    );
     assert!(!seen.requests.iter().any(|r| r.contains("bulk")));
     // Order is preserved: the log's ids are minted in arrival order.
     assert_eq!(outcome.ids, vec!["evt_1", "evt_2", "evt_3"]);
