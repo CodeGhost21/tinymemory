@@ -1,6 +1,7 @@
 //! Shared transport and exact-record behavior for remote engine dialects.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use anyhow::{bail, Context};
 use async_trait::async_trait;
@@ -14,6 +15,74 @@ use tinymemory_api::types::{
     MemoryCategory, MemoryEntry, MemoryTaint, NamespaceSummary, RecallOpts,
 };
 
+/// A per-request source of bearer tokens.
+///
+/// A host that owns a rotating credential (a session JWT that refreshes, an
+/// API key it reads from a keyring) hands the transport one of these instead
+/// of a string, so the token is resolved **on every request attempt** and a
+/// refresh is picked up without rebuilding the provider.
+///
+/// Implementations must not log or otherwise print the token they return, and
+/// should return an error (not an empty string) when no credential is
+/// available. The transport never stores the value past the request.
+#[async_trait]
+pub trait BearerSource: Send + Sync {
+    /// The bearer token to send on the next request.
+    ///
+    /// # Errors
+    ///
+    /// Fails when no credential is currently available (for example the host
+    /// is signed out). The transport reports that as an unauthorized error.
+    async fn bearer(&self) -> anyhow::Result<String>;
+}
+
+/// A fixed bearer token as a [`BearerSource`].
+///
+/// Its `Debug` output never shows the token.
+#[derive(Clone)]
+pub struct StaticBearer(String);
+
+impl StaticBearer {
+    /// Wraps a fixed token.
+    #[must_use]
+    pub fn new(token: impl Into<String>) -> Self {
+        Self(token.into())
+    }
+}
+
+impl std::fmt::Debug for StaticBearer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("StaticBearer(<redacted>)")
+    }
+}
+
+#[async_trait]
+impl BearerSource for StaticBearer {
+    async fn bearer(&self) -> anyhow::Result<String> {
+        Ok(self.0.clone())
+    }
+}
+
+/// Refuses cleartext HTTP for a credentialed endpoint unless it is loopback.
+pub(crate) fn ensure_secure_endpoint(endpoint: &str) -> anyhow::Result<()> {
+    let url = Url::parse(endpoint).context("memory endpoint is not a valid URL")?;
+    if url.scheme() == "http" {
+        let host = url
+            .host_str()
+            .ok_or_else(|| anyhow::anyhow!("credentialed memory endpoint has no host"))?;
+        let ip_host = host.trim_start_matches('[').trim_end_matches(']');
+        let loopback = host.eq_ignore_ascii_case("localhost")
+            || ip_host
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|address| address.is_loopback());
+        anyhow::ensure!(
+            loopback,
+            "credentialed memory endpoints must use HTTPS unless they are loopback"
+        );
+    }
+    Ok(())
+}
+
 #[derive(Clone)]
 /// HTTP transport shared by every remote-engine dialect.
 ///
@@ -23,6 +92,9 @@ pub(crate) struct HttpClient {
     endpoint: Url,
     auth: Auth,
     subject_id: Option<HeaderValue>,
+    /// Whether responses arrive in the TinyHumans `{success,data}` envelope
+    /// with `{success:false,errorCode}` failures (see `hosted.rs`).
+    hosted: bool,
 }
 
 #[derive(Clone)]
@@ -38,6 +110,9 @@ enum Auth {
     /// answers `token_not_valid`, so sending the wrong one of the two reports
     /// a failure in the wrong subsystem.
     Token(String),
+    /// `Authorization: Bearer <token>` resolved from a [`BearerSource`] on
+    /// every request attempt.
+    Dynamic(Arc<dyn BearerSource>),
 }
 
 impl std::fmt::Debug for HttpClient {
@@ -46,6 +121,7 @@ impl std::fmt::Debug for HttpClient {
         f.debug_struct("HttpClient")
             .field("endpoint", &self.endpoint.origin().ascii_serialization())
             .field("authenticated", &!matches!(self.auth, Auth::None))
+            .field("hosted", &self.hosted)
             .finish()
     }
 }
@@ -200,6 +276,19 @@ impl HttpClient {
         )
     }
 
+    /// Builds a bearer client whose token is resolved per request from
+    /// `source`. Credentialed, so cleartext HTTP is refused off loopback.
+    pub(crate) fn dynamic(endpoint: &str, source: Arc<dyn BearerSource>) -> anyhow::Result<Self> {
+        ensure_secure_endpoint(endpoint)?;
+        Self::new_with_subject(endpoint, Auth::Dynamic(source), None)
+    }
+
+    /// Marks this client as talking to the TinyHumans backend envelope.
+    pub(crate) fn hosted(mut self) -> Self {
+        self.hosted = true;
+        self
+    }
+
     /// A client authenticating with `Authorization: Token <key>`.
     pub(crate) fn token(endpoint: &str, credential: Option<&str>) -> anyhow::Result<Self> {
         Self::new_with_subject(
@@ -237,6 +326,7 @@ impl HttpClient {
             endpoint,
             auth,
             subject_id,
+            hosted: false,
         })
     }
 
@@ -264,7 +354,7 @@ impl HttpClient {
     }
 
     /// Resolves a relative API path and attaches the configured authentication.
-    fn request(&self, method: Method, path: &str) -> anyhow::Result<RequestBuilder> {
+    async fn request(&self, method: Method, path: &str) -> anyhow::Result<RequestBuilder> {
         let url = self
             .endpoint
             .join(path.trim_start_matches('/'))
@@ -273,6 +363,23 @@ impl HttpClient {
         let request = match &self.auth {
             Auth::None => request,
             Auth::Bearer(token) => request.bearer_auth(token),
+            Auth::Dynamic(source) => {
+                // Resolved per attempt so a refreshed token is used at once.
+                // The error text is the source's own and must not carry the
+                // token (the trait forbids it); the token itself never
+                // reaches a log line here.
+                let token = source.bearer().await.map_err(|error| {
+                    anyhow::Error::new(MemoryError::Unauthorized(format!(
+                        "the bearer source could not supply a credential: {error}"
+                    )))
+                })?;
+                if token.trim().is_empty() {
+                    return Err(anyhow::Error::new(MemoryError::Unauthorized(
+                        "the bearer source returned an empty credential".to_string(),
+                    )));
+                }
+                request.bearer_auth(token.trim())
+            }
             Auth::ApiKey(key) => request.header("X-API-Key", credential_header(key)?),
             Auth::Token(key) => {
                 request.header(AUTHORIZATION, credential_header(&format!("Token {key}"))?)
@@ -339,6 +446,9 @@ impl HttpClient {
     /// to the wrong runbook.
     fn status_error(&self, path: &str, status: reqwest::StatusCode, body: &str) -> anyhow::Error {
         let host = self.endpoint.host_str().unwrap_or("<endpoint>");
+        if self.hosted {
+            return crate::hosted::status_error(host, path, status, body);
+        }
         // Hosted engines explain a rejection in the response body — mem0
         // answers `{"detail": "..."}`, cognee likewise — and discarding it
         // turned "this one field is invalid" into a bare status code that
@@ -362,6 +472,7 @@ impl HttpClient {
                 let hint = match &self.auth {
                     Auth::ApiKey(_) | Auth::Token(_) => "check the API key",
                     Auth::Bearer(_) => "check the bearer token",
+                    Auth::Dynamic(_) => "the session or API key was rejected; re-authenticate",
                     Auth::None => {
                         "the endpoint requires credentials this client was not configured with"
                     }
@@ -460,7 +571,13 @@ impl HttpClient {
         path: &str,
         body: Option<&serde_json::Value>,
     ) -> anyhow::Result<T> {
-        let mut request = self.request(method, path)?;
+        let idempotency = (self.hosted && method == Method::POST)
+            .then(|| body.and_then(crate::hosted::idempotency_header))
+            .flatten();
+        let mut request = self.request(method, path).await?;
+        if let Some(key) = idempotency {
+            request = request.header("Idempotency-Key", key);
+        }
         if let Some(body) = body {
             request = request.json(body);
         }
@@ -474,6 +591,11 @@ impl HttpClient {
             return Err(self.status_error(path, status, &body));
         }
         let body = read_capped(response, path).await?;
+        if self.hosted {
+            let data = crate::hosted::unwrap_envelope(&self.endpoint, path, status, &body)?;
+            return serde_json::from_value(data)
+                .with_context(|| format!("memory API {path} returned an unexpected data shape"));
+        }
         serde_json::from_slice(&body)
             .with_context(|| format!("memory API {path} returned invalid JSON"))
     }
@@ -487,7 +609,8 @@ impl HttpClient {
     ) -> anyhow::Result<String> {
         let attempt = || async {
             let response = self
-                .request(method.clone(), path)?
+                .request(method.clone(), path)
+                .await?
                 .send()
                 .await
                 .map_err(|error| self.transport_error(error))?;
@@ -512,7 +635,7 @@ impl HttpClient {
         path: &str,
         body: Option<&serde_json::Value>,
     ) -> anyhow::Result<StatusCode> {
-        let mut request = self.request(method, path)?;
+        let mut request = self.request(method, path).await?;
         if let Some(body) = body {
             request = request.json(body);
         }
@@ -529,8 +652,12 @@ impl HttpClient {
     }
 
     /// Starts an authenticated multipart request.
-    pub(crate) fn multipart(&self, method: Method, path: &str) -> anyhow::Result<RequestBuilder> {
-        self.request(method, path)
+    pub(crate) async fn multipart(
+        &self,
+        method: Method,
+        path: &str,
+    ) -> anyhow::Result<RequestBuilder> {
+        self.request(method, path).await
     }
 
     /// Sends a prepared multipart form and types its failures like every
@@ -547,7 +674,8 @@ impl HttpClient {
         form: reqwest::multipart::Form,
     ) -> anyhow::Result<()> {
         let response = self
-            .multipart(method, path)?
+            .multipart(method, path)
+            .await?
             .multipart(form)
             .send()
             .await
@@ -566,7 +694,8 @@ impl HttpClient {
     /// "credential rejected" from "unreachable" from "answered 500".
     pub(crate) async fn probe(&self, path: &str) -> anyhow::Result<()> {
         let response = self
-            .request(Method::GET, path)?
+            .request(Method::GET, path)
+            .await?
             .send()
             .await
             .map_err(|error| self.transport_error(error))?;

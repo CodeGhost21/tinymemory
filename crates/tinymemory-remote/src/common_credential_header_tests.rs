@@ -48,8 +48,8 @@ fn the_refusal_does_not_echo_the_credential() {
 /// Both credential-bearing schemes go through the helper, so both reach
 /// the wire redacted. `Auth::Bearer` is covered by `reqwest`'s own
 /// `bearer_auth`, which sets the flag itself.
-#[test]
-fn both_manual_schemes_send_a_sensitive_authorization_value() {
+#[tokio::test]
+async fn both_manual_schemes_send_a_sensitive_authorization_value() {
     for auth in [
         Auth::ApiKey("cg-secret".into()),
         Auth::Token("m0-secret".into()),
@@ -57,6 +57,7 @@ fn both_manual_schemes_send_a_sensitive_authorization_value() {
         let client = HttpClient::test_new("https://example.test", auth).expect("valid endpoint");
         let request = client
             .request(reqwest::Method::GET, "v1/thing")
+            .await
             .expect("a plain key builds")
             .build()
             .expect("request builds");
