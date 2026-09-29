@@ -78,7 +78,8 @@
 //!   readiness signals.** The first never advances past `captured`; the second
 //!   accepts a connection and emits nothing.
 
-use anyhow::Context;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use reqwest::Method;
 use serde_json::{json, Value};
@@ -86,10 +87,11 @@ use tinymemory_api::recall::RecallOpts;
 use tinymemory_api::traits::Memory;
 use tinymemory_api::types::{MemoryCategory, MemoryTaint};
 
-use crate::common::{Attempts, Dialect, HttpClient, RemoteMemory, StoredEntry};
+use crate::common::{Attempts, BearerSource, Dialect, HttpClient, RemoteMemory, StoredEntry};
 
 /// Stable driver id used by configuration and status output.
 pub use tinymemory_api::drivers::CORTEX_DRIVER_ID;
+pub use tinymemory_api::drivers::TINYHUMANS_DRIVER_ID;
 
 /// Default base URL for CortexDB's managed API.
 pub const CORTEX_API_ENDPOINT: &str = "https://api-v1.cortexdb.ai";
@@ -136,6 +138,13 @@ const PAGE_SIZE: usize = 200;
 /// reports success and is then invisible to the next read.
 const VISIBILITY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// Longest gap between hosted visibility polls (they start at
+/// [`VISIBILITY_POLL`] and double).
+const HOSTED_POLL_CEILING: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// How many times a hosted write is sent before giving up on a transient fault.
+const HOSTED_WRITE_ATTEMPTS: usize = 3;
+
 /// Gap between visibility polls. Short enough not to dominate the wait.
 const VISIBILITY_POLL: std::time::Duration = std::time::Duration::from_millis(250);
 
@@ -173,6 +182,56 @@ const MAX_PAGES: usize = 500;
 /// [`CortexDialect::scopes`].
 const SCOPE_LIST_LIMIT: usize = 10_000;
 
+/// Which HTTP surface a CortexDB client talks to.
+///
+/// Named `CortexWire` rather than `CortexDialect` because the private
+/// `CortexDialect` type already implements the shared `Dialect` trait for this
+/// adapter; this enum only selects *routes and envelopes* for it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum CortexWire {
+    /// A CortexDB server's own `/v1/*` API, one bearer key, bare JSON bodies.
+    #[default]
+    Direct,
+    /// CortexDB behind the TinyHumans backend's `/memory/*` routes: bearer
+    /// session JWT or `tiny_live_` API key, `{success,data}` envelopes, typed
+    /// `errorCode` failures, and no `?wait=indexed`, health or bulk routes.
+    TinyHumans,
+}
+
+/// One logical CortexDB operation, mapped to a path per [`CortexWire`].
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Route {
+    Experience,
+    Events,
+    Recall,
+    Forget,
+    Answer,
+    Scopes,
+}
+
+impl CortexWire {
+    /// The request path (no query string) for `route` on this wire.
+    pub(crate) fn path(self, route: Route) -> &'static str {
+        match (self, route) {
+            (Self::Direct, Route::Experience) => "v1/experience",
+            (Self::Direct, Route::Events) => "v1/events",
+            (Self::Direct, Route::Recall) => "v1/recall",
+            (Self::Direct, Route::Forget) => "v1/forget",
+            (Self::Direct, Route::Answer) => "v1/answer",
+            (Self::Direct, Route::Scopes) => "v1/scopes/list",
+            (Self::TinyHumans, Route::Experience) => "memory/experience",
+            (Self::TinyHumans, Route::Events) => "memory/events",
+            (Self::TinyHumans, Route::Recall) => "memory/recall",
+            (Self::TinyHumans, Route::Forget) => "memory/forget",
+            (Self::TinyHumans, Route::Answer) => "memory/answer",
+            (Self::TinyHumans, Route::Scopes) => "memory/scopes",
+        }
+    }
+}
+
+/// CortexDB's default page for `scopes/list` when no `limit` is honoured.
+const HOSTED_DEFAULT_SCOPE_PAGE: usize = 50;
+
 /// CortexDB, adapted to TinyMemory's keyed contract.
 #[derive(Clone, Debug)]
 pub struct CortexMemory {
@@ -180,8 +239,14 @@ pub struct CortexMemory {
 }
 
 impl CortexMemory {
-    pub(crate) fn operation_client(&self) -> HttpClient {
-        self.inner.dialect().client.clone()
+    pub(crate) fn operation_dialect(&self) -> CortexDialect {
+        self.inner.dialect().clone()
+    }
+
+    /// Which HTTP surface this client talks to.
+    #[must_use]
+    pub fn wire(&self) -> CortexWire {
+        self.inner.dialect().wire
     }
 
     /// Rebuilds the HTTP transport with a different per-request deadline.
@@ -202,26 +267,35 @@ impl CortexMemory {
 
     fn new(endpoint: &str, api_key: Option<&str>) -> anyhow::Result<Self> {
         if api_key.is_some() {
-            let url =
-                reqwest::Url::parse(endpoint).context("cortex endpoint is not a valid URL")?;
-            if url.scheme() == "http" {
-                let host = url
-                    .host_str()
-                    .ok_or_else(|| anyhow::anyhow!("credentialed CortexDB endpoint has no host"))?;
-                let ip_host = host.trim_start_matches('[').trim_end_matches(']');
-                let loopback = host.eq_ignore_ascii_case("localhost")
-                    || ip_host
-                        .parse::<std::net::IpAddr>()
-                        .is_ok_and(|address| address.is_loopback());
-                anyhow::ensure!(
-                    loopback,
-                    "credentialed CortexDB endpoints must use HTTPS unless they are loopback"
-                );
-            }
+            crate::common::ensure_secure_endpoint(endpoint)?;
         }
         Ok(Self {
             inner: RemoteMemory::new(CortexDialect {
                 client: HttpClient::bearer(endpoint, api_key)?,
+                wire: CortexWire::Direct,
+            }),
+        })
+    }
+
+    /// Connect to CortexDB hosted by the TinyHumans backend (`/memory/*`).
+    ///
+    /// `backend_base_url` is the backend origin (for example
+    /// `https://api.tinyhumans.ai`). `bearer` supplies the session JWT or
+    /// `tiny_live_` API key and is consulted on **every request**, so a
+    /// refreshed session is picked up without rebuilding the provider.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the URL is invalid or uses cleartext HTTP off
+    /// loopback.
+    pub fn tinyhumans(
+        backend_base_url: &str,
+        bearer: Arc<dyn BearerSource>,
+    ) -> anyhow::Result<Self> {
+        Ok(Self {
+            inner: RemoteMemory::new(CortexDialect {
+                client: HttpClient::dynamic(backend_base_url, bearer)?.hosted(),
+                wire: CortexWire::TinyHumans,
             }),
         })
     }
@@ -305,7 +379,8 @@ struct Folded {
 
 #[derive(Clone, Debug)]
 pub(crate) struct CortexDialect {
-    client: HttpClient,
+    pub(crate) client: HttpClient,
+    pub(crate) wire: CortexWire,
 }
 
 impl CortexDialect {
@@ -405,14 +480,15 @@ impl CortexDialect {
         let mut seen = std::collections::HashSet::new();
         let mut cursor: Option<String> = None;
         for _ in 0..MAX_PAGES {
+            let base = self.wire.path(Route::Events);
             let path = match &cursor {
                 Some(c) => format!(
-                    "v1/events?scope={scope}&limit={PAGE_SIZE}&cursor={cursor}",
+                    "{base}?scope={scope}&limit={PAGE_SIZE}&cursor={cursor}",
                     scope = urlencoding(scope),
                     cursor = urlencoding(c)
                 ),
                 None => format!(
-                    "v1/events?scope={scope}&limit={PAGE_SIZE}",
+                    "{base}?scope={scope}&limit={PAGE_SIZE}",
                     scope = urlencoding(scope)
                 ),
             };
@@ -475,25 +551,40 @@ impl CortexDialect {
     /// index that has not caught up is a weaker claim — the record is durable
     /// and keyed reads return it — so phase two gives up quietly rather than
     /// failing a write that succeeded.
-    async fn await_readable(&self, scope: &str, event_id: &str, text: &str) -> anyhow::Result<()> {
+    pub(crate) async fn await_readable(
+        &self,
+        scope: &str,
+        event_id: &str,
+        text: &str,
+    ) -> anyhow::Result<()> {
         let deadline = std::time::Instant::now() + VISIBILITY_TIMEOUT;
 
         // Phase one: the keyed read path, which folds the scope listing.
+        let mut delay = VISIBILITY_POLL;
         loop {
             // Newest first, so one page is enough to see a write just made.
             let path = format!(
-                "v1/events?scope={scope}&limit={PAGE_SIZE}",
+                "{base}?scope={scope}&limit={PAGE_SIZE}",
+                base = self.wire.path(Route::Events),
                 scope = urlencoding(scope)
             );
-            let page: Value = self
+            let listing: anyhow::Result<Value> = self
                 .client
                 .json(Method::GET, &path, None, Attempts::RetryTransient)
-                .await?;
-            if Self::carries(page.get("items"), event_id) {
-                break;
+                .await;
+            match listing {
+                Ok(page) if Self::carries(page.get("items"), event_id) => break,
+                Ok(_) => {}
+                // Hosted: a 429 (or 5xx) while waiting means "not yet", not
+                // "the write failed" — it was accepted and is durable. Keep
+                // waiting until the deadline.
+                Err(error) if self.wire == CortexWire::TinyHumans && Self::is_transient(&error) => {
+                }
+                Err(error) => return Err(error),
             }
             Self::still_waiting(deadline, event_id, scope)?;
-            tokio::time::sleep(VISIBILITY_POLL).await;
+            tokio::time::sleep(delay).await;
+            delay = self.next_poll_delay(delay);
         }
 
         // Phase two: ranked recall, a separate index that settles later.
@@ -507,12 +598,13 @@ impl CortexDialect {
         // report a successful, readable store as an error.
         let query: String = text.chars().take(RECALL_QUERY_CAP).collect();
         let settle_by = std::time::Instant::now() + RECALL_SETTLE_TIMEOUT;
+        let mut delay = VISIBILITY_POLL;
         while std::time::Instant::now() < settle_by {
             let probe = self
                 .client
                 .json::<Value>(
                     Method::POST,
-                    "v1/recall",
+                    self.wire.path(Route::Recall),
                     Some(&json!({ "scope": scope, "query": query })),
                     Attempts::RetryTransient,
                 )
@@ -528,9 +620,46 @@ impl CortexDialect {
             if Self::carries(answer.pointer("/layers/events"), event_id) {
                 break;
             }
-            tokio::time::sleep(VISIBILITY_POLL).await;
+            tokio::time::sleep(delay).await;
+            delay = self.next_poll_delay(delay);
         }
         Ok(())
+    }
+
+    /// The next visibility-poll gap. Direct mode polls at a fixed gap; hosted
+    /// mode doubles it up to [`HOSTED_POLL_CEILING`], because the backend
+    /// rate-limits a user to 300 requests a minute and a fixed 250ms poll would
+    /// spend a fifth of that on one write.
+    fn next_poll_delay(&self, current: std::time::Duration) -> std::time::Duration {
+        match self.wire {
+            CortexWire::Direct => current,
+            CortexWire::TinyHumans => (current * 2).min(HOSTED_POLL_CEILING),
+        }
+    }
+
+    /// Whether an error is the typed transient class (timeout, unreachable,
+    /// rate limited or 5xx) rather than a refusal that will not change.
+    fn is_transient(error: &anyhow::Error) -> bool {
+        matches!(
+            error.downcast_ref::<tinymemory_api::error::MemoryError>(),
+            Some(
+                tinymemory_api::error::MemoryError::Timeout(_)
+                    | tinymemory_api::error::MemoryError::Unreachable(_)
+                    | tinymemory_api::error::MemoryError::Unavailable(_)
+            )
+        )
+    }
+
+    /// Whether an error is the hosted API refusing a replayed `Idempotency-Key`
+    /// (HTTP 409, code `CONFLICT`): the first attempt was claimed, so its
+    /// outcome is unknown rather than failed.
+    fn is_claim_conflict(error: &anyhow::Error) -> bool {
+        error
+            .downcast_ref::<tinymemory_api::error::MemoryError>()
+            .is_some_and(|e| {
+                matches!(e, tinymemory_api::error::MemoryError::Invalid(_))
+                    && crate::hosted::error_code(e) == Some("CONFLICT")
+            })
     }
 
     /// Whether a listing or recall answer contains this event id.
@@ -646,6 +775,191 @@ impl CortexDialect {
         out
     }
 
+    /// Appends one experience and, when asked, waits until it is indexed.
+    ///
+    /// Direct mode uses CortexDB's `?wait=indexed`. The hosted backend drops
+    /// that query, so hosted mode reproduces the guarantee client-side with
+    /// [`Self::await_readable`]: the same bounded poll (30s budget) of the
+    /// scope listing and then ranked recall that keyed writes already use.
+    pub(crate) async fn submit_experience(
+        &self,
+        request: &Value,
+        wait_indexed: bool,
+    ) -> anyhow::Result<Value> {
+        let base = self.wire.path(Route::Experience);
+        match self.wire {
+            CortexWire::Direct => {
+                let path = if wait_indexed {
+                    format!("{base}?wait=indexed")
+                } else {
+                    base.to_string()
+                };
+                self.client
+                    .json(Method::POST, &path, Some(request), Attempts::Once)
+                    .await
+            }
+            CortexWire::TinyHumans => {
+                let accepted = self.send_hosted_write(request).await?;
+                if wait_indexed {
+                    self.wait_for_receipt(request, &accepted).await?;
+                }
+                Ok(accepted)
+            }
+        }
+    }
+
+    /// Sends one hosted write, retrying transient faults under one
+    /// `Idempotency-Key`.
+    ///
+    /// The header is a per-call random claim, not the body's content key. The
+    /// memory API answers any replay of a claimed key with 409 and never
+    /// forwards it, and a transport failure leaves the claim dangling — so a
+    /// 409 on a *retry* means the earlier attempt may have been applied. That is
+    /// success-unknown, not failure: the event is looked up by the text just
+    /// written, and the body's own key (which the engine dedupes on) makes a
+    /// genuine miss safe to report as an error.
+    async fn send_hosted_write(&self, request: &Value) -> anyhow::Result<Value> {
+        let path = self.wire.path(Route::Experience);
+        let claim = fresh_idempotency_key();
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            match self
+                .client
+                .json_keyed(Method::POST, path, Some(request), &claim)
+                .await
+            {
+                Ok(accepted) => return Ok(accepted),
+                Err(error) if attempt > 1 && Self::is_claim_conflict(&error) => {
+                    return self.recover_unknown_write(request).await;
+                }
+                Err(error) if attempt < HOSTED_WRITE_ATTEMPTS && Self::is_transient(&error) => {
+                    tokio::time::sleep(VISIBILITY_POLL * 2_u32.pow(attempt as u32 - 1)).await;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    /// Finds the event a possibly-applied write produced, by its text.
+    async fn recover_unknown_write(&self, request: &Value) -> anyhow::Result<Value> {
+        let (Some(scope), Some(text)) = (
+            request.get("scope").and_then(Value::as_str),
+            request.pointer("/content/text").and_then(Value::as_str),
+        ) else {
+            anyhow::bail!("a retried write was claimed but carries no scope or text to look up");
+        };
+        let deadline = std::time::Instant::now() + VISIBILITY_POLL * 8;
+        loop {
+            let path = format!(
+                "{base}?scope={scope}&limit={PAGE_SIZE}",
+                base = self.wire.path(Route::Events),
+                scope = urlencoding(scope)
+            );
+            let page: Value = self
+                .client
+                .json(Method::GET, &path, None, Attempts::RetryTransient)
+                .await?;
+            let found = page
+                .get("items")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .find(|e| e.pointer("/content/text").and_then(Value::as_str) == Some(text))
+                .and_then(|e| e.get("id").and_then(Value::as_str));
+            if let Some(id) = found {
+                return Ok(json!({ "event_id": id, "replayed_from_idempotency": true }));
+            }
+            anyhow::ensure!(
+                std::time::Instant::now() < deadline,
+                "a retried write was refused as already claimed, but no matching event \
+                 appeared in scope `{scope}`; its outcome is unknown"
+            );
+            tokio::time::sleep(VISIBILITY_POLL).await;
+        }
+    }
+
+    /// Submits an ordered batch. Direct mode has a bulk route; the hosted
+    /// backend has none, so hosted mode writes item by item, in order, and then
+    /// waits for each accepted event to become readable.
+    pub(crate) async fn submit_bulk(
+        &self,
+        items: &[Value],
+        wait_indexed: bool,
+    ) -> anyhow::Result<Value> {
+        match self.wire {
+            CortexWire::Direct => {
+                let path = if wait_indexed {
+                    "v1/experience/bulk?wait=indexed"
+                } else {
+                    "v1/experience/bulk"
+                };
+                self.client
+                    .json(
+                        Method::POST,
+                        path,
+                        Some(&json!({ "items": items, "ordering": "strict_temporal" })),
+                        Attempts::Once,
+                    )
+                    .await
+            }
+            CortexWire::TinyHumans => {
+                let mut results = Vec::with_capacity(items.len());
+                for item in items {
+                    results.push(self.submit_experience(item, false).await?);
+                }
+                // The log is ordered, so the last accepted event becoming
+                // visible implies the earlier ones are; one wait, not N.
+                if wait_indexed {
+                    if let Some((item, accepted)) =
+                        items.iter().zip(&results).rev().find(|(_, a)| {
+                            a.get("replayed_from_idempotency").and_then(Value::as_bool)
+                                != Some(true)
+                        })
+                    {
+                        self.wait_for_receipt(item, accepted).await?;
+                    }
+                }
+                Ok(json!({ "results": results }))
+            }
+        }
+    }
+
+    /// Waits for the event a write receipt names, when it names one and the
+    /// write was not an idempotent replay of an already-indexed event.
+    async fn wait_for_receipt(&self, request: &Value, accepted: &Value) -> anyhow::Result<()> {
+        if accepted
+            .get("replayed_from_idempotency")
+            .and_then(Value::as_bool)
+            == Some(true)
+        {
+            return Ok(());
+        }
+        let (Some(id), Some(scope)) = (
+            accepted.get("event_id").and_then(Value::as_str),
+            request.get("scope").and_then(Value::as_str),
+        ) else {
+            return Ok(());
+        };
+        let text = request
+            .pointer("/content/text")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        self.await_readable(scope, id, text).await
+    }
+
+    /// Whether a scope listing carries proof it is complete: `has_more: false`,
+    /// a `next_cursor` that is explicitly null, or a `total` no larger than what
+    /// was returned.
+    fn listing_is_complete(listing: &Value, returned: usize) -> bool {
+        listing.get("has_more").and_then(Value::as_bool) == Some(false)
+            || listing.get("next_cursor").is_some_and(Value::is_null)
+            || listing
+                .get("total")
+                .and_then(Value::as_u64)
+                .is_some_and(|total| total <= returned as u64)
+    }
+
     /// Every scope this deployment holds that this adapter wrote.
     ///
     /// Asks for [`SCOPE_LIST_LIMIT`] explicitly. Without it the engine returns
@@ -666,7 +980,7 @@ impl CortexDialect {
             .client
             .json(
                 Method::GET,
-                &format!("v1/scopes/list?limit={SCOPE_LIST_LIMIT}"),
+                &format!("{}?limit={SCOPE_LIST_LIMIT}", self.wire.path(Route::Scopes)),
                 None,
                 Attempts::RetryTransient,
             )
@@ -683,6 +997,25 @@ impl CortexDialect {
                  distinguished from a truncated one and enumerating namespaces would \
                  silently skip whatever came after"
             );
+        }
+        // The hosted backend validates `/memory/scopes` without `limit`, so it
+        // may strip the parameter and serve CortexDB's default page of fifty. A
+        // listing of exactly that size is refused unless the response proves it
+        // is whole (`has_more: false`, or a `total` that fits), because a silent
+        // subset would make `namespaces()`, `count()` and `export_page` quietly
+        // incomplete.
+        if self.wire == CortexWire::TinyHumans
+            && items.len() == HOSTED_DEFAULT_SCOPE_PAGE
+            && !Self::listing_is_complete(&listing, items.len())
+        {
+            return Err(anyhow::Error::new(
+                tinymemory_api::error::MemoryError::Backend(format!(
+                    "the hosted scope listing returned {HOSTED_DEFAULT_SCOPE_PAGE} entries, \
+                     the default page size, and does not say whether more exist; the \
+                     backend may be ignoring `limit`. Refusing to enumerate namespaces \
+                     from a possibly truncated listing"
+                )),
+            ));
         }
         Ok(items
             .iter()
@@ -710,7 +1043,7 @@ impl CortexDialect {
 /// No new dependency: `RandomState` is seeded by the OS per process, which is
 /// exactly the entropy needed here, and a vendored crate should not grow a
 /// dependency for one string.
-fn fresh_idempotency_key() -> String {
+pub(crate) fn fresh_idempotency_key() -> String {
     use std::hash::{BuildHasher, Hasher};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::OnceLock;
@@ -755,7 +1088,10 @@ fn urlencoding(value: &str) -> String {
 #[async_trait]
 impl Dialect for CortexDialect {
     fn name(&self) -> &'static str {
-        CORTEX_DRIVER_ID
+        match self.wire {
+            CortexWire::Direct => CORTEX_DRIVER_ID,
+            CortexWire::TinyHumans => TINYHUMANS_DRIVER_ID,
+        }
     }
 
     /// Appends a new event carrying the record.
@@ -785,7 +1121,7 @@ impl Dialect for CortexDialect {
             .client
             .json(
                 Method::POST,
-                "v1/experience",
+                self.wire.path(Route::Experience),
                 Some(&json!({
                     "scope": scope,
                     "modality": "observation",
@@ -878,7 +1214,7 @@ impl Dialect for CortexDialect {
             .client
             .json(
                 Method::POST,
-                "v1/experience",
+                self.wire.path(Route::Experience),
                 Some(&json!({
                     "scope": scope,
                     "modality": "conversation",
@@ -898,7 +1234,7 @@ impl Dialect for CortexDialect {
             self.client
                 .empty(
                     Method::POST,
-                    "v1/forget",
+                    self.wire.path(Route::Forget),
                     Some(&json!({
                         "scope": scope,
                         "layers": ["events"],
@@ -928,7 +1264,7 @@ impl Dialect for CortexDialect {
             .client
             .json(
                 Method::POST,
-                "v1/recall",
+                self.wire.path(Route::Recall),
                 Some(&json!({ "scope": scope, "query": query })),
                 Attempts::RetryTransient,
             )
@@ -962,7 +1298,20 @@ impl Dialect for CortexDialect {
     }
 
     async fn health(&self) -> anyhow::Result<()> {
-        self.client.probe("v1/admin/health").await
+        match self.wire {
+            CortexWire::Direct => self.client.probe("v1/admin/health").await,
+            // No health route is exposed; an empty scope listing is the
+            // cheapest authenticated call, and proves reachability, the
+            // credential and (via 402/429) account state in one round trip.
+            CortexWire::TinyHumans => {
+                self.client
+                    .probe(&format!(
+                        "{}?prefix=zz_health",
+                        self.wire.path(Route::Scopes)
+                    ))
+                    .await
+            }
+        }
     }
 
     /// CortexDB's recall answers with no per-hit similarity score — the

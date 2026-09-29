@@ -183,6 +183,7 @@ fn supported_external_ids_have_a_fixed_class() {
         COGNEE_DRIVER_ID,
         CORTEX_DRIVER_ID,
         AGENTMEMORY_DRIVER_ID,
+        TINYHUMANS_DRIVER_ID,
     ] {
         let admitted = registry
             .admit(id, Some(entry(Some("external"), TRUSTED)), labels())

@@ -53,7 +53,10 @@ Every route lives under `/api` and maps directly onto
 
 | Route | Method | Contract call |
 | --- | --- | --- |
-| `/api/connect` | POST | bind a fresh provider |
+| `/api/engines` | GET | the engines compiled into this build (`tinymemory::factory::list_engines`); the page builds its picker from it |
+| `/api/connect` | POST | bind a fresh provider through `tinymemory::factory::build_provider`; for `tinyhumans` the `api_key` field is the bearer (session JWT or `tiny_live_` key) |
+| `/api/migrate` | POST | `{ "to": <connect body> }` — copy every record from the active engine into a new one (`tinymemory::migrate::copy`), then switch to it |
+| `/api/answer` | POST | `MemoryAnswer::answer` — 501 if the engine can't answer; 402 with `code: USER_INSUFFICIENT_CREDITS` when a hosted engine is out of credits |
 | `/api/disconnect` | POST | clear the active provider |
 | `/api/status` | GET | current connection state |
 | `/api/store` | POST | `MemoryCore::store` |

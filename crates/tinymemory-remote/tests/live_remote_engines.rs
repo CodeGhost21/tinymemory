@@ -24,7 +24,10 @@
 
 use std::sync::Arc;
 
-use tinymemory_remote::{cortex_provider, supermemory_provider, CortexMemory, SupermemoryMemory};
+use tinymemory_remote::{
+    cortex_provider, supermemory_provider, tinyhumans_provider, CortexMemory, StaticBearer,
+    SupermemoryMemory,
+};
 
 /// Reads one engine's endpoint and key, or `None` when either is unset.
 ///
@@ -65,6 +68,30 @@ async fn live_cortex_upholds_the_provider_contract() -> anyhow::Result<()> {
         return Ok(());
     };
     let provider = cortex_provider(CortexMemory::api(&url, &key)?);
+    tinymemory_conformance::assert_provider(Arc::new(provider)).await;
+    Ok(())
+}
+
+/// Runs the full provider contract against CortexDB hosted by the TinyHumans
+/// backend (`/memory/*`).
+///
+/// `TINYMEMORY_TEST_TINYHUMANS_URL` is the backend origin (for example
+/// `https://api.tinyhumans.ai`) and `TINYMEMORY_TEST_TINYHUMANS_TOKEN` a session
+/// JWT or `tiny_live_` API key. Skipped unless both are set. This one spends the
+/// account's credits and is bound by the backend's rate limit (300/min/user),
+/// so use a scratch account.
+#[tokio::test]
+async fn live_tinyhumans_upholds_the_provider_contract() -> anyhow::Result<()> {
+    let (Ok(url), Ok(token)) = (
+        std::env::var("TINYMEMORY_TEST_TINYHUMANS_URL"),
+        std::env::var("TINYMEMORY_TEST_TINYHUMANS_TOKEN"),
+    ) else {
+        return Ok(());
+    };
+    if url.is_empty() || token.is_empty() {
+        return Ok(());
+    }
+    let provider = tinyhumans_provider(&url, Arc::new(StaticBearer::new(token)))?;
     tinymemory_conformance::assert_provider(Arc::new(provider)).await;
     Ok(())
 }

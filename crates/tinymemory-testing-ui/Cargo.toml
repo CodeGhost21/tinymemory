@@ -14,6 +14,11 @@ path = "src/main.rs"
 [dependencies]
 # The engine-neutral contract this harness drives every engine through.
 tinymemory-api = { path = "../tinymemory-api" }
+# The facade's engine factory builds every engine this harness can connect to
+# (`/api/engines`, `/api/connect`) and copies memories between them
+# (`/api/migrate`). `engines` compiles every adapter in; `factory` is the
+# builder over them.
+tinymemory = { path = "../tinymemory", features = ["engines", "factory"] }
 # The TinyCortex adapter backs the "local" engine choice (in-process, no
 # network, no API key). Re-exports the `tinycortex` engine crate itself
 # (`tinymemory_tinycortex::tinycortex`) and its `InMemoryMemoryStore`, so this

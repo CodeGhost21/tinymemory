@@ -24,22 +24,25 @@ use tinymemory_api::types::{
     MemoryCategory, MemoryEntry, MemoryTaint, NamespaceSummary, GLOBAL_NAMESPACE,
 };
 
-use crate::common::{encode, Attempts, HttpClient};
-use crate::cortex::{CortexDialect, CortexMemory, CORTEX_DRIVER_ID};
+use crate::common::{encode, Attempts};
+use crate::cortex::{
+    CortexDialect, CortexMemory, CortexWire, Route, CORTEX_DRIVER_ID, TINYHUMANS_DRIVER_ID,
+};
 
 use super::types::ExperienceInput;
 
 /// CortexDB exposed as mandatory storage plus native ingestion and answers.
 pub struct CortexProvider {
     mandatory: MemoryTraitProvider,
-    client: HttpClient,
+    dialect: CortexDialect,
 }
 
 impl std::fmt::Debug for CortexProvider {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("CortexProvider")
-            .field("client", &self.client)
+            .field("client", &self.dialect.client)
+            .field("wire", &self.dialect.wire)
             .finish_non_exhaustive()
     }
 }
@@ -47,23 +50,19 @@ impl std::fmt::Debug for CortexProvider {
 impl CortexProvider {
     /// Wrap a native CortexDB client.
     #[must_use]
-    pub(crate) fn new(memory: CortexMemory, client: HttpClient) -> Self {
+    pub(crate) fn new(memory: CortexMemory) -> Self {
+        let dialect = memory.operation_dialect();
         Self {
-            mandatory: MemoryTraitProvider::new(Arc::new(memory), CORTEX_DRIVER_ID),
-            client,
+            mandatory: MemoryTraitProvider::new(Arc::new(memory), driver_id(dialect.wire)),
+            dialect,
         }
     }
 
     async fn experience(&self, input: ExperienceInput<'_>) -> Result<(String, bool), MemoryError> {
         let request = Self::experience_request(input)?;
         let answer: Value = self
-            .client
-            .json(
-                Method::POST,
-                "v1/experience?wait=indexed",
-                Some(&request),
-                Attempts::Once,
-            )
+            .dialect
+            .submit_experience(&request, true)
             .await
             .map_err(engine_error)?;
         receipt(&answer)
@@ -129,6 +128,13 @@ impl CortexProvider {
             },
             "idempotency_key": idempotency_key(idempotency_seed),
         }))
+    }
+}
+
+fn driver_id(wire: CortexWire) -> &'static str {
+    match wire {
+        CortexWire::Direct => CORTEX_DRIVER_ID,
+        CortexWire::TinyHumans => TINYHUMANS_DRIVER_ID,
     }
 }
 
@@ -385,13 +391,8 @@ impl MemoryConversationIngest for CortexProvider {
             })?);
         }
         let response: Value = self
-            .client
-            .json(
-                Method::POST,
-                "v1/experience/bulk?wait=indexed",
-                Some(&json!({ "items": items, "ordering": "strict_temporal" })),
-                Attempts::Once,
-            )
+            .dialect
+            .submit_bulk(&items, true)
             .await
             .map_err(engine_error)?;
         let results = response
@@ -526,10 +527,11 @@ impl MemoryAnswer for CortexProvider {
         }
         let scope = CortexDialect::scope_of(namespace).map_err(engine_error)?;
         let pack: Value = self
+            .dialect
             .client
             .json(
                 Method::POST,
-                "v1/recall",
+                self.dialect.wire.path(Route::Recall),
                 Some(&json!({
                     "scope": scope,
                     "query": request.query,
@@ -544,18 +546,18 @@ impl MemoryAnswer for CortexProvider {
             .and_then(Value::as_str)
             .ok_or_else(|| MemoryError::Backend("CortexDB recall omitted pack_id".to_string()))?;
         let response: Value = self
+            .dialect
             .client
             .json(
                 Method::POST,
-                "v1/answer",
-                Some(&json!({
-                    "scope": scope,
-                    "question": request.query,
-                    "use_pack_id": pack_id,
-                    "answer_instructions": request.instructions,
-                    "cite_sources": true,
-                    "include_context": true,
-                })),
+                self.dialect.wire.path(Route::Answer),
+                Some(&answer_body(
+                    self.dialect.wire,
+                    &scope,
+                    &request.query,
+                    pack_id,
+                    request.instructions.as_deref(),
+                )),
                 Attempts::Once,
             )
             .await
@@ -586,6 +588,39 @@ impl MemoryAnswer for CortexProvider {
                 .map(str::to_owned),
         })
     }
+}
+
+/// The `answer` request body.
+///
+/// The hosted route's schema is strict (unknown keys are a 400), so hosted mode
+/// sends only documented keys and omits `answer_instructions` when there are
+/// none rather than sending `null`. Direct mode keeps its historical shape.
+pub(super) fn answer_body(
+    wire: CortexWire,
+    scope: &str,
+    question: &str,
+    pack_id: &str,
+    instructions: Option<&str>,
+) -> Value {
+    let mut body = json!({
+        "scope": scope,
+        "question": question,
+        "use_pack_id": pack_id,
+        "cite_sources": true,
+        "include_context": true,
+    });
+    if let Some(map) = body.as_object_mut() {
+        match (wire, instructions) {
+            (_, Some(text)) => {
+                map.insert("answer_instructions".to_string(), json!(text));
+            }
+            (CortexWire::Direct, None) => {
+                map.insert("answer_instructions".to_string(), Value::Null);
+            }
+            (CortexWire::TinyHumans, None) => {}
+        }
+    }
+    body
 }
 
 fn citation_of(
@@ -655,7 +690,7 @@ pub(super) fn ingest_count(count: usize) -> Result<u32, MemoryError> {
 #[async_trait]
 impl MemoryProvider for CortexProvider {
     fn driver_id(&self) -> &str {
-        CORTEX_DRIVER_ID
+        driver_id(self.dialect.wire)
     }
 
     fn capabilities(&self) -> Capabilities {

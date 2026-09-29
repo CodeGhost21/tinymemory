@@ -31,6 +31,7 @@ fn memory_driver_config_debug_never_leaks_credential_ref() {
         endpoint: Some("https://api.supermemory.ai".into()),
         credential_ref: Some("keychain:supermemory-super-secret-value".into()),
         trust_state: "untrusted".into(),
+        deployment: None,
     };
     let debug_output = format!("{driver:?}");
     assert!(
@@ -46,4 +47,15 @@ fn memory_driver_config_debug_never_leaks_credential_ref() {
 #[test]
 fn memory_driver_config_default_trust_state_is_untrusted() {
     assert_eq!(MemoryDriverConfig::default().trust_state, "untrusted");
+}
+
+#[test]
+fn memory_driver_config_without_a_deployment_still_deserializes() {
+    let driver: MemoryDriverConfig =
+        serde_json::from_str(r#"{"class":"external","endpoint":"https://x.example"}"#)
+            .expect("configs written before `deployment` existed still load");
+    assert_eq!(driver.deployment, None);
+    let driver: MemoryDriverConfig =
+        serde_json::from_str(r#"{"deployment":"cloud"}"#).expect("deployment loads");
+    assert_eq!(driver.deployment.as_deref(), Some("cloud"));
 }

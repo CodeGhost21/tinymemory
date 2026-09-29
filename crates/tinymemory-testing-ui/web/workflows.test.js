@@ -44,10 +44,12 @@ class FakeElement {
     this.listeners.set(name, handlers);
   }
 
-  async click() {
-    const results = (this.listeners.get("click") || []).map((handler) => handler({ target: this }));
+  async fire(name) {
+    const results = (this.listeners.get(name) || []).map((handler) => handler({ target: this }));
     await Promise.all(results);
   }
+
+  async click() { await this.fire("click"); }
 }
 
 function parseAttributes(source) {
@@ -109,12 +111,29 @@ function response(status, body) {
   };
 }
 
+const ENGINE_LIST = [
+  { id: "tinycortex", label: "TinyCortex (local)", description: "In-process.", needs_endpoint: false, needs_key: false, key_optional: false, deployments: [], default_endpoint: null, hosted: false },
+  { id: "mem0", label: "Mem0", description: "Mem0.", needs_endpoint: true, needs_key: true, key_optional: true, deployments: ["cloud", "self_hosted"], default_endpoint: "https://api.mem0.ai", hosted: false },
+  { id: "cortex", label: "CortexDB", description: "CortexDB.", needs_endpoint: true, needs_key: true, key_optional: false, deployments: ["cloud", "self_hosted"], default_endpoint: "https://api-v1.cortexdb.ai", hosted: false },
+  { id: "tinyhumans", label: "CortexDB (via TinyHumans)", description: "Hosted.", needs_endpoint: false, needs_key: false, key_optional: false, deployments: [], default_endpoint: "https://api.tinyhumans.ai", hosted: true },
+];
+
+const DISCONNECTED = { connected: false, driver_id: null, engine: null, has_graph: false, has_answer: false };
+
+async function settle() {
+  await new Promise((resolve) => setImmediate(resolve));
+}
+
 async function loadActualPage() {
   const webDirectory = __dirname;
   const html = fs.readFileSync(path.join(webDirectory, "index.html"), "utf8");
   const document = parseDocument(html);
   const requests = [];
-  let uploadResponse = response(200, { route: "documents", key: "note.txt" });
+  const routes = {
+    "/api/status": () => response(200, DISCONNECTED),
+    "/api/engines": () => response(200, ENGINE_LIST),
+    "/api/documents/upload": () => response(200, { route: "documents", key: "note.txt" }),
+  };
   const storage = new Map();
   const context = vm.createContext({
     console,
@@ -128,11 +147,9 @@ async function loadActualPage() {
     },
     async fetch(url, options) {
       requests.push({ url, options });
-      if (url === "/api/status") {
-        return response(200, { connected: false, driver_id: null, has_graph: false });
-      }
-      if (url === "/api/documents/upload") return uploadResponse;
-      throw new Error(`unexpected request: ${url}`);
+      const route = routes[url];
+      if (!route) throw new Error(`unexpected request: ${url}`);
+      return route(options);
     },
   });
 
@@ -148,12 +165,16 @@ async function loadActualPage() {
       vm.runInContext(script[2], context, { filename: "index.html:inline-script" });
     }
   }
-  await Promise.resolve();
+  await settle();
 
   return {
     document,
     requests,
-    rejectNextUpload(message) { uploadResponse = response(400, { error: message }); },
+    routes,
+    storage,
+    rejectNextUpload(message) {
+      routes["/api/documents/upload"] = () => response(400, { error: message });
+    },
   };
 }
 
@@ -192,4 +213,117 @@ test("actual page upload wiring renders success and error responses", async () =
   page.rejectNextUpload("upload rejected");
   await uploadButton.click();
   assert.match(page.document.getElementById("output").textContent, /error: upload rejected/);
+});
+
+const active = (page, id) => page.document.getElementById(id).classList.contains("active");
+
+test("the engine picker is built from /api/engines, not hard-coded", async () => {
+  const page = await loadActualPage();
+  const html = page.document.getElementById("engine").innerHTML;
+  for (const engine of ENGINE_LIST) {
+    assert.ok(html.includes(`value="${engine.id}"`), `missing option for ${engine.id}`);
+    assert.ok(html.includes(engine.label), `missing label ${engine.label}`);
+  }
+  assert.ok(!html.includes('value="local"'), "the old hard-coded id must be gone");
+  assert.equal(page.document.getElementById("engine").value, "tinycortex");
+});
+
+test("field visibility follows the engine descriptor", async () => {
+  const page = await loadActualPage();
+  const engine = page.document.getElementById("engine");
+  const pick = async (id) => { engine.value = id; await engine.fire("change"); };
+
+  await pick("tinycortex");
+  assert.deepEqual(
+    [active(page, "field-deployment"), active(page, "field-endpoint"), active(page, "field-key")],
+    [false, false, false],
+  );
+
+  await pick("mem0");
+  assert.deepEqual(
+    [active(page, "field-deployment"), active(page, "field-endpoint"), active(page, "field-key")],
+    [true, true, true],
+  );
+  const options = page.document.getElementById("deployment").innerHTML;
+  assert.ok(options.includes('value="cloud"') && options.includes('value="self_hosted"'));
+
+  // CortexDB: cloud defaults its endpoint, self-hosted needs one, so it shows.
+  await pick("cortex");
+  assert.deepEqual(
+    [active(page, "field-deployment"), active(page, "field-endpoint"), active(page, "field-key")],
+    [true, true, true],
+  );
+
+  await pick("tinyhumans");
+  assert.deepEqual(
+    [active(page, "field-deployment"), active(page, "field-endpoint"), active(page, "field-key")],
+    [false, true, true],
+  );
+  assert.match(page.document.getElementById("api-key-label").textContent, /Session token or API key \(required\)/);
+  assert.equal(page.document.getElementById("endpoint").value, "https://api.tinyhumans.ai");
+});
+
+test("the Answer tab appears only when the connected engine can answer", async () => {
+  const page = await loadActualPage();
+  const tab = page.document.getElementById("tab-answer");
+  assert.equal(tab.style.display, "none");
+
+  page.routes["/api/connect"] = () => response(200, {
+    connected: true, driver_id: "tinyhumans", engine: "tinyhumans", has_graph: false, has_answer: true,
+  });
+  page.document.getElementById("engine").value = "tinyhumans";
+  await page.document.getElementById("engine").fire("change");
+  page.document.getElementById("api-key").value = "tiny_live_x";
+  await page.document.getElementById("connect-btn").click();
+  assert.equal(tab.style.display, "");
+  const connect = page.requests.find((r) => r.url === "/api/connect");
+  assert.deepEqual(JSON.parse(connect.options.body), {
+    engine: "tinyhumans", deployment: null, endpoint: "https://api.tinyhumans.ai", api_key: "tiny_live_x",
+  });
+
+  page.routes["/api/disconnect"] = () => response(200, DISCONNECTED);
+  await page.document.getElementById("disconnect-btn").click();
+  assert.equal(tab.style.display, "none");
+});
+
+test("a 402 shows the insufficient-credits banner and a success hides it", async () => {
+  const page = await loadActualPage();
+  const banner = page.document.getElementById("credits-banner");
+  assert.equal(banner.classList.contains("active"), false);
+
+  page.routes["/api/answer"] = () => response(402, { error: "insufficient credits", code: "USER_INSUFFICIENT_CREDITS" });
+  await page.document.getElementById("answer-btn").click();
+  assert.equal(banner.classList.contains("active"), true);
+  assert.match(page.document.getElementById("output").textContent, /insufficient credits/);
+  const answer = page.requests.find((r) => r.url === "/api/answer");
+  assert.equal(answer.options.method, "POST");
+
+  page.routes["/api/answer"] = () => response(200, { answer: "ok", citations: [] });
+  await page.document.getElementById("answer-btn").click();
+  assert.equal(banner.classList.contains("active"), false);
+});
+
+test("switch and copy posts the target to /api/migrate and reports the copy", async () => {
+  const page = await loadActualPage();
+  page.routes["/api/connect"] = () => response(200, {
+    connected: true, driver_id: "tinycortex", engine: "tinycortex", has_graph: false, has_answer: false,
+  });
+  await page.document.getElementById("connect-btn").click();
+  assert.ok(active(page, "field-migrate"), "the option is offered once connected");
+
+  page.routes["/api/migrate"] = () => response(200, {
+    status: { connected: true, driver_id: "tinyhumans", engine: "tinyhumans", has_graph: false, has_answer: true },
+    report: { pages: 1, records: 3, imported: 3, skipped: 0, failed: 0, errors: [] },
+  });
+  page.document.getElementById("engine").value = "tinyhumans";
+  await page.document.getElementById("engine").fire("change");
+  page.document.getElementById("api-key").value = "jwt";
+  page.document.getElementById("migrate-copy").checked = true;
+  await page.document.getElementById("connect-btn").click();
+
+  const migrate = page.requests.find((r) => r.url === "/api/migrate");
+  assert.ok(migrate, "migrate endpoint must be called");
+  assert.equal(JSON.parse(migrate.options.body).to.engine, "tinyhumans");
+  assert.match(page.document.getElementById("connect-msg").textContent, /copied 3 of 3 records/);
+  assert.equal(page.document.getElementById("status-badge").textContent, "connected: tinyhumans");
 });
