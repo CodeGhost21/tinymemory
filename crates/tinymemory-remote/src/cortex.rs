@@ -717,6 +717,104 @@ impl CortexDialect {
         out
     }
 
+    /// Appends one experience and, when asked, waits until it is indexed.
+    ///
+    /// Direct mode uses CortexDB's `?wait=indexed`. The hosted backend drops
+    /// that query, so hosted mode reproduces the guarantee client-side with
+    /// [`Self::await_readable`]: the same bounded poll (30s budget) of the
+    /// scope listing and then ranked recall that keyed writes already use.
+    pub(crate) async fn submit_experience(
+        &self,
+        request: &Value,
+        wait_indexed: bool,
+    ) -> anyhow::Result<Value> {
+        let base = self.wire.path(Route::Experience);
+        match self.wire {
+            CortexWire::Direct => {
+                let path = if wait_indexed {
+                    format!("{base}?wait=indexed")
+                } else {
+                    base.to_string()
+                };
+                self.client
+                    .json(Method::POST, &path, Some(request), Attempts::Once)
+                    .await
+            }
+            CortexWire::TinyHumans => {
+                let accepted: Value = self
+                    .client
+                    .json(Method::POST, base, Some(request), Attempts::Once)
+                    .await?;
+                if wait_indexed {
+                    self.wait_for_receipt(request, &accepted).await?;
+                }
+                Ok(accepted)
+            }
+        }
+    }
+
+    /// Submits an ordered batch. Direct mode has a bulk route; the hosted
+    /// backend has none, so hosted mode writes item by item, in order, and then
+    /// waits for each accepted event to become readable.
+    pub(crate) async fn submit_bulk(
+        &self,
+        items: &[Value],
+        wait_indexed: bool,
+    ) -> anyhow::Result<Value> {
+        match self.wire {
+            CortexWire::Direct => {
+                let path = if wait_indexed {
+                    "v1/experience/bulk?wait=indexed"
+                } else {
+                    "v1/experience/bulk"
+                };
+                self.client
+                    .json(
+                        Method::POST,
+                        path,
+                        Some(&json!({ "items": items, "ordering": "strict_temporal" })),
+                        Attempts::Once,
+                    )
+                    .await
+            }
+            CortexWire::TinyHumans => {
+                let mut results = Vec::with_capacity(items.len());
+                for item in items {
+                    results.push(self.submit_experience(item, false).await?);
+                }
+                if wait_indexed {
+                    for (item, accepted) in items.iter().zip(&results) {
+                        self.wait_for_receipt(item, accepted).await?;
+                    }
+                }
+                Ok(json!({ "results": results }))
+            }
+        }
+    }
+
+    /// Waits for the event a write receipt names, when it names one and the
+    /// write was not an idempotent replay of an already-indexed event.
+    async fn wait_for_receipt(&self, request: &Value, accepted: &Value) -> anyhow::Result<()> {
+        if accepted
+            .get("replayed_from_idempotency")
+            .and_then(Value::as_bool)
+            == Some(true)
+        {
+            return Ok(());
+        }
+        let (Some(id), Some(scope)) = (
+            accepted.get("event_id").and_then(Value::as_str),
+            request.get("scope").and_then(Value::as_str),
+        ) else {
+            return Ok(());
+        };
+        let text = request
+            .pointer("/content/text")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        self.await_readable(scope, id, text).await
+    }
+
     /// Every scope this deployment holds that this adapter wrote.
     ///
     /// Asks for [`SCOPE_LIST_LIMIT`] explicitly. Without it the engine returns
@@ -863,7 +961,7 @@ impl Dialect for CortexDialect {
             .client
             .json(
                 Method::POST,
-                "v1/experience",
+                self.wire.path(Route::Experience),
                 Some(&json!({
                     "scope": scope,
                     "modality": "observation",
@@ -956,7 +1054,7 @@ impl Dialect for CortexDialect {
             .client
             .json(
                 Method::POST,
-                "v1/experience",
+                self.wire.path(Route::Experience),
                 Some(&json!({
                     "scope": scope,
                     "modality": "conversation",
@@ -976,7 +1074,7 @@ impl Dialect for CortexDialect {
             self.client
                 .empty(
                     Method::POST,
-                    "v1/forget",
+                    self.wire.path(Route::Forget),
                     Some(&json!({
                         "scope": scope,
                         "layers": ["events"],
@@ -1006,7 +1104,7 @@ impl Dialect for CortexDialect {
             .client
             .json(
                 Method::POST,
-                "v1/recall",
+                self.wire.path(Route::Recall),
                 Some(&json!({ "scope": scope, "query": query })),
                 Attempts::RetryTransient,
             )
@@ -1040,7 +1138,17 @@ impl Dialect for CortexDialect {
     }
 
     async fn health(&self) -> anyhow::Result<()> {
-        self.client.probe("v1/admin/health").await
+        match self.wire {
+            CortexWire::Direct => self.client.probe("v1/admin/health").await,
+            // No health route is exposed; an empty scope listing is the
+            // cheapest authenticated call, and proves reachability, the
+            // credential and (via 402/429) account state in one round trip.
+            CortexWire::TinyHumans => {
+                self.client
+                    .probe(&format!("{}?prefix=__health__", self.wire.path(Route::Scopes)))
+                    .await
+            }
+        }
     }
 
     /// CortexDB's recall answers with no per-hit similarity score — the
