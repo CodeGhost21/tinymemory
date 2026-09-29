@@ -78,8 +78,10 @@ composition — no storage engine, no HTTP stack, no native library.
 | --- | --- |
 | `tinycortex` | the embedded TinyCortex engine, as `tinymemory::tinycortex` |
 | `supermemory`, `mem0`, `cognee`, `cortex`, `agentmemory` | the matching HTTP adapter, as `tinymemory::remote` |
+| `tinyhumans` | CortexDB hosted by the TinyHumans backend (`/memory/*`); implies `cortex` |
+| `factory` | `tinymemory::factory` — `list_engines()` and `build_provider(id, config, credential)`; each engine arm needs that engine's own feature |
 | `livingbrain` | the LivingBrain Brain API client, as `tinymemory::remote` (not a `MemoryProvider`) |
-| `engines` | all six `MemoryProvider` engines above |
+| `engines` | all seven `MemoryProvider` engines above (including `tinyhumans`) |
 | `core` | `tinymemory::core` — the memory subsystem |
 | `sync` | `tinymemory::sync` — the Composio normalisers |
 | `sources` | `tinymemory::sources` — source contracts and local readers |
@@ -192,6 +194,7 @@ minimal working wiring.
 | `cognee` | Cognee, hosted or self-hosted | external | 3 (mandatory) |
 | `cortex` | CortexDB, hosted or self-hosted | external | mandatory + document, conversation, learning, event, and answer |
 | `agentmemory` | AgentMemory, self-hosted | external | 3 (mandatory) |
+| `tinyhumans` | CortexDB via the TinyHumans backend | external | same as `cortex` (see [the spec](docs/specs/tinyhumans-hosted-cortex.md)) |
 | `memory-git` | add-on: git-backed diff snapshots | — | requires `tinycortex` |
 | *(none)* | `NullMemoryProvider` | null | contract + registry only, 40 crates |
 
