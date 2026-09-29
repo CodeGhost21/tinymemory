@@ -322,7 +322,7 @@ async fn every_operation_maps_to_a_memory_path_and_never_a_v1_one() {
     p.ingest_document(item("doc-1", "a document")).await.expect("document");
     p.ingest_learning(
         serde_json::from_value(json!({
-            "class": "preference",
+            "class": "style",
             "key": "tone",
             "value": "terse",
             "initial_confidence": 0.9,
