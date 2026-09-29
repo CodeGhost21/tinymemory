@@ -68,7 +68,7 @@ impl Backend {
 type Store = Arc<Mutex<Backend>>;
 
 /// Serves `app` on an ephemeral port and returns its base URL.
-async fn serve(app: Router) -> String {
+pub(crate) async fn serve(app: Router) -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind");
@@ -592,7 +592,7 @@ async fn the_cognee_double_actually_retains() {
 // folded the log correctly.
 
 #[derive(Default)]
-struct CortexLog {
+pub(crate) struct CortexLog {
     /// Every event ever appended, in order. Never mutated — that is the point.
     events: Vec<Value>,
     /// `idempotency_key` -> the body it was first seen with, and the id of the
@@ -604,9 +604,9 @@ struct CortexLog {
     next_id: u64,
 }
 
-type CortexStore = Arc<Mutex<CortexLog>>;
+pub(crate) type CortexStore = Arc<Mutex<CortexLog>>;
 
-async fn cortex_experience(
+pub(crate) async fn cortex_experience(
     State(store): State<CortexStore>,
     Json(body): Json<Value>,
 ) -> (axum::http::StatusCode, Json<Value>) {
@@ -703,7 +703,7 @@ async fn cortex_experience_bulk(
     )
 }
 
-async fn cortex_events(
+pub(crate) async fn cortex_events(
     State(store): State<CortexStore>,
     Query(params): Query<BTreeMap<String, String>>,
 ) -> Json<Value> {
@@ -754,7 +754,7 @@ async fn cortex_events(
 ///   that mistake from being destructive on its own;
 /// - a non-empty selector *with* `confirm_all` is refused as ambiguous, rather
 ///   than silently widened to the scope.
-async fn cortex_forget(
+pub(crate) async fn cortex_forget(
     State(store): State<CortexStore>,
     Json(body): Json<Value>,
 ) -> (axum::http::StatusCode, Json<Value>) {
@@ -824,7 +824,7 @@ async fn cortex_forget(
     )
 }
 
-async fn cortex_recall(State(store): State<CortexStore>, Json(body): Json<Value>) -> Json<Value> {
+pub(crate) async fn cortex_recall(State(store): State<CortexStore>, Json(body): Json<Value>) -> Json<Value> {
     let log = store.lock().expect("cortex log");
     let scope = body
         .get("scope")
@@ -891,7 +891,7 @@ async fn cortex_answer(Json(body): Json<Value>) -> (axum::http::StatusCode, Json
 /// cursor and no total, so a caller that does not ask cannot tell it was cut
 /// short. The double reproduces the cap, because a double that returns
 /// everything cannot catch the adapter forgetting to ask.
-async fn cortex_scopes(
+pub(crate) async fn cortex_scopes(
     State(store): State<CortexStore>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Json<Value> {
