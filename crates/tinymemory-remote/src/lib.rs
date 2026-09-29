@@ -148,6 +148,8 @@ pub fn mem0_graph_provider(memory: Mem0Memory) -> GraphMemoryProvider {
 
 #[cfg(test)]
 mod failure_test;
+#[cfg(test)]
+mod hosted_test;
 
 pub mod agentmemory;
 #[cfg(test)]
