@@ -236,19 +236,25 @@ explicitly declined with a reason.
 
 Releases run from `.github/workflows/release.yml` via a manual
 `workflow_dispatch` with a `patch` / `minor` / `major` bump. The workflow
-re-runs the full validation suite, computes the next version, updates
-`crates/tinymemory/Cargo.toml` and `Cargo.lock`, commits and tags `vX.Y.Z`,
-packages, pushes, and publishes to crates.io using the `CARGO_REGISTRY_TOKEN`
-secret.
+re-runs formatting, clippy, tests, and rustdoc, computes the next version,
+updates `crates/tinymemory/Cargo.toml`, `Cargo.lock`, and
+`crates/tinymemory-module/Cargo.lock`, commits and tags `vX.Y.Z`, and pushes
+both. It then builds the per-platform `tinymemory-module` archives and attaches
+them, with a `checksum.toml`, to a GitHub release for the tag. Setting
+`existing_tag` re-cuts those archives for a tag that already exists, without a
+new bump or tag.
+
+Nothing is published to crates.io. `tinymemory-core` depends on the
+unpublished `tinycortex-api`, so `cargo package` cannot resolve it; every crate
+is `publish = false`, and hosts take this repository by git or path.
 
 Consequently:
 
 - Do not hand-edit the `version` field in `crates/tinymemory/Cargo.toml`; the
   release workflow owns it.
 - Follow semantic versioning. Any change to the public surface that is not
-  purely additive is a breaking change and needs a major bump (pre-1.0: a minor
-  bump).
-- The crate must be publishable at all times — `main` should always be green.
+  purely additive is a breaking change and needs a major bump.
+- `main` must always be green: a release re-runs the validation suite on it.
 
 ## Agent Working Agreement
 
