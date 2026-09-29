@@ -43,6 +43,7 @@ impl std::fmt::Debug for EngineCredential {
 }
 
 impl EngineCredential {
+    #[allow(dead_code)]
     /// The static value, treating an empty or blank string as absent.
     pub(super) fn static_value(&self) -> Option<&str> {
         match self {

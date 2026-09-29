@@ -14,6 +14,7 @@ use crate::provider::MemoryProvider;
 
 use super::{EngineConfig, EngineCredential};
 
+#[allow(dead_code)]
 type Built = anyhow::Result<Arc<dyn MemoryProvider>>;
 
 /// The endpoint from `config`, treating blank as absent.
