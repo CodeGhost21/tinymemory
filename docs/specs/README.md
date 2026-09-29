@@ -3,6 +3,8 @@
 - [CortexDB full integration](cortexdb-full-integration.md) — native granular
   ingestion, grounded answers, and the Docker/Ladder simulation contract.
 
+- [CortexDB via the TinyHumans backend](tinyhumans-hosted-cortex.md) — the
+  hosted `/memory/*` dialect, its bearer source, and the engine factory.
 - [Granular ingestion and retrieval API](ingestion-retrieval-api.md)
 - [LivingBrain remote Brain API](livingbrain-remote-api.md)
 
