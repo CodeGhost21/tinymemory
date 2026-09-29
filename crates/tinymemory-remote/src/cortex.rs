@@ -78,7 +78,8 @@
 //!   readiness signals.** The first never advances past `captured`; the second
 //!   accepts a connection and emits nothing.
 
-use anyhow::Context;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use reqwest::Method;
 use serde_json::{json, Value};
@@ -86,7 +87,7 @@ use tinymemory_api::recall::RecallOpts;
 use tinymemory_api::traits::Memory;
 use tinymemory_api::types::{MemoryCategory, MemoryTaint};
 
-use crate::common::{Attempts, Dialect, HttpClient, RemoteMemory, StoredEntry};
+use crate::common::{Attempts, BearerSource, Dialect, HttpClient, RemoteMemory, StoredEntry};
 
 /// Stable driver id used by configuration and status output.
 pub use tinymemory_api::drivers::CORTEX_DRIVER_ID;
@@ -173,6 +174,53 @@ const MAX_PAGES: usize = 500;
 /// [`CortexDialect::scopes`].
 const SCOPE_LIST_LIMIT: usize = 10_000;
 
+/// Which HTTP surface a CortexDB client talks to.
+///
+/// Named `CortexWire` rather than `CortexDialect` because the private
+/// `CortexDialect` type already implements the shared `Dialect` trait for this
+/// adapter; this enum only selects *routes and envelopes* for it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum CortexWire {
+    /// A CortexDB server's own `/v1/*` API, one bearer key, bare JSON bodies.
+    #[default]
+    Direct,
+    /// CortexDB behind the TinyHumans backend's `/memory/*` routes: bearer
+    /// session JWT or `tiny_live_` API key, `{success,data}` envelopes, typed
+    /// `errorCode` failures, and no `?wait=indexed`, health or bulk routes.
+    TinyHumans,
+}
+
+/// One logical CortexDB operation, mapped to a path per [`CortexWire`].
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Route {
+    Experience,
+    Events,
+    Recall,
+    Forget,
+    Answer,
+    Scopes,
+}
+
+impl CortexWire {
+    /// The request path (no query string) for `route` on this wire.
+    pub(crate) fn path(self, route: Route) -> &'static str {
+        match (self, route) {
+            (Self::Direct, Route::Experience) => "v1/experience",
+            (Self::Direct, Route::Events) => "v1/events",
+            (Self::Direct, Route::Recall) => "v1/recall",
+            (Self::Direct, Route::Forget) => "v1/forget",
+            (Self::Direct, Route::Answer) => "v1/answer",
+            (Self::Direct, Route::Scopes) => "v1/scopes/list",
+            (Self::TinyHumans, Route::Experience) => "memory/experience",
+            (Self::TinyHumans, Route::Events) => "memory/events",
+            (Self::TinyHumans, Route::Recall) => "memory/recall",
+            (Self::TinyHumans, Route::Forget) => "memory/forget",
+            (Self::TinyHumans, Route::Answer) => "memory/answer",
+            (Self::TinyHumans, Route::Scopes) => "memory/scopes",
+        }
+    }
+}
+
 /// CortexDB, adapted to TinyMemory's keyed contract.
 #[derive(Clone, Debug)]
 pub struct CortexMemory {
@@ -180,8 +228,14 @@ pub struct CortexMemory {
 }
 
 impl CortexMemory {
-    pub(crate) fn operation_client(&self) -> HttpClient {
-        self.inner.dialect().client.clone()
+    pub(crate) fn operation_dialect(&self) -> CortexDialect {
+        self.inner.dialect().clone()
+    }
+
+    /// Which HTTP surface this client talks to.
+    #[must_use]
+    pub fn wire(&self) -> CortexWire {
+        self.inner.dialect().wire
     }
 
     /// Rebuilds the HTTP transport with a different per-request deadline.
@@ -202,26 +256,35 @@ impl CortexMemory {
 
     fn new(endpoint: &str, api_key: Option<&str>) -> anyhow::Result<Self> {
         if api_key.is_some() {
-            let url =
-                reqwest::Url::parse(endpoint).context("cortex endpoint is not a valid URL")?;
-            if url.scheme() == "http" {
-                let host = url
-                    .host_str()
-                    .ok_or_else(|| anyhow::anyhow!("credentialed CortexDB endpoint has no host"))?;
-                let ip_host = host.trim_start_matches('[').trim_end_matches(']');
-                let loopback = host.eq_ignore_ascii_case("localhost")
-                    || ip_host
-                        .parse::<std::net::IpAddr>()
-                        .is_ok_and(|address| address.is_loopback());
-                anyhow::ensure!(
-                    loopback,
-                    "credentialed CortexDB endpoints must use HTTPS unless they are loopback"
-                );
-            }
+            crate::common::ensure_secure_endpoint(endpoint)?;
         }
         Ok(Self {
             inner: RemoteMemory::new(CortexDialect {
                 client: HttpClient::bearer(endpoint, api_key)?,
+                wire: CortexWire::Direct,
+            }),
+        })
+    }
+
+    /// Connect to CortexDB hosted by the TinyHumans backend (`/memory/*`).
+    ///
+    /// `backend_base_url` is the backend origin (for example
+    /// `https://api.tinyhumans.ai`). `bearer` supplies the session JWT or
+    /// `tiny_live_` API key and is consulted on **every request**, so a
+    /// refreshed session is picked up without rebuilding the provider.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the URL is invalid or uses cleartext HTTP off
+    /// loopback.
+    pub fn tinyhumans(
+        backend_base_url: &str,
+        bearer: Arc<dyn BearerSource>,
+    ) -> anyhow::Result<Self> {
+        Ok(Self {
+            inner: RemoteMemory::new(CortexDialect {
+                client: HttpClient::dynamic(backend_base_url, bearer)?.hosted(),
+                wire: CortexWire::TinyHumans,
             }),
         })
     }
@@ -305,7 +368,8 @@ struct Folded {
 
 #[derive(Clone, Debug)]
 pub(crate) struct CortexDialect {
-    client: HttpClient,
+    pub(crate) client: HttpClient,
+    pub(crate) wire: CortexWire,
 }
 
 impl CortexDialect {
@@ -405,14 +469,15 @@ impl CortexDialect {
         let mut seen = std::collections::HashSet::new();
         let mut cursor: Option<String> = None;
         for _ in 0..MAX_PAGES {
+            let base = self.wire.path(Route::Events);
             let path = match &cursor {
                 Some(c) => format!(
-                    "v1/events?scope={scope}&limit={PAGE_SIZE}&cursor={cursor}",
+                    "{base}?scope={scope}&limit={PAGE_SIZE}&cursor={cursor}",
                     scope = urlencoding(scope),
                     cursor = urlencoding(c)
                 ),
                 None => format!(
-                    "v1/events?scope={scope}&limit={PAGE_SIZE}",
+                    "{base}?scope={scope}&limit={PAGE_SIZE}",
                     scope = urlencoding(scope)
                 ),
             };
@@ -475,14 +540,20 @@ impl CortexDialect {
     /// index that has not caught up is a weaker claim — the record is durable
     /// and keyed reads return it — so phase two gives up quietly rather than
     /// failing a write that succeeded.
-    async fn await_readable(&self, scope: &str, event_id: &str, text: &str) -> anyhow::Result<()> {
+    pub(crate) async fn await_readable(
+        &self,
+        scope: &str,
+        event_id: &str,
+        text: &str,
+    ) -> anyhow::Result<()> {
         let deadline = std::time::Instant::now() + VISIBILITY_TIMEOUT;
 
         // Phase one: the keyed read path, which folds the scope listing.
         loop {
             // Newest first, so one page is enough to see a write just made.
             let path = format!(
-                "v1/events?scope={scope}&limit={PAGE_SIZE}",
+                "{base}?scope={scope}&limit={PAGE_SIZE}",
+                base = self.wire.path(Route::Events),
                 scope = urlencoding(scope)
             );
             let page: Value = self
@@ -512,7 +583,7 @@ impl CortexDialect {
                 .client
                 .json::<Value>(
                     Method::POST,
-                    "v1/recall",
+                    self.wire.path(Route::Recall),
                     Some(&json!({ "scope": scope, "query": query })),
                     Attempts::RetryTransient,
                 )
@@ -666,7 +737,14 @@ impl CortexDialect {
             .client
             .json(
                 Method::GET,
-                &format!("v1/scopes/list?limit={SCOPE_LIST_LIMIT}"),
+                &match self.wire {
+                    CortexWire::Direct => {
+                        format!("{}?limit={SCOPE_LIST_LIMIT}", self.wire.path(Route::Scopes))
+                    }
+                    // The hosted route documents `prefix` only, so no `limit`
+                    // is sent: an unknown parameter is not ours to gamble on.
+                    CortexWire::TinyHumans => self.wire.path(Route::Scopes).to_string(),
+                },
                 None,
                 Attempts::RetryTransient,
             )
