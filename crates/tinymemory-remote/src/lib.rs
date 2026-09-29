@@ -14,6 +14,7 @@ mod common;
 pub mod cortex;
 mod cortex_provider;
 mod graph_provider;
+mod hosted;
 pub mod livingbrain;
 pub mod mem0;
 mod mem0_graph;
@@ -23,9 +24,15 @@ pub mod supermemory;
 pub use agentmemory::{AgentMemoryMemory, AGENTMEMORY_API_ENDPOINT, AGENTMEMORY_DRIVER_ID};
 pub use cognee::{CogneeMemory, COGNEE_DRIVER_ID};
 pub use cognee_graph::CogneeGraph;
-pub use cortex::{CortexMemory, CORTEX_API_ENDPOINT, CORTEX_DRIVER_ID};
+pub use common::{BearerSource, StaticBearer};
+pub use cortex::{
+    CortexMemory, CortexWire, CORTEX_API_ENDPOINT, CORTEX_DRIVER_ID, TINYHUMANS_DRIVER_ID,
+};
 pub use cortex_provider::CortexProvider;
 pub use graph_provider::GraphMemoryProvider;
+pub use hosted::{
+    error_code, is_insufficient_credits, INSUFFICIENT_CREDITS_CODE, TINYHUMANS_API_ENDPOINT,
+};
 pub use livingbrain::{
     Capture, CaptureBatchReceipt, CaptureKind, CaptureReceipt, CaptureSource, ChatSender, ChatTurn,
     ChatTurnReceipt, LivingBrain, LivingBrainExport, LivingBrainSearchResult,
@@ -61,8 +68,27 @@ pub fn cognee_provider(memory: CogneeMemory) -> MemoryTraitProvider {
 /// Wrap a CortexDB HTTP backend as a bound TinyMemory provider.
 #[must_use]
 pub fn cortex_provider(memory: CortexMemory) -> CortexProvider {
-    let client = memory.operation_client();
-    CortexProvider::new(memory, client)
+    CortexProvider::new(memory)
+}
+
+/// Wrap CortexDB hosted by the TinyHumans backend as a bound provider.
+///
+/// `backend_base_url` is the backend origin (for example
+/// `https://api.tinyhumans.ai`); `bearer` supplies the session JWT or
+/// `tiny_live_` API key on every request. Capabilities are those of
+/// [`CortexProvider`]; it reports the `tinyhumans` driver id.
+///
+/// # Errors
+///
+/// Returns an error when the URL is invalid or uses cleartext HTTP off loopback.
+pub fn tinyhumans_provider(
+    backend_base_url: &str,
+    bearer: Arc<dyn BearerSource>,
+) -> anyhow::Result<CortexProvider> {
+    Ok(cortex_provider(CortexMemory::tinyhumans(
+        backend_base_url,
+        bearer,
+    )?))
 }
 
 /// Wrap an AgentMemory HTTP backend as a bound TinyMemory provider.
@@ -122,6 +148,8 @@ pub fn mem0_graph_provider(memory: Mem0Memory) -> GraphMemoryProvider {
 
 #[cfg(test)]
 mod failure_test;
+#[cfg(test)]
+mod hosted_test;
 
 pub mod agentmemory;
 #[cfg(test)]

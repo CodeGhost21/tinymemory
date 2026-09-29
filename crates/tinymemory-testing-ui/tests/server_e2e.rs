@@ -77,6 +77,11 @@ fn shipped_binary_drives_the_local_memory_and_document_workflows() {
     assert_eq!(status, 200);
     assert!(body.contains("\"connected\":false"));
 
+    let (status, body) = json(port, "GET", "/api/engines", "");
+    assert_eq!(status, 200);
+    assert!(body.contains("\"id\":\"tinycortex\""), "{body}");
+    assert!(body.contains("CortexDB (via TinyHumans)"), "{body}");
+
     let (status, body) = json(port, "POST", "/api/connect", r#"{"engine":"local"}"#);
     assert_eq!(status, 200);
     assert!(body.contains("\"driver_id\":\"tinycortex\""));
@@ -137,6 +142,24 @@ fn shipped_binary_drives_the_local_memory_and_document_workflows() {
     );
     assert_eq!(status, 200);
     assert_eq!(body, "true");
+
+    // Switch & copy: the uploaded record must survive the move to a new engine.
+    let (status, body) = json(
+        port,
+        "POST",
+        "/api/migrate",
+        r#"{"to":{"engine":"tinycortex"}}"#,
+    );
+    assert_eq!(status, 200, "migrate failed: {body}");
+    assert!(body.contains("\"failed\":0"), "{body}");
+    let (status, body) = json(port, "GET", "/api/get?namespace=e2e&key=uploaded", "");
+    assert_eq!(status, 200);
+    assert!(
+        body.contains("uploaded through the shipped binary"),
+        "{body}"
+    );
+    let (_, body) = json(port, "GET", "/api/status", "");
+    assert!(body.contains("\"engine\":\"tinycortex\""), "{body}");
     assert_eq!(json(port, "POST", "/api/disconnect", "{}").0, 200);
     assert_eq!(json(port, "POST", "/api/store", entry).0, 409);
 }

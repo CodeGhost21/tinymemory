@@ -20,9 +20,11 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tower_http::services::ServeDir;
 
+use tinymemory::factory::{self, EngineConfig, EngineCredential, EngineDescriptor};
+use tinymemory::migrate;
 use tinymemory_api::graph::GraphViewQuery;
 use tinymemory_api::provider::types::SourceScope;
-use tinymemory_api::provider::MemoryProvider;
+use tinymemory_api::provider::{AnswerRequest, MemoryProvider};
 use tinymemory_api::recall::OwnedRecallOpts;
 use tinymemory_api::types::{MemoryCategory, MemoryTaint};
 use tinymemory_documents::convert::{ConverterChain, RawDocument};
@@ -48,7 +50,14 @@ struct ApiError(StatusCode, String);
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (self.0, Json(serde_json::json!({ "error": self.1 }))).into_response()
+        // A 402 carries the hosted backend's code so the page can tell "out of
+        // credits" from any other refusal without parsing prose.
+        let body = if self.0 == StatusCode::PAYMENT_REQUIRED {
+            serde_json::json!({ "error": self.1, "code": "USER_INSUFFICIENT_CREDITS" })
+        } else {
+            serde_json::json!({ "error": self.1 })
+        };
+        (self.0, Json(body)).into_response()
     }
 }
 
@@ -60,6 +69,12 @@ impl From<tinymemory_api::error::MemoryError> for ApiError {
         // the blanket 502 that was close enough when every error came from a
         // backend.
         use tinymemory_api::error::MemoryError as E;
+        // The hosted backend's 402 arrives as `BudgetExceeded`, which the
+        // document intake also uses for "too large". Tell them apart by code
+        // before the generic mapping.
+        if tinymemory::remote::is_insufficient_credits(&err) {
+            return ApiError(StatusCode::PAYMENT_REQUIRED, err.to_string());
+        }
         let status = match &err {
             E::Invalid(_) | E::PathEscape(_) => StatusCode::BAD_REQUEST,
             E::NotFound(_) => StatusCode::NOT_FOUND,
@@ -100,7 +115,7 @@ async fn current(state: &SharedState) -> Result<Arc<dyn MemoryProvider>, ApiErro
         .ok_or_else(|| ApiError(StatusCode::CONFLICT, "no engine connected yet".into()))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct ConnectRequest {
     engine: String,
     #[serde(default)]
@@ -117,134 +132,168 @@ struct EngineStatus {
     driver_id: Option<String>,
     engine: Option<String>,
     has_graph: bool,
+    has_answer: bool,
+}
+
+impl EngineStatus {
+    fn disconnected() -> Self {
+        Self {
+            connected: false,
+            driver_id: None,
+            engine: None,
+            has_graph: false,
+            has_answer: false,
+        }
+    }
+
+    fn of(provider: &Arc<dyn MemoryProvider>) -> Self {
+        // Every factory engine binds under its own id, so the driver id is the
+        // engine id; reporting it keeps `/api/status` honest after a reload.
+        Self {
+            connected: true,
+            driver_id: Some(provider.driver_id().to_string()),
+            engine: Some(provider.driver_id().to_string()),
+            has_graph: provider.as_graph().is_some(),
+            has_answer: provider.as_answer().is_some(),
+        }
+    }
+}
+
+/// Builds the provider a [`ConnectRequest`] names, through the shared factory.
+///
+/// The old picker called the in-process engine `local`; it is still accepted.
+/// For `tinyhumans` the `api_key` field is the bearer (a session JWT or a
+/// `tiny_live_` key), sent as a fixed token.
+fn build_engine(req: &ConnectRequest) -> Result<Arc<dyn MemoryProvider>, ApiError> {
+    let id = if req.engine == "local" {
+        "tinycortex"
+    } else {
+        req.engine.as_str()
+    };
+    let config = EngineConfig {
+        endpoint: req.endpoint.clone().filter(|s| !s.is_empty()),
+        deployment: req.deployment.clone().filter(|s| !s.is_empty()),
+    };
+    let credential = match req.api_key.as_deref().filter(|s| !s.is_empty()) {
+        Some(key) => EngineCredential::Static(key.to_string()),
+        None => EngineCredential::None,
+    };
+    factory::build_provider(id, &config, credential)
+        .map_err(|e| ApiError(StatusCode::BAD_REQUEST, e.to_string()))
+}
+
+async fn engines() -> Json<Vec<EngineDescriptor>> {
+    Json(factory::list_engines())
 }
 
 async fn connect(
     State(state): State<SharedState>,
     Json(req): Json<ConnectRequest>,
 ) -> Result<Json<EngineStatus>, ApiError> {
-    let bad_request = |msg: &str| ApiError(StatusCode::BAD_REQUEST, msg.to_string());
-
-    let provider: Arc<dyn MemoryProvider> = match req.engine.as_str() {
-        "local" => {
-            let memory: Arc<dyn tinymemory_tinycortex::tinycortex::memory::Memory> =
-                Arc::new(tinymemory_tinycortex::InMemoryMemoryStore::new());
-            Arc::new(tinymemory_tinycortex::provider(memory))
-        }
-        "supermemory" => {
-            let endpoint = req
-                .endpoint
-                .as_deref()
-                .filter(|s| !s.is_empty())
-                .ok_or_else(|| bad_request("supermemory requires an endpoint URL"))?;
-            let memory = tinymemory_remote::SupermemoryMemory::new(
-                endpoint,
-                req.api_key.as_deref().filter(|s| !s.is_empty()),
-            )
-            .map_err(|e| bad_request(&e.to_string()))?;
-            Arc::new(tinymemory_remote::supermemory_provider(memory))
-        }
-        "mem0" => {
-            let endpoint = req
-                .endpoint
-                .as_deref()
-                .filter(|s| !s.is_empty())
-                .ok_or_else(|| bad_request("mem0 requires an endpoint URL"))?;
-            let api_key = req.api_key.as_deref().filter(|s| !s.is_empty());
-            let is_cloud = match req.deployment.as_deref() {
-                Some("cloud") => true,
-                Some("self_hosted") => false,
-                None => endpoint == tinymemory_remote::MEM0_API_ENDPOINT,
-                Some(other) => {
-                    return Err(bad_request(&format!("unknown Mem0 deployment: {other}")));
-                }
-            };
-            let memory = if is_cloud {
-                tinymemory_remote::Mem0Memory::api(
-                    endpoint,
-                    api_key.ok_or_else(|| bad_request("Mem0 Cloud requires an API key"))?,
-                )
-            } else {
-                tinymemory_remote::Mem0Memory::new(endpoint, api_key)
-            }
-            .map_err(|e| bad_request(&e.to_string()))?;
-            // Also advertises Graph via `Mem0Graph` — a client-side heuristic
-            // over the same stored entries, not Mem0's native Graph Memory
-            // (dropped from the self-hosted OSS package's 2.x line; see the
-            // module docs on `Mem0Graph`).
-            Arc::new(tinymemory_remote::mem0_graph_provider(memory))
-        }
-        "cognee" => {
-            let endpoint = req
-                .endpoint
-                .as_deref()
-                .filter(|s| !s.is_empty())
-                .ok_or_else(|| bad_request("cognee requires an endpoint URL"))?;
-            let api_key = req.api_key.as_deref().filter(|s| !s.is_empty());
-            let is_cloud = match req.deployment.as_deref() {
-                Some("cloud") => true,
-                Some("self_hosted") | None => false,
-                Some(other) => {
-                    return Err(bad_request(&format!("unknown Cognee deployment: {other}")));
-                }
-            };
-            let memory = if is_cloud {
-                tinymemory_remote::CogneeMemory::api(
-                    endpoint,
-                    api_key.ok_or_else(|| bad_request("Cognee Cloud requires an API key"))?,
-                )
-            } else {
-                tinymemory_remote::CogneeMemory::new(endpoint, api_key)
-            }
-            .map_err(|e| bad_request(&e.to_string()))?;
-            // Cognee is graph-native, so its provider also advertises Graph
-            // (relations only — see `CogneeGraph`'s docs for the exact split
-            // between what's a real endpoint and what isn't).
-            let provider = if is_cloud {
-                tinymemory_remote::cognee_api_graph_provider(
-                    memory,
-                    endpoint,
-                    api_key.unwrap_or_default(),
-                )
-            } else {
-                tinymemory_remote::cognee_graph_provider(memory, endpoint, api_key)
-            }
-            .map_err(|e| bad_request(&e.to_string()))?;
-            Arc::new(provider)
-        }
-        other => {
-            return Err(bad_request(&format!("unknown engine: {other}")));
-        }
-    };
-
-    let status = EngineStatus {
-        connected: true,
-        driver_id: Some(provider.driver_id().to_string()),
-        engine: Some(req.engine),
-        has_graph: provider.as_graph().is_some(),
-    };
+    let provider = build_engine(&req)?;
+    let status = EngineStatus::of(&provider);
     *state.active.write().await = Some(provider);
     Ok(Json(status))
 }
 
+#[derive(Deserialize)]
+struct MigrateRequest {
+    to: ConnectRequest,
+}
+
+/// Copies every record from the active engine into the one named by `to`, then
+/// makes `to` the active engine. The source is left untouched; if anything
+/// fails, the active engine does not change.
+async fn migrate_to(
+    State(state): State<SharedState>,
+    Json(req): Json<MigrateRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let source = current(&state).await?;
+    let target = build_engine(&req.to)?;
+    let report = migrate::copy(source.as_ref(), target.as_ref(), |_| {})
+        .await
+        .map_err(
+            |error| match error.downcast::<tinymemory_api::error::MemoryError>() {
+                Ok(memory) => ApiError::from(memory),
+                Err(other) => ApiError(StatusCode::BAD_GATEWAY, other.to_string()),
+            },
+        )?;
+    // A partial copy must not silently become the active engine: the source
+    // still holds everything, so stay on it and say what failed.
+    if report.failed > 0 {
+        return Err(ApiError(
+            StatusCode::BAD_GATEWAY,
+            format!(
+                "migration copied {} of {} records and {} failed ({}); the active engine was not changed",
+                report.imported,
+                report.records,
+                report.failed,
+                report.errors.join("; ")
+            ),
+        ));
+    }
+    let status = EngineStatus::of(&target);
+    *state.active.write().await = Some(target);
+    Ok(Json(serde_json::json!({
+        "status": status,
+        "report": {
+            "pages": report.pages,
+            "records": report.records,
+            "imported": report.imported,
+            "skipped": report.skipped,
+            "failed": report.failed,
+            "errors": report.errors,
+        },
+    })))
+}
+
 async fn disconnect(State(state): State<SharedState>) -> Json<EngineStatus> {
     *state.active.write().await = None;
-    Json(EngineStatus {
-        connected: false,
-        driver_id: None,
-        engine: None,
-        has_graph: false,
-    })
+    Json(EngineStatus::disconnected())
 }
 
 async fn status(State(state): State<SharedState>) -> Json<EngineStatus> {
     let guard = state.active.read().await;
-    Json(EngineStatus {
-        connected: guard.is_some(),
-        driver_id: guard.as_ref().map(|p| p.driver_id().to_string()),
-        engine: None,
-        has_graph: guard.as_ref().is_some_and(|p| p.as_graph().is_some()),
-    })
+    Json(
+        guard
+            .as_ref()
+            .map_or_else(EngineStatus::disconnected, EngineStatus::of),
+    )
+}
+
+#[derive(Deserialize)]
+struct AnswerBody {
+    query: String,
+    #[serde(default = "default_answer_limit")]
+    limit: usize,
+    #[serde(default)]
+    namespace: Option<String>,
+    #[serde(default)]
+    instructions: Option<String>,
+}
+
+fn default_answer_limit() -> usize {
+    12
+}
+
+/// Grounded answer, when the connected engine advertises `Capability::Answer`.
+async fn answer(
+    State(state): State<SharedState>,
+    Json(body): Json<AnswerBody>,
+) -> Result<Response, ApiError> {
+    let provider = current(&state).await?;
+    let answerer = provider.as_answer().ok_or_else(|| {
+        ApiError(
+            StatusCode::NOT_IMPLEMENTED,
+            "the connected engine does not advertise answers".to_string(),
+        )
+    })?;
+    let mut request = AnswerRequest::new(body.query);
+    request.limit = body.limit;
+    request.recall.namespace = body.namespace.filter(|s| !s.is_empty());
+    request.instructions = body.instructions.filter(|s| !s.is_empty());
+    let response = answerer.answer(request).await?;
+    Ok(Json(response).into_response())
 }
 
 #[derive(Deserialize)]
@@ -688,6 +737,9 @@ fn app(state: SharedState, web_dir: impl Into<String>) -> Router {
         .route("/connect", post(connect))
         .route("/disconnect", post(disconnect))
         .route("/status", get(status))
+        .route("/engines", get(engines))
+        .route("/migrate", post(migrate_to))
+        .route("/answer", post(answer))
         .route("/store", post(store))
         .route("/get", get(get_entry))
         .route("/forget", post(forget))

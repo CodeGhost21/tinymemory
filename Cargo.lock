@@ -1788,7 +1788,7 @@ dependencies = [
 
 [[package]]
 name = "tinymemory"
-version = "1.16.2"
+version = "1.17.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1966,6 +1966,7 @@ dependencies = [
  "http-body-util",
  "serde",
  "serde_json",
+ "tinymemory",
  "tinymemory-api",
  "tinymemory-documents",
  "tinymemory-remote",
