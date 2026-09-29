@@ -16,6 +16,8 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::{json, Value};
 use tinymemory_api::error::MemoryError;
+use tinymemory_api::evidence::EvidenceRef;
+use tinymemory_api::learning::{CueFamily, FacetClass, LearningCandidate};
 use tinymemory_api::health::MemoryHealth;
 use tinymemory_api::provider::types::IngestItem;
 use tinymemory_api::provider::{
