@@ -6,9 +6,11 @@
 //! Split out of `families.rs`; see [`super::types`] for the shared decorator
 //! scaffolding these `impl` blocks build on.
 
+use async_trait::async_trait;
 use tinymemory_api::capabilities::Capability;
 use tinymemory_api::chunks::Chunk;
 use tinymemory_api::error::MemoryError;
+use tinymemory_api::learning::LearningCandidate;
 use tinymemory_api::provider::chunks::{
     ChunkDetail, ChunkEmbedding, ChunkListRow, ChunkQuery, ChunkScore, SourceIngestQuery,
     SourceIngestStatus, SourceTotal,
@@ -20,15 +22,13 @@ use tinymemory_api::provider::operations::{
 use tinymemory_api::provider::types::SourceScope;
 use tinymemory_api::provider::types::{IngestItem, IngestOutcome};
 use tinymemory_api::provider::MemoryChunks;
-use async_trait::async_trait;
-use tinymemory_api::learning::LearningCandidate;
 
-use crate::audit::{trace_allowed, NO_NAMESPACE};
-use crate::policy::GuardPolicy;
 use super::types::{
     GuardedAnswer, GuardedChunks, GuardedConversationIngest, GuardedDocumentIngest,
     GuardedEventIngest, GuardedLearningIngest,
 };
+use crate::audit::{trace_allowed, NO_NAMESPACE};
+use crate::policy::GuardPolicy;
 
 /// Steps 3 + 4 over one ingest item, shared by the typed-ingest decorators:
 /// stamp provenance, redact on egress — the same admission

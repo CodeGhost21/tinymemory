@@ -1,13 +1,13 @@
 //! The three mandatory families on [`GuardedProvider`] — where steps 3, 4 and 6
 //! land for the always-present surface.
 
+use async_trait::async_trait;
 use tinymemory_api::capabilities::Capability;
 use tinymemory_api::error::MemoryError;
 use tinymemory_api::provider::types::{ExportPage, ExportRecord, ImportOutcome, SourceScope};
 use tinymemory_api::provider::{MemoryCore, MemoryPortability, MemoryRecall};
 use tinymemory_api::recall::OwnedRecallOpts;
 use tinymemory_api::types::{MemoryCategory, MemoryEntry, MemoryTaint, NamespaceSummary};
-use async_trait::async_trait;
 
 use crate::audit::{trace_allowed, trace_budget, NO_NAMESPACE};
 use crate::budget::{truncate_content, truncate_entries};

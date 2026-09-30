@@ -173,6 +173,23 @@ fn entry(content: &str) -> MemoryEntry {
     }
 }
 
+fn document(content: &str, taint: MemoryTaint) -> NamespaceDocumentInput {
+    NamespaceDocumentInput {
+        namespace: "ns".into(),
+        key: "k".into(),
+        title: "t".into(),
+        content: content.into(),
+        source_type: "chat".into(),
+        priority: "normal".into(),
+        tags: vec![],
+        metadata: serde_json::Value::Null,
+        category: "core".into(),
+        session_id: None,
+        document_id: None,
+        taint,
+    }
+}
+
 async fn store(guard: &GuardedProvider<TestPolicy>, content: &str, taint: MemoryTaint) {
     guard
         .store("ns", "k", content, MemoryCategory::Core, None, taint)
@@ -549,20 +566,7 @@ async fn family_writes_are_taint_stamped_too() {
     guard
         .as_documents()
         .unwrap()
-        .put_document(NamespaceDocumentInput {
-            namespace: "ns".into(),
-            key: "k".into(),
-            title: "t".into(),
-            content: "body".into(),
-            source_type: "chat".into(),
-            priority: "normal".into(),
-            tags: vec![],
-            metadata: serde_json::Value::Null,
-            category: "core".into(),
-            session_id: None,
-            document_id: None,
-            taint: MemoryTaint::Internal,
-        })
+        .put_document(document("body", MemoryTaint::Internal))
         .await
         .expect("put_document");
     assert_eq!(driver.only_call().taint, Some(MemoryTaint::ExternalSync));
@@ -572,13 +576,22 @@ async fn family_writes_are_taint_stamped_too() {
 async fn family_writes_are_redacted_by_the_policy() {
     let (driver, _policy, guard) = guarded(TestPolicy::new().redacting());
     guard
-        .as_ingest()
+        .as_documents()
         .unwrap()
-        .ingest_document(tinymemory_api::provider::types::IngestItem {
-            content: "a SECRET".into(),
-            ..Default::default()
-        })
+        .put_document(document("a SECRET", MemoryTaint::Internal))
         .await
-        .expect("ingest_document");
-    assert_eq!(driver.call_count(), 1);
+        .expect("put_document");
+    assert_eq!(driver.only_call().content.as_deref(), Some("a [REDACTED]"));
+}
+
+#[tokio::test]
+async fn family_writes_pass_through_a_policy_that_does_not_redact() {
+    let (driver, _policy, guard) = guarded(TestPolicy::new());
+    guard
+        .as_documents()
+        .unwrap()
+        .put_document(document("a SECRET", MemoryTaint::Internal))
+        .await
+        .expect("put_document");
+    assert_eq!(driver.only_call().content.as_deref(), Some("a SECRET"));
 }

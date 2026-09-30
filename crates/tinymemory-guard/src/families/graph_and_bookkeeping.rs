@@ -5,6 +5,7 @@
 //! Split out of `families.rs`; see [`super::types`] for the shared decorator
 //! scaffolding these `impl` blocks build on.
 
+use async_trait::async_trait;
 use tinymemory_api::capabilities::Capability;
 use tinymemory_api::error::MemoryError;
 use tinymemory_api::goals::GoalsDoc;
@@ -24,14 +25,13 @@ use tinymemory_api::provider::{
 };
 use tinymemory_api::tool_memory::ToolMemoryRule;
 use tinymemory_api::types::{GraphRelationRecord, MemoryKvRecord, MemoryTaint};
-use async_trait::async_trait;
 
-use crate::policy::GuardPolicy;
-use crate::audit::{trace_allowed, NO_NAMESPACE};
 use super::types::{
     GuardedDiff, GuardedEntities, GuardedGoals, GuardedGraph, GuardedMaintenance, GuardedPeople,
     GuardedSources, GuardedToolMemory,
 };
+use crate::audit::{trace_allowed, NO_NAMESPACE};
+use crate::policy::GuardPolicy;
 
 // ── Entities ─────────────────────────────────────────────────────────────────
 

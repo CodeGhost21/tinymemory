@@ -4,6 +4,7 @@
 //! Split out of `families.rs`; see [`super::types`] for the shared decorator
 //! scaffolding these `impl` blocks build on.
 
+use async_trait::async_trait;
 use tinymemory_api::capabilities::Capability;
 use tinymemory_api::error::MemoryError;
 use tinymemory_api::provider::episodic::{ConversationSegment, EpisodicTurn};
@@ -25,14 +26,13 @@ use tinymemory_api::provider::{
     MemoryScoring, MemorySourceSync,
 };
 use tinymemory_api::types::NamespaceMemoryHit;
-use async_trait::async_trait;
 
-use crate::policy::GuardPolicy;
-use crate::audit::NO_NAMESPACE;
 use super::types::{
     GuardedCodingSessions, GuardedEpisodic, GuardedProfile, GuardedRetrieval, GuardedScoring,
     GuardedSourceSync,
 };
+use crate::audit::NO_NAMESPACE;
+use crate::policy::GuardPolicy;
 
 // ── Chunks ───────────────────────────────────────────────────────────────────
 

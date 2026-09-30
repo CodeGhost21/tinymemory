@@ -6,11 +6,10 @@
 
 use std::borrow::Cow;
 
+use async_trait::async_trait;
 use tinymemory_api::capabilities::Capability;
 use tinymemory_api::error::MemoryError;
-use tinymemory_api::provider::content::{
-    RootSummary, SummaryContext, SummaryInput, SummaryOutput,
-};
+use tinymemory_api::provider::content::{RootSummary, SummaryContext, SummaryInput, SummaryOutput};
 use tinymemory_api::provider::types::{IngestItem, IngestOutcome, SourceScope};
 use tinymemory_api::provider::{MemoryDocuments, MemoryIngest, MemoryTree};
 use tinymemory_api::tree::{
@@ -18,11 +17,10 @@ use tinymemory_api::tree::{
 };
 use tinymemory_api::types::NamespaceRetrievalContext;
 use tinymemory_api::types::{NamespaceDocumentInput, StoredMemoryDocument};
-use async_trait::async_trait;
 
-use crate::policy::GuardPolicy;
-use crate::audit::{trace_allowed, NO_NAMESPACE};
 use super::types::{GuardedDocuments, GuardedIngest, GuardedTree};
+use crate::audit::{trace_allowed, NO_NAMESPACE};
+use crate::policy::GuardPolicy;
 
 // ── Ingest ───────────────────────────────────────────────────────────────────
 

@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use tinymemory_api::capabilities::{Capabilities, Capability};
 use tinymemory_api::error::MemoryError;
 use tinymemory_api::health::MemoryHealth;
@@ -16,7 +17,6 @@ use tinymemory_api::provider::{
     MemoryProfile, MemoryProvider, MemoryRetrieval, MemorySourceSink, MemorySourceSync,
     MemoryToolMemory, MemoryTree,
 };
-use async_trait::async_trait;
 
 use crate::families::{
     GuardedAnswer, GuardedChunks, GuardedCodingSessions, GuardedConversationIngest, GuardedDiff,
@@ -255,4 +255,3 @@ impl<P: GuardPolicy> MemoryProvider for GuardedProvider<P> {
         self.scoring.as_ref().map(|g| g as &dyn MemoryScoring)
     }
 }
-
