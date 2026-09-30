@@ -5,6 +5,9 @@
 
 - [CortexDB via the TinyHumans backend](tinyhumans-hosted-cortex.md) — the
   hosted `/memory/*` dialect, its bearer source, and the engine factory.
+- [Optional families on the TinyHumans hosted wire](tinyhumans-hosted-families.md)
+  — goals, tool rules, documents, the source sink and maintenance over
+  `/memory/*`.
 - [Granular ingestion and retrieval API](ingestion-retrieval-api.md)
 - [LivingBrain remote Brain API](livingbrain-remote-api.md)
 
