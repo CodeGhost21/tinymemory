@@ -137,6 +137,20 @@ or `Static` for a token a user pasted).
 and feeds each page to `import_records`. It never deletes from the source and
 reports `pages`, `records`, `imported`, `skipped`, `failed`.
 
+Over the hosted wire both halves are shaped for a billed, rate-limited API:
+
+- `export_page` lists the adapter's scopes once per page and folds only that
+  page's namespace, where the mandatory export folds the whole account on every
+  page (quadratic with a namespace per document). A namespace whose every key
+  was forgotten is stepped over rather than returned as an empty page.
+- `import_records` appends each record without waiting, then waits once per
+  scope for its last event to be listed; it sends no recall probes. A record
+  the backend refuses (a 400-class answer, or a namespace deeper than a hosted
+  scope holds) is counted in `failed` with a reason naming the record id and
+  the backend's code, never the content. A backend that stays unavailable
+  through pauses of 5s, 15s and 40s at one record, or refuses the credential or
+  the credit balance, fails the batch.
+
 ## Invariants and constraints
 
 - Direct-mode behavior is unchanged.

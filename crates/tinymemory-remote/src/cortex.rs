@@ -429,6 +429,17 @@ enum Recovery<'a> {
     NewestFor(&'a str),
 }
 
+/// An event a write appended, and what a later wait needs to find it.
+#[derive(Clone, Debug)]
+pub(crate) struct AppendedEvent {
+    /// The scope it was written to.
+    pub(crate) scope: String,
+    /// The engine's id for it.
+    pub(crate) id: String,
+    /// The text it carries.
+    pub(crate) text: String,
+}
+
 impl CortexDialect {
     /// Maps a TinyMemory namespace onto a CortexDB scope path, reversibly.
     ///
@@ -620,35 +631,8 @@ impl CortexDialect {
         event_id: &str,
         text: &str,
     ) -> anyhow::Result<()> {
-        let deadline = std::time::Instant::now() + self.visibility_timeout;
-
         // Phase one: the keyed read path, which folds the scope listing.
-        let mut delay = VISIBILITY_POLL;
-        loop {
-            // Newest first, so one page is enough to see a write just made.
-            let path = format!(
-                "{base}?scope={scope}&limit={PAGE_SIZE}",
-                base = self.wire.path(Route::Events),
-                scope = urlencoding(scope)
-            );
-            let listing: anyhow::Result<Value> = self
-                .client
-                .json(Method::GET, &path, None, Attempts::RetryTransient)
-                .await;
-            match listing {
-                Ok(page) if Self::carries(page.get("items"), event_id) => break,
-                Ok(_) => {}
-                // Hosted: a 429 (or 5xx) while waiting means "not yet", not
-                // "the write failed" — it was accepted and is durable. Keep
-                // waiting until the deadline.
-                Err(error) if self.wire == CortexWire::TinyHumans && Self::is_transient(&error) => {
-                }
-                Err(error) => return Err(error),
-            }
-            self.still_waiting(deadline, event_id, scope)?;
-            tokio::time::sleep(delay).await;
-            delay = self.next_poll_delay(delay);
-        }
+        self.await_listed(scope, event_id).await?;
 
         // Phase two: ranked recall, a separate index that settles later.
         //
@@ -687,6 +671,44 @@ impl CortexDialect {
             delay = self.next_poll_delay(delay);
         }
         Ok(())
+    }
+
+    /// Phase one of [`Self::await_readable`] on its own: blocks until the
+    /// scope listing — the keyed read path — carries `event_id`, and fails once
+    /// the visibility budget has passed.
+    ///
+    /// A bulk writer uses this alone, once per scope for the last event it
+    /// wrote: the log is ordered, so that event becoming listable implies the
+    /// earlier ones are, and a ranked-recall probe per record would be a
+    /// billed request that proves nothing a keyed read needs.
+    pub(crate) async fn await_listed(&self, scope: &str, event_id: &str) -> anyhow::Result<()> {
+        let deadline = std::time::Instant::now() + self.visibility_timeout;
+        let mut delay = VISIBILITY_POLL;
+        loop {
+            // Newest first, so one page is enough to see a write just made.
+            let path = format!(
+                "{base}?scope={scope}&limit={PAGE_SIZE}",
+                base = self.wire.path(Route::Events),
+                scope = urlencoding(scope)
+            );
+            let listing: anyhow::Result<Value> = self
+                .client
+                .json(Method::GET, &path, None, Attempts::RetryTransient)
+                .await;
+            match listing {
+                Ok(page) if Self::carries(page.get("items"), event_id) => return Ok(()),
+                Ok(_) => {}
+                // Hosted: a 429 (or 5xx) while waiting means "not yet", not
+                // "the write failed" — it was accepted and is durable. Keep
+                // waiting until the deadline.
+                Err(error) if self.wire == CortexWire::TinyHumans && Self::is_transient(&error) => {
+                }
+                Err(error) => return Err(error),
+            }
+            self.still_waiting(deadline, event_id, scope)?;
+            tokio::time::sleep(delay).await;
+            delay = self.next_poll_delay(delay);
+        }
     }
 
     /// The next visibility-poll gap. Direct mode polls at a fixed gap; hosted
@@ -1022,6 +1044,51 @@ impl CortexDialect {
         }
     }
 
+    /// Appends one keyed record — a new version of its key — without waiting
+    /// for it to become readable.
+    ///
+    /// Every store is a fresh event with its own idempotency key; see
+    /// `upsert` for why. Returns what a wait needs, or `None` when the
+    /// receipt named no event.
+    pub(crate) async fn append_entry(
+        &self,
+        entry: &StoredEntry,
+    ) -> anyhow::Result<Option<AppendedEvent>> {
+        let scope = self.scope_for(&entry.namespace)?;
+        let text = serde_json::to_string(&Envelope {
+            k: entry.key.clone(),
+            c: entry.content.clone(),
+            cat: Some(entry.category.to_string()),
+            s: entry.session_id.clone(),
+            t: Some(
+                match entry.taint {
+                    MemoryTaint::ExternalSync => "external_sync",
+                    _ => "internal",
+                }
+                .to_string(),
+            ),
+            d: false,
+            x: None,
+        })?;
+        let request = json!({
+            "scope": scope,
+            "modality": "observation",
+            // Fresh per write. See `upsert`.
+            "idempotency_key": fresh_idempotency_key(),
+            "content": { "kind": "message", "role": "user", "text": text },
+            "context": {},
+        });
+        let accepted = self.append_keyed(&request, &entry.key).await?;
+        Ok(accepted
+            .get("event_id")
+            .and_then(Value::as_str)
+            .map(|id| AppendedEvent {
+                scope,
+                id: id.to_string(),
+                text,
+            }))
+    }
+
     /// Removes named events from a scope.
     ///
     /// Hosted mode retries a transient fault: forgetting named events is
@@ -1157,7 +1224,7 @@ impl CortexDialect {
     /// indistinguishable from a truncated one, and the same reasoning as
     /// [`MAX_PAGES`] applies: a silently short listing is worse than an error,
     /// because the caller cannot tell it happened.
-    async fn scopes(&self) -> anyhow::Result<Vec<String>> {
+    pub(crate) async fn scopes(&self) -> anyhow::Result<Vec<String>> {
         let listing: Value = self
             .client
             .json(
@@ -1283,34 +1350,10 @@ impl Dialect for CortexDialect {
     /// produces `409 IDEMPOTENCY_CONFLICT` on the second store. The previous
     /// version stays in the log and is folded out on read.
     async fn upsert(&self, entry: StoredEntry) -> anyhow::Result<()> {
-        let scope = self.scope_for(&entry.namespace)?;
-        let envelope = serde_json::to_string(&Envelope {
-            k: entry.key.clone(),
-            c: entry.content.clone(),
-            cat: Some(entry.category.to_string()),
-            s: entry.session_id.clone(),
-            t: Some(
-                match entry.taint {
-                    MemoryTaint::ExternalSync => "external_sync",
-                    _ => "internal",
-                }
-                .to_string(),
-            ),
-            d: false,
-            x: None,
-        })?;
-        let request = json!({
-            "scope": scope,
-            "modality": "observation",
-            // Fresh per write. See this method's own doc.
-            "idempotency_key": fresh_idempotency_key(),
-            "content": { "kind": "message", "role": "user", "text": envelope },
-            "context": {},
-        });
-        let accepted = self.append_keyed(&request, &entry.key).await?;
         // Accepted is not readable yet — see `await_readable`.
-        if let Some(id) = accepted.get("event_id").and_then(Value::as_str) {
-            self.await_readable(&scope, id, &envelope).await?;
+        if let Some(event) = self.append_entry(&entry).await? {
+            self.await_readable(&event.scope, &event.id, &event.text)
+                .await?;
         }
         Ok(())
     }

@@ -34,7 +34,10 @@ use super::types::ExperienceInput;
 /// CortexDB exposed as mandatory storage plus native ingestion and answers.
 pub struct CortexProvider {
     mandatory: MemoryTraitProvider,
-    dialect: CortexDialect,
+    pub(super) dialect: CortexDialect,
+    /// Pauses a hosted import takes at one record while the backend is
+    /// unavailable; see `portability.rs`.
+    pub(super) import_patience: Vec<std::time::Duration>,
 }
 
 impl std::fmt::Debug for CortexProvider {
@@ -55,7 +58,16 @@ impl CortexProvider {
         Self {
             mandatory: MemoryTraitProvider::new(Arc::new(memory), driver_id(dialect.wire)),
             dialect,
+            import_patience: super::portability::IMPORT_PATIENCE.to_vec(),
         }
+    }
+
+    /// Replaces the pauses a hosted import takes while the backend is
+    /// unavailable, so a test need not wait out a real rate-limit window.
+    #[cfg(test)]
+    pub(crate) fn with_import_patience(mut self, pauses: Vec<std::time::Duration>) -> Self {
+        self.import_patience = pauses;
+        self
     }
 
     async fn experience(&self, input: ExperienceInput<'_>) -> Result<(String, bool), MemoryError> {
@@ -290,14 +302,20 @@ impl MemoryPortability for CortexProvider {
         cursor: Option<&str>,
         limit: usize,
     ) -> Result<ExportPage, MemoryError> {
-        self.mandatory.export_page(cursor, limit).await
+        match self.dialect.wire {
+            CortexWire::Direct => self.mandatory.export_page(cursor, limit).await,
+            CortexWire::TinyHumans => self.hosted_export_page(cursor, limit).await,
+        }
     }
 
     async fn import_records(
         &self,
         records: Vec<ExportRecord>,
     ) -> Result<ImportOutcome, MemoryError> {
-        self.mandatory.import_records(records).await
+        match self.dialect.wire {
+            CortexWire::Direct => self.mandatory.import_records(records).await,
+            CortexWire::TinyHumans => self.hosted_import_records(records).await,
+        }
     }
 }
 

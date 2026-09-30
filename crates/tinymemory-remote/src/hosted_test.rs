@@ -20,12 +20,13 @@ use tinymemory_api::error::MemoryError;
 use tinymemory_api::evidence::EvidenceRef;
 use tinymemory_api::health::MemoryHealth;
 use tinymemory_api::learning::{CueFamily, FacetClass, LearningCandidate};
+use tinymemory_api::provider::types::ExportRecord;
 use tinymemory_api::provider::types::IngestItem;
 use tinymemory_api::provider::{
     AnswerRequest, MemoryConversationIngest, MemoryCore, MemoryDocumentIngest, MemoryEventIngest,
-    MemoryLearningIngest, MemoryProvider, RawMemoryEvent,
+    MemoryLearningIngest, MemoryPortability, MemoryProvider, RawMemoryEvent,
 };
-use tinymemory_api::types::{MemoryCategory, MemoryTaint};
+use tinymemory_api::types::{MemoryCategory, MemoryEntry, MemoryTaint};
 
 use crate::conformance_test::{
     cortex_events, cortex_experience, cortex_forget, cortex_recall, cortex_scopes, serve,
@@ -1032,6 +1033,195 @@ async fn recovery_waits_out_a_slow_listing_and_a_rate_limit() {
         .expect("recovered within the visibility budget");
     assert_eq!(outcome.ids.len() + usize::from(outcome.already_ingested), 1);
     assert_eq!(state.log.lock().expect("log").events.len(), 1);
+}
+
+/// An export record for a keyed entry, as another engine's export would
+/// produce it.
+fn record(namespace: &str, key: &str, content: &str) -> ExportRecord {
+    tinymemory_api::mandatory::to_record(MemoryEntry {
+        id: format!("rec-{key}"),
+        key: key.to_string(),
+        content: content.to_string(),
+        namespace: Some(namespace.to_string()),
+        category: MemoryCategory::Core,
+        timestamp: String::new(),
+        session_id: None,
+        score: None,
+        taint: MemoryTaint::Internal,
+    })
+}
+
+/// How many requests `seen` holds that start with `prefix`.
+fn count_requests(state: &Shared, prefix: &str) -> usize {
+    state
+        .seen
+        .lock()
+        .expect("seen")
+        .requests
+        .iter()
+        .filter(|r| r.starts_with(prefix))
+        .count()
+}
+
+#[tokio::test]
+async fn a_hosted_export_lists_each_namespace_once() {
+    // The mandatory export folds the whole account on every page. With a
+    // namespace per ingested document that is quadratic, and every listing
+    // is billed against a 300-a-minute limit.
+    let (endpoint, state) = hosted_backend().await;
+    let p = provider(&endpoint);
+    for i in 0..6 {
+        p.store(
+            &format!("ns{i}"),
+            "k",
+            &format!("value {i}"),
+            MemoryCategory::Core,
+            None,
+            MemoryTaint::Internal,
+        )
+        .await
+        .expect("store");
+    }
+    // A namespace whose only key was forgotten folds to nothing and must be
+    // stepped over, not handed back as an empty page with a cursor.
+    assert!(p.forget("ns3", "k").await.expect("forget"));
+    state.seen.lock().expect("seen").requests.clear();
+
+    let mut cursor: Option<String> = None;
+    let mut exported = Vec::new();
+    loop {
+        let page = p
+            .export_page(cursor.as_deref(), 500)
+            .await
+            .expect("export page");
+        assert!(
+            !page.records.is_empty() || page.next_cursor.is_none(),
+            "an empty page must end the export"
+        );
+        exported.extend(page.records);
+        match page.next_cursor {
+            Some(next) => cursor = Some(next),
+            None => break,
+        }
+    }
+    let mut namespaces: Vec<String> = exported
+        .iter()
+        .filter_map(|r| r.namespace.clone())
+        .collect();
+    namespaces.sort();
+    assert_eq!(namespaces, ["ns0", "ns1", "ns2", "ns4", "ns5"]);
+    assert_eq!(
+        count_requests(&state, "GET /memory/events"),
+        6,
+        "one listing per namespace, including the empty one: {:?}",
+        state.seen.lock().expect("seen").requests
+    );
+}
+
+#[tokio::test]
+async fn a_hosted_import_waits_once_per_scope_and_never_probes_recall() {
+    let (endpoint, state) = hosted_backend().await;
+    let p = provider(&endpoint);
+    let records = (0..5)
+        .map(|i| record("imported", &format!("k{i}"), &format!("value {i}")))
+        .collect();
+    let outcome = p.import_records(records).await.expect("import");
+    assert_eq!((outcome.imported, outcome.failed), (5, 0), "{outcome:?}");
+    assert_eq!(count_requests(&state, "POST /memory/experience"), 5);
+    assert_eq!(
+        count_requests(&state, "POST /memory/recall"),
+        0,
+        "a keyed read does not need the recall index, and each probe is billed"
+    );
+    assert_eq!(
+        count_requests(&state, "GET /memory/events"),
+        1,
+        "one visibility wait for the scope's last record"
+    );
+    for i in 0..5 {
+        let back = p
+            .get("imported", &format!("k{i}"))
+            .await
+            .expect("get")
+            .expect("imported record is readable");
+        assert_eq!(back.content, format!("value {i}"));
+    }
+}
+
+#[tokio::test]
+async fn a_hosted_import_rides_out_a_rate_limit_window() {
+    let (endpoint, state) = hosted_backend().await;
+    let p = provider(&endpoint).with_import_patience(vec![std::time::Duration::from_millis(20)]);
+    // Each round is three quick attempts, so seven refusals outlast two
+    // rounds (one pause) and are ridden out by a third (two pauses).
+    state.rate_limit_experience.store(7, Ordering::SeqCst);
+    let records = (0..3)
+        .map(|i| record("patient", &format!("k{i}"), "v"))
+        .collect();
+    let error = p
+        .import_records(records)
+        .await
+        .expect_err("one pause is not enough for seven refusals");
+    assert!(matches!(error, MemoryError::Unavailable(_)), "{error:?}");
+
+    state.rate_limit_experience.store(7, Ordering::SeqCst);
+    let p = p.with_import_patience(vec![std::time::Duration::from_millis(20); 2]);
+    let records = (0..3)
+        .map(|i| record("patient", &format!("k{i}"), "v"))
+        .collect();
+    let outcome = p
+        .import_records(records)
+        .await
+        .expect("two pauses ride it out");
+    assert_eq!((outcome.imported, outcome.failed), (3, 0), "{outcome:?}");
+}
+
+#[tokio::test]
+async fn a_record_the_backend_refuses_is_counted_not_fatal() {
+    let (endpoint, state) = hosted_backend().await;
+    let p = provider(&endpoint);
+    state.fail_nth_experience.store(2, Ordering::SeqCst);
+    let records = vec![
+        record("mixed", "a", "first"),
+        record("mixed", "b", "a secret the log must not see"),
+        record("mixed", "c", "third"),
+    ];
+    let outcome = p.import_records(records).await.expect("import");
+    assert_eq!((outcome.imported, outcome.failed), (2, 1), "{outcome:?}");
+    let reason = outcome.errors.first().expect("a reason for the failure");
+    assert!(reason.contains("rec-b"), "names the record: {reason}");
+    assert!(
+        reason.contains("VALIDATION_ERROR"),
+        "names the code: {reason}"
+    );
+    assert!(!reason.contains("secret"), "never the content: {reason}");
+}
+
+#[tokio::test]
+async fn a_namespace_no_hosted_scope_can_hold_is_refused_per_record() {
+    let (endpoint, state) = hosted_backend().await;
+    let p = provider(&endpoint);
+    let deep = (0..32)
+        .map(|i| format!("s{i}"))
+        .collect::<Vec<_>>()
+        .join("/");
+    let outcome = p
+        .import_records(vec![record(&deep, "k", "v"), record("shallow", "k", "v")])
+        .await
+        .expect("import");
+    assert_eq!((outcome.imported, outcome.failed), (1, 1), "{outcome:?}");
+    assert_eq!(count_requests(&state, "POST /memory/experience"), 1);
+}
+
+#[tokio::test]
+async fn an_account_out_of_credit_fails_the_import_batch() {
+    let (endpoint, state) = hosted_backend().await;
+    *state.fail_all.lock().expect("fail") = Some((402, "USER_INSUFFICIENT_CREDITS"));
+    let error = provider(&endpoint)
+        .import_records(vec![record("ns", "k", "v")])
+        .await
+        .expect_err("no record can be written");
+    assert!(is_insufficient_credits(&error), "{error:?}");
 }
 
 #[tokio::test]
