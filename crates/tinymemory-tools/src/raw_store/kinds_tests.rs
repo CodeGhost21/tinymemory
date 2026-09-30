@@ -1,6 +1,6 @@
 use super::*;
 use crate::test_host::NoHost;
-use serde_json::{json, Value};
+use serde_json::json;
 use tinytools::Tool;
 
 #[test]

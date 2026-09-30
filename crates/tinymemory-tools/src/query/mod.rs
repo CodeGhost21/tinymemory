@@ -202,3 +202,7 @@ impl<H: MemoryToolHost> Tool for MemoryTreeTool<H> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "mod_tests.rs"]
+mod tests;

@@ -156,3 +156,7 @@ impl<H: MemoryToolHost> Tool for MemoryToolsPutTool<H> {
         Ok(ToolResult::success(json))
     }
 }
+
+#[cfg(test)]
+#[path = "put_tests.rs"]
+mod tests;

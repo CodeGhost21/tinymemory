@@ -74,3 +74,7 @@ pub async fn run_fast_walk<H: MemoryToolHost>(
     let json = serde_json::to_string(&resp)?;
     Ok(ToolResult::success(json))
 }
+
+#[cfg(test)]
+#[path = "fast_walk_tests.rs"]
+mod tests;

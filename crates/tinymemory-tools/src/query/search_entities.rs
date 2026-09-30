@@ -109,3 +109,7 @@ impl<H: MemoryToolHost> Tool for MemoryTreeSearchEntitiesTool<H> {
         Ok(ToolResult::success(json))
     }
 }
+
+#[cfg(test)]
+#[path = "search_entities_tests.rs"]
+mod tests;

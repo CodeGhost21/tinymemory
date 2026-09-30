@@ -134,3 +134,7 @@ impl<H: MemoryToolHost> Tool for MemoryTreeCoverWindowTool<H> {
         Ok(ToolResult::success(json))
     }
 }
+
+#[cfg(test)]
+#[path = "cover_window_tests.rs"]
+mod tests;

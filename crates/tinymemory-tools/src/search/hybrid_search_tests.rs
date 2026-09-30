@@ -56,3 +56,21 @@ fn args_default_to_the_balanced_mode_and_ten_results() {
     assert_eq!(args.limit, 10);
     assert!(!args.include_breakdown);
 }
+
+#[tokio::test]
+async fn rejects_unknown_mode_before_opening_external_search_resources() {
+    let error = MemoryHybridSearchTool::new(crate::test_host::NoHost)
+        .execute(serde_json::json!({
+            "query": "release checklist",
+            "namespace": "global",
+            "mode": "mystery"
+        }))
+        .await
+        .expect_err("an unknown mode must fail validation");
+
+    let message = error.to_string();
+    assert!(message.contains("unknown mode 'mystery'"), "{message}");
+    // Validation runs before config, provider, and store setup. Reaching any
+    // external search path would replace this precise validation error.
+    assert!(!message.contains("load config failed"), "{message}");
+}

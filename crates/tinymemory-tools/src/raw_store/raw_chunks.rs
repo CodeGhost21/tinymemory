@@ -159,3 +159,7 @@ impl<H: MemoryToolHost> Tool for MemoryStoreRawChunksTool<H> {
         Ok(ToolResult::success(json))
     }
 }
+
+#[cfg(test)]
+#[path = "raw_chunks_tests.rs"]
+mod tests;

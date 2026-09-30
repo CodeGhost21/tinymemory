@@ -89,3 +89,7 @@ impl<H: MemoryToolHost> Tool for MemoryToolsListTool<H> {
         Ok(ToolResult::success(json))
     }
 }
+
+#[cfg(test)]
+#[path = "list_tests.rs"]
+mod tests;

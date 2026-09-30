@@ -88,3 +88,7 @@ impl<H: MemoryToolHost> Tool for MemoryTreeDrillDownTool<H> {
         Ok(ToolResult::success(json))
     }
 }
+
+#[cfg(test)]
+#[path = "drill_down_tests.rs"]
+mod tests;

@@ -113,3 +113,7 @@ impl<H: MemoryToolHost> Tool for MemoryTreeQuerySourceTool<H> {
         Ok(ToolResult::success(json))
     }
 }
+
+#[cfg(test)]
+#[path = "query_source_tests.rs"]
+mod tests;

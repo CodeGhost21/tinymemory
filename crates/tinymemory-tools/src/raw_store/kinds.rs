@@ -76,3 +76,7 @@ impl<H: MemoryToolHost> Tool for MemoryStoreKindsTool<H> {
         )?))
     }
 }
+
+#[cfg(test)]
+#[path = "kinds_tests.rs"]
+mod tests;

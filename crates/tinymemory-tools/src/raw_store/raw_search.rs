@@ -131,3 +131,7 @@ impl<H: MemoryToolHost> Tool for MemoryStoreRawSearchTool<H> {
         Ok(ToolResult::success(json))
     }
 }
+
+#[cfg(test)]
+#[path = "raw_search_tests.rs"]
+mod tests;

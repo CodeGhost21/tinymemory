@@ -78,3 +78,7 @@ impl<H: MemoryToolHost> Tool for MemoryTreeFetchLeavesTool<H> {
         Ok(ToolResult::success(json))
     }
 }
+
+#[cfg(test)]
+#[path = "fetch_leaves_tests.rs"]
+mod tests;

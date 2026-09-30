@@ -21,3 +21,7 @@ mod raw_search;
 pub use kinds::MemoryStoreKindsTool;
 pub use raw_chunks::MemoryStoreRawChunksTool;
 pub use raw_search::MemoryStoreRawSearchTool;
+
+#[cfg(test)]
+#[path = "mod_tests.rs"]
+mod tests;

@@ -9,3 +9,7 @@ mod put;
 
 pub use list::MemoryToolsListTool;
 pub use put::MemoryToolsPutTool;
+
+#[cfg(test)]
+#[path = "mod_tests.rs"]
+mod tests;

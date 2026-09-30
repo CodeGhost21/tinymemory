@@ -23,6 +23,9 @@ pub mod tool_memory;
 
 pub use host::{MemoryToolHost, QueryEmbedder};
 
+#[cfg(test)]
+mod test_host;
+
 /// What a tool says when the bound driver serves no tool-memory family. Shared
 /// by the `memory_tools_*` tools and the host's RPC handlers for the same
 /// calls.
