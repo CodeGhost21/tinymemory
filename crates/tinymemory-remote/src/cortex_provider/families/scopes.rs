@@ -9,21 +9,12 @@
 pub(super) const GOALS: &str = "tmi:goals";
 
 /// The parent of every document-details scope.
-pub(super) const DOCUMENT_DETAILS: &str = "tmi:documents";
+const DOCUMENT_DETAILS: &str = "tmi:documents";
 
 /// The scope holding the details of the documents in the namespace whose scope
 /// is `namespace_scope`. It is one segment deeper than that scope.
 pub(super) fn document_details(namespace_scope: &str) -> String {
     format!("{DOCUMENT_DETAILS}/{namespace_scope}")
-}
-
-/// The namespace scope a document-details scope belongs to, or `None` for a
-/// scope that is not one.
-pub(super) fn details_owner(details_scope: &str) -> Option<&str> {
-    details_scope
-        .strip_prefix(DOCUMENT_DETAILS)?
-        .strip_prefix('/')
-        .filter(|owner| !owner.is_empty())
 }
 
 #[cfg(test)]

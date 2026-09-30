@@ -96,10 +96,13 @@ async fn a_document_keeps_its_id_and_creation_time_across_rewrites() {
 }
 
 #[tokio::test]
-async fn a_plain_store_over_a_document_makes_it_an_ordinary_record() {
+async fn a_plain_store_over_a_document_reads_with_default_details() {
     let (provider, _state) = hosted().await;
     provider
-        .put_document(input("notes", "tea", "Tea", "document body"))
+        .put_document(NamespaceDocumentInput {
+            document_id: Some("chosen-id".to_string()),
+            ..input("notes", "tea", "Tea", "document body")
+        })
         .await
         .expect("put");
     provider
@@ -113,19 +116,84 @@ async fn a_plain_store_over_a_document_makes_it_an_ordinary_record() {
         )
         .await
         .expect("store");
-    assert!(provider
+    let stored = provider
         .get_document("notes", "tea")
         .await
         .expect("get")
-        .is_none());
+        .expect("still a document");
+    assert_eq!(stored.content, "plain body");
+    assert_eq!(stored.title, "tea", "the old details no longer apply");
+    assert_eq!(stored.source_type, "chat");
+    assert_ne!(stored.document_id, "chosen-id");
     let listed = provider.list_documents(Some("notes")).await.expect("list");
-    assert_eq!(listed["count"], json!(0));
-    let entry = provider
-        .get("notes", "tea")
+    assert_eq!(listed["count"], json!(1));
+}
+
+#[tokio::test]
+async fn a_record_store_wrote_is_a_document_as_in_the_embedded_engine() {
+    let (provider, _state) = hosted().await;
+    provider
+        .store(
+            "notes",
+            "note",
+            "a plain note",
+            MemoryCategory::Core,
+            None,
+            MemoryTaint::Internal,
+        )
+        .await
+        .expect("store");
+    let stored = provider
+        .get_document("notes", "note")
         .await
         .expect("get")
-        .expect("entry");
-    assert_eq!(entry.content, "plain body");
+        .expect("document");
+    assert_eq!(stored.title, "note");
+    assert_eq!(stored.source_type, "chat");
+    assert_eq!(stored.priority, "medium");
+    assert_eq!(stored.metadata, json!({}));
+    assert!(stored.updated_at > 0.0, "the engine's recorded time");
+    assert_eq!(
+        provider.list_namespaces().await.expect("namespaces"),
+        ["notes"]
+    );
+    let removed = provider
+        .delete_document("notes", &stored.document_id)
+        .await
+        .expect("delete");
+    assert_eq!(removed["deleted"], json!(true));
+    assert!(provider.get("notes", "note").await.expect("get").is_none());
+}
+
+#[tokio::test]
+async fn synced_items_are_not_documents() {
+    use tinymemory_api::provider::types::SourceItem;
+    use tinymemory_api::provider::MemorySourceSink;
+    let (provider, _state) = hosted().await;
+    provider
+        .accept_source_items(
+            "notion:ws",
+            "composio",
+            vec![SourceItem {
+                item_id: "1".to_string(),
+                title: String::new(),
+                content: "a synced page".to_string(),
+                mime: None,
+                url: None,
+                updated_at_ms: None,
+                tags: Vec::new(),
+            }],
+            MemoryTaint::ExternalSync,
+        )
+        .await
+        .expect("accept");
+    assert!(provider
+        .list_namespaces()
+        .await
+        .expect("namespaces")
+        .is_empty());
+    let listed = provider.list_documents(None).await.expect("list");
+    assert_eq!(listed["count"], json!(0));
 }
 
 #[tokio::test]

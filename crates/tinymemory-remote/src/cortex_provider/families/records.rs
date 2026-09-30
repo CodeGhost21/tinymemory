@@ -205,6 +205,8 @@ pub(super) struct Version {
     pub(super) order: u64,
     /// Whether this version is a tombstone.
     pub(super) deleted: bool,
+    /// When the engine recorded it, RFC 3339, or empty.
+    pub(super) recorded_at: String,
     /// The record it carries.
     pub(super) record: Record,
 }
@@ -222,6 +224,11 @@ impl Version {
                 .and_then(Value::as_u64)
                 .unwrap_or_default(),
             deleted: envelope.d,
+            recorded_at: event
+                .pointer("/context/recorded_at")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
             record: Record {
                 key: envelope.k,
                 content: envelope.c,

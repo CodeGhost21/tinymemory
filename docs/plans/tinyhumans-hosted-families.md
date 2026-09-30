@@ -6,7 +6,7 @@ spec is the source of truth for behavior; this plan is the order of work.
 ## Assumptions
 
 - The backend forwards `labels=` on `GET memory/events`, serves
-  `GET memory/events/{id}` and forwards `prefix` on `GET memory/scopes`
+  `GET memory/events/{id}`
   (backend `origin/main`, the same memory surface production runs).
 - The record format does not change (openhuman#6718, D3 open).
 - The Direct wire is out of scope: no request, record or capability of it
@@ -46,7 +46,7 @@ Each file's tests live beside it in `<file>_test.rs`, wired with
      - generalise `append_entry` to carry labels, provenance and inert
        directives through `append_keyed`;
      - give `forget_events` a note and batching;
-     - add `event_by_id` and a raw, prefix-filtered scope listing.
+     - add `event_by_id`.
 2. **Hosted double** (`hosted_test.rs`).
    - Test first: the double refuses a repeated `labels=`.
    - Then:

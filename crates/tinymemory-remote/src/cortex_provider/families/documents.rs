@@ -8,10 +8,15 @@
 //! - **Details**: title, source type, priority, tags, metadata and times, as an
 //!   inert bookkeeping record in `tmi:documents/<namespace scope>`.
 //!
-//! Details apply only while the content still carries their document id, so a
-//! later plain `store` of the key turns the document back into an ordinary
-//! record. Content that carries an id without details is still a document,
-//! with default details.
+//! As in the embedded engine, where `store` itself writes a document, every
+//! live keyed record in a namespace is a document. A record `store` wrote reads
+//! with the embedded engine's defaults (title = key, source type `chat`,
+//! priority `medium`) and an id derived from its namespace and key. Details
+//! apply only while the content still carries their document id, so a later
+//! plain `store` of the key reads with the defaults again.
+//!
+//! The source namespaces (`sources/…`) hold synced items, which the embedded
+//! engine keeps apart from its documents, and are never listed here.
 
 use std::collections::HashMap;
 
@@ -29,9 +34,9 @@ use tinymemory_api::types::{
 
 use super::records::{Place, Provenance, Record, Records, Version};
 use super::relevance::{estimate, freshness};
-use super::scopes::{details_owner, document_details, DOCUMENT_DETAILS};
+use super::scopes::document_details;
 use crate::common::Attempts;
-use crate::cortex::{CortexDialect, Route};
+use crate::cortex::Route;
 use crate::cortex_labels::digest;
 use crate::cortex_provider::CortexProvider;
 
@@ -53,18 +58,51 @@ struct Details {
 }
 
 impl Details {
-    /// The details a document has when its details record is missing.
-    fn fallback(key: &str, document_id: &str) -> Self {
+    /// The details a record has without a details record of its own: the
+    /// embedded engine's defaults for a `store`, at the time it was recorded.
+    fn fallback(key: &str, document_id: &str, recorded_at: f64) -> Self {
         Self {
             document_id: document_id.to_string(),
             title: key.to_string(),
-            source_type: "document".to_string(),
+            source_type: "chat".to_string(),
             priority: "medium".to_string(),
             tags: Vec::new(),
-            metadata: Value::Null,
-            created_at: 0.0,
-            updated_at: 0.0,
+            metadata: json!({}),
+            created_at: recorded_at,
+            updated_at: recorded_at,
         }
+    }
+}
+
+/// The namespace prefix synced items land under; not documents.
+const SOURCES_PREFIX: &str = "sources/";
+
+/// Seconds since the Unix epoch of an RFC 3339 time, or 0.
+fn seconds_of(at: &str) -> f64 {
+    chrono::DateTime::parse_from_rfc3339(at)
+        .map(|at| at.timestamp_millis() as f64 / 1000.0)
+        .unwrap_or_default()
+}
+
+/// The document a live content version is, given the details held for its
+/// namespace.
+fn as_document(namespace: &str, content: Version, details: &HashMap<String, Details>) -> Document {
+    let key = content.record.key.clone();
+    let id = content
+        .record
+        .provenance
+        .document
+        .clone()
+        .unwrap_or_else(|| derived_id(namespace, &key));
+    let details = details
+        .get(&key)
+        .filter(|details| details.document_id == id)
+        .cloned()
+        .unwrap_or_else(|| Details::fallback(&key, &id, seconds_of(&content.recorded_at)));
+    Document {
+        namespace: namespace.to_string(),
+        content,
+        details,
     }
 }
 
@@ -205,19 +243,7 @@ impl CortexProvider {
             .collect();
         let mut documents: Vec<Document> = content
             .into_iter()
-            .filter_map(|version| {
-                let id = version.record.provenance.document.clone()?;
-                let details = details
-                    .get(&version.record.key)
-                    .filter(|details| details.document_id == id)
-                    .cloned()
-                    .unwrap_or_else(|| Details::fallback(&version.record.key, &id));
-                Some(Document {
-                    namespace: namespace.to_string(),
-                    content: version,
-                    details,
-                })
-            })
+            .map(|version| as_document(namespace, version, &details))
             .collect();
         documents.sort_by(|a, b| {
             b.details
@@ -239,35 +265,27 @@ impl CortexProvider {
         else {
             return Ok(None);
         };
-        let Some(id) = content.record.provenance.document.clone() else {
-            // A plain record: the key holds no document.
-            return Ok(None);
-        };
-        let details = records
+        let details: HashMap<String, Details> = records
             .live(&places.details, key)
             .await
             .map_err(engine_error)?
             .and_then(|version| serde_json::from_str::<Details>(&version.record.content).ok())
-            .filter(|details| details.document_id == id)
-            .unwrap_or_else(|| Details::fallback(key, &id));
-        Ok(Some(Document {
-            namespace: namespace.to_string(),
-            content,
-            details,
-        }))
+            .map(|details| (key.to_string(), details))
+            .into_iter()
+            .collect();
+        Ok(Some(as_document(namespace, content, &details)))
     }
 
-    /// Every namespace whose details scope the account holds.
-    async fn namespaces_with_details(&self) -> Result<Vec<String>, MemoryError> {
-        let paths = self
+    /// Every namespace that may hold documents: every one the account holds
+    /// except the source namespaces.
+    async fn document_namespaces(&self) -> Result<Vec<String>, MemoryError> {
+        let mut namespaces: Vec<String> = self
             .dialect
-            .scope_paths(Some(DOCUMENT_DETAILS))
+            .scopes()
             .await
-            .map_err(engine_error)?;
-        let mut namespaces: Vec<String> = paths
-            .iter()
-            .filter_map(|path| details_owner(path))
-            .filter_map(CortexDialect::namespace_of)
+            .map_err(engine_error)?
+            .into_iter()
+            .filter(|namespace| !namespace.starts_with(SOURCES_PREFIX))
             .collect();
         namespaces.sort();
         namespaces.dedup();
@@ -348,7 +366,7 @@ impl MemoryDocuments for CortexProvider {
     async fn list_documents(&self, namespace: Option<&str>) -> Result<Value, MemoryError> {
         let namespaces = match namespace {
             Some(namespace) => vec![namespace.to_string()],
-            None => self.namespaces_with_details().await?,
+            None => self.document_namespaces().await?,
         };
         let mut documents = Vec::new();
         for namespace in &namespaces {
@@ -366,7 +384,7 @@ impl MemoryDocuments for CortexProvider {
 
     async fn list_namespaces(&self) -> Result<Vec<String>, MemoryError> {
         let mut out = Vec::new();
-        for namespace in self.namespaces_with_details().await? {
+        for namespace in self.document_namespaces().await? {
             if !self.documents_in(&namespace).await?.is_empty() {
                 out.push(namespace);
             }

@@ -45,7 +45,6 @@ Base is the backend origin (default `https://api.tinyhumans.ai`), no `/v1`.
 | scopes | `GET v1/scopes/list?limit=N` | `GET memory/scopes` |
 | list by label | — | `GET memory/events?scope=S&labels=L1,L2` (one parameter) |
 | event by id | — | `GET memory/events/{id}` |
-| scopes under a prefix | — | `GET memory/scopes?prefix=P` |
 | health | `GET v1/admin/health` | `GET memory/scopes?prefix=tmh:probe&limit=1` |
 
 Every body carries `scope`. Responses are `{"success":true,"data":<body>}`; the

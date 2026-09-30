@@ -24,8 +24,8 @@ marked "Not available", and memory E2E suites that can only run on the local
 module (openhuman#6718 acceptance criterion 10).
 
 The backend already exposes what these families need beyond the mandatory
-routes: a `labels=` filter on `GET memory/events`, `GET memory/events/{id}`, and
-a `prefix` on `GET memory/scopes`. The adapter uses none of them today.
+routes: a `labels=` filter on `GET memory/events`, and `GET memory/events/{id}`.
+The adapter uses neither today.
 
 ## Goals and non-goals
 
@@ -142,22 +142,29 @@ held under another tool.
 
 ### Documents
 
+- **Every record is a document.** In the embedded engine, `store` writes a
+  document, so here every live keyed record in a namespace is one. A record
+  without details of its own reads with the embedded engine's defaults
+  (title = key, source type `chat`, priority `medium`, empty metadata, times
+  from the engine's `recorded_at`) and an id derived from namespace and key.
 - **Content.** A document's content is the namespace's own keyed record under
-  the document's key, carrying its id in `x.doc`, so `get(namespace, key)`
+  the document's key, carrying its id in `x.prov.doc`, so `get(namespace, key)`
   returns the body.
 - **Details.** The document's details (id, title, source type, priority, tags,
   metadata, created and updated times) are an inert record under the same key
   in `tmi:documents/<namespace scope>`.
 - **Stale details.** Details apply only while the content record still
-  carries their document id. A later plain `store` of the key turns the
-  document back into an ordinary record.
+  carries their document id. After a later plain `store` of the key, it reads
+  with the defaults again.
 - **Ids.** A new document's id is the one the caller supplied, else a stable
   digest of namespace and key. An existing document keeps its id.
 - **Replacement.** `put_document` replaces an existing key, so a document has
   one live version.
 - **Listing.** `list_documents` answers the contract's camelCase shape, newest
-  first. `list_namespaces` names every namespace with at least one live
-  document, found by listing the scopes under `tmi:documents` once.
+  first. `list_namespaces` names every namespace with at least one live record.
+- **Source namespaces.** `sources/…` hold synced items, which the embedded
+  engine keeps apart from its documents, so they are never listed as
+  documents.
 - **Deleting.** `delete_document` finds the key by document id and removes
   both records. `clear_namespace` clears the namespace scope and its details
   scope.
@@ -269,8 +276,7 @@ Every `as_*` accessor matches, and `audit_provider` holds on both wires.
 - The conformance suite, including `assert_documents_round_trip` and the
   capability audit, passes against the `/memory/*` double.
 - The double enforces the backend's behavior this relies on: one `labels=`
-  parameter, `GET memory/events/{id}`, scope prefixes, and the tenant scope
-  grammar.
+  parameter, `GET memory/events/{id}`, and the tenant scope grammar.
 - Unit tests cover each family's contract, the supersede and tombstone paths,
   the label-miss fallback, pacing, partial-batch failure, and the probe
   classification and cache.

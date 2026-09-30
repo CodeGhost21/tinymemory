@@ -1352,32 +1352,11 @@ impl CortexDialect {
     /// [`MAX_PAGES`] applies: a silently short listing is worse than an error,
     /// because the caller cannot tell it happened.
     pub(crate) async fn scopes(&self) -> anyhow::Result<Vec<String>> {
-        Ok(self
-            .scope_paths(None)
-            .await?
-            .iter()
-            .filter_map(|path| Self::namespace_of(path))
-            .collect())
-    }
-
-    /// Every scope path the account holds, or only those under `prefix`,
-    /// whatever wrote them.
-    ///
-    /// [`Self::scopes`] is this, mapped back to namespaces. The hosted families
-    /// read it raw, with a prefix, to find their own bookkeeping scopes, which
-    /// no namespace maps to.
-    pub(crate) async fn scope_paths(&self, prefix: Option<&str>) -> anyhow::Result<Vec<String>> {
-        let filter = prefix
-            .map(|prefix| format!("&prefix={}", urlencoding(prefix)))
-            .unwrap_or_default();
         let listing: Value = self
             .client
             .json(
                 Method::GET,
-                &format!(
-                    "{}?limit={SCOPE_LIST_LIMIT}{filter}",
-                    self.wire.path(Route::Scopes)
-                ),
+                &format!("{}?limit={SCOPE_LIST_LIMIT}", self.wire.path(Route::Scopes)),
                 None,
                 Attempts::RetryTransient,
             )
@@ -1417,7 +1396,7 @@ impl CortexDialect {
         Ok(items
             .iter()
             .filter_map(|s| s.get("path").and_then(Value::as_str))
-            .map(str::to_string)
+            .filter_map(Self::namespace_of)
             .collect())
     }
 }
