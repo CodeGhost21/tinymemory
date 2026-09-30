@@ -286,14 +286,6 @@ impl CortexMemory {
         Ok(self)
     }
 
-    /// Shortens how long a write waits to see its own event, so a test can
-    /// reach an outcome-unknown write without the full 30s.
-    #[cfg(test)]
-    pub(crate) fn with_visibility_timeout(mut self, timeout: std::time::Duration) -> Self {
-        self.inner.dialect_mut().visibility_timeout = timeout;
-        self
-    }
-
     fn new(endpoint: &str, api_key: Option<&str>) -> anyhow::Result<Self> {
         if api_key.is_some() {
             crate::common::ensure_secure_endpoint(endpoint)?;
@@ -1593,3 +1585,7 @@ impl Memory for CortexMemory {
 #[cfg(test)]
 #[path = "cortex_test.rs"]
 mod test;
+
+#[cfg(test)]
+#[path = "cortex_test_support.rs"]
+mod test_support;
