@@ -164,10 +164,16 @@ Over the hosted wire both halves are shaped for a billed, rate-limited API:
 
 ## Acceptance criteria
 
-- The conformance suite passes against a `/memory/*` double
-  (`hosted_test.rs`), and against a real backend when
-  `TINYMEMORY_TEST_TINYHUMANS_URL` and `TINYMEMORY_TEST_TINYHUMANS_TOKEN` are set
-  (`tests/live_remote_engines.rs`).
+- The conformance suite, including the ingest and answer families, passes
+  against a `/memory/*` double (`hosted_test.rs`), and against a real backend
+  when `TINYMEMORY_TEST_TINYHUMANS_URL` and `TINYMEMORY_TEST_TINYHUMANS_TOKEN`
+  are set (`tests/live_remote_engines.rs`). The live run also requires a `Ready`
+  health probe and a grounded answer from a stored fact.
+- With a second account's `TINYMEMORY_TEST_TINYHUMANS_TOKEN_B`, the live run
+  proves the two accounts cannot read, recall, list, forget or write into each
+  other's memory, through the adapter and with raw requests shaped like
+  CortexDB's known scope leaks (`TINYMEMORY_TEST_TINYHUMANS_USER_A` adds probes
+  that name the first account's tenant root).
 - Tests cover path mapping for every operation, envelope unwrap, 401/402/429/400
   mapping, per-request bearer resolution, the bulk fallback and the poll.
 
