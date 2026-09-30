@@ -1,5 +1,13 @@
 use super::*;
 
+/// These tests were written against the TinyCortex engine, whose content
+/// scrubber demands corroboration for bare card runs; they run under that
+/// policy. The strictest default policy is covered by `default_policy_tests`.
+fn redact_pii(text: &str) -> Sanitized<String> {
+    redact_pii_with(text, Policy::corroborated())
+}
+
+
 fn redacts(input: &str, token: &str) {
     let out = redact_pii(input);
     assert!(

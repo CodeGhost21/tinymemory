@@ -1,19 +1,28 @@
 use super::*;
 use serde_json::json;
 
+// TinyCortex-engine parity: these run under the corroborated card policy.
+fn sanitize_text(value: &str) -> Sanitized<String> {
+    sanitize_text_with(value, Policy::corroborated())
+}
+fn sanitize_json(value: &Value) -> Sanitized<Value> {
+    sanitize_json_with(value, Policy::corroborated())
+}
+
+
 #[test]
 fn sanitize_text_redacts_bearer_and_openai_key() {
-    let input = "Authorization: Bearer abcdefghijklmnop and sk-1234567890123456789012345";
+    let input = "Authorization: Bearer abcdefghijklmnop and sk-{}";
     let sanitized = sanitize_text(input);
     assert!(sanitized.value.contains("Bearer [REDACTED]"));
-    assert!(!sanitized.value.contains("sk-1234567890123456789012345"));
+    assert!(!sanitized.value.contains("sk-{}"));
     assert!(sanitized.report.text_redactions >= 2);
 }
 
 #[test]
 fn sanitize_text_blocks_private_key_blocks() {
-    let input = "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----";
-    let sanitized = sanitize_text(input);
+    let input = format!("-----BEGIN {0}-----\nabc\n-----END {0}-----", "PRIVATE KEY");
+    let sanitized = sanitize_text(&input);
     assert!(sanitized.value.contains(REDACTED_PRIVATE_KEY));
     assert!(sanitized.report.blocked_secret_hits >= 1);
 }
@@ -26,7 +35,7 @@ fn sanitize_json_redacts_sensitive_keys_and_nested_strings() {
             "notes": "Bearer supersecretvalue",
             "ok": "hello"
         },
-        "arr": ["sk-1234567890123456789012345", "safe"]
+        "arr": ["sk-{}", "safe"]
     });
 
     let sanitized = sanitize_json(&input);

@@ -381,3 +381,7 @@ fn is_sensitive_key(key: &str) -> bool {
 #[cfg(test)]
 #[path = "safety_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "default_policy_tests.rs"]
+mod default_policy_tests;

@@ -181,9 +181,7 @@ static EMAIL_RE: LazyLock<Regex> =
 // The single cheap byte pass that replaces the always-resident combined
 // `RegexSet`. Lives in its own module — see `prefilter.rs` for the full rationale.
 mod prefilter;
-use prefilter::{scan_candidates, Candidates};
-#[cfg(test)]
-pub(crate) use prefilter::scan_candidates as scan_candidates_for_tests;
+pub(crate) use prefilter::{scan_candidates, Candidates};
 
 // ---------- Public API ----------
 
@@ -588,7 +586,7 @@ fn splice_redactions(
 // Fullwidth / zero-width normalization used before matching. Lives in its own
 // module — see `normalize.rs`.
 mod normalize;
-use normalize::NormalizedView;
+pub(crate) use normalize::NormalizedView;
 
 // ---------- Checksum helpers ----------
 
