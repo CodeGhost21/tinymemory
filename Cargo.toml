@@ -33,6 +33,7 @@ default-members = [
     "crates/tinymemory-sources",
     "crates/tinymemory-sync",
     "crates/tinymemory-tinycortex",
+    "crates/tinymemory-tools",
 ]
 # `vendor/` holds pinned source submodules (tinycortex, tinybus,
 # tinyinference), each of

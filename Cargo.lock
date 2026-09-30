@@ -2219,6 +2219,7 @@ dependencies = [
  "serde_json",
  "tinyinference-embeddings",
  "tinymemory-api",
+ "tinymemory-conformance",
  "tinytools 0.5.0",
  "tokio",
 ]

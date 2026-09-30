@@ -53,6 +53,9 @@ crates/
 ├── tinymemory-safety/  secret and PII scrubbing (credential patterns,
 │                       checksum-gated national-ID redaction) shared by
 │                       TinyCortex, `tinymemory-core` and the host
+├── tinymemory-tools/   the memory agent tools (tree retrieval, raw and vector
+│                       search, tool-scoped rules) as `tinytools::Tool`s over any
+│                       provider, behind a host seam
 ├── tinymemory-sources/ memory-source contracts and readers — local folders
 │                       always, GitHub/RSS/web pages behind `network`
 ├── tinymemory-documents/ document and URL intake: sniff a format, convert it
