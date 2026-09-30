@@ -1177,9 +1177,8 @@ impl CortexDialect {
     ///
     /// An id outside the engine's `[A-Za-z0-9_-]{1,128}` is `None` without a
     /// request, because it cannot name an event and the memory API would
-    /// answer it with a generic 400. The caller must check the event's scope:
-    /// this route has no scope to pin, and an event the caller does not own
-    /// comes back with that scope nulled rather than refused.
+    /// answer it with a generic 400. The route addresses an event by id alone,
+    /// so a caller must check the event's scope before acting on it.
     ///
     /// # Errors
     ///

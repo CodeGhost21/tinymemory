@@ -171,8 +171,8 @@ impl CortexProvider {
         else {
             return Ok(0);
         };
-        // The route is unpinned: another account's event comes back with its
-        // scope nulled, and it is never ours to touch.
+        // Act only on an event whose scope is one of this account's source
+        // namespaces.
         let Some(scope) = event.get("scope").and_then(serde_json::Value::as_str) else {
             return Ok(0);
         };

@@ -79,8 +79,7 @@ pub(crate) struct Hosted {
     pub(crate) rate_limit_forget: AtomicUsize,
     /// Behave like a backend that strips `limit` from `/memory/scopes`.
     pub(crate) ignore_scope_limit: AtomicBool,
-    /// Event ids `GET /memory/events/{id}` answers as another tenant's: the
-    /// event itself, with its scope nulled by the memory API's outbound rewrite.
+    /// Event ids `GET /memory/events/{id}` answers with a null scope.
     pub(crate) foreign: Mutex<HashSet<String>>,
 }
 
@@ -313,9 +312,7 @@ async fn events(
     envelope(StatusCode::OK, page)
 }
 
-/// One event by id: the memory API forwards the id unpinned, so the answer is
-/// whatever event holds it, and an event outside the caller's tenant comes back
-/// with its scope nulled rather than refused.
+/// One event by id, or 404.
 async fn event(
     State(state): State<Shared>,
     uri: Uri,

@@ -214,7 +214,7 @@ number of distinct live items removed.
 | --- | --- |
 | `Source` | as `forget_source`, limited to the namespace of its kind: `chat`, `email` or `document` (the contract's `SourceKind`) |
 | `Source` with another kind | `Invalid`, never a count of zero |
-| `Chunk` | reads the event by id (`GET memory/events/{id}`) and, only if it is a synced item in this account's source namespaces, removes every version of that item. An event from another account comes back with its scope nulled and is never touched |
+| `Chunk` | reads the event by id (`GET memory/events/{id}`) and, only if its scope is one of this account's source namespaces, removes every version of that item |
 | `SourcePrefix`, `Owner` | `Unsupported` |
 
 ### Maintenance
