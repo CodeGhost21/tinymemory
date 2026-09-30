@@ -41,6 +41,8 @@ crates/
 ├── tinymemory-sync/    the engine-neutral Composio payload normalisers, so a
 │                       host binding a driver that is not TinyCortex can run
 │                       them
+├── tinymemory-import/  one-shot importers (OpenClaw, Hermes workspaces) that write
+│                       into any `Memory` the host hands over
 ├── tinymemory-gate/    the scheduler gate: host power/CPU sampling and the
 │                       cooperative wait that keeps background memory work
 │                       from lagging the machine
