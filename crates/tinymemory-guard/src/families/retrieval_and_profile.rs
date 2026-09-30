@@ -38,7 +38,7 @@ use super::types::{
 // ── Retrieval ────────────────────────────────────────────────────────────────
 
 #[async_trait]
-impl MemoryRetrieval for GuardedRetrieval {
+impl<P: GuardPolicy> MemoryRetrieval for GuardedRetrieval<P> {
     async fn fast_retrieve(
         &self,
         query: &str,
@@ -188,7 +188,7 @@ impl MemoryRetrieval for GuardedRetrieval {
 // ── Profile ──────────────────────────────────────────────────────────────────
 
 #[async_trait]
-impl MemoryEpisodic for GuardedEpisodic {
+impl<P: GuardPolicy> MemoryEpisodic for GuardedEpisodic<P> {
     async fn insert_turn(&self, turn: &EpisodicTurn) -> Result<i64, MemoryError> {
         // A recorded turn is user-authored conversation content, so this is a
         // write and is admitted as one — the read/write split here is about
@@ -370,7 +370,7 @@ impl MemoryEpisodic for GuardedEpisodic {
 }
 
 #[async_trait]
-impl MemoryProfile for GuardedProfile {
+impl<P: GuardPolicy> MemoryProfile for GuardedProfile<P> {
     async fn list_active_facets(&self) -> Result<Vec<ProfileFacet>, MemoryError> {
         self.policy.admit_read(
             Capability::Profile,
@@ -526,7 +526,7 @@ impl MemoryProfile for GuardedProfile {
 // ── Source sync ──────────────────────────────────────────────────────────────
 
 #[async_trait]
-impl MemorySourceSync for GuardedSourceSync {
+impl<P: GuardPolicy> MemorySourceSync for GuardedSourceSync<P> {
     /// A write: it fetches from an upstream connector and ingests what it finds.
     /// The tier check is what stops a `readonly` operator triggering one.
     async fn run_connection_sync(
@@ -639,7 +639,7 @@ impl MemorySourceSync for GuardedSourceSync {
 // ── Scoring ──────────────────────────────────────────────────────────────────
 
 #[async_trait]
-impl MemoryScoring for GuardedScoring {
+impl<P: GuardPolicy> MemoryScoring for GuardedScoring<P> {
     async fn extract_entities(&self, query: &str) -> Result<Vec<String>, MemoryError> {
         self.policy.admit_read(
             Capability::Scoring,
@@ -674,7 +674,7 @@ impl MemoryScoring for GuardedScoring {
 // ── Coding sessions ──────────────────────────────────────────────────────────
 
 #[async_trait]
-impl MemoryCodingSessions for GuardedCodingSessions {
+impl<P: GuardPolicy> MemoryCodingSessions for GuardedCodingSessions<P> {
     async fn coding_session_status(&self) -> Result<Vec<CodingSessionSource>, MemoryError> {
         self.policy.admit_read(
             Capability::CodingSessions,

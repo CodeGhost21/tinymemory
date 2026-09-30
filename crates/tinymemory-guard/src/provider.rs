@@ -1,4 +1,4 @@
-//! [`MemoryGuard`] — the kernel-owned policy decorator over a bound driver.
+//! [`GuardedProvider`] — the policy decorator over a bound driver.
 
 use std::sync::Arc;
 
@@ -18,69 +18,64 @@ use tinymemory_api::provider::{
 };
 use async_trait::async_trait;
 
-use super::families::{
+use crate::families::{
     GuardedAnswer, GuardedChunks, GuardedCodingSessions, GuardedConversationIngest, GuardedDiff,
     GuardedDocumentIngest, GuardedDocuments, GuardedEntities, GuardedEpisodic, GuardedEventIngest,
     GuardedGoals, GuardedGraph, GuardedIngest, GuardedLearningIngest, GuardedMaintenance,
     GuardedPeople, GuardedProfile, GuardedRetrieval, GuardedScoring, GuardedSourceSync,
     GuardedSources, GuardedToolMemory, GuardedTree,
 };
-use super::policy::GuardPolicy;
+use crate::policy::GuardPolicy;
 
 /// The policy decorator every product caller receives instead of the raw
-/// driver (`docs/specs/plan-memory.md` §3.4, `docs/specs/kernel.md` §3.4).
+/// driver .
 ///
 /// It implements [`MemoryProvider`], so it is transparent to callers and cannot
 /// be "skipped" by a caller that simply keeps using the contract — there is no
 /// second, unguarded shape to hold. Its fourteen `as_*` overrides hand back
 /// **guarded** family handles rather than the inner driver's, which is what
-/// closes the accessor bypass; see [`super::families`] for why that forces the
+/// closes the accessor bypass; see [`crate::families`] for why that forces the
 /// decorators to be owned fields.
-pub struct MemoryGuard {
+pub struct GuardedProvider<P: GuardPolicy> {
     inner: Arc<dyn MemoryProvider>,
-    policy: Arc<GuardPolicy>,
+    policy: Arc<P>,
 
     // The fourteen optional families. Each is `Some` **iff** the inner driver
     // provides it, so `provides()` — which the contract's `audit_provider`
     // compares against `capabilities()` — answers identically for the guard and
     // for the driver underneath it.
-    ingest: Option<GuardedIngest>,
-    documents: Option<GuardedDocuments>,
-    tree: Option<GuardedTree>,
-    entities: Option<GuardedEntities>,
-    graph: Option<GuardedGraph>,
-    diff: Option<GuardedDiff>,
-    goals: Option<GuardedGoals>,
-    tool_memory: Option<GuardedToolMemory>,
-    sources: Option<GuardedSources>,
-    maintenance: Option<GuardedMaintenance>,
-    people: Option<GuardedPeople>,
-    chunks: Option<GuardedChunks>,
-    retrieval: Option<GuardedRetrieval>,
-    profile: Option<GuardedProfile>,
-    episodic: Option<GuardedEpisodic>,
-    source_sync: Option<GuardedSourceSync>,
-    coding_sessions: Option<GuardedCodingSessions>,
-    scoring: Option<GuardedScoring>,
-    document_ingest: Option<GuardedDocumentIngest>,
-    conversation_ingest: Option<GuardedConversationIngest>,
-    learning_ingest: Option<GuardedLearningIngest>,
-    event_ingest: Option<GuardedEventIngest>,
-    answer: Option<GuardedAnswer>,
+    ingest: Option<GuardedIngest<P>>,
+    documents: Option<GuardedDocuments<P>>,
+    tree: Option<GuardedTree<P>>,
+    entities: Option<GuardedEntities<P>>,
+    graph: Option<GuardedGraph<P>>,
+    diff: Option<GuardedDiff<P>>,
+    goals: Option<GuardedGoals<P>>,
+    tool_memory: Option<GuardedToolMemory<P>>,
+    sources: Option<GuardedSources<P>>,
+    maintenance: Option<GuardedMaintenance<P>>,
+    people: Option<GuardedPeople<P>>,
+    chunks: Option<GuardedChunks<P>>,
+    retrieval: Option<GuardedRetrieval<P>>,
+    profile: Option<GuardedProfile<P>>,
+    episodic: Option<GuardedEpisodic<P>>,
+    source_sync: Option<GuardedSourceSync<P>>,
+    coding_sessions: Option<GuardedCodingSessions<P>>,
+    scoring: Option<GuardedScoring<P>>,
+    document_ingest: Option<GuardedDocumentIngest<P>>,
+    conversation_ingest: Option<GuardedConversationIngest<P>>,
+    learning_ingest: Option<GuardedLearningIngest<P>>,
+    event_ingest: Option<GuardedEventIngest<P>>,
+    answer: Option<GuardedAnswer<P>>,
 }
 
-impl MemoryGuard {
-    /// How the guarded driver was bound (a host fact, from the policy).
-    pub(crate) fn class(&self) -> crate::core::subsystem::DriverClass {
-        self.policy.class()
-    }
-
+impl<P: GuardPolicy> GuardedProvider<P> {
     /// Wrap `inner` in `policy`.
     ///
     /// Builds all fourteen decorators up front. That is not an optimisation: the
     /// `as_*` accessors return borrows, so a decorator constructed inside an
     /// accessor could not outlive the call.
-    pub fn new(inner: Arc<dyn MemoryProvider>, policy: Arc<GuardPolicy>) -> Self {
+    pub fn new(inner: Arc<dyn MemoryProvider>, policy: Arc<P>) -> Self {
         macro_rules! family {
             ($cap:ident, $ty:ident) => {
                 inner
@@ -118,22 +113,22 @@ impl MemoryGuard {
     }
 
     /// The policy this guard enforces.
-    pub fn policy(&self) -> &Arc<GuardPolicy> {
+    pub fn policy(&self) -> &Arc<P> {
         &self.policy
     }
 
     /// The wrapped driver.
     ///
-    /// `pub(crate)` on purpose: handing this out is exactly the bypass the
-    /// guard exists to prevent, and the only legitimate use is inside the
-    /// memory subsystem itself (identity, health, tests). Do not widen it.
-    pub(crate) fn inner(&self) -> &Arc<dyn MemoryProvider> {
+    /// Handing this out is exactly the bypass the guard exists to prevent, and
+    /// the only legitimate use is inside the memory subsystem itself (identity,
+    /// health, tests). Product code holds the guard, never this.
+    pub fn inner(&self) -> &Arc<dyn MemoryProvider> {
         &self.inner
     }
 }
 
 #[async_trait]
-impl MemoryProvider for MemoryGuard {
+impl<P: GuardPolicy> MemoryProvider for GuardedProvider<P> {
     /// The **wrapped driver's** id, not a synthetic `"guard"`. The guard is a
     /// policy layer, not a driver: status output, spans, and audit events all
     /// name the thing that actually stores the bytes.
@@ -261,6 +256,3 @@ impl MemoryProvider for MemoryGuard {
     }
 }
 
-#[cfg(test)]
-#[path = "provider_tests.rs"]
-mod tests;

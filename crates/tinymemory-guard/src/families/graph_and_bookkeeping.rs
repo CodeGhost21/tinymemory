@@ -35,7 +35,7 @@ use super::types::{
 // ── Entities ─────────────────────────────────────────────────────────────────
 
 #[async_trait]
-impl MemoryEntities for GuardedEntities {
+impl<P: GuardPolicy> MemoryEntities for GuardedEntities<P> {
     async fn entities(
         &self,
         namespace: &str,
@@ -147,7 +147,7 @@ fn graph_ns(namespace: Option<&str>) -> &str {
 }
 
 #[async_trait]
-impl MemoryGraph for GuardedGraph {
+impl<P: GuardPolicy> MemoryGraph for GuardedGraph<P> {
     async fn kv_get(
         &self,
         namespace: Option<&str>,
@@ -231,7 +231,7 @@ impl MemoryGraph for GuardedGraph {
 // ── Diff ─────────────────────────────────────────────────────────────────────
 
 #[async_trait]
-impl MemoryDiff for GuardedDiff {
+impl<P: GuardPolicy> MemoryDiff for GuardedDiff<P> {
     async fn capture_snapshot(&self, source_id: &str) -> Result<SnapshotRef, MemoryError> {
         self.policy.admit_write(
             Capability::Diff,
@@ -267,7 +267,7 @@ impl MemoryDiff for GuardedDiff {
 // ── Goals ────────────────────────────────────────────────────────────────────
 
 #[async_trait]
-impl MemoryGoals for GuardedGoals {
+impl<P: GuardPolicy> MemoryGoals for GuardedGoals<P> {
     async fn goals(&self) -> Result<GoalsDoc, MemoryError> {
         self.policy
             .admit_read(Capability::Goals, "goals.goals", NO_NAMESPACE, false)?;
@@ -291,7 +291,7 @@ impl MemoryGoals for GuardedGoals {
 // ── Tool memory ──────────────────────────────────────────────────────────────
 
 #[async_trait]
-impl MemoryToolMemory for GuardedToolMemory {
+impl<P: GuardPolicy> MemoryToolMemory for GuardedToolMemory<P> {
     async fn tool_rules(&self, tool_name: &str) -> Result<Vec<ToolMemoryRule>, MemoryError> {
         self.policy.admit_read(
             Capability::ToolMemory,
@@ -326,7 +326,7 @@ impl MemoryToolMemory for GuardedToolMemory {
 // ── Sources ──────────────────────────────────────────────────────────────────
 
 #[async_trait]
-impl MemorySourceSink for GuardedSources {
+impl<P: GuardPolicy> MemorySourceSink for GuardedSources<P> {
     async fn accept_source_items(
         &self,
         source_id: &str,
@@ -394,7 +394,7 @@ impl MemorySourceSink for GuardedSources {
 // ── Maintenance ──────────────────────────────────────────────────────────────
 
 #[async_trait]
-impl MemoryMaintenance for GuardedMaintenance {
+impl<P: GuardPolicy> MemoryMaintenance for GuardedMaintenance<P> {
     async fn reembed(&self) -> Result<MaintenanceReport, MemoryError> {
         self.policy.admit_write(
             Capability::Maintenance,
@@ -525,7 +525,7 @@ impl MemoryMaintenance for GuardedMaintenance {
 // ── People ───────────────────────────────────────────────────────────────────
 
 #[async_trait]
-impl MemoryPeople for GuardedPeople {
+impl<P: GuardPolicy> MemoryPeople for GuardedPeople<P> {
     async fn list_people(&self, limit: Option<usize>) -> Result<Vec<RankedPerson>, MemoryError> {
         self.policy.admit_read(
             Capability::People,

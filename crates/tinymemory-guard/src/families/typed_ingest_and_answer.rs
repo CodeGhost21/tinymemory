@@ -40,7 +40,7 @@ fn admit_typed_item(policy: &GuardPolicy, mut item: IngestItem) -> IngestItem {
 }
 
 #[async_trait]
-impl MemoryDocumentIngest for GuardedDocumentIngest {
+impl<P: GuardPolicy> MemoryDocumentIngest for GuardedDocumentIngest<P> {
     async fn ingest_document(&self, document: IngestItem) -> Result<IngestOutcome, MemoryError> {
         let namespace = document
             .namespace
@@ -64,7 +64,7 @@ impl MemoryDocumentIngest for GuardedDocumentIngest {
 }
 
 #[async_trait]
-impl MemoryConversationIngest for GuardedConversationIngest {
+impl<P: GuardPolicy> MemoryConversationIngest for GuardedConversationIngest<P> {
     async fn ingest_conversation(
         &self,
         messages: Vec<IngestItem>,
@@ -90,7 +90,7 @@ impl MemoryConversationIngest for GuardedConversationIngest {
 }
 
 #[async_trait]
-impl MemoryLearningIngest for GuardedLearningIngest {
+impl<P: GuardPolicy> MemoryLearningIngest for GuardedLearningIngest<P> {
     async fn ingest_learning(
         &self,
         learning: LearningCandidate,
@@ -115,7 +115,7 @@ impl MemoryLearningIngest for GuardedLearningIngest {
 }
 
 #[async_trait]
-impl MemoryEventIngest for GuardedEventIngest {
+impl<P: GuardPolicy> MemoryEventIngest for GuardedEventIngest<P> {
     async fn ingest_event(&self, event: RawMemoryEvent) -> Result<IngestOutcome, MemoryError> {
         self.policy.admit_write(
             Capability::EventIngest,
@@ -129,7 +129,7 @@ impl MemoryEventIngest for GuardedEventIngest {
 }
 
 #[async_trait]
-impl MemoryAnswer for GuardedAnswer {
+impl<P: GuardPolicy> MemoryAnswer for GuardedAnswer<P> {
     async fn answer(&self, request: AnswerRequest) -> Result<AnswerResponse, MemoryError> {
         // A read-shaped family: retrieval plus synthesis, no persistence.
         self.policy
@@ -140,7 +140,7 @@ impl MemoryAnswer for GuardedAnswer {
 }
 
 #[async_trait]
-impl MemoryChunks for GuardedChunks {
+impl<P: GuardPolicy> MemoryChunks for GuardedChunks<P> {
     async fn list_chunks(
         &self,
         query: &ChunkQuery,

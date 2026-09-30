@@ -3,7 +3,7 @@
 //! ## Why these exist at all
 //!
 //! [`MemoryProvider::as_tree`] and its nine siblings return a **borrow** of a
-//! family trait object. If [`MemoryGuard`]'s override simply forwarded
+//! family trait object. If [`GuardedProvider`]'s override simply forwarded
 //! `self.inner.as_tree()`, every caller that reached memory through a family
 //! accessor would hold a raw, unguarded driver handle — and the guard's whole
 //! reason to exist ("the only handle product code receives") would be
@@ -27,7 +27,7 @@
 //! entirely, at the cost of one `Option` unwrap that is structurally
 //! unreachable — see [`family`](GuardedTree::family).
 //!
-//! [`MemoryGuard`]: super::MemoryGuard
+//! [`GuardedProvider`]: crate::GuardedProvider
 
 #[cfg(test)]
 #[path = "families_tests.rs"]

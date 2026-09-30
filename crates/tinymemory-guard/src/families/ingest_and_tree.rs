@@ -25,7 +25,7 @@ use super::types::{GuardedDocuments, GuardedIngest, GuardedTree};
 
 // ── Ingest ───────────────────────────────────────────────────────────────────
 
-impl GuardedIngest {
+impl<P: GuardPolicy> GuardedIngest<P> {
     /// Steps 3 + 4 over one ingest item: stamp provenance, redact on egress.
     fn admit(&self, mut item: IngestItem) -> IngestItem {
         item.taint = self.policy.stamp_taint(item.taint);
@@ -35,7 +35,7 @@ impl GuardedIngest {
 }
 
 #[async_trait]
-impl MemoryIngest for GuardedIngest {
+impl<P: GuardPolicy> MemoryIngest for GuardedIngest<P> {
     async fn ingest_document(&self, item: IngestItem) -> Result<IngestOutcome, MemoryError> {
         let namespace = item.namespace.clone().unwrap_or_else(|| "-".to_string());
         self.policy.admit_write(
@@ -91,7 +91,7 @@ impl MemoryIngest for GuardedIngest {
 // ── Documents ────────────────────────────────────────────────────────────────
 
 #[async_trait]
-impl MemoryDocuments for GuardedDocuments {
+impl<P: GuardPolicy> MemoryDocuments for GuardedDocuments<P> {
     async fn put_document(&self, mut input: NamespaceDocumentInput) -> Result<String, MemoryError> {
         self.policy.admit_write(
             Capability::Documents,
@@ -210,7 +210,7 @@ impl MemoryDocuments for GuardedDocuments {
 // ── Tree ─────────────────────────────────────────────────────────────────────
 
 #[async_trait]
-impl MemoryTree for GuardedTree {
+impl<P: GuardPolicy> MemoryTree for GuardedTree<P> {
     async fn append(&self, mut request: IngestRequest) -> Result<(), MemoryError> {
         self.policy
             .admit_write(Capability::Tree, "tree.append", &request.namespace, true)?;

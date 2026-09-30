@@ -51,7 +51,7 @@ pub struct BudgetOutcome {
 /// may be reporting.
 ///
 /// A zero-length budget is not special-cased here — the caller decides whether
-/// `0` means "disabled" (it does; see `GuardPolicy::recall_budget`) before
+/// `0` means "disabled" (it does; see [`GuardPolicy::recall_budget`](crate::GuardPolicy::recall_budget)) before
 /// calling.
 pub fn truncate_entries(entries: Vec<MemoryEntry>, max_chars: usize) -> BudgetOutcome {
     let mut remaining = max_chars;

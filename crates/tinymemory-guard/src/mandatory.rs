@@ -1,4 +1,4 @@
-//! The three mandatory families on [`MemoryGuard`] — where steps 3, 4 and 6
+//! The three mandatory families on [`GuardedProvider`] — where steps 3, 4 and 6
 //! land for the always-present surface.
 
 use tinymemory_api::capabilities::Capability;
@@ -9,12 +9,13 @@ use tinymemory_api::recall::OwnedRecallOpts;
 use tinymemory_api::types::{MemoryCategory, MemoryEntry, MemoryTaint, NamespaceSummary};
 use async_trait::async_trait;
 
-use super::audit::{trace_allowed, trace_budget, NO_NAMESPACE};
-use super::budget::{truncate_content, truncate_entries};
-use super::provider::MemoryGuard;
+use crate::audit::{trace_allowed, trace_budget, NO_NAMESPACE};
+use crate::budget::{truncate_content, truncate_entries};
+use crate::policy::GuardPolicy;
+use crate::provider::GuardedProvider;
 
 #[async_trait]
-impl MemoryCore for MemoryGuard {
+impl<P: GuardPolicy> MemoryCore for GuardedProvider<P> {
     /// Store, with steps 1, 3, 4, 5 and the capture half of 6 applied in that
     /// order: refuse first, then stamp provenance, then redact, then trim.
     ///
@@ -87,7 +88,7 @@ impl MemoryCore for MemoryGuard {
 }
 
 #[async_trait]
-impl MemoryRecall for MemoryGuard {
+impl<P: GuardPolicy> MemoryRecall for GuardedProvider<P> {
     /// Recall, with the recall char budget (step 6) applied to the driver's
     /// result.
     ///
@@ -144,7 +145,7 @@ impl MemoryRecall for MemoryGuard {
 }
 
 #[async_trait]
-impl MemoryPortability for MemoryGuard {
+impl<P: GuardPolicy> MemoryPortability for GuardedProvider<P> {
     /// Export is **not** budget-trimmed. A truncated export is a corrupt
     /// backup, and portability exists so a binding is reversible — trimming it
     /// would silently make it a one-way door, which is the exact failure the
