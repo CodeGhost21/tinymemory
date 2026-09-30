@@ -1,29 +1,76 @@
-//! Secret-detection and redaction helpers for memory writes.
+//! `tinymemory-safety` — secret and PII scrubbing for anything a memory host
+//! persists or hands on.
 //!
-//! Ported from OpenHuman's `memory_store::safety`. Conservative by design — it
-//! prefers false positives over leaking credentials into long-lived stores.
+//! Conservative by design — it prefers false positives over leaking
+//! credentials into long-lived stores. One copy of this policy is shared by the
+//! TinyCortex engine (`tinycortex::memory::store::safety`), `tinymemory-core`
+//! (through TinyCortex) and the OpenHuman host; it used to exist three times.
 //!
-//! The exhaustive multilingual national-ID PII module (`safety::pii`, ~1k lines
-//! of checksum logic) is ported from OpenHuman and runs as part of
-//! `sanitize_text`. The write-rejection boundary stays stricter than content
-//! scrubbing: formatted national IDs are rejected, while phone/email-like text is
+//! The exhaustive multilingual national-ID PII module ([`pii`], ~1k lines of
+//! checksum logic) runs as part of [`sanitize_text`]. The write-rejection
+//! boundary ([`has_likely_pii`]) stays stricter than content scrubbing:
+//! formatted national IDs are rejected, while phone/email-like text is
 //! scrubbed from content without rejecting every write that mentions them.
+//!
+//! # The one policy knob
+//!
+//! The previous copies differed in exactly one behaviour: how a *bare*
+//! (separator-less) Luhn-valid 13-19 digit run is treated as a credit card.
+//! The OpenHuman host redacted every such run; TinyCortex additionally demanded
+//! corroboration (a real network IIN at an issued length, or a card keyword
+//! nearby) so 13-digit epoch-millisecond timestamps in stored JSON envelopes
+//! stopped being corrupted (opencompany#1201). [`BareCardGate`] names both and
+//! the plain functions default to the stricter [`BareCardGate::LuhnOnly`], so no
+//! caller that does not opt in redacts less than before. Callers that want the
+//! corroborated behaviour use the `*_with` variants and [`Policy::corroborated`].
 
 use std::sync::LazyLock;
 
 use regex::Regex;
 use serde_json::Value;
 
-/// Exhaustive checksum-gated multilingual national-ID PII module (ported from
-/// OpenHuman). Content scrubbing runs from `sanitize_text`; the boundary
-/// check is re-exported as [`has_likely_pii`].
+/// Exhaustive checksum-gated multilingual national-ID PII module. Content
+/// scrubbing runs from [`sanitize_text`]; the boundary check is re-exported as
+/// [`has_likely_pii`].
 pub mod pii;
 
 pub use pii::{has_likely_email, has_likely_pii};
 
-const REDACTED_SECRET: &str = "[REDACTED_SECRET]";
-const REDACTED_PRIVATE_KEY: &str = "[REDACTED_PRIVATE_KEY]";
-const MAX_JSON_SANITIZE_DEPTH: usize = 128;
+pub(crate) const REDACTED_SECRET: &str = "[REDACTED_SECRET]";
+pub(crate) const REDACTED_PRIVATE_KEY: &str = "[REDACTED_PRIVATE_KEY]";
+pub(crate) const MAX_JSON_SANITIZE_DEPTH: usize = 128;
+
+/// How a bare (no separators) Luhn-valid 13-19 digit run is judged as a credit
+/// card by the content scrubber. Separated runs (`4111 1111 1111 1111`) are
+/// always Luhn-gated only.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum BareCardGate {
+    /// Redact every Luhn-valid run. The strictest behaviour and the default.
+    #[default]
+    LuhnOnly,
+    /// Also require a plausible network IIN at an issued length, or a card
+    /// keyword within 64 bytes, so machine identifiers such as 13-digit
+    /// epoch-millisecond timestamps are left alone.
+    Corroborated,
+}
+
+/// Tunables for content scrubbing. The default never redacts less than
+/// [`BareCardGate::LuhnOnly`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Policy {
+    /// Gate applied to bare credit-card-shaped digit runs.
+    pub bare_card: BareCardGate,
+}
+
+impl Policy {
+    /// The policy the TinyCortex engine has always applied: bare card runs need
+    /// corroboration beyond their checksum.
+    pub const fn corroborated() -> Self {
+        Self {
+            bare_card: BareCardGate::Corroborated,
+        }
+    }
+}
 
 /// Tally of what a sanitization pass changed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -189,6 +236,11 @@ pub fn has_likely_secret(value: &str) -> bool {
 /// Scrub secrets and PII from free text, returning the cleaned text plus a
 /// [`SanitizationReport`].
 pub fn sanitize_text(value: &str) -> Sanitized<String> {
+    sanitize_text_with(value, Policy::default())
+}
+
+/// [`sanitize_text`] under an explicit [`Policy`].
+pub fn sanitize_text_with(value: &str, policy: Policy) -> Sanitized<String> {
     let mut out = value.to_string();
     let mut report = SanitizationReport::default();
 
@@ -211,7 +263,7 @@ pub fn sanitize_text(value: &str) -> Sanitized<String> {
     // Full multilingual national-ID PII scrub (checksum-gated, normalization
     // pre-pass) — runs after secret redaction so every call site that scrubs
     // secrets also scrubs PII.
-    let pii = pii::redact_pii(&out);
+    let pii = pii::redact_pii_with(&out, policy);
     report = report.merge(pii.report);
     out = pii.value;
 
@@ -221,7 +273,12 @@ pub fn sanitize_text(value: &str) -> Sanitized<String> {
 /// Recursively scrub a JSON value: sensitive keys are replaced wholesale and
 /// every string value runs through `sanitize_text`.
 pub fn sanitize_json(value: &Value) -> Sanitized<Value> {
-    sanitize_json_inner(value, 0)
+    sanitize_json_with(value, Policy::default())
+}
+
+/// [`sanitize_json`] under an explicit [`Policy`].
+pub fn sanitize_json_with(value: &Value, policy: Policy) -> Sanitized<Value> {
+    sanitize_json_inner(value, 0, policy)
 }
 
 /// Recursive worker behind [`sanitize_json`].
@@ -230,7 +287,7 @@ pub fn sanitize_json(value: &Value) -> Sanitized<Value> {
 /// `0`); once it reaches [`MAX_JSON_SANITIZE_DEPTH`] the whole subtree at that
 /// point is replaced by a single redaction marker rather than walked further,
 /// bounding recursion against pathologically deep or adversarial JSON.
-fn sanitize_json_inner(value: &Value, depth: usize) -> Sanitized<Value> {
+fn sanitize_json_inner(value: &Value, depth: usize, policy: Policy) -> Sanitized<Value> {
     if depth >= MAX_JSON_SANITIZE_DEPTH {
         return Sanitized {
             value: Value::String(REDACTED_SECRET.to_string()),
@@ -251,7 +308,7 @@ fn sanitize_json_inner(value: &Value, depth: usize) -> Sanitized<Value> {
                     out.insert(key.clone(), Value::String(REDACTED_SECRET.to_string()));
                     continue;
                 }
-                let sanitized = sanitize_json_inner(value, depth + 1);
+                let sanitized = sanitize_json_inner(value, depth + 1, policy);
                 report = report.merge(sanitized.report);
                 out.insert(key.clone(), sanitized.value);
             }
@@ -264,7 +321,7 @@ fn sanitize_json_inner(value: &Value, depth: usize) -> Sanitized<Value> {
             let mut out = Vec::with_capacity(items.len());
             let mut report = SanitizationReport::default();
             for item in items {
-                let sanitized = sanitize_json_inner(item, depth + 1);
+                let sanitized = sanitize_json_inner(item, depth + 1, policy);
                 report = report.merge(sanitized.report);
                 out.push(sanitized.value);
             }
@@ -274,7 +331,7 @@ fn sanitize_json_inner(value: &Value, depth: usize) -> Sanitized<Value> {
             }
         }
         Value::String(value) => {
-            let sanitized = sanitize_text(value);
+            let sanitized = sanitize_text_with(value, policy);
             Sanitized {
                 value: Value::String(sanitized.value),
                 report: sanitized.report,

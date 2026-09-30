@@ -30,7 +30,7 @@
 use regex::Regex;
 use std::sync::LazyLock;
 
-use super::{SanitizationReport, Sanitized};
+use super::{BareCardGate, Policy, SanitizationReport, Sanitized};
 
 mod checks;
 use checks::*;
@@ -185,6 +185,12 @@ use prefilter::{scan_candidates, Candidates};
 /// replaced — surrounding text (including any preserved fullwidth glyphs)
 /// is untouched.
 pub fn redact_pii(text: &str) -> Sanitized<String> {
+    redact_pii_with(text, Policy::default())
+}
+
+/// [`redact_pii`] under an explicit [`Policy`].
+pub fn redact_pii_with(text: &str, policy: Policy) -> Sanitized<String> {
+    let gate = policy.bare_card;
     let mut report = SanitizationReport::default();
 
     // Fast path: cheap byte pre-filter on the raw text. Fullwidth / Arabic-Indic
@@ -209,7 +215,7 @@ pub fn redact_pii(text: &str) -> Sanitized<String> {
         return splice_redactions(
             text,
             &nview,
-            collect_redactions(&nview.normalized, &ncand),
+            collect_redactions(&nview.normalized, &ncand, gate),
             &mut report,
         );
     }
@@ -218,7 +224,7 @@ pub fn redact_pii(text: &str) -> Sanitized<String> {
     // Gate on candidates from the NORMALIZED text — the precise regexes run
     // against it, so normalization-induced classes (folded digits) are included.
     let ncand = scan_candidates(&nview.normalized);
-    let redactions = collect_redactions(&nview.normalized, &ncand);
+    let redactions = collect_redactions(&nview.normalized, &ncand, gate);
     splice_redactions(text, &nview, redactions, &mut report)
 }
 
@@ -270,8 +276,8 @@ struct Hit {
     token: &'static str,
 }
 
-fn collect_redactions(norm: &str, cand: &Candidates) -> Vec<Hit> {
-    collect_redactions_inner(norm, cand, true)
+fn collect_redactions(norm: &str, cand: &Candidates, gate: BareCardGate) -> Vec<Hit> {
+    collect_redactions_inner(norm, cand, true, gate)
 }
 
 /// Variant of [`collect_redactions`] that omits bare-numeric patterns
@@ -283,14 +289,19 @@ fn collect_redactions(norm: &str, cand: &Candidates) -> Vec<Hit> {
 /// positives on scanner-built identifiers (WhatsApp group JIDs
 /// `<phone>-<unix>@g.us`, timestamps, padded counters).
 fn collect_strict_redactions(norm: &str, cand: &Candidates) -> Vec<Hit> {
-    collect_redactions_inner(norm, cand, false)
+    collect_redactions_inner(norm, cand, false, BareCardGate::LuhnOnly)
 }
 
 /// Run only the precise regexes whose class was flagged by [`scan_candidates`].
 /// Priority order (and therefore overlap-resolution) is byte-identical to the
 /// unconditional version; the `if cand.*` guards only decide whether each class
 /// runs, so a flagged class produces exactly the hits it always did.
-fn collect_redactions_inner(norm: &str, cand: &Candidates, include_bare_numeric: bool) -> Vec<Hit> {
+fn collect_redactions_inner(
+    norm: &str,
+    cand: &Candidates,
+    include_bare_numeric: bool,
+    gate: BareCardGate,
+) -> Vec<Hit> {
     let mut hits: Vec<Hit> = Vec::new();
 
     // Priority order: most specific / highest-confidence first.
@@ -318,7 +329,7 @@ fn collect_redactions_inner(norm: &str, cand: &Candidates, include_bare_numeric:
     if include_bare_numeric {
         // Credit card before bare CPF/CNPJ to avoid catching a 13-19 digit run as CPF/CNPJ.
         if cand.cc {
-            push_credit_cards(&mut hits, norm);
+            push_credit_cards(&mut hits, norm, gate);
         }
         if cand.cnpj_bare {
             push_checksum(&mut hits, norm, &CNPJ_BARE_RE, PII_CNPJ, |s| {
@@ -456,7 +467,12 @@ fn push_captured(
 /// prefix is a real network IIN at an issued length
 /// ([`plausible_card_number`]) or a card keyword sits within
 /// [`CC_KEYWORD_WINDOW`] bytes.
-fn push_credit_cards(hits: &mut Vec<Hit>, norm: &str) {
+fn push_credit_cards(hits: &mut Vec<Hit>, norm: &str, gate: BareCardGate) {
+    if gate == BareCardGate::LuhnOnly {
+        // Strictest behaviour: every Luhn-valid run, bare or separated.
+        push_checksum(hits, norm, &CC_RE, PII_CC, valid_luhn);
+        return;
+    }
     for m in CC_RE.find_iter(norm) {
         let s = m.as_str();
         if !valid_luhn(s) {
