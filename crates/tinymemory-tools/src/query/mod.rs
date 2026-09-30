@@ -1,9 +1,9 @@
 //! Consolidated memory query tool — dispatches to the correct memory-tree
 //! retrieval primitive based on the `mode` argument.
 //!
-//! The individual per-mode structs are still re-exported for callers that
-//! need them directly (e.g. tool registration in ops.rs for agents that
-//! prefer the individual tools). The consolidated [`MemoryQueryTool`] is
+//! The individual per-mode structs are still exported for callers that need
+//! them directly (`ingest_document` is the host's: it writes through the
+//! host's own tree-ingest path). The consolidated [`MemoryQueryTool`] is
 //! the recommended single entry point for the `memory` orchestration layer.
 
 mod backend;
@@ -11,33 +11,45 @@ mod cover_window;
 mod drill_down;
 mod fast_walk;
 mod fetch_leaves;
-mod ingest_document;
 mod query_source;
 mod search_entities;
-#[cfg(test)]
-mod test_workspace;
 
 // Re-export individual tool types for callers that need them directly
 // (e.g. tool registration in ops.rs).
 pub use cover_window::MemoryTreeCoverWindowTool;
 pub use drill_down::MemoryTreeDrillDownTool;
 pub use fetch_leaves::MemoryTreeFetchLeavesTool;
-pub use ingest_document::MemoryTreeIngestDocumentTool;
 pub use query_source::MemoryTreeQuerySourceTool;
 pub use search_entities::MemoryTreeSearchEntitiesTool;
 pub use MemoryTreeTool as MemoryQueryTool;
 
 use async_trait::async_trait;
 use serde_json::json;
+use crate::MemoryToolHost;
 use tinytools::{Tool, ToolResult};
 
 /// Single multi-mode tool that consolidates all six memory-tree retrieval
 /// primitives behind one LLM-facing entry. The `mode` field routes to the
 /// appropriate underlying implementation.
-pub struct MemoryTreeTool;
+pub struct MemoryTreeTool<H> {
+    host: H,
+}
+
+impl<H> MemoryTreeTool<H> {
+    /// The dispatcher over `host`.
+    pub fn new(host: H) -> Self {
+        Self { host }
+    }
+}
+
+impl<H: Default> Default for MemoryTreeTool<H> {
+    fn default() -> Self {
+        Self::new(H::default())
+    }
+}
 
 #[async_trait]
-impl Tool for MemoryTreeTool {
+impl<H: MemoryToolHost> Tool for MemoryTreeTool<H> {
     fn name(&self) -> &str {
         "memory_tree"
     }
@@ -152,13 +164,35 @@ impl Tool for MemoryTreeTool {
             .ok_or_else(|| anyhow::anyhow!("memory_tree: `mode` is required"))?;
         log::debug!("[tool][memory_tree] mode={mode}");
         match mode {
-            "search_entities" => MemoryTreeSearchEntitiesTool.execute(args).await,
-            "query_source" => MemoryTreeQuerySourceTool.execute(args).await,
-            "drill_down" => MemoryTreeDrillDownTool.execute(args).await,
-            "cover_window" => MemoryTreeCoverWindowTool.execute(args).await,
-            "fetch_leaves" => MemoryTreeFetchLeavesTool.execute(args).await,
-            "ingest_document" => MemoryTreeIngestDocumentTool.execute(args).await,
-            "walk" | "smart_walk" => fast_walk::run_fast_walk(args).await,
+            "search_entities" => {
+                MemoryTreeSearchEntitiesTool::new(self.host.clone())
+                    .execute(args)
+                    .await
+            }
+            "query_source" => {
+                MemoryTreeQuerySourceTool::new(self.host.clone())
+                    .execute(args)
+                    .await
+            }
+            "drill_down" => {
+                MemoryTreeDrillDownTool::new(self.host.clone())
+                    .execute(args)
+                    .await
+            }
+            "cover_window" => {
+                MemoryTreeCoverWindowTool::new(self.host.clone())
+                    .execute(args)
+                    .await
+            }
+            "fetch_leaves" => {
+                MemoryTreeFetchLeavesTool::new(self.host.clone())
+                    .execute(args)
+                    .await
+            }
+            // A write, through the host's own tree-ingest path (its config,
+            // workspace and RPC layer), so the host supplies it.
+            "ingest_document" => self.host.ingest_document(args).await,
+            "walk" | "smart_walk" => fast_walk::run_fast_walk(&self.host, args).await,
             other => {
                 log::debug!("[tool][memory_tree] unknown_mode mode={other}");
                 Err(anyhow::anyhow!(

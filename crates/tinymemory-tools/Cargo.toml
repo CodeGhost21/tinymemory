@@ -1,0 +1,37 @@
+[package]
+name = "tinymemory-tools"
+publish = false
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96"
+license = "GPL-3.0-only"
+description = "Memory agent tools (tree retrieval, raw search, hybrid/vector search, tool-scoped rules) over any TinyMemory provider, behind a host seam"
+repository = "https://github.com/tinyhumansai/tinymemory"
+
+# Tools are `tinytools::Tool`s, so this is the one crate in the workspace that
+# depends on tinytools. By git rev because it is not published; a host that
+# vendors tinytools (OpenHuman, through tinyagents) patches it to its checkout
+# so there is exactly one `Tool` trait:
+#
+#   [patch."https://github.com/tinyhumansai/tinytools"]
+#   tinytools = { path = "<checkout>/crates/tinytools" }
+[dependencies]
+tinymemory-api = { path = "../tinymemory-api" }
+tinytools = { git = "https://github.com/tinyhumansai/tinytools", rev = "67a7f70e1bb6f29f40ed6b0fe3ec1b0b5e85e5d2" }
+async-trait = "0.1"
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Cosine similarity and MMR for the vector search tool.
+tinyinference-embeddings = "0.3"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
