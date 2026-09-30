@@ -42,7 +42,7 @@ Base is the backend origin (default `https://api.tinyhumans.ai`), no `/v1`.
 | delete | `POST v1/forget` | `POST memory/forget` |
 | answer | `POST v1/answer` | `POST memory/answer` |
 | scopes | `GET v1/scopes/list?limit=N` | `GET memory/scopes` |
-| health | `GET v1/admin/health` | `GET memory/scopes?prefix=zz_health` |
+| health | `GET v1/admin/health` | `GET memory/scopes?prefix=tmh:probe&limit=1` |
 
 Every body carries `scope`. Responses are `{"success":true,"data":<body>}`; the
 transport unwraps `data`. A 2xx body without the envelope is a `Backend` error.
@@ -67,7 +67,7 @@ with `tinymemory_remote::error_code`.
 | --- | --- | --- | --- |
 | 401, 403 | `UNAUTHORIZED` | `Unauthorized` | no |
 | 402 | `USER_INSUFFICIENT_CREDITS` | `BudgetExceeded` | no |
-| 429, 502, 503, 504 | `RATE_LIMITED` | `Unavailable` | yes, 3 attempts |
+| 429, 500, 502, 503, 504 | `RATE_LIMITED` | `Unavailable` | yes, 3 attempts |
 | 400, 409, 413, 422 | `VALIDATION_ERROR`, `CONFLICT` | `Invalid` | no |
 | 404 | | `NotFound` | no |
 | other | | `Backend` | no |
@@ -129,6 +129,10 @@ reports `pages`, `records`, `imported`, `skipped`, `failed`.
 - No token appears in any `Debug` output or error message.
 - Hosted mode never sends a `/v1` path, `wait=`, a bulk route or an unknown
   `answer` key.
+- Every hosted scope and prefix is `type:id` segments. The memory API re-roots
+  each scope under the caller's tenant (`oc:u-<id>/…`), which spends one of the
+  engine's 32 segments, so a hosted namespace holds at most 31 and a deeper one
+  is refused before any request is sent.
 
 ## Acceptance criteria
 
@@ -141,14 +145,18 @@ reports `pages`, `records`, `imported`, `skipped`, `failed`.
 
 ## Open questions
 
-- The backend validates `/memory/scopes` without `limit`, so it strips it.
-  Hosted mode still sends `limit=10000` (it takes effect once the backend
-  forwards it) and treats a listing of exactly 50 entries, CortexDB's default
-  page, as possibly truncated unless the response proves completeness
-  (`has_more: false`, a null `next_cursor`, or a `total` that fits). It then
-  fails with a `Backend` error instead of returning a subset. A deployment with
-  exactly 50 scopes is refused until the backend forwards `limit`.
-- The health probe prefix `zz_health` is lowercase-first and grammar-safe
-  (`[a-z][a-z0-9_]*`); confirm the memory API accepts a bare prefix.
 - Hosted rate limit is 300 requests per minute per user; per-item bulk writes
   spend it faster than the direct path.
+
+Resolved:
+
+- `/memory/scopes` forwards `limit` (1–10000) and `cursor` since backend#1392.
+  Hosted mode sends `limit=10000` and keeps refusing a listing of exactly 50
+  entries, CortexDB's default page, unless the response proves completeness
+  (`has_more: false`, a null `next_cursor`, or a `total` that fits), so a
+  backend that still strips `limit` fails with a `Backend` error instead of
+  returning a subset.
+- The memory API refuses a bare `prefix` such as `zz_health` (422, relayed as
+  a 400): it pins every prefix under the tenant root and requires `type:id`
+  segments. The health probe lists `tmh:probe`, a segment type this adapter
+  never writes.

@@ -103,6 +103,52 @@ fn envelope(status: StatusCode, body: Value) -> (StatusCode, Json<Value>) {
     }
 }
 
+/// Segments the memory API lets a caller name: it re-roots every scope under
+/// the tenant (`oc:u-<id>/…`) and the engine holds 32, so one is spent.
+const TENANT_SCOPE_SEGMENTS: usize = 31;
+
+/// The memory API's scope check, as the backend reports it.
+///
+/// memory-api pins every `scope` and `prefix` under the caller's root and
+/// refuses one that is not `type:id` segments of `[A-Za-z0-9_-]`, or that
+/// would be too deep once rooted, with a 422 — which the backend turns into a
+/// 400 `BAD_REQUEST`. A double that accepted any scope is how a probe with a
+/// bare `zz_health` prefix passed here and failed against the real stack.
+fn refuse_scope(scope: &str) -> Option<(StatusCode, Json<Value>)> {
+    let segments: Vec<&str> = scope.split('/').filter(|s| !s.is_empty()).collect();
+    let id_chars = |s: &str| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    };
+    let well_formed = !segments.is_empty()
+        && segments.len() <= TENANT_SCOPE_SEGMENTS
+        && segments.iter().all(|segment| {
+            segment
+                .split_once(':')
+                .is_some_and(|(kind, id)| id_chars(kind) && id_chars(id))
+        });
+    (!well_formed).then(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "success": false,
+                "error": format!("invalid scope `{scope}`"),
+                "errorCode": "BAD_REQUEST"
+            })),
+        )
+    })
+}
+
+/// [`refuse_scope`] over a JSON body's `scope`.
+fn refuse_body_scope(body: &Value) -> Option<(StatusCode, Json<Value>)> {
+    refuse_scope(
+        body.get("scope")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+    )
+}
+
 /// Records the request and applies auth / forced failure. `Some` short-circuits.
 fn gate(
     state: &Shared,
@@ -145,6 +191,9 @@ async fn experience(
 ) -> (StatusCode, Json<Value>) {
     if let Some(early) = gate(&state, "POST", &uri, &headers) {
         return early;
+    }
+    if let Some(refused) = refuse_body_scope(&body) {
+        return refused;
     }
     let claim = headers
         .get("idempotency-key")
@@ -196,6 +245,9 @@ async fn events(
     if let Some(early) = gate(&state, "GET", &uri, &headers) {
         return early;
     }
+    if let Some(refused) = refuse_scope(params.get("scope").map_or("", String::as_str)) {
+        return refused;
+    }
     if state
         .rate_limit_events
         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
@@ -227,6 +279,9 @@ async fn recall(
     if let Some(early) = gate(&state, "POST", &uri, &headers) {
         return early;
     }
+    if let Some(refused) = refuse_body_scope(&body) {
+        return refused;
+    }
     let Json(value) = cortex_recall(State(state.log.clone()), Json(body)).await;
     envelope(StatusCode::OK, value)
 }
@@ -240,6 +295,9 @@ async fn forget(
     if let Some(early) = gate(&state, "POST", &uri, &headers) {
         return early;
     }
+    if let Some(refused) = refuse_body_scope(&body) {
+        return refused;
+    }
     let (status, Json(value)) = cortex_forget(State(state.log.clone()), Json(body)).await;
     envelope(status, value)
 }
@@ -252,6 +310,12 @@ async fn scopes(
 ) -> (StatusCode, Json<Value>) {
     if let Some(early) = gate(&state, "GET", &uri, &headers) {
         return early;
+    }
+    // No prefix is fine: the memory API then lists the tenant's own root.
+    if let Some(prefix) = params.get("prefix") {
+        if let Some(refused) = refuse_scope(prefix) {
+            return refused;
+        }
     }
     let mut params = params;
     if state.ignore_scope_limit.load(Ordering::SeqCst) {
@@ -269,6 +333,9 @@ async fn answer(
 ) -> (StatusCode, Json<Value>) {
     if let Some(early) = gate(&state, "POST", &uri, &headers) {
         return early;
+    }
+    if let Some(refused) = refuse_body_scope(&body) {
+        return refused;
     }
     let object = body.as_object().expect("object body");
     let allowed = |k: &str| ANSWER_KEYS.contains(&k) || k == "use_pack_id";
@@ -448,7 +515,7 @@ async fn every_operation_maps_to_a_memory_path_and_never_a_v1_one() {
         "POST /memory/recall?",
         "POST /memory/forget?",
         "GET /memory/scopes?limit",
-        "GET /memory/scopes?prefix",
+        "GET /memory/scopes?limit,prefix",
         "POST /memory/answer?",
     ]
     .into_iter()
@@ -457,6 +524,69 @@ async fn every_operation_maps_to_a_memory_path_and_never_a_v1_one() {
     assert_eq!(
         shapes, expected,
         "the hosted routes and query parameters used"
+    );
+}
+
+#[tokio::test]
+async fn the_health_probe_names_a_scope_the_memory_api_accepts() {
+    // The double refuses a malformed prefix exactly as the backend relays the
+    // memory API's refusal, so `Ready` here proves the probe's prefix is one
+    // the real stack lists rather than rejects.
+    let (endpoint, state) = hosted_backend().await;
+    let health = provider(&endpoint).health().await;
+    assert!(matches!(health, MemoryHealth::Ready), "{health:?}");
+
+    let seen = state.seen.lock().expect("seen");
+    let probe = seen
+        .requests
+        .iter()
+        .find(|r| r.starts_with("GET /memory/scopes"))
+        .expect("the probe lists scopes");
+    assert!(probe.contains("prefix="), "{probe}");
+    assert!(
+        probe.contains("limit=1"),
+        "the probe asks for one entry: {probe}"
+    );
+}
+
+#[tokio::test]
+async fn a_namespace_too_deep_once_rooted_is_refused_before_it_is_sent() {
+    let (endpoint, state) = hosted_backend().await;
+    let p = provider(&endpoint);
+    let namespace = |depth: usize| {
+        (0..depth)
+            .map(|i| format!("s{i}"))
+            .collect::<Vec<_>>()
+            .join("/")
+    };
+    p.store(
+        &namespace(31),
+        "k",
+        "fits under the tenant root",
+        MemoryCategory::Core,
+        None,
+        MemoryTaint::Internal,
+    )
+    .await
+    .expect("31 segments plus the tenant root is the engine's 32");
+    let sent = state.seen.lock().expect("seen").requests.len();
+
+    let error = p
+        .store(
+            &namespace(32),
+            "k",
+            "one segment too many",
+            MemoryCategory::Core,
+            None,
+            MemoryTaint::Internal,
+        )
+        .await
+        .expect_err("32 segments cannot be rooted under the tenant");
+    assert!(error.to_string().contains("31"), "{error}");
+    assert_eq!(
+        state.seen.lock().expect("seen").requests.len(),
+        sent,
+        "refused locally, not by the backend"
     );
 }
 

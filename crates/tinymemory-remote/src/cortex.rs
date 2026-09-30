@@ -122,6 +122,15 @@ const SEGMENT_ENCODED: &str = "tmx";
 /// `422 INVALID_BODY`.
 const MAX_SCOPE_SEGMENTS: usize = 32;
 
+/// The scope prefix the hosted health probe lists under.
+///
+/// The memory API behind the backend pins every `prefix` under the caller's
+/// tenant root and, like the engine, refuses anything that is not `type:id`
+/// segments: a bare word such as `zz_health` comes back as a 400, which would
+/// report a healthy service as broken. `tmh` is a segment type this adapter
+/// never writes, so the listing is empty and cheap.
+const HEALTH_PROBE_SCOPE: &str = "tmh:probe";
+
 /// How many events one listing page asks for.
 ///
 /// The fold needs every event in a scope, so this bounds one request rather
@@ -225,6 +234,18 @@ impl CortexWire {
             (Self::TinyHumans, Route::Forget) => "memory/forget",
             (Self::TinyHumans, Route::Answer) => "memory/answer",
             (Self::TinyHumans, Route::Scopes) => "memory/scopes",
+        }
+    }
+
+    /// How many namespace segments a scope on this wire may hold.
+    ///
+    /// The engine accepts [`MAX_SCOPE_SEGMENTS`]. The memory API behind the
+    /// TinyHumans backend re-roots every scope under the caller's tenant
+    /// (`oc:u-<id>/…`), which spends one of them.
+    const fn max_scope_segments(self) -> usize {
+        match self {
+            Self::Direct => MAX_SCOPE_SEGMENTS,
+            Self::TinyHumans => MAX_SCOPE_SEGMENTS - 1,
         }
     }
 }
@@ -432,6 +453,23 @@ impl CortexDialect {
             out.len()
         );
         Ok(out.join("/"))
+    }
+
+    /// [`Self::scope_of`], checked against this dialect's wire.
+    ///
+    /// A hosted scope holds one segment fewer than the engine's limit (see
+    /// [`CortexWire::max_scope_segments`]). Refusing here names the cause; the
+    /// backend would answer a generic 400.
+    pub(crate) fn scope_for(&self, namespace: &str) -> anyhow::Result<String> {
+        let scope = Self::scope_of(namespace)?;
+        let limit = self.wire.max_scope_segments();
+        let segments = scope.split('/').count();
+        anyhow::ensure!(
+            segments <= limit,
+            "namespace has {segments} segments; a hosted scope holds at most {limit}, \
+             because the memory API roots every scope under the account"
+        );
+        Ok(scope)
     }
 
     /// The inverse of [`Self::scope_of`].
@@ -1101,7 +1139,7 @@ impl Dialect for CortexDialect {
     /// produces `409 IDEMPOTENCY_CONFLICT` on the second store. The previous
     /// version stays in the log and is folded out on read.
     async fn upsert(&self, entry: StoredEntry) -> anyhow::Result<()> {
-        let scope = Self::scope_of(&entry.namespace)?;
+        let scope = self.scope_for(&entry.namespace)?;
         let envelope = serde_json::to_string(&Envelope {
             k: entry.key.clone(),
             c: entry.content.clone(),
@@ -1149,7 +1187,7 @@ impl Dialect for CortexDialect {
     }
 
     async fn namespace_entries(&self, namespace: &str) -> anyhow::Result<Vec<StoredEntry>> {
-        let scope = Self::scope_of(namespace)?;
+        let scope = self.scope_for(namespace)?;
         let events = self.events(&scope).await?;
         Ok(Self::fold(namespace, &events))
     }
@@ -1174,7 +1212,7 @@ impl Dialect for CortexDialect {
     /// license. The two mistakes are only dangerous together, and this is why
     /// the flag is not written anywhere in this file.
     async fn delete(&self, namespace: &str, key: &str) -> anyhow::Result<bool> {
-        let scope = Self::scope_of(namespace)?;
+        let scope = self.scope_for(namespace)?;
         let events = self.events(&scope).await?;
         let mut ids = Vec::new();
         let mut live = false;
@@ -1259,7 +1297,7 @@ impl Dialect for CortexDialect {
             // that a non-matching query yields no hits.
             return Ok(Vec::new());
         };
-        let scope = Self::scope_of(namespace)?;
+        let scope = self.scope_for(namespace)?;
         let answer: Value = self
             .client
             .json(
@@ -1300,14 +1338,17 @@ impl Dialect for CortexDialect {
     async fn health(&self) -> anyhow::Result<()> {
         match self.wire {
             CortexWire::Direct => self.client.probe("v1/admin/health").await,
-            // No health route is exposed; an empty scope listing is the
-            // cheapest authenticated call, and proves reachability, the
-            // credential and (via 402/429) account state in one round trip.
+            // No health route is exposed; a one-entry listing under a scope
+            // this adapter never writes is the cheapest authenticated call,
+            // and proves reachability and the credential in one round trip.
+            // It cannot see the credit balance: the memory API checks credits
+            // on writes, recall and answers, not on listings.
             CortexWire::TinyHumans => {
                 self.client
                     .probe(&format!(
-                        "{}?prefix=zz_health",
-                        self.wire.path(Route::Scopes)
+                        "{}?prefix={}&limit=1",
+                        self.wire.path(Route::Scopes),
+                        urlencoding(HEALTH_PROBE_SCOPE)
                     ))
                     .await
             }

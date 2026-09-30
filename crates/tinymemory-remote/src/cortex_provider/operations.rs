@@ -59,7 +59,7 @@ impl CortexProvider {
     }
 
     async fn experience(&self, input: ExperienceInput<'_>) -> Result<(String, bool), MemoryError> {
-        let request = Self::experience_request(input)?;
+        let request = self.experience_request(input)?;
         let answer: Value = self
             .dialect
             .submit_experience(&request, true)
@@ -68,7 +68,7 @@ impl CortexProvider {
         receipt(&answer)
     }
 
-    fn experience_request(input: ExperienceInput<'_>) -> Result<Value, MemoryError> {
+    fn experience_request(&self, input: ExperienceInput<'_>) -> Result<Value, MemoryError> {
         let ExperienceInput {
             namespace,
             modality,
@@ -91,7 +91,7 @@ impl CortexProvider {
                 "namespace, modality, key, and content must not be empty".to_string(),
             ));
         }
-        let scope = CortexDialect::scope_of(namespace).map_err(engine_error)?;
+        let scope = self.dialect.scope_for(namespace).map_err(engine_error)?;
         let envelope = json!({
             "k": key,
             "c": body,
@@ -376,7 +376,7 @@ impl MemoryConversationIngest for CortexProvider {
                 serde_json::to_string(&payload)?
             );
             let key = format!("message:{conversation_id}:{index}");
-            items.push(Self::experience_request(ExperienceInput {
+            items.push(self.experience_request(ExperienceInput {
                 namespace: &namespace,
                 modality: "conversation",
                 role: Some(&role),
@@ -525,7 +525,7 @@ impl MemoryAnswer for CortexProvider {
                 "CortexDB answers cannot safely apply the requested recall filters".to_string(),
             ));
         }
-        let scope = CortexDialect::scope_of(namespace).map_err(engine_error)?;
+        let scope = self.dialect.scope_for(namespace).map_err(engine_error)?;
         let pack: Value = self
             .dialect
             .client
