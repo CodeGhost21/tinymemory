@@ -13,7 +13,7 @@
 //! | --- | --- | --- |
 //! | 401 / 403 | `UNAUTHORIZED` | `Unauthorized` (session expired or key rejected) |
 //! | 402 | `USER_INSUFFICIENT_CREDITS` | `BudgetExceeded` |
-//! | 429, 502, 503, 504 | `RATE_LIMITED`, ... | `Unavailable` (retried on reads) |
+//! | 429, 500, 502, 503, 504 | `RATE_LIMITED`, ... | `Unavailable` (retried on reads) |
 //! | 400, 409, 413, 422 | `VALIDATION_ERROR`, `CONFLICT` | `Invalid` |
 //! | 404 | | `NotFound` |
 //!

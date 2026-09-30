@@ -30,6 +30,13 @@ use tinymemory_api::provider::{audit_provider, ExportRecord, MemoryProvider, Sou
 use tinymemory_api::recall::OwnedRecallOpts;
 use tinymemory_api::types::{MemoryCategory, MemoryTaint, NamespaceDocumentInput};
 
+mod ingest;
+
+pub use ingest::{
+    assert_answer_is_grounded, assert_answer_refuses_an_empty_question, assert_conversation_ingest,
+    assert_document_ingest, assert_event_ingest, assert_ingest_families, assert_learning_ingest,
+};
+
 /// Runs every assertion in the suite.
 ///
 /// # Panics
@@ -69,6 +76,7 @@ pub async fn assert_provider(provider: Arc<dyn MemoryProvider>) {
     assert_awkward_content_round_trips(p).await;
     assert_kv_round_trip(p).await;
     assert_documents_round_trip(p).await;
+    assert_ingest_families(p).await;
 }
 
 /// An unrecognised entity kind in `search_entities`' filter is `Invalid`.
