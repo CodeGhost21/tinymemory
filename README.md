@@ -45,6 +45,9 @@ crates/
 │                       source scope, taint, redaction, char budgets and audit,
 │                       all consulted through the host-implemented
 │                       `GuardPolicy` trait
+├── tinymemory-safety/  secret and PII scrubbing (credential patterns,
+│                       checksum-gated national-ID redaction) shared by
+│                       TinyCortex, `tinymemory-core` and the host
 ├── tinymemory-sources/ memory-source contracts and readers — local folders
 │                       always, GitHub/RSS/web pages behind `network`
 ├── tinymemory-documents/ document and URL intake: sniff a format, convert it
