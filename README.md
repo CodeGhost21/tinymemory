@@ -41,6 +41,9 @@ crates/
 ├── tinymemory-sync/    the engine-neutral Composio payload normalisers, so a
 │                       host binding a driver that is not TinyCortex can run
 │                       them
+├── tinymemory-gate/    the scheduler gate: host power/CPU sampling and the
+│                       cooperative wait that keeps background memory work
+│                       from lagging the machine
 ├── tinymemory-guard/   the policy decorator over any `MemoryProvider`: tier,
 │                       source scope, taint, redaction, char budgets and audit,
 │                       all consulted through the host-implemented
