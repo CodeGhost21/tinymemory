@@ -73,6 +73,7 @@ impl<H: MemoryToolHost> Tool for MemoryTreeDrillDownTool<H> {
             ));
         }
         let hits = backend::drill_down(
+            &self.host,
             &req.node_id,
             req.max_depth.unwrap_or(1),
             req.query.as_deref(),

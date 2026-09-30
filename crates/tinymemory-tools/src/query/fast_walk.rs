@@ -6,11 +6,15 @@
 //! (no synthesized prose); a higher-level context agent composes the answer.
 
 use tinymemory_api::provider::{FastRetrieveQuery, MemoryProvider};
+use crate::MemoryToolHost;
 use tinytools::ToolResult;
 
 /// Parse the shared `memory_tree` args and run deterministic retrieval.
 /// Accepts `query` (required), `limit`, `time_window_days`, and `max_hops`.
-pub async fn run_fast_walk(args: serde_json::Value) -> anyhow::Result<ToolResult> {
+pub async fn run_fast_walk<H: MemoryToolHost>(
+    host: &H,
+    args: serde_json::Value,
+) -> anyhow::Result<ToolResult> {
     let query = args
         .get("query")
         .and_then(|v| v.as_str())
@@ -46,7 +50,7 @@ pub async fn run_fast_walk(args: serde_json::Value) -> anyhow::Result<ToolResult
     // Routed through the bound driver. `None` for the scope is not
     // "unrestricted": the guard intersects it with the ambient per-turn
     // allowlist, so the source gate still applies.
-    let guard = self.host.provider()
+    let guard = host.provider()
         .await
         .map_err(|e| anyhow::anyhow!("memory_tree walk: {e}"))?;
     let opts = FastRetrieveQuery {

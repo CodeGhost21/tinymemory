@@ -85,6 +85,7 @@ impl<H: MemoryToolHost> Tool for MemoryTreeQuerySourceTool<H> {
         let resp = match req.source_id.as_deref() {
             Some(source_id) => {
                 backend::query_source_scope(
+                    &self.host,
                     Some(source_id),
                     req.time_window_days,
                     req.query.as_deref(),
@@ -94,6 +95,7 @@ impl<H: MemoryToolHost> Tool for MemoryTreeQuerySourceTool<H> {
             }
             None => {
                 backend::query_source_kind(
+                    &self.host,
                     source_kind,
                     req.time_window_days,
                     req.query.as_deref(),

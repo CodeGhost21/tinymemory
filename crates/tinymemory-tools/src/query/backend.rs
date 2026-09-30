@@ -1,9 +1,6 @@
 //! High-level memory query backend.
 //!
 //! This module is the orchestration-facing read surface over the summary tree.
-//! It deliberately lives under `memory/query` rather than `memory_tree/tree`
-//! so the tree module can stay focused on generic structure, policy,
-//! summarisation, and read/write mechanics.
 //!
 //! # Everything here goes through the bound driver
 //!
@@ -17,17 +14,20 @@
 //! reaches the driver, so naming a scope here could only ever narrow what the
 //! turn may see.
 
+use std::sync::Arc;
+
 use anyhow::Result;
+
+use crate::MemoryToolHost;
 
 use tinymemory_api::chunks::SourceKind;
 use tinymemory_api::provider::{
     MemoryProvider, RetrievalHit, RetrievalResponse, SourceRetrievalQuery,
 };
-use crate::memory::guard::MemoryGuard;
 
 /// The retrieval family on the active driver, or a caller-facing error.
-async fn retrieval() -> Result<std::sync::Arc<MemoryGuard>> {
-    let guard = self.host.provider()
+async fn retrieval<H: MemoryToolHost>(host: &H) -> Result<Arc<dyn MemoryProvider>> {
+    let guard = host.provider()
         .await
         .map_err(|e| anyhow::anyhow!("memory query: {e}"))?;
     if guard.as_retrieval().is_none() {
@@ -41,13 +41,14 @@ async fn retrieval() -> Result<std::sync::Arc<MemoryGuard>> {
 /// Query the per-source summary trees. The global (time-axis) and topic
 /// (subject-axis) trees were removed; source trees plus the entity index are
 /// the substrate, so this is the only remaining tree-query backend.
-pub async fn query_source_scope(
+pub async fn query_source_scope<H: MemoryToolHost>(
+    host: &H,
     scope: Option<&str>,
     time_window_days: Option<u32>,
     query: Option<&str>,
     limit: usize,
 ) -> Result<RetrievalResponse> {
-    let guard = retrieval().await?;
+    let guard = retrieval(host).await?;
     let request = SourceRetrievalQuery {
         source_id: scope.map(str::to_string),
         source_kind: None,
@@ -62,13 +63,14 @@ pub async fn query_source_scope(
         .await?)
 }
 
-pub async fn query_source_kind(
+pub async fn query_source_kind<H: MemoryToolHost>(
+    host: &H,
     source_kind: Option<SourceKind>,
     time_window_days: Option<u32>,
     query: Option<&str>,
     limit: usize,
 ) -> Result<RetrievalResponse> {
-    let guard = retrieval().await?;
+    let guard = retrieval(host).await?;
     let request = SourceRetrievalQuery {
         source_id: None,
         source_kind,
@@ -83,13 +85,14 @@ pub async fn query_source_kind(
         .await?)
 }
 
-pub async fn drill_down(
+pub async fn drill_down<H: MemoryToolHost>(
+    host: &H,
     node_id: &str,
     max_depth: u32,
     query: Option<&str>,
     limit: Option<usize>,
 ) -> Result<Vec<RetrievalHit>> {
-    let guard = retrieval().await?;
+    let guard = retrieval(host).await?;
     Ok(guard
         .as_retrieval()
         .expect("checked above")
@@ -100,8 +103,11 @@ pub async fn drill_down(
         .await?)
 }
 
-pub async fn fetch_leaves(chunk_ids: &[String]) -> Result<Vec<RetrievalHit>> {
-    let guard = retrieval().await?;
+pub async fn fetch_leaves<H: MemoryToolHost>(
+    host: &H,
+    chunk_ids: &[String],
+) -> Result<Vec<RetrievalHit>> {
+    let guard = retrieval(host).await?;
     Ok(guard
         .as_retrieval()
         .expect("checked above")
