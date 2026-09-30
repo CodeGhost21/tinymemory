@@ -217,6 +217,23 @@ impl RecordingProvider {
         self
     }
 
+    /// Sets what [`MemoryEpisodic::session_turns`] returns. Without this a
+    /// finalize path stops at its empty-entries early return and never reaches
+    /// the recap it is being tested for.
+    #[must_use]
+    pub fn with_session_turns(self, turns: Vec<EpisodicTurn>) -> Self {
+        *lock(&self.session_turns) = turns;
+        self
+    }
+
+    /// Sets the queue [`MemoryEpisodic::segments_pending_summary`] drains from.
+    /// The default is empty, the state a healthy store is in.
+    #[must_use]
+    pub fn with_pending_segments(self, segments: Vec<ConversationSegment>) -> Self {
+        *lock(&self.pending_segments) = segments;
+        self
+    }
+
     fn record(&self, call: Call) {
         lock(&self.calls).push(call);
     }
