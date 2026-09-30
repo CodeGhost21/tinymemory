@@ -87,11 +87,25 @@ none. The body still carries the engine-level key (a content hash for
 ingestion), which CortexDB dedupes on, so re-ingesting identical content
 succeeds and reports `already_ingested`.
 
-A 409 on a **retry** of a write means the earlier attempt may have been applied.
-That is success-unknown: the event is looked up in the scope by the text just
-written and the write proceeds to the visibility wait. A partially applied
-conversation completes on retry, because the already-written messages replay on
-their body keys.
+Every hosted write — ingestion, keyed `store`, and the tombstone behind
+`forget` — is sent up to three times on a transient fault (429, 5xx, timeout,
+unreachable) under its one claim. A fault from the backend's own rate limiter
+arrives before the memory API, so the claim is still free and the retry is
+forwarded. The memory API keeps a claim once it has contacted the engine, so a
+409 on a **retry** means the earlier attempt may have been applied. That is
+success-unknown, and the event is looked up in the scope's newest listing page:
+
+- ingestion accepts an event carrying the same text, because the body's
+  content key makes it the same record;
+- a keyed record or tombstone accepts it only if it is also the key's newest
+  version, because its text can repeat an older value of the key.
+
+The lookup gets the 30s visibility budget and treats transient faults as "not
+yet". An event that never appears fails the write as outcome-unknown, never as
+success. A partially applied conversation completes on retry, because the
+already-written messages replay on their body keys. The event removal behind
+`forget` names its events explicitly, so it is retried as well, and a retry
+answered 404 has done its job.
 
 ### Answer
 

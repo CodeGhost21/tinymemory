@@ -286,6 +286,14 @@ impl CortexMemory {
         Ok(self)
     }
 
+    /// Shortens how long a write waits to see its own event, so a test can
+    /// reach an outcome-unknown write without the full 30s.
+    #[cfg(test)]
+    pub(crate) fn with_visibility_timeout(mut self, timeout: std::time::Duration) -> Self {
+        self.inner.dialect_mut().visibility_timeout = timeout;
+        self
+    }
+
     fn new(endpoint: &str, api_key: Option<&str>) -> anyhow::Result<Self> {
         if api_key.is_some() {
             crate::common::ensure_secure_endpoint(endpoint)?;
@@ -294,6 +302,7 @@ impl CortexMemory {
             inner: RemoteMemory::new(CortexDialect {
                 client: HttpClient::bearer(endpoint, api_key)?,
                 wire: CortexWire::Direct,
+                visibility_timeout: VISIBILITY_TIMEOUT,
             }),
         })
     }
@@ -317,6 +326,7 @@ impl CortexMemory {
             inner: RemoteMemory::new(CortexDialect {
                 client: HttpClient::dynamic(backend_base_url, bearer)?.hosted(),
                 wire: CortexWire::TinyHumans,
+                visibility_timeout: VISIBILITY_TIMEOUT,
             }),
         })
     }
@@ -402,6 +412,21 @@ struct Folded {
 pub(crate) struct CortexDialect {
     pub(crate) client: HttpClient,
     pub(crate) wire: CortexWire,
+    /// How long a write waits to see its own event: [`VISIBILITY_TIMEOUT`]
+    /// outside tests.
+    visibility_timeout: std::time::Duration,
+}
+
+/// How a retried hosted write that met its own claim recognises the event the
+/// earlier attempt may have made.
+#[derive(Clone, Copy, Debug)]
+enum Recovery<'a> {
+    /// Ingestion: the body's content key dedupes in the engine, so any event
+    /// carrying the same text is this record.
+    SameText,
+    /// A keyed record or tombstone: its text can repeat an older version of the
+    /// key, so the event must also be the key's newest version.
+    NewestFor(&'a str),
 }
 
 impl CortexDialect {
@@ -595,7 +620,7 @@ impl CortexDialect {
         event_id: &str,
         text: &str,
     ) -> anyhow::Result<()> {
-        let deadline = std::time::Instant::now() + VISIBILITY_TIMEOUT;
+        let deadline = std::time::Instant::now() + self.visibility_timeout;
 
         // Phase one: the keyed read path, which folds the scope listing.
         let mut delay = VISIBILITY_POLL;
@@ -620,7 +645,7 @@ impl CortexDialect {
                 }
                 Err(error) => return Err(error),
             }
-            Self::still_waiting(deadline, event_id, scope)?;
+            self.still_waiting(deadline, event_id, scope)?;
             tokio::time::sleep(delay).await;
             delay = self.next_poll_delay(delay);
         }
@@ -712,6 +737,7 @@ impl CortexDialect {
     /// Errors once the visibility deadline has passed, naming the read path
     /// that never caught up.
     fn still_waiting(
+        &self,
         deadline: std::time::Instant,
         event_id: &str,
         scope: &str,
@@ -719,8 +745,9 @@ impl CortexDialect {
         anyhow::ensure!(
             std::time::Instant::now() < deadline,
             "event `{event_id}` was accepted into scope `{scope}` but did not become \
-             readable within {VISIBILITY_TIMEOUT:?}; reporting the write as succeeded \
-             would break read-after-write"
+             readable within {:?}; reporting the write as succeeded would break \
+             read-after-write",
+            self.visibility_timeout
         );
         Ok(())
     }
@@ -837,7 +864,7 @@ impl CortexDialect {
                     .await
             }
             CortexWire::TinyHumans => {
-                let accepted = self.send_hosted_write(request).await?;
+                let accepted = self.send_hosted_write(request, Recovery::SameText).await?;
                 if wait_indexed {
                     self.wait_for_receipt(request, &accepted).await?;
                 }
@@ -850,13 +877,19 @@ impl CortexDialect {
     /// `Idempotency-Key`.
     ///
     /// The header is a per-call random claim, not the body's content key. The
-    /// memory API answers any replay of a claimed key with 409 and never
-    /// forwards it, and a transport failure leaves the claim dangling — so a
-    /// 409 on a *retry* means the earlier attempt may have been applied. That is
-    /// success-unknown, not failure: the event is looked up by the text just
-    /// written, and the body's own key (which the engine dedupes on) makes a
-    /// genuine miss safe to report as an error.
-    async fn send_hosted_write(&self, request: &Value) -> anyhow::Result<Value> {
+    /// memory API takes the claim before it forwards a request and keeps it
+    /// once the engine has been contacted, and it answers any replay of a
+    /// claimed key with 409 without forwarding it. So a 409 on a *retry* means
+    /// the earlier attempt reached the engine and may have been applied: the
+    /// outcome is unknown rather than failed, and [`Self::recover_unknown_write`]
+    /// looks for the event. A fault that arrives before the memory API — the
+    /// backend's own rate limit — leaves the claim free, and the retry is
+    /// simply forwarded.
+    async fn send_hosted_write(
+        &self,
+        request: &Value,
+        recovery: Recovery<'_>,
+    ) -> anyhow::Result<Value> {
         let path = self.wire.path(Route::Experience);
         let claim = fresh_idempotency_key();
         let mut attempt = 0;
@@ -869,7 +902,7 @@ impl CortexDialect {
             {
                 Ok(accepted) => return Ok(accepted),
                 Err(error) if attempt > 1 && Self::is_claim_conflict(&error) => {
-                    return self.recover_unknown_write(request).await;
+                    return self.recover_unknown_write(request, recovery).await;
                 }
                 Err(error) if attempt < HOSTED_WRITE_ATTEMPTS && Self::is_transient(&error) => {
                     tokio::time::sleep(VISIBILITY_POLL * 2_u32.pow(attempt as u32 - 1)).await;
@@ -879,41 +912,152 @@ impl CortexDialect {
         }
     }
 
-    /// Finds the event a possibly-applied write produced, by its text.
-    async fn recover_unknown_write(&self, request: &Value) -> anyhow::Result<Value> {
+    /// Finds the event a possibly-applied write produced.
+    ///
+    /// The earlier attempt may still be in flight, and the listing lags an
+    /// accepted write by more than a second, so this polls with the same
+    /// budget and the same tolerance of transient faults as
+    /// [`Self::await_readable`]: one 429 while looking must not turn a write
+    /// that succeeded into a reported failure. What counts as the write's
+    /// event depends on the write — see [`Recovery`].
+    async fn recover_unknown_write(
+        &self,
+        request: &Value,
+        recovery: Recovery<'_>,
+    ) -> anyhow::Result<Value> {
         let (Some(scope), Some(text)) = (
             request.get("scope").and_then(Value::as_str),
             request.pointer("/content/text").and_then(Value::as_str),
         ) else {
             anyhow::bail!("a retried write was claimed but carries no scope or text to look up");
         };
-        let deadline = std::time::Instant::now() + VISIBILITY_POLL * 8;
+        let deadline = std::time::Instant::now() + self.visibility_timeout;
+        let mut delay = VISIBILITY_POLL;
         loop {
             let path = format!(
                 "{base}?scope={scope}&limit={PAGE_SIZE}",
                 base = self.wire.path(Route::Events),
                 scope = urlencoding(scope)
             );
-            let page: Value = self
+            match self
                 .client
-                .json(Method::GET, &path, None, Attempts::RetryTransient)
-                .await?;
-            let found = page
-                .get("items")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .find(|e| e.pointer("/content/text").and_then(Value::as_str) == Some(text))
-                .and_then(|e| e.get("id").and_then(Value::as_str));
-            if let Some(id) = found {
-                return Ok(json!({ "event_id": id, "replayed_from_idempotency": true }));
+                .json::<Value>(Method::GET, &path, None, Attempts::RetryTransient)
+                .await
+            {
+                Ok(page) => {
+                    if let Some(id) = Self::recovered_event(page.get("items"), text, recovery) {
+                        return Ok(json!({ "event_id": id, "replayed_from_idempotency": true }));
+                    }
+                }
+                Err(error) if Self::is_transient(&error) => {}
+                Err(error) => return Err(error),
             }
             anyhow::ensure!(
                 std::time::Instant::now() < deadline,
                 "a retried write was refused as already claimed, but no matching event \
-                 appeared in scope `{scope}`; its outcome is unknown"
+                 appeared in scope `{scope}` within {:?}; its outcome is unknown",
+                self.visibility_timeout
             );
-            tokio::time::sleep(VISIBILITY_POLL).await;
+            tokio::time::sleep(delay).await;
+            delay = self.next_poll_delay(delay);
+        }
+    }
+
+    /// The id of the event in `items` that a recovered write produced.
+    fn recovered_event(
+        items: Option<&Value>,
+        text: &str,
+        recovery: Recovery<'_>,
+    ) -> Option<String> {
+        fn text_of(event: &Value) -> Option<&str> {
+            event.pointer("/content/text").and_then(Value::as_str)
+        }
+        let items = items?.as_array()?;
+        let found = match recovery {
+            Recovery::SameText => items.iter().find(|event| text_of(event) == Some(text))?,
+            // The key's newest version, by log offset, and only if it is this
+            // write: an older version holding the same value would otherwise
+            // be read as proof that a write which never landed did.
+            Recovery::NewestFor(key) => items
+                .iter()
+                .filter(|event| {
+                    text_of(event)
+                        .and_then(Self::envelope_of)
+                        .is_some_and(|envelope| envelope.k == key)
+                })
+                .max_by_key(|event| {
+                    event
+                        .get("wal_offset")
+                        .and_then(Value::as_u64)
+                        .unwrap_or_default()
+                })
+                .filter(|event| text_of(event) == Some(text))?,
+        };
+        found.get("id").and_then(Value::as_str).map(str::to_owned)
+    }
+
+    /// Appends a keyed record or tombstone and returns the engine's receipt.
+    ///
+    /// Direct mode sends it once, as it always has. Hosted mode retries a
+    /// transient fault under one claim ([`Self::send_hosted_write`]): the
+    /// backend rate-limits every user to 300 requests a minute, one 429 must
+    /// not fail a `store` or a `forget`, and `migrate::copy` into hosted
+    /// memory imports through this path.
+    async fn append_keyed(&self, request: &Value, key: &str) -> anyhow::Result<Value> {
+        match self.wire {
+            CortexWire::Direct => {
+                self.client
+                    .json(
+                        Method::POST,
+                        self.wire.path(Route::Experience),
+                        Some(request),
+                        Attempts::Once,
+                    )
+                    .await
+            }
+            CortexWire::TinyHumans => {
+                self.send_hosted_write(request, Recovery::NewestFor(key))
+                    .await
+            }
+        }
+    }
+
+    /// Removes named events from a scope.
+    ///
+    /// Hosted mode retries a transient fault: forgetting named events is
+    /// idempotent, and a retry that finds them already gone (404) has done
+    /// its job. Direct mode sends it once, as it always has.
+    async fn forget_events(&self, scope: &str, ids: Vec<String>) -> anyhow::Result<()> {
+        let body = json!({
+            "scope": scope,
+            "layers": ["events"],
+            "selector": { "memory_ids": ids },
+            "audit_note": "tinymemory: delete(namespace, key)",
+        });
+        let path = self.wire.path(Route::Forget);
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            match self.client.empty(Method::POST, path, Some(&body)).await {
+                Ok(_) => return Ok(()),
+                Err(error)
+                    if attempt > 1
+                        && matches!(
+                            error.downcast_ref::<tinymemory_api::error::MemoryError>(),
+                            Some(tinymemory_api::error::MemoryError::NotFound(_))
+                        ) =>
+                {
+                    return Ok(());
+                }
+                Err(error)
+                    if self.wire == CortexWire::TinyHumans
+                        && attempt < HOSTED_WRITE_ATTEMPTS
+                        && Self::is_transient(&error) =>
+                {
+                    tokio::time::sleep(VISIBILITY_POLL * 2_u32.pow(attempt as u32 - 1)).await;
+                }
+                Err(error) => return Err(error),
+            }
         }
     }
 
@@ -1155,22 +1299,15 @@ impl Dialect for CortexDialect {
             d: false,
             x: None,
         })?;
-        let accepted: Value = self
-            .client
-            .json(
-                Method::POST,
-                self.wire.path(Route::Experience),
-                Some(&json!({
-                    "scope": scope,
-                    "modality": "observation",
-                    // Fresh per write. See this method's own doc.
-                    "idempotency_key": fresh_idempotency_key(),
-                    "content": { "kind": "message", "role": "user", "text": envelope },
-                    "context": {},
-                })),
-                Attempts::Once,
-            )
-            .await?;
+        let request = json!({
+            "scope": scope,
+            "modality": "observation",
+            // Fresh per write. See this method's own doc.
+            "idempotency_key": fresh_idempotency_key(),
+            "content": { "kind": "message", "role": "user", "text": envelope },
+            "context": {},
+        });
+        let accepted = self.append_keyed(&request, &entry.key).await?;
         // Accepted is not readable yet — see `await_readable`.
         if let Some(id) = accepted.get("event_id").and_then(Value::as_str) {
             self.await_readable(&scope, id, &envelope).await?;
@@ -1248,39 +1385,21 @@ impl Dialect for CortexDialect {
             d: true,
             x: None,
         })?;
-        let accepted: Value = self
-            .client
-            .json(
-                Method::POST,
-                self.wire.path(Route::Experience),
-                Some(&json!({
-                    "scope": scope,
-                    "modality": "conversation",
-                    "idempotency_key": fresh_idempotency_key(),
-                    "content": { "kind": "message", "role": "user", "text": tombstone },
-                    "context": {},
-                })),
-                Attempts::Once,
-            )
-            .await?;
+        let request = json!({
+            "scope": scope,
+            "modality": "conversation",
+            "idempotency_key": fresh_idempotency_key(),
+            "content": { "kind": "message", "role": "user", "text": tombstone },
+            "context": {},
+        });
+        let accepted = self.append_keyed(&request, key).await?;
         // The tombstone IS the delete; the next read must see it.
         if let Some(id) = accepted.get("event_id").and_then(Value::as_str) {
             self.await_readable(&scope, id, &tombstone).await?;
         }
 
         if !ids.is_empty() {
-            self.client
-                .empty(
-                    Method::POST,
-                    self.wire.path(Route::Forget),
-                    Some(&json!({
-                        "scope": scope,
-                        "layers": ["events"],
-                        "selector": { "memory_ids": ids },
-                        "audit_note": "tinymemory: delete(namespace, key)",
-                    })),
-                )
-                .await?;
+            self.forget_events(&scope, ids).await?;
         }
         Ok(true)
     }

@@ -80,6 +80,14 @@ struct Hosted {
     /// Answer the Nth experience request (1-based) with a 400, unapplied.
     fail_nth_experience: AtomicUsize,
     experience_calls: AtomicUsize,
+    /// Answer the next N experience writes with the backend's own 429, before
+    /// the memory API ever sees them — so their claims are never taken.
+    rate_limit_experience: AtomicUsize,
+    /// Take the next N experience writes' claims, apply nothing, and answer
+    /// 502: the engine refused after the memory API had claimed the key.
+    claim_then_fail: AtomicUsize,
+    /// Answer the next N forgets with the backend's own 429.
+    rate_limit_forget: AtomicUsize,
     /// Behave like a backend that strips `limit` from `/memory/scopes`.
     ignore_scope_limit: AtomicBool,
 }
@@ -195,6 +203,18 @@ async fn experience(
     if let Some(refused) = refuse_body_scope(&body) {
         return refused;
     }
+    // The backend's rate limiter answers before the memory API sees the
+    // request, so no claim is taken.
+    if state
+        .rate_limit_experience
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+        .is_ok()
+    {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(json!({ "success": false, "error": "slow down", "errorCode": "RATE_LIMITED" })),
+        );
+    }
     let claim = headers
         .get("idempotency-key")
         .and_then(|v| v.to_str().ok())
@@ -214,6 +234,18 @@ async fn experience(
                 ),
             );
         }
+    }
+    if state
+        .claim_then_fail
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+        .is_ok()
+    {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(
+                json!({ "success": false, "error": "engine refused", "errorCode": "BAD_GATEWAY" }),
+            ),
+        );
     }
     let call = state.experience_calls.fetch_add(1, Ordering::SeqCst) + 1;
     if state.fail_nth_experience.load(Ordering::SeqCst) == call {
@@ -297,6 +329,16 @@ async fn forget(
     }
     if let Some(refused) = refuse_body_scope(&body) {
         return refused;
+    }
+    if state
+        .rate_limit_forget
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+        .is_ok()
+    {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(json!({ "success": false, "error": "slow down", "errorCode": "RATE_LIMITED" })),
+        );
     }
     let (status, Json(value)) = cortex_forget(State(state.log.clone()), Json(body)).await;
     envelope(status, value)
@@ -384,6 +426,9 @@ async fn hosted_backend() -> (String, Shared) {
         fail_nth_experience: AtomicUsize::new(0),
         experience_calls: AtomicUsize::new(0),
         ignore_scope_limit: AtomicBool::new(false),
+        rate_limit_experience: AtomicUsize::new(0),
+        claim_then_fail: AtomicUsize::new(0),
+        rate_limit_forget: AtomicUsize::new(0),
     });
     let app = Router::new()
         .route("/memory/experience", post(experience))
@@ -399,6 +444,34 @@ async fn hosted_backend() -> (String, Shared) {
 fn provider(endpoint: &str) -> crate::CortexProvider {
     tinyhumans_provider(endpoint, Arc::new(StaticBearer::new("tiny_live_test")))
         .expect("loopback endpoints are allowed")
+}
+
+/// [`provider`] with a short visibility budget, for tests that must see a
+/// write's outcome declared unknown without waiting the full 30s.
+fn provider_with_budget(endpoint: &str, budget: std::time::Duration) -> crate::CortexProvider {
+    let memory =
+        crate::CortexMemory::tinyhumans(endpoint, Arc::new(StaticBearer::new("tiny_live_test")))
+            .expect("loopback endpoints are allowed")
+            .with_visibility_timeout(budget);
+    crate::cortex_provider(memory)
+}
+
+/// Every event currently in the double's log for `key`, oldest first, as the
+/// envelope content each one carries.
+fn versions_of(state: &Shared, key: &str) -> Vec<String> {
+    state
+        .log
+        .lock()
+        .expect("log")
+        .events
+        .iter()
+        .filter_map(|event| {
+            let text = event.pointer("/content/text")?.as_str()?;
+            let envelope: Value = serde_json::from_str(text).ok()?;
+            (envelope.get("k")?.as_str()? == key)
+                .then(|| envelope.get("c")?.as_str().map(str::to_owned))?
+        })
+        .collect()
 }
 
 fn item(source: &str, content: &str) -> IngestItem {
@@ -820,6 +893,145 @@ async fn a_write_applied_before_a_transport_fault_is_recovered_not_failed() {
         headers[0], headers[1],
         "one logical call reuses its claim across retries"
     );
+}
+
+#[tokio::test]
+async fn a_keyed_store_rides_out_a_rate_limit() {
+    let (endpoint, state) = hosted_backend().await;
+    state.rate_limit_experience.store(2, Ordering::SeqCst);
+    let p = provider(&endpoint);
+    p.store(
+        "ns",
+        "k",
+        "v",
+        MemoryCategory::Core,
+        None,
+        MemoryTaint::Internal,
+    )
+    .await
+    .expect("a 429 on a keyed write is retried, not surfaced");
+    assert_eq!(versions_of(&state, "k"), vec!["v"]);
+    let writes = state
+        .seen
+        .lock()
+        .expect("seen")
+        .requests
+        .iter()
+        .filter(|r| r.starts_with("POST /memory/experience"))
+        .count();
+    assert_eq!(writes, 3, "two refusals, then the accepted write");
+}
+
+#[tokio::test]
+async fn a_keyed_store_applied_before_its_response_was_lost_is_recovered() {
+    let (endpoint, state) = hosted_backend().await;
+    state.apply_then_fail.store(1, Ordering::SeqCst);
+    let p = provider(&endpoint);
+    p.store(
+        "ns",
+        "k",
+        "v",
+        MemoryCategory::Core,
+        None,
+        MemoryTaint::Internal,
+    )
+    .await
+    .expect("the retry's 409 is resolved by finding the write");
+    assert_eq!(
+        versions_of(&state, "k"),
+        vec!["v"],
+        "exactly one version: the retry was never forwarded"
+    );
+    let seen = state.seen.lock().expect("seen");
+    let headers: Vec<_> = seen.idempotency.iter().map(|(_, h)| h.clone()).collect();
+    assert_eq!(headers.len(), 2);
+    assert_eq!(
+        headers[0], headers[1],
+        "one logical write reuses its claim across retries"
+    );
+}
+
+#[tokio::test]
+async fn recovery_never_takes_an_older_identical_version_for_the_write() {
+    let (endpoint, state) = hosted_backend().await;
+    let p = provider_with_budget(&endpoint, std::time::Duration::from_secs(2));
+    for value in ["first", "second"] {
+        p.store(
+            "ns",
+            "k",
+            value,
+            MemoryCategory::Core,
+            None,
+            MemoryTaint::Internal,
+        )
+        .await
+        .expect("store");
+    }
+    // The third store repeats the first value. Its claim is taken and nothing
+    // is applied, so the retry meets its own claim; the old "first" event has
+    // the same text but is not the key's newest version.
+    state.claim_then_fail.store(1, Ordering::SeqCst);
+    let error = p
+        .store(
+            "ns",
+            "k",
+            "first",
+            MemoryCategory::Core,
+            None,
+            MemoryTaint::Internal,
+        )
+        .await
+        .expect_err("an unfound write is outcome-unknown, never success");
+    assert!(error.to_string().contains("unknown"), "{error}");
+    let current = p.get("ns", "k").await.expect("get").expect("present");
+    assert_eq!(current.content, "second");
+}
+
+#[tokio::test]
+async fn a_forget_rides_out_rate_limits_on_both_of_its_moves() {
+    let (endpoint, state) = hosted_backend().await;
+    let p = provider(&endpoint);
+    p.store(
+        "ns",
+        "k",
+        "v",
+        MemoryCategory::Core,
+        None,
+        MemoryTaint::Internal,
+    )
+    .await
+    .expect("store");
+    state.rate_limit_experience.store(1, Ordering::SeqCst);
+    state.rate_limit_forget.store(1, Ordering::SeqCst);
+    assert!(p.forget("ns", "k").await.expect("both moves are retried"));
+    assert!(p.get("ns", "k").await.expect("get").is_none());
+    let forgets = state
+        .seen
+        .lock()
+        .expect("seen")
+        .requests
+        .iter()
+        .filter(|r| r.starts_with("POST /memory/forget"))
+        .count();
+    assert_eq!(forgets, 2, "the rate-limited removal was sent again");
+}
+
+#[tokio::test]
+async fn recovery_waits_out_a_slow_listing_and_a_rate_limit() {
+    // tinymemory#169 review: recovery gave up after 2s and on the first 429,
+    // so a write that had succeeded could be reported as failed.
+    let (endpoint, state) = hosted_backend().await;
+    state.apply_then_fail.store(1, Ordering::SeqCst);
+    // The first recovery listing is rate limited past the transport's own
+    // three attempts, and the next four do not show the event yet.
+    state.rate_limit_events.store(3, Ordering::SeqCst);
+    state.hide_listing_for.store(4, Ordering::SeqCst);
+    let outcome = provider(&endpoint)
+        .ingest_document(item("doc-slow", "applied, then slow to list"))
+        .await
+        .expect("recovered within the visibility budget");
+    assert_eq!(outcome.ids.len() + usize::from(outcome.already_ingested), 1);
+    assert_eq!(state.log.lock().expect("log").events.len(), 1);
 }
 
 #[tokio::test]
