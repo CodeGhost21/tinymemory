@@ -20,6 +20,7 @@ use tinymemory_api::types::NamespaceRetrievalContext;
 use tinymemory_api::types::{NamespaceDocumentInput, StoredMemoryDocument};
 use async_trait::async_trait;
 
+use crate::policy::GuardPolicy;
 use crate::audit::{trace_allowed, NO_NAMESPACE};
 use super::types::{GuardedDocuments, GuardedIngest, GuardedTree};
 

@@ -26,6 +26,7 @@ use tinymemory_api::tool_memory::ToolMemoryRule;
 use tinymemory_api::types::{GraphRelationRecord, MemoryKvRecord, MemoryTaint};
 use async_trait::async_trait;
 
+use crate::policy::GuardPolicy;
 use crate::audit::{trace_allowed, NO_NAMESPACE};
 use super::types::{
     GuardedDiff, GuardedEntities, GuardedGoals, GuardedGraph, GuardedMaintenance, GuardedPeople,

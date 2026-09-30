@@ -33,7 +33,7 @@ use super::types::{
 /// Steps 3 + 4 over one ingest item, shared by the typed-ingest decorators:
 /// stamp provenance, redact on egress — the same admission
 /// [`GuardedIngest::admit`] applies on the legacy family.
-fn admit_typed_item(policy: &GuardPolicy, mut item: IngestItem) -> IngestItem {
+fn admit_typed_item<P: GuardPolicy>(policy: &P, mut item: IngestItem) -> IngestItem {
     item.taint = policy.stamp_taint(item.taint);
     item.content = policy.redact_outbound(&item.content).into_owned();
     item

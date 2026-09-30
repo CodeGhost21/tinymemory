@@ -25,6 +25,7 @@ default-members = [
     "crates/tinymemory-conformance",
     "crates/tinymemory-conversations",
     "crates/tinymemory-core",
+    "crates/tinymemory-guard",
     "crates/tinymemory-remote",
     "crates/tinymemory-sources",
     "crates/tinymemory-sync",

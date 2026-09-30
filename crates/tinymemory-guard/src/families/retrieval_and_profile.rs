@@ -27,6 +27,7 @@ use tinymemory_api::provider::{
 use tinymemory_api::types::NamespaceMemoryHit;
 use async_trait::async_trait;
 
+use crate::policy::GuardPolicy;
 use crate::audit::NO_NAMESPACE;
 use super::types::{
     GuardedCodingSessions, GuardedEpisodic, GuardedProfile, GuardedRetrieval, GuardedScoring,
