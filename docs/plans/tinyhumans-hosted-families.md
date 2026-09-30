@@ -40,7 +40,9 @@ Each file's tests live beside it in `<file>_test.rs`, wired with
      id answers `None` on a 404 and for an id outside `[A-Za-z0-9_-]{1,128}`;
      removal batches ids 100 at a time and never sends `confirm_all`.
    - Then:
-     - generalise `events` to take an optional label;
+     - generalise `events` to take an optional label list;
+     - label `store` and its tombstone on the hosted wire, so labelled reads
+       see the storage tier's writes;
      - generalise `append_entry` to carry labels, provenance and inert
        directives through `append_keyed`;
      - give `forget_events` a note and batching;
@@ -135,14 +137,15 @@ RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
 
 ## Checklist
 
-- [ ] 1 Cortex primitives
-- [ ] 2 Hosted double
-- [ ] 3 Record layer
-- [ ] 4 Goals
-- [ ] 5 Tool rules
-- [ ] 6 Documents
-- [ ] 7 Sources
-- [ ] 8 Maintenance
-- [ ] 9 Capabilities
-- [ ] 10 Docs
-- [ ] 11 Live
+- [x] 1 Cortex primitives
+- [x] 2 Hosted double
+- [x] 3 Record layer
+- [x] 4 Goals
+- [x] 5 Tool rules
+- [x] 6 Documents
+- [x] 7 Sources
+- [x] 8 Maintenance
+- [x] 9 Capabilities
+- [x] 10 Docs
+- [ ] 11 Live: `live_tinyhumans_serves_its_families` is written; it has not
+      been run against a production account yet

@@ -62,15 +62,18 @@ Non-goals:
 
 A keyed record is still one event per version, carrying the adapter's JSON
 envelope in `content.text`: key `k`, content `c`, category `cat`, session `s`,
-taint `t`, tombstone `d`. The families add, on the TinyHumans wire only:
+taint `t`, tombstone `d`. On the TinyHumans wire only:
 
-- **Provenance** in the envelope's optional `x` object: `src` (source id),
-  `ref` (the item's reference within its source), `doc` (document id). A record
-  without provenance carries no `x`, so its text is exactly what `store` writes.
 - **Lookup labels** in `context.labels`: `tm:kh:<h>` for the key, and
   `tm:srh:<h>` for the source when there is one. `<h>` is the first 16 lowercase
   hex digits of the value's SHA-256: fixed length, and never a comma, which the
-  engine's label filter splits on.
+  engine's label filter splits on. `store` and its tombstone carry the key label
+  too, so a family read of a key sees what the storage tier wrote.
+- **Provenance** in the envelope's optional `x.prov` object: `src` (source id),
+  `ref` (the item's reference within its source), `doc` (document id). A record
+  without provenance carries no `x`, so its text is exactly what `store` writes.
+  Provenance sits under `prov` because ingestion already uses `x` for its own
+  payload.
 - **Inert directives** `{"embed":"none","extract":[]}` on bookkeeping records,
   so the engine neither embeds them into recall nor extracts facts or beliefs
   from them. Content records keep the engine's defaults.
@@ -82,8 +85,10 @@ Reads:
   newest-wins by `wal_offset`, re-checking `k`, so a digest collision or an
   ignored filter cannot return the wrong key.
 - In a user namespace, a labelled read that finds nothing falls back to a
-  whole-scope walk, because `store` writes no labels. Bookkeeping scopes are
-  written only by the families and never fall back.
+  whole-scope walk, because a record written before `store` carried labels has
+  none. Every labelled version is newer than every unlabelled one, so a read
+  that finds any labelled version needs no walk. Bookkeeping scopes and source
+  namespaces are written only by the families and never fall back.
 - Exactly one `labels=` parameter is sent per request; the backend refuses a
   repeated one.
 
@@ -93,12 +98,13 @@ Writes:
   attempts under one `Idempotency-Key` claim, with outcome-unknown recovery.
 - A bookkeeping write waits until its event is listed. A content write also
   waits for recall to carry it, like `store`.
-- **Supersede-forget.** Once a new version is listed, the key's older versions
-  (lower `wal_offset`) are removed with `POST memory/forget` by event id, in
-  batches of at most 100. Otherwise recall would keep ranking stale versions.
-  Removal runs only if the new version was found. If it fails, the failure is
-  logged and the write still succeeds, because the new version is already the
-  one every read returns.
+- **Supersede-forget.** A write first lists the key's labelled versions. Once
+  the new version is readable, those older versions are removed with `POST
+  memory/forget` by event id, in batches of at most 100; otherwise recall would
+  keep ranking stale versions. A version the write did not see, such as a
+  concurrent newer write, is never removed. If removal fails, the write still
+  succeeds: the new version is already the one every read returns, and the
+  key's next write or removal retires what was left.
 - A remove writes a labelled tombstone, waits for it, then removes the older
   versions the same way.
 - A clear removes every event in one scope by id, never its children. `POST
@@ -169,11 +175,11 @@ held under another tool.
 
 - **Where items land.**
 
-  | Source | Namespace | Mutable |
-  | --- | --- | --- |
-  | `composio`, toolkit `gmail` or `outlook` | `sources/email` | no |
-  | `composio`, toolkit `slack`, `discord`, `telegram` or `whatsapp` | `sources/chat` | no |
-  | anything else | `sources/documents` | yes |
+  | Source | Namespace |
+  | --- | --- |
+  | `composio`, toolkit `gmail` or `outlook` | `sources/email` |
+  | `composio`, toolkit `slack`, `discord`, `telegram` or `whatsapp` | `sources/chat` |
+  | anything else | `sources/documents` |
 
   The toolkit is the part of `source_id` before its first `:`.
 - **Records.** Each item is a content record keyed `item:<source_id>:<item_id>`.
@@ -182,20 +188,25 @@ held under another tool.
   - Provenance is `src` = source id and `ref` = the item's URL, else its id.
   - The event's `observed_at` is the item's `updated_at_ms`, when set.
   - The taint is the batch's.
-- **Dedupe.** The body's idempotency key is a digest of the source id and the
-  item, so re-sending an unchanged item is deduped by the engine and counted in
-  `skipped`, not `written`. An item with empty content is skipped.
-- **Pacing.** Writes are paced at one per 250 ms across concurrent batches.
-- **One wait per batch.** The batch waits once per scope, for its last event
-  to be listed, rather than once per item.
-- **Supersede.** In a mutable namespace, older versions of each rewritten key
-  are then removed.
+- **Dedupe.** The batch first reads what is already held, 40 keys a listing.
+  An item whose live record is unchanged is counted in `skipped`, not written,
+  and a batch of nothing but unchanged items reports `already_ingested`. An
+  item with empty content is skipped. Dedupe is not left to the engine's
+  body key, because the engine never releases a key: an item re-synced after
+  `forget_source` would replay onto an event that no longer exists.
+- **Pacing.** Writes are paced at one per 300 ms across concurrent batches,
+  about 200 a minute, leaving the rest of the backend's limit to lookups, polls
+  and chat.
+- **One wait per batch.** The batch waits once, for its last event to be
+  listed, rather than once per item.
+- **Supersede.** The versions each changed item replaced are then removed, as
+  for any write.
 - **Partial failure.** A failure mid-batch keeps its error class, and its
   message says how many items were accepted first.
 
 `forget_source(source_id)` removes every event carrying the source's label in
-the three source namespaces, after re-checking `x.src`. It returns the number
-of distinct items removed.
+the three source namespaces, after re-checking `x.prov.src`. It returns the
+number of distinct live items removed.
 
 `forget_matching`:
 
@@ -203,7 +214,7 @@ of distinct items removed.
 | --- | --- |
 | `Source` | as `forget_source`, limited to the namespace of its kind: `chat`, `email` or `document` (the contract's `SourceKind`) |
 | `Source` with another kind | `Invalid`, never a count of zero |
-| `Chunk` | reads the event by id (`GET memory/events/{id}`) and removes it only if it is a source record |
+| `Chunk` | reads the event by id (`GET memory/events/{id}`) and, only if it is a synced item in this account's source namespaces, removes every version of that item. An event from another account comes back with its scope nulled and is never touched |
 | `SourcePrefix`, `Owner` | `Unsupported` |
 
 ### Maintenance
@@ -273,5 +284,5 @@ Every `as_*` accessor matches, and `audit_provider` holds on both wires.
   whether `query_documents` should keep the estimate.
 - Source namespaces are fixed per kind. A host that wants one namespace per
   connection needs a contract field.
-- A source item costs one billed write, plus a removal when it changes. That is
-  about one call per item at the current pacing.
+- A new or changed source item costs one billed write, plus a removal when it
+  changes; an unchanged one costs a share of one lookup.
