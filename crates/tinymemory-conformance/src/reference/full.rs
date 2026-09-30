@@ -1790,18 +1790,39 @@ impl MemoryScoring for RecordingProvider {
 
 // ── The v1.13.7 typed-ingestion round + Answer ──────────────────────────────
 // Same contract as every family above: `capabilities()` answers all(), so the
-// audit demands a live accessor and a recording impl for each.
+// audit demands a live accessor and a recording impl for each. The call log is
+// where this driver keeps what it is given, so each recorded unit counts as
+// written, and input the contracts call malformed is refused as `Invalid` — the
+// suite's ingestion assertions hold this double to that, the way
+// `retains_writes` holds it to keeping keyed writes.
+
+/// An outcome reporting `units` newly kept.
+fn written(units: usize) -> IngestOutcome {
+    IngestOutcome {
+        written: u32::try_from(units).unwrap_or(u32::MAX),
+        ..IngestOutcome::default()
+    }
+}
+
+/// The contracts' refusal of blank required text.
+fn require(field: &str, value: &str) -> Result<(), MemoryError> {
+    if value.trim().is_empty() {
+        return Err(MemoryError::Invalid(format!("{field} must not be empty")));
+    }
+    Ok(())
+}
 
 #[async_trait]
 impl MemoryDocumentIngest for RecordingProvider {
     async fn ingest_document(&self, document: IngestItem) -> Result<IngestOutcome, MemoryError> {
+        require("document content", &document.content)?;
         self.record(Call {
             method: "document_ingest.ingest_document".into(),
             content: Some(document.content),
             taint: Some(document.taint),
             scoped: None,
         });
-        Ok(IngestOutcome::default())
+        Ok(written(1))
     }
 }
 
@@ -1811,6 +1832,17 @@ impl MemoryConversationIngest for RecordingProvider {
         &self,
         messages: Vec<IngestItem>,
     ) -> Result<IngestOutcome, MemoryError> {
+        if let Some(first) = messages.first() {
+            for message in &messages {
+                require("message content", &message.content)?;
+                if message.source_id != first.source_id {
+                    return Err(MemoryError::Invalid(
+                        "a conversation batch must hold one conversation".to_string(),
+                    ));
+                }
+            }
+        }
+        let units = messages.len();
         for message in messages {
             self.record(Call {
                 method: "conversation_ingest.ingest_conversation".into(),
@@ -1819,7 +1851,7 @@ impl MemoryConversationIngest for RecordingProvider {
                 scoped: None,
             });
         }
-        Ok(IngestOutcome::default())
+        Ok(written(units))
     }
 }
 
@@ -1827,15 +1859,22 @@ impl MemoryConversationIngest for RecordingProvider {
 impl MemoryLearningIngest for RecordingProvider {
     async fn ingest_learning(
         &self,
-        _learning: tinymemory_api::learning::LearningCandidate,
+        learning: tinymemory_api::learning::LearningCandidate,
     ) -> Result<IngestOutcome, MemoryError> {
+        require("learning key", &learning.key)?;
+        require("learning value", &learning.value)?;
+        if !(0.0..=1.0).contains(&learning.initial_confidence) {
+            return Err(MemoryError::Invalid(
+                "learning confidence must be between 0 and 1".to_string(),
+            ));
+        }
         self.record(Call {
             method: "learning_ingest.ingest_learning".into(),
             content: None,
             taint: None,
             scoped: None,
         });
-        Ok(IngestOutcome::default())
+        Ok(written(1))
     }
 }
 
@@ -1843,15 +1882,19 @@ impl MemoryLearningIngest for RecordingProvider {
 impl MemoryEventIngest for RecordingProvider {
     async fn ingest_event(
         &self,
-        _event: tinymemory_api::provider::operations::RawMemoryEvent,
+        event: tinymemory_api::provider::operations::RawMemoryEvent,
     ) -> Result<IngestOutcome, MemoryError> {
+        require("event id", &event.id)?;
+        require("event namespace", &event.namespace)?;
+        require("event type", &event.event_type)?;
+        require("event content", &event.content)?;
         self.record(Call {
             method: "event_ingest.ingest_event".into(),
             content: None,
             taint: None,
             scoped: None,
         });
-        Ok(IngestOutcome::default())
+        Ok(written(1))
     }
 }
 
@@ -1859,8 +1902,9 @@ impl MemoryEventIngest for RecordingProvider {
 impl MemoryAnswer for RecordingProvider {
     async fn answer(
         &self,
-        _request: tinymemory_api::provider::operations::AnswerRequest,
+        request: tinymemory_api::provider::operations::AnswerRequest,
     ) -> Result<tinymemory_api::provider::operations::AnswerResponse, MemoryError> {
+        require("question", &request.query)?;
         self.record(Call {
             method: "answer.answer".into(),
             content: None,
