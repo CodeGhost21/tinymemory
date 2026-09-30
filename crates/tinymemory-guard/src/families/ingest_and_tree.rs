@@ -230,11 +230,11 @@ impl<P: GuardPolicy> MemoryTree for GuardedTree<P> {
     /// `ListChunksQuery.source_scope`, which reaches SQL *before* `LIMIT`.
     ///
     /// The ambient allowlist
-    /// ([`source_scope::current_source_scope`](crate::memory::source_scope::current_source_scope))
+    /// (the host's task-local, surfaced through [`GuardPolicy::ambient_scope`])
     /// is therefore read at this boundary and passed down, rather than being
     /// applied to the returned rows. An explicit `scope` argument may only
     /// *narrow* it: the two are intersected by
-    /// [`GuardPolicy::narrow_scope`](crate::memory::guard::GuardPolicy::narrow_scope),
+    /// [`GuardPolicy::narrow_scope`],
     /// so a caller that computed a tighter scope than the task-local still wins,
     /// while one that names a collection outside the ambient allowlist cannot
     /// widen the turn back out.

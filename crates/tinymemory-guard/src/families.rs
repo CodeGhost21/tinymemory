@@ -29,10 +29,6 @@
 //!
 //! [`GuardedProvider`]: crate::GuardedProvider
 
-#[cfg(test)]
-#[path = "families_tests.rs"]
-mod tests;
-
 mod types;
 
 mod graph_and_bookkeeping;

@@ -34,19 +34,19 @@ use crate::policy::GuardPolicy;
 macro_rules! decorator {
     ($(#[$meta:meta])* $name:ident, $fam:ty, $accessor:ident, $cap:ident) => {
         $(#[$meta])*
-        pub struct $name {
+        pub struct $name<P: GuardPolicy> {
             inner: Arc<dyn MemoryProvider>,
-            pub(super) policy: Arc<GuardPolicy>,
+            pub(super) policy: Arc<P>,
         }
 
-        impl $name {
-            pub(crate) fn new(inner: Arc<dyn MemoryProvider>, policy: Arc<GuardPolicy>) -> Self {
+        impl<P: GuardPolicy> $name<P> {
+            pub(crate) fn new(inner: Arc<dyn MemoryProvider>, policy: Arc<P>) -> Self {
                 Self { inner, policy }
             }
 
             /// The underlying family handle.
             ///
-            /// The `Err` arm is **structurally unreachable**: `MemoryGuard::new`
+            /// The `Err` arm is **structurally unreachable**: `GuardedProvider::new`
             /// only builds this decorator when the inner provider answered
             /// `provides(Capability::$cap)`, and the contract documents the
             /// capability set as fixed at bind time. It is written as a real
