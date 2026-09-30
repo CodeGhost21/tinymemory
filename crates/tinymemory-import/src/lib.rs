@@ -16,6 +16,7 @@
 mod keys;
 mod source;
 
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -25,8 +26,8 @@ use serde::{Deserialize, Serialize};
 use tinymemory_api::traits::Memory;
 use tinymemory_api::types::MemoryCategory;
 
-use source::{collect_source_entries, hermes_file_mappings};
 use keys::{backup_target_memory, next_available_key, paths_equal};
+use source::{collect_source_entries, hermes_file_mappings};
 
 /// One importable memory, before it is written.
 #[derive(Debug, Clone)]
@@ -298,7 +299,6 @@ pub async fn migrate_hermes_memory(
         warnings,
     })
 }
-
 
 #[cfg(test)]
 #[path = "import_tests.rs"]

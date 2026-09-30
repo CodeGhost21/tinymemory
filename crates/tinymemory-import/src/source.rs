@@ -185,7 +185,6 @@ fn pick_optional_column_expr<'a>(columns: &'a [String], candidates: &[&'a str]) 
         .map(|v| v as _)
 }
 
-
 /// The files a Hermes workspace is imported from: file name, memory key, category.
 pub(crate) fn hermes_file_mappings() -> Vec<(&'static str, &'static str, MemoryCategory)> {
     vec![

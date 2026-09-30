@@ -27,6 +27,7 @@ default-members = [
     "crates/tinymemory-core",
     "crates/tinymemory-gate",
     "crates/tinymemory-guard",
+    "crates/tinymemory-import",
     "crates/tinymemory-remote",
     "crates/tinymemory-safety",
     "crates/tinymemory-sources",

@@ -103,7 +103,6 @@ pub(crate) async fn next_available_key(memory: &dyn Memory, key: &str) -> Result
     }
 }
 
-
 #[cfg(test)]
 #[path = "keys_tests.rs"]
 mod tests;
