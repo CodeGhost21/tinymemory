@@ -366,3 +366,7 @@ impl<H: MemoryToolHost> Tool for MemoryHybridSearchTool<H> {
         Ok(ToolResult::success(output))
     }
 }
+
+#[cfg(test)]
+#[path = "hybrid_search_tests.rs"]
+mod tests;

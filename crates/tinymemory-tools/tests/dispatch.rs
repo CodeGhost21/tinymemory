@@ -74,7 +74,10 @@ async fn memory_tree_ingest_document_is_the_hosts() {
     let args = json!({"mode": "ingest_document", "title": "t", "body": "b"});
     let result = tool.execute(args.clone()).await.unwrap();
     assert_eq!(result.output(), format!("host-ingest:{args}"));
-    assert!(host.methods().is_empty(), "the driver is the host's to touch");
+    assert!(
+        host.methods().is_empty(),
+        "the driver is the host's to touch"
+    );
 }
 
 #[tokio::test]
@@ -153,7 +156,11 @@ async fn bad_arguments_fail_before_the_host_is_asked_for_a_driver() {
 async fn an_unbound_driver_is_reported_under_the_tools_name() {
     let host = TestHost::unbound();
     assert_eq!(
-        message(MemoryStoreKindsTool::new(host.clone()).execute(json!({})).await),
+        message(
+            MemoryStoreKindsTool::new(host.clone())
+                .execute(json!({}))
+                .await
+        ),
         "memory_store_kinds: no memory driver is bound"
     );
     assert_eq!(
