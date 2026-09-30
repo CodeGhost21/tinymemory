@@ -27,9 +27,12 @@ use std::sync::Arc;
 use reqwest::Method;
 use serde_json::json;
 use tinymemory_api::error::MemoryError;
+use tinymemory_api::goals::{GoalItem, GoalsDoc};
 use tinymemory_api::health::MemoryHealth;
+use tinymemory_api::provider::types::SourceItem;
 use tinymemory_api::provider::{MemoryCore, MemoryProvider, MemoryRecall};
 use tinymemory_api::recall::OwnedRecallOpts;
+use tinymemory_api::tool_memory::{ToolMemoryPriority, ToolMemoryRule, ToolMemorySource};
 use tinymemory_api::types::{MemoryCategory, MemoryTaint};
 use tinymemory_remote::{
     cortex_provider, supermemory_provider, tinyhumans_provider, CortexMemory, StaticBearer,
@@ -114,6 +117,95 @@ async fn live_tinyhumans_upholds_the_provider_contract() -> anyhow::Result<()> {
     );
     tinymemory_conformance::assert_provider(provider.clone()).await;
     tinymemory_conformance::assert_answer_is_grounded(provider.as_ref()).await;
+    Ok(())
+}
+
+/// The hosted families against the real backend: goals, a tool rule, a source
+/// batch and its removal, and a healthy diagnosis. The contract run above
+/// already covers documents, because the suite checks every family a provider
+/// advertises.
+///
+/// Needs the same variables as the contract run. It restores the account's own
+/// goals and removes everything else it writes.
+#[tokio::test]
+async fn live_tinyhumans_serves_its_families() -> anyhow::Result<()> {
+    let Some((url, token)) = tinyhumans_credentials("TOKEN") else {
+        return Ok(());
+    };
+    let provider = tinyhumans_provider(&url, Arc::new(StaticBearer::new(token)))?;
+    let run = nonce();
+
+    let goals = provider
+        .as_goals()
+        .ok_or_else(|| anyhow::anyhow!("hosted memory must serve goals"))?;
+    let before = goals.goals().await?;
+    let probe = GoalsDoc {
+        items: vec![GoalItem {
+            id: format!("live-{run}"),
+            text: "a live probe goal".to_string(),
+        }],
+    };
+    goals.set_goals(probe.clone()).await?;
+    let read_back = goals.goals().await;
+    goals.set_goals(before).await?;
+    anyhow::ensure!(read_back? == probe, "the goals document did not round-trip");
+
+    let rules = provider
+        .as_tool_memory()
+        .ok_or_else(|| anyhow::anyhow!("hosted memory must serve tool rules"))?;
+    let tool = format!("live-{run}");
+    rules
+        .put_tool_rule(ToolMemoryRule {
+            id: "r1".to_string(),
+            ..ToolMemoryRule::new(
+                &tool,
+                "a live probe rule",
+                ToolMemoryPriority::High,
+                ToolMemorySource::default(),
+            )
+        })
+        .await?;
+    let listed = rules.tool_rules(&tool).await?;
+    let removed = rules.delete_tool_rule(&tool, "r1").await?;
+    anyhow::ensure!(
+        listed.len() == 1 && removed,
+        "the tool rule did not round-trip: listed {listed:?}, removed {removed}"
+    );
+
+    let sink = provider
+        .as_sources()
+        .ok_or_else(|| anyhow::anyhow!("hosted memory must serve the source sink"))?;
+    let source = format!("folder:live-{run}");
+    let batch = vec![SourceItem {
+        item_id: "1".to_string(),
+        title: "Live probe".to_string(),
+        content: format!("a synced item for run {run}"),
+        mime: None,
+        url: None,
+        updated_at_ms: None,
+        tags: Vec::new(),
+    }];
+    let first = sink
+        .accept_source_items(&source, "folder", batch.clone(), MemoryTaint::ExternalSync)
+        .await?;
+    let again = sink
+        .accept_source_items(&source, "folder", batch, MemoryTaint::ExternalSync)
+        .await?;
+    let forgotten = sink.forget_source(&source).await?;
+    anyhow::ensure!(
+        first.written == 1 && again.already_ingested && forgotten == 1,
+        "the source batch did not round-trip: {first:?}, {again:?}, forgot {forgotten}"
+    );
+
+    let diagnosis = provider
+        .as_maintenance()
+        .ok_or_else(|| anyhow::anyhow!("hosted memory must serve maintenance"))?
+        .diagnose()
+        .await?;
+    anyhow::ensure!(
+        diagnosis.healthy,
+        "the hosted service diagnosed unhealthy: {diagnosis:?}"
+    );
     Ok(())
 }
 
