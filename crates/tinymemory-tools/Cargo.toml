@@ -17,7 +17,7 @@ repository = "https://github.com/tinyhumansai/tinymemory"
 #   tinytools = { path = "<checkout>/crates/tinytools" }
 [dependencies]
 tinymemory-api = { path = "../tinymemory-api" }
-tinytools = { git = "https://github.com/tinyhumansai/tinytools", rev = "67a7f70e1bb6f29f40ed6b0fe3ec1b0b5e85e5d2" }
+tinytools = { git = "https://github.com/tinyhumansai/tinytools", rev = "67a7f709b390615d4228f7feec63359718649651" }
 async-trait = "0.1"
 anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
