@@ -1,13 +1,13 @@
 //! Checksum and structural validators for PII candidates.
 
-pub(super) fn digits(s: &str) -> Vec<u32> {
+pub(crate) fn digits(s: &str) -> Vec<u32> {
     s.chars()
         .filter(|c| c.is_ascii_digit())
         .map(|c| c.to_digit(10).expect("ascii digit"))
         .collect()
 }
 
-pub(super) fn valid_cpf(d: &[u32]) -> bool {
+pub(crate) fn valid_cpf(d: &[u32]) -> bool {
     if d.len() != 11 || d.iter().all(|x| *x == d[0]) {
         return false;
     }
@@ -21,7 +21,7 @@ pub(super) fn valid_cpf(d: &[u32]) -> bool {
     dv2 == d[10]
 }
 
-pub(super) fn valid_cnpj(d: &[u32]) -> bool {
+pub(crate) fn valid_cnpj(d: &[u32]) -> bool {
     if d.len() != 14 || d.iter().all(|x| *x == d[0]) {
         return false;
     }
@@ -39,7 +39,7 @@ pub(super) fn valid_cnpj(d: &[u32]) -> bool {
     dv2 == d[13]
 }
 
-pub(super) fn valid_cuit(d: &[u32]) -> bool {
+pub(crate) fn valid_cuit(d: &[u32]) -> bool {
     if d.len() != 11 {
         return false;
     }
@@ -55,7 +55,7 @@ pub(super) fn valid_cuit(d: &[u32]) -> bool {
 }
 
 // Luhn — used for credit-card validation.
-pub(super) fn valid_luhn(s: &str) -> bool {
+pub(crate) fn valid_luhn(s: &str) -> bool {
     let d = digits(s);
     if d.len() < 13 || d.len() > 19 {
         return false;
@@ -110,7 +110,7 @@ pub(super) fn valid_luhn(s: &str) -> bool {
 /// stamps enter Mir's `2200-2204` window in late 2039 and Mastercard's
 /// 2-series `2221-2720` from ~2040 to ~2056. If this code outlives that,
 /// those stamps redact at Luhn's ~10% again and this gate needs a rethink.
-pub(super) fn plausible_card_number(d: &[u32]) -> bool {
+pub(crate) fn plausible_card_number(d: &[u32]) -> bool {
     let len = d.len();
     if !(13..=19).contains(&len) {
         return false;
@@ -177,7 +177,7 @@ pub(super) fn plausible_card_number(d: &[u32]) -> bool {
 
 // IBAN mod-97. Steps: strip spaces, move first 4 chars to end, expand letters
 // (A=10..Z=35), divide as a big-integer mod 97, require remainder == 1.
-pub(super) fn valid_iban(s: &str) -> bool {
+pub(crate) fn valid_iban(s: &str) -> bool {
     let cleaned: String = s.chars().filter(|c| !c.is_whitespace()).collect();
     if cleaned.len() < 15 || cleaned.len() > 34 {
         return false;
@@ -233,7 +233,7 @@ const VERHOEFF_P: [[u8; 10]; 8] = [
     [7, 0, 4, 6, 9, 1, 3, 2, 5, 8],
 ];
 
-pub(super) fn valid_verhoeff(d: &[u32]) -> bool {
+pub(crate) fn valid_verhoeff(d: &[u32]) -> bool {
     if d.len() != 12 {
         return false;
     }
@@ -249,7 +249,7 @@ pub(super) fn valid_verhoeff(d: &[u32]) -> bool {
 }
 
 // US SSN reserved/invalid ranges per SSA.
-pub(super) fn valid_ssn(s: &str) -> bool {
+pub(crate) fn valid_ssn(s: &str) -> bool {
     let d = digits(s);
     if d.len() != 9 {
         return false;
@@ -269,7 +269,7 @@ pub(super) fn valid_ssn(s: &str) -> bool {
 // Spain DNI check letter — 8 digits mod 23 indexes into a fixed letter table.
 const DNI_LETTERS: &[u8; 23] = b"TRWAGMYFPDXBNJZSQVHLCKE";
 
-pub(super) fn valid_dni_es(s: &str) -> bool {
+pub(crate) fn valid_dni_es(s: &str) -> bool {
     let upper = s.to_ascii_uppercase();
     let bytes = upper.as_bytes();
     if bytes.len() != 9 {
@@ -283,7 +283,7 @@ pub(super) fn valid_dni_es(s: &str) -> bool {
     DNI_LETTERS[(num % 23) as usize] == letter
 }
 
-pub(super) fn valid_nie_es(s: &str) -> bool {
+pub(crate) fn valid_nie_es(s: &str) -> bool {
     let upper = s.to_ascii_uppercase();
     let bytes = upper.as_bytes();
     if bytes.len() != 9 {
@@ -306,7 +306,7 @@ pub(super) fn valid_nie_es(s: &str) -> bool {
 }
 
 // UK NINO reserved-prefix blacklist.
-pub(super) fn valid_nino(s: &str) -> bool {
+pub(crate) fn valid_nino(s: &str) -> bool {
     let upper = s.to_ascii_uppercase();
     let bytes = upper.as_bytes();
     if bytes.len() != 9 {

@@ -29,31 +29,31 @@
 /// "run this class's precise regex"; an unset flag means the class cannot
 /// possibly match, so its regex is skipped (and never compiled).
 #[derive(Default, Clone, Copy)]
-pub(super) struct Candidates {
-    pub(super) cpf_fmt: bool,
-    pub(super) cnpj_fmt: bool,
-    pub(super) cuit: bool,
-    pub(super) iban: bool,
-    pub(super) cc: bool,
-    pub(super) cnpj_bare: bool,
-    pub(super) cpf_bare: bool,
-    pub(super) aadhaar_fmt: bool,
-    pub(super) aadhaar_kw: bool,
-    pub(super) dni: bool,
-    pub(super) nie: bool,
-    pub(super) nino: bool,
-    pub(super) ssn: bool,
-    pub(super) rrn: bool,
-    pub(super) rfc: bool,
-    pub(super) pan_in: bool,
-    pub(super) phone_e164: bool,
-    pub(super) phone_nanp: bool,
-    pub(super) mynumber: bool,
+pub(crate) struct Candidates {
+    pub(crate) cpf_fmt: bool,
+    pub(crate) cnpj_fmt: bool,
+    pub(crate) cuit: bool,
+    pub(crate) iban: bool,
+    pub(crate) cc: bool,
+    pub(crate) cnpj_bare: bool,
+    pub(crate) cpf_bare: bool,
+    pub(crate) aadhaar_fmt: bool,
+    pub(crate) aadhaar_kw: bool,
+    pub(crate) dni: bool,
+    pub(crate) nie: bool,
+    pub(crate) nino: bool,
+    pub(crate) ssn: bool,
+    pub(crate) rrn: bool,
+    pub(crate) rfc: bool,
+    pub(crate) pan_in: bool,
+    pub(crate) phone_e164: bool,
+    pub(crate) phone_nanp: bool,
+    pub(crate) mynumber: bool,
 }
 
 impl Candidates {
     /// True if any class is a candidate — i.e. the text is worth a precise pass.
-    pub(super) fn any(&self) -> bool {
+    pub(crate) fn any(&self) -> bool {
         self.cpf_fmt
             || self.cnpj_fmt
             || self.cuit
@@ -103,7 +103,7 @@ const MYNUMBER_JP_KEYWORDS: &[&[u8]] = &["マイナンバー".as_bytes(), "個�
 /// continuation bytes are all `>= 0x80`, so scanning `as_bytes()` for ASCII
 /// digits/punctuation/letters is boundary-safe. Keyword probes run over the
 /// same byte slice so the non-Latin needles match verbatim.
-pub(super) fn scan_candidates(text: &str) -> Candidates {
+pub(crate) fn scan_candidates(text: &str) -> Candidates {
     let bytes = text.as_bytes();
 
     let mut total_digits: usize = 0;

@@ -35,22 +35,30 @@ use super::{BareCardGate, Policy, SanitizationReport, Sanitized};
 mod checks;
 use checks::*;
 
+// Flattened test-only re-exports so the crate's test modules can exercise the
+// internals (checksum validators, the normalization pass, the candidate scan).
+#[cfg(test)]
+pub(crate) use checks::{
+    digits, valid_cnpj, valid_cpf, valid_cuit, valid_dni_es, valid_iban, valid_luhn, valid_nie_es,
+    valid_nino, valid_ssn, valid_verhoeff,
+};
+
 // ---------- Replacement tokens ----------
 
-const PII_RFC: &str = "[REDACTED_PII_RFC]";
-const PII_CPF: &str = "[REDACTED_PII_CPF]";
-const PII_CNPJ: &str = "[REDACTED_PII_CNPJ]";
-const PII_CUIT: &str = "[REDACTED_PII_CUIT]";
-const PII_MYNUM: &str = "[REDACTED_PII_MYNUMBER]";
-const PII_PHONE: &str = "[REDACTED_PII_PHONE]";
-const PII_SSN: &str = "[REDACTED_PII_SSN]";
-const PII_CC: &str = "[REDACTED_PII_CREDIT_CARD]";
-const PII_IBAN: &str = "[REDACTED_PII_IBAN]";
-const PII_AADHAAR: &str = "[REDACTED_PII_AADHAAR]";
-const PII_PAN_IN: &str = "[REDACTED_PII_PAN_IN]";
-const PII_NINO: &str = "[REDACTED_PII_NINO]";
-const PII_DNI: &str = "[REDACTED_PII_DNI]";
-const PII_RRN: &str = "[REDACTED_PII_RRN]";
+pub(crate) const PII_RFC: &str = "[REDACTED_PII_RFC]";
+pub(crate) const PII_CPF: &str = "[REDACTED_PII_CPF]";
+pub(crate) const PII_CNPJ: &str = "[REDACTED_PII_CNPJ]";
+pub(crate) const PII_CUIT: &str = "[REDACTED_PII_CUIT]";
+pub(crate) const PII_MYNUM: &str = "[REDACTED_PII_MYNUMBER]";
+pub(crate) const PII_PHONE: &str = "[REDACTED_PII_PHONE]";
+pub(crate) const PII_SSN: &str = "[REDACTED_PII_SSN]";
+pub(crate) const PII_CC: &str = "[REDACTED_PII_CREDIT_CARD]";
+pub(crate) const PII_IBAN: &str = "[REDACTED_PII_IBAN]";
+pub(crate) const PII_AADHAAR: &str = "[REDACTED_PII_AADHAAR]";
+pub(crate) const PII_PAN_IN: &str = "[REDACTED_PII_PAN_IN]";
+pub(crate) const PII_NINO: &str = "[REDACTED_PII_NINO]";
+pub(crate) const PII_DNI: &str = "[REDACTED_PII_DNI]";
+pub(crate) const PII_RRN: &str = "[REDACTED_PII_RRN]";
 
 // ---------- Patterns ----------
 
@@ -174,6 +182,8 @@ static EMAIL_RE: LazyLock<Regex> =
 // `RegexSet`. Lives in its own module — see `prefilter.rs` for the full rationale.
 mod prefilter;
 use prefilter::{scan_candidates, Candidates};
+#[cfg(test)]
+pub(crate) use prefilter::scan_candidates as scan_candidates_for_tests;
 
 // ---------- Public API ----------
 

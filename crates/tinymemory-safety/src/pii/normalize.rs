@@ -4,8 +4,8 @@
 //! keeping a byte map back to the original string, so matches found on the
 //! normalized view can be spliced onto the exact original bytes.
 
-pub(super) struct NormalizedView {
-    pub(super) normalized: String,
+pub(crate) struct NormalizedView {
+    pub(crate) normalized: String,
     // For each byte offset i in `normalized`, `byte_map[i]` is the byte offset
     // in the original string where the corresponding char *starts*.
     // The last entry maps the normalized length to the original length, so
@@ -14,7 +14,7 @@ pub(super) struct NormalizedView {
 }
 
 impl NormalizedView {
-    pub(super) fn build(original: &str) -> Self {
+    pub(crate) fn build(original: &str) -> Self {
         let mut normalized = String::with_capacity(original.len());
         let mut byte_map: Vec<usize> = Vec::with_capacity(original.len() + 1);
         for (idx, ch) in original.char_indices() {
@@ -37,7 +37,7 @@ impl NormalizedView {
         }
     }
 
-    pub(super) fn norm_to_orig(&self, norm_byte: usize) -> usize {
+    pub(crate) fn norm_to_orig(&self, norm_byte: usize) -> usize {
         if norm_byte >= self.byte_map.len() {
             return *self.byte_map.last().unwrap_or(&0);
         }
