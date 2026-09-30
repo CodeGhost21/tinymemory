@@ -159,12 +159,15 @@ async fn live_tinyhumans_keeps_accounts_apart() -> anyhow::Result<()> {
     };
     let a = tinyhumans_provider(&url, Arc::new(StaticBearer::new(token_a.clone())))?;
     let b = tinyhumans_provider(&url, Arc::new(StaticBearer::new(token_b.clone())))?;
+    let http = reqwest::Client::new();
     // The secret appears only in a's content — never in a scope, key or
     // query, which the engine echoes back — so finding it in b's answers is
     // a leak.
     let place = format!("iso{}", nonce());
     let secret = format!("secret{}", nonce());
     let namespace = format!("tinymemory-isolation/{place}");
+    // The adapter writes a namespace segment `s` as the scope segment `tm:s`.
+    let scope = format!("tm:tinymemory-isolation/tm:{place}");
     a.store(
         &namespace,
         "secret",
@@ -175,134 +178,161 @@ async fn live_tinyhumans_keeps_accounts_apart() -> anyhow::Result<()> {
     )
     .await?;
 
-    // Through the adapter, naming the same namespace.
-    assert!(
-        b.get(&namespace, "secret").await?.is_none(),
-        "b read a's record"
-    );
-    assert!(
-        b.list(Some(&namespace), None, None).await?.is_empty(),
-        "b listed a's namespace"
-    );
-    let opts = OwnedRecallOpts {
-        namespace: Some(namespace.clone()),
-        ..OwnedRecallOpts::default()
-    };
-    assert!(
-        b.recall("vault word", 10, &opts, None).await?.is_empty(),
-        "b recalled a's record"
-    );
-    assert!(
-        !b.namespaces()
-            .await?
-            .iter()
-            .any(|s| s.namespace == namespace),
-        "b's namespaces include a's"
-    );
-    assert!(
-        !b.forget(&namespace, "secret").await?,
-        "b's forget found a's record"
-    );
-
-    // Raw, shaped like the engine's known leaks. The adapter writes a
-    // namespace segment `s` as the scope segment `tm:s`.
-    let http = reqwest::Client::new();
-    let scope = format!("tm:tinymemory-isolation/tm:{place}");
-    let mut probes = vec![scope.clone(), "tm:tinymemory-isolation".to_string()];
-    if let Ok(user) = std::env::var("TINYMEMORY_TEST_TINYHUMANS_USER_A") {
-        if !user.is_empty() {
-            probes.push(format!("oc:u-{user}/{scope}"));
-        }
-    }
-    for probe in &probes {
-        let listed = raw(
-            &http,
-            &url,
-            &token_b,
-            Method::GET,
-            "memory/events",
-            &[("scope", probe)],
-            None,
-        )
-        .await?;
-        assert!(
-            !listed.contains(&secret),
-            "b listed a's event through `{probe}`"
+    // Every probe runs in one block, so both accounts' records are removed
+    // however it ends: a's record, and the event b plants in its own tenant.
+    let mut planted_id: Option<String> = None;
+    let outcome = async {
+        // Through the adapter, naming the same namespace.
+        anyhow::ensure!(
+            b.get(&namespace, "secret").await?.is_none(),
+            "b read a's record"
         );
-        let recalled = raw(
+        anyhow::ensure!(
+            b.list(Some(&namespace), None, None).await?.is_empty(),
+            "b listed a's namespace"
+        );
+        let opts = OwnedRecallOpts {
+            namespace: Some(namespace.clone()),
+            ..OwnedRecallOpts::default()
+        };
+        anyhow::ensure!(
+            b.recall("vault word", 10, &opts, None).await?.is_empty(),
+            "b recalled a's record"
+        );
+        anyhow::ensure!(
+            !b.namespaces()
+                .await?
+                .iter()
+                .any(|s| s.namespace == namespace),
+            "b's namespaces include a's"
+        );
+        anyhow::ensure!(
+            !b.forget(&namespace, "secret").await?,
+            "b's forget found a's record"
+        );
+
+        // Raw, shaped like the engine's known leaks.
+        let mut probes = vec![scope.clone(), "tm:tinymemory-isolation".to_string()];
+        if let Ok(user) = std::env::var("TINYMEMORY_TEST_TINYHUMANS_USER_A") {
+            if !user.is_empty() {
+                probes.push(format!("oc:u-{user}/{scope}"));
+            }
+        }
+        for probe in &probes {
+            let listed = raw(
+                &http,
+                &url,
+                &token_b,
+                Method::GET,
+                "memory/events",
+                &[("scope", probe)],
+                None,
+            )
+            .await?;
+            anyhow::ensure!(
+                !listed.contains(&secret),
+                "b listed a's event through `{probe}`"
+            );
+            let recalled = raw(
+                &http,
+                &url,
+                &token_b,
+                Method::POST,
+                "memory/recall",
+                &[],
+                Some(json!({ "scope": probe, "query": "vault word", "view": "descend" })),
+            )
+            .await?;
+            anyhow::ensure!(
+                !recalled.contains(&secret),
+                "b recalled a's event through `{probe}`"
+            );
+        }
+
+        // A write aimed at a's scope lands in b's own tenant: b can see it,
+        // a never can.
+        let planted = format!("planted{}", nonce());
+        let accepted = raw(
             &http,
             &url,
             &token_b,
             Method::POST,
-            "memory/recall",
+            "memory/experience",
             &[],
-            Some(json!({ "scope": probe, "query": "vault word", "view": "descend" })),
+            Some(json!({
+                "scope": scope,
+                "modality": "observation",
+                "idempotency_key": format!("iso-{}", nonce()),
+                "content": { "kind": "text", "text": planted },
+                "context": {},
+            })),
         )
         .await?;
-        assert!(
-            !recalled.contains(&secret),
-            "b recalled a's event through `{probe}`"
-        );
-    }
-
-    // A write aimed at a's scope lands in b's own tenant: b can see it, a never can.
-    let planted = format!("planted{}", nonce());
-    raw(
-        &http,
-        &url,
-        &token_b,
-        Method::POST,
-        "memory/experience",
-        &[],
-        Some(json!({
-            "scope": scope,
-            "modality": "observation",
-            "idempotency_key": format!("iso-{}", nonce()),
-            "content": { "kind": "text", "text": planted },
-            "context": {},
-        })),
-    )
-    .await?;
-    let mut landed = false;
-    for _ in 0..40 {
-        let listed = raw(
+        planted_id = serde_json::from_str::<serde_json::Value>(&accepted)?
+            .pointer("/data/event_id")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
+        let mut landed = false;
+        for _ in 0..40 {
+            let listed = raw(
+                &http,
+                &url,
+                &token_b,
+                Method::GET,
+                "memory/events",
+                &[("scope", &scope)],
+                None,
+            )
+            .await?;
+            if listed.contains(&planted) {
+                landed = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+        anyhow::ensure!(landed, "b's own write never became visible to b");
+        let seen_by_a = raw(
             &http,
             &url,
-            &token_b,
+            &token_a,
             Method::GET,
             "memory/events",
             &[("scope", &scope)],
             None,
         )
         .await?;
-        if listed.contains(&planted) {
-            landed = true;
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        anyhow::ensure!(
+            !seen_by_a.contains(&planted),
+            "b's write landed in a's scope"
+        );
+        anyhow::ensure!(
+            a.get(&namespace, "secret").await?.is_some(),
+            "a lost its own record"
+        );
+        Ok(())
     }
-    assert!(landed, "b's own write never became visible to b");
-    let seen_by_a = raw(
-        &http,
-        &url,
-        &token_a,
-        Method::GET,
-        "memory/events",
-        &[("scope", &scope)],
-        None,
-    )
-    .await?;
-    assert!(
-        !seen_by_a.contains(&planted),
-        "b's write landed in a's scope"
-    );
+    .await;
 
-    assert!(
-        a.get(&namespace, "secret").await?.is_some(),
-        "a lost its own record"
-    );
-    a.forget(&namespace, "secret").await?;
-    Ok(())
+    // Best effort: a failed cleanup must not hide the probe's own result.
+    let _ = a.forget(&namespace, "secret").await;
+    if let Some(id) = planted_id {
+        let _ = raw(
+            &http,
+            &url,
+            &token_b,
+            Method::POST,
+            "memory/forget",
+            &[],
+            Some(json!({
+                "scope": scope,
+                "layers": ["events"],
+                "selector": { "memory_ids": [id] },
+                "audit_note": "tinymemory live isolation test",
+            })),
+        )
+        .await;
+    }
+    outcome
 }
 
 /// One authenticated request to the backend, returning the body of a 2xx.
