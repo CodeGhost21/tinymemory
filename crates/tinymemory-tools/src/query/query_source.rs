@@ -1,9 +1,9 @@
-use tinymemory_api::chunks::SourceKind;
 use super::backend;
 use crate::requests::QuerySourceRequest;
+use crate::MemoryToolHost;
 use async_trait::async_trait;
 use serde_json::json;
-use crate::MemoryToolHost;
+use tinymemory_api::chunks::SourceKind;
 use tinytools::{Tool, ToolResult};
 
 pub struct MemoryTreeQuerySourceTool<H> {
@@ -113,4 +113,3 @@ impl<H: MemoryToolHost> Tool for MemoryTreeQuerySourceTool<H> {
         Ok(ToolResult::success(json))
     }
 }
-

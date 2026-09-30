@@ -9,8 +9,8 @@ use serde::Deserialize;
 use serde_json::json;
 use std::fmt::Write;
 
-use tinymemory_api::provider::{ChunkQuery, MemoryProvider};
 use crate::MemoryToolHost;
+use tinymemory_api::provider::ChunkQuery;
 use tinytools::{Tool, ToolExposure, ToolResult};
 
 pub struct MemoryChunkContextTool<H> {
@@ -101,7 +101,9 @@ impl<H: MemoryToolHost> Tool for MemoryChunkContextTool<H> {
 
         // Chunks are read through the bound driver rather than by opening the
         // store in this process — see the note in `vector_search.rs`.
-        let guard = self.host.provider()
+        let guard = self
+            .host
+            .provider()
             .await
             .map_err(|e| anyhow::anyhow!("memory_chunk_context: {e}"))?;
         let chunk_reader = guard.as_chunks().ok_or_else(|| {
@@ -121,7 +123,10 @@ impl<H: MemoryToolHost> Tool for MemoryChunkContextTool<H> {
         // Source-scope gate: if the target chunk belongs to a source that the
         // active turn did not allow, surface nothing (its window shares the
         // same source). Non-source chunks always pass.
-        if !self.host.chunk_source_allowed(&target.metadata.tags, &source_id) {
+        if !self
+            .host
+            .chunk_source_allowed(&target.metadata.tags, &source_id)
+        {
             return Ok(ToolResult::success(
                 "Chunk is from a memory source not available to this turn.",
             ));

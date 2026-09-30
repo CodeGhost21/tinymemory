@@ -8,9 +8,9 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use tinymemory_api::chunks::SourceKind;
-use tinymemory_api::provider::{ChunkQuery, MemoryProvider};
 use crate::MemoryToolHost;
+use tinymemory_api::chunks::SourceKind;
+use tinymemory_api::provider::ChunkQuery;
 use tinytools::{Tool, ToolExposure, ToolResult};
 
 pub struct MemoryStoreRawChunksTool<H> {
@@ -128,7 +128,9 @@ impl<H: MemoryToolHost> Tool for MemoryStoreRawChunksTool<H> {
             // exactly as narrow as the fields above already make it.
             ..Default::default()
         };
-        let guard = self.host.provider()
+        let guard = self
+            .host
+            .provider()
             .await
             .map_err(|e| anyhow::anyhow!("memory_store_raw_chunks: {e}"))?;
         let mut rows = guard
@@ -157,4 +159,3 @@ impl<H: MemoryToolHost> Tool for MemoryStoreRawChunksTool<H> {
         Ok(ToolResult::success(json))
     }
 }
-

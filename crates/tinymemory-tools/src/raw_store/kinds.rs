@@ -9,7 +9,6 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use tinymemory_api::provider::MemoryProvider;
 use crate::MemoryToolHost;
 use tinytools::{Tool, ToolExposure, ToolResult};
 
@@ -56,7 +55,9 @@ impl<H: MemoryToolHost> Tool for MemoryStoreKindsTool<H> {
 
     async fn execute(&self, _args: Value) -> anyhow::Result<ToolResult> {
         log::debug!("[tool][memory_store] kinds start");
-        let guard = self.host.provider()
+        let guard = self
+            .host
+            .provider()
             .await
             .map_err(|e| anyhow::anyhow!("memory_store_kinds: {e}"))?;
         let kinds = guard
@@ -75,4 +76,3 @@ impl<H: MemoryToolHost> Tool for MemoryStoreKindsTool<H> {
         )?))
     }
 }
-

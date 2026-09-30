@@ -9,9 +9,8 @@ use serde::Deserialize;
 use serde_json::json;
 use std::fmt::Write;
 
-use tinymemory_api::provider::MemoryProvider;
-use tinymemory_api::types::MemoryItemKind;
 use crate::MemoryToolHost;
+use tinymemory_api::types::MemoryItemKind;
 use tinytools::{Tool, ToolCallOptions, ToolExposure, ToolResult, ToolRunContext};
 
 pub struct MemoryHybridSearchTool<H> {
@@ -269,7 +268,9 @@ impl<H: MemoryToolHost> Tool for MemoryHybridSearchTool<H> {
         // `UnifiedMemory::new(&config.workspace_dir, …)` — constructing a
         // *whole second engine* over the workspace the loaded module already
         // owns, the most severe instance of the split brain this port removes.
-        let guard = self.host.provider()
+        let guard = self
+            .host
+            .provider()
             .await
             .map_err(|e| anyhow::anyhow!("memory_hybrid_search: {e}"))?;
         let retrieval = guard.as_retrieval().ok_or_else(|| {
@@ -365,4 +366,3 @@ impl<H: MemoryToolHost> Tool for MemoryHybridSearchTool<H> {
         Ok(ToolResult::success(output))
     }
 }
-

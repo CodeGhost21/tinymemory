@@ -1,8 +1,8 @@
 use super::backend;
 use crate::requests::DrillDownRequest;
+use crate::MemoryToolHost;
 use async_trait::async_trait;
 use serde_json::json;
-use crate::MemoryToolHost;
 use tinytools::{Tool, ToolResult};
 
 pub struct MemoryTreeDrillDownTool<H> {
@@ -88,4 +88,3 @@ impl<H: MemoryToolHost> Tool for MemoryTreeDrillDownTool<H> {
         Ok(ToolResult::success(json))
     }
 }
-

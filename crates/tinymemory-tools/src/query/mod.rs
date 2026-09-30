@@ -23,9 +23,9 @@ pub use query_source::MemoryTreeQuerySourceTool;
 pub use search_entities::MemoryTreeSearchEntitiesTool;
 pub use MemoryTreeTool as MemoryQueryTool;
 
+use crate::MemoryToolHost;
 use async_trait::async_trait;
 use serde_json::json;
-use crate::MemoryToolHost;
 use tinytools::{Tool, ToolResult};
 
 /// Single multi-mode tool that consolidates all six memory-tree retrieval
@@ -202,4 +202,3 @@ impl<H: MemoryToolHost> Tool for MemoryTreeTool<H> {
         }
     }
 }
-

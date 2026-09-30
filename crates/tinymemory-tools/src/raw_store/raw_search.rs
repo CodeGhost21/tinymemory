@@ -10,7 +10,6 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use tinymemory_api::provider::MemoryProvider;
 use crate::MemoryToolHost;
 use tinytools::{Tool, ToolExposure, ToolResult};
 
@@ -109,7 +108,9 @@ impl<H: MemoryToolHost> Tool for MemoryStoreRawSearchTool<H> {
             .map(Vec::as_slice);
         // Kind validation belongs to the driver now: the vocabulary is open on
         // the wire. See the note in `memory/query/search_entities.rs`.
-        let guard = self.host.provider()
+        let guard = self
+            .host
+            .provider()
             .await
             .map_err(|e| anyhow::anyhow!("memory_store_raw_search: {e}"))?;
         let hits = guard
@@ -130,4 +131,3 @@ impl<H: MemoryToolHost> Tool for MemoryStoreRawSearchTool<H> {
         Ok(ToolResult::success(json))
     }
 }
-

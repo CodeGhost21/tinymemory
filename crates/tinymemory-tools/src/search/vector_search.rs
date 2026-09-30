@@ -9,11 +9,10 @@ use serde::Deserialize;
 use serde_json::json;
 use std::fmt::Write;
 
+use crate::MemoryToolHost;
+use tinyinference_embeddings::{cosine_similarity_f64, mmr_select, MmrCandidate};
 use tinymemory_api::chunks::SourceKind;
 use tinymemory_api::provider::ChunkQuery;
-use tinymemory_api::provider::MemoryProvider;
-use tinyinference_embeddings::{cosine_similarity_f64, mmr_select, MmrCandidate};
-use crate::MemoryToolHost;
 use tinytools::{Tool, ToolExposure, ToolResult};
 
 pub struct MemoryVectorSearchTool<H> {
@@ -36,7 +35,9 @@ impl<H: Default> Default for MemoryVectorSearchTool<H> {
 #[derive(Debug, Deserialize)]
 struct Args {
     query: String,
+    /// Accepted for callers that still send it; the search is workspace-wide.
     #[serde(default)]
+    #[allow(dead_code)]
     namespace: Option<String>,
     #[serde(default)]
     source_kind: Option<String>,
@@ -150,7 +151,9 @@ impl<H: MemoryToolHost> Tool for MemoryVectorSearchTool<H> {
         // and opened the same SQLite database the loaded module already had
         // open — two engine instances over one file, with the module not
         // authoritative. See `docs/specs/2026-08-13-memory-module-port.md` §2.1.
-        let guard = self.host.provider()
+        let guard = self
+            .host
+            .provider()
             .await
             .map_err(|e| anyhow::anyhow!("memory_vector_search: {e}"))?;
         let chunk_reader = guard.as_chunks().ok_or_else(|| {

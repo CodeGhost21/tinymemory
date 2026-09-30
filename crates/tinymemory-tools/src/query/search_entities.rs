@@ -1,8 +1,7 @@
-use tinymemory_api::provider::MemoryProvider;
 use crate::requests::SearchEntitiesRequest;
+use crate::MemoryToolHost;
 use async_trait::async_trait;
 use serde_json::json;
-use crate::MemoryToolHost;
 use tinytools::{Tool, ToolResult};
 
 pub struct MemoryTreeSearchEntitiesTool<H> {
@@ -86,7 +85,9 @@ impl<H: MemoryToolHost> Tool for MemoryTreeSearchEntitiesTool<H> {
         // alternative — duplicating an open vocabulary host-side — is the
         // failure mode this contract was shaped to avoid.
         let limit = req.limit.unwrap_or(5).min(100);
-        let guard = self.host.provider()
+        let guard = self
+            .host
+            .provider()
             .await
             .map_err(|e| anyhow::anyhow!("memory_tree_search_entities: {e}"))?;
         let matches = guard
@@ -108,4 +109,3 @@ impl<H: MemoryToolHost> Tool for MemoryTreeSearchEntitiesTool<H> {
         Ok(ToolResult::success(json))
     }
 }
-

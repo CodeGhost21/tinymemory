@@ -27,7 +27,8 @@ use tinymemory_api::provider::{
 
 /// The retrieval family on the active driver, or a caller-facing error.
 async fn retrieval<H: MemoryToolHost>(host: &H) -> Result<Arc<dyn MemoryProvider>> {
-    let guard = host.provider()
+    let guard = host
+        .provider()
         .await
         .map_err(|e| anyhow::anyhow!("memory query: {e}"))?;
     if guard.as_retrieval().is_none() {

@@ -1,9 +1,9 @@
-use tinymemory_api::chunks::SourceKind;
-use tinymemory_api::provider::{CoverWindowQuery, MemoryProvider};
 use crate::requests::CoverWindowRequest;
+use crate::MemoryToolHost;
 use async_trait::async_trait;
 use serde_json::json;
-use crate::MemoryToolHost;
+use tinymemory_api::chunks::SourceKind;
+use tinymemory_api::provider::CoverWindowQuery;
 use tinytools::{Tool, ToolResult};
 
 /// Agent-facing wrapper for the windowed minimum-cover retrieval. Returns the
@@ -103,7 +103,9 @@ impl<H: MemoryToolHost> Tool for MemoryTreeCoverWindowTool<H> {
             "[tool][memory_tree] cover_window dispatch limit={}",
             req.limit.unwrap_or(0)
         );
-        let guard = self.host.provider()
+        let guard = self
+            .host
+            .provider()
             .await
             .map_err(|e| anyhow::anyhow!("memory_tree_cover_window: {e}"))?;
         let window = CoverWindowQuery {
@@ -132,4 +134,3 @@ impl<H: MemoryToolHost> Tool for MemoryTreeCoverWindowTool<H> {
         Ok(ToolResult::success(json))
     }
 }
-

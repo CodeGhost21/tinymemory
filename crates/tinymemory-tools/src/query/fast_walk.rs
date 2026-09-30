@@ -5,8 +5,8 @@
 //! retriever. It returns a structured [`QueryResponse`] of ranked evidence
 //! (no synthesized prose); a higher-level context agent composes the answer.
 
-use tinymemory_api::provider::{FastRetrieveQuery, MemoryProvider};
 use crate::MemoryToolHost;
+use tinymemory_api::provider::FastRetrieveQuery;
 use tinytools::ToolResult;
 
 /// Parse the shared `memory_tree` args and run deterministic retrieval.
@@ -50,7 +50,8 @@ pub async fn run_fast_walk<H: MemoryToolHost>(
     // Routed through the bound driver. `None` for the scope is not
     // "unrestricted": the guard intersects it with the ambient per-turn
     // allowlist, so the source gate still applies.
-    let guard = host.provider()
+    let guard = host
+        .provider()
         .await
         .map_err(|e| anyhow::anyhow!("memory_tree walk: {e}"))?;
     let opts = FastRetrieveQuery {
@@ -73,4 +74,3 @@ pub async fn run_fast_walk<H: MemoryToolHost>(
     let json = serde_json::to_string(&resp)?;
     Ok(ToolResult::success(json))
 }
-

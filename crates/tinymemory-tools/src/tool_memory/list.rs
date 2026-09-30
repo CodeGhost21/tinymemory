@@ -9,13 +9,12 @@
 //! same rules, same order, same serialization — with `Capability::ToolMemory`
 //! admitted first.
 
-use tinymemory_api::provider::MemoryProvider;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::NO_TOOL_MEMORY;
 use crate::MemoryToolHost;
+use crate::NO_TOOL_MEMORY;
 use tinytools::{Tool, ToolResult};
 
 pub struct MemoryToolsListTool<H> {
@@ -70,7 +69,9 @@ impl<H: MemoryToolHost> Tool for MemoryToolsListTool<H> {
         let parsed: Args = serde_json::from_value(args)
             .map_err(|e| anyhow::anyhow!("invalid arguments for memory_tools_list: {e}"))?;
         log::debug!("[tool][memory_tools] list tool_name={}", parsed.tool_name);
-        let guard = self.host.provider()
+        let guard = self
+            .host
+            .provider()
             .await
             .map_err(|e| anyhow::anyhow!("memory_tools_list: {e}"))?;
         let rules = guard
@@ -88,4 +89,3 @@ impl<H: MemoryToolHost> Tool for MemoryToolsListTool<H> {
         Ok(ToolResult::success(json))
     }
 }
-

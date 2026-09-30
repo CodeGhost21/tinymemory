@@ -21,14 +21,13 @@
 //! store-level validation errors arrive as `MemoryError::Invalid` rather than as
 //! a raw string.
 
-use tinymemory_api::provider::MemoryProvider;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use tinymemory_api::tool_memory::{ToolMemoryPriority, ToolMemoryRule, ToolMemorySource};
-use crate::NO_TOOL_MEMORY;
 use crate::MemoryToolHost;
+use crate::NO_TOOL_MEMORY;
+use tinymemory_api::tool_memory::{ToolMemoryPriority, ToolMemoryRule, ToolMemorySource};
 use tinytools::{Tool, ToolResult};
 
 pub struct MemoryToolsPutTool<H> {
@@ -115,7 +114,9 @@ impl<H: MemoryToolHost> Tool for MemoryToolsPutTool<H> {
             parsed.priority,
             parsed.tags.len()
         );
-        let guard = self.host.provider()
+        let guard = self
+            .host
+            .provider()
             .await
             .map_err(|e| anyhow::anyhow!("memory_tools_put: {e}"))?;
         let family = guard
@@ -155,4 +156,3 @@ impl<H: MemoryToolHost> Tool for MemoryToolsPutTool<H> {
         Ok(ToolResult::success(json))
     }
 }
-

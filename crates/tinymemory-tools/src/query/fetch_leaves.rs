@@ -1,8 +1,8 @@
 use super::backend;
 use crate::requests::FetchLeavesRequest;
+use crate::MemoryToolHost;
 use async_trait::async_trait;
 use serde_json::json;
-use crate::MemoryToolHost;
 use tinytools::{Tool, ToolResult};
 
 /// Hard cap on `chunk_ids` enforced at the tool boundary so the tool's
@@ -78,4 +78,3 @@ impl<H: MemoryToolHost> Tool for MemoryTreeFetchLeavesTool<H> {
         Ok(ToolResult::success(json))
     }
 }
-

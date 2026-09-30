@@ -9,7 +9,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tinymemory_api::provider::MemoryProvider;
 use tinytools::ToolResult;
 
 /// Embeds a query for similarity search.
