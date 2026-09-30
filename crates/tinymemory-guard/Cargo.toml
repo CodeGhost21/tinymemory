@@ -16,7 +16,7 @@ repository = "https://github.com/tinyhumansai/tinymemory"
 tinymemory-api = { path = "../tinymemory-api" }
 # Every capability-family trait is an object-safe async trait.
 async-trait = "0.1"
-# `MemoryTree::seal_at`-style contract methods take `chrono::DateTime<Utc>`; the
+# Some contract methods (the tree writes) take `chrono::DateTime<Utc>`; the
 # same feature set the contract's wire crate uses, so the types unify.
 chrono = { version = "0.4", features = ["serde"] }
 # `redact_outbound_json` takes and returns a `serde_json::Value`.

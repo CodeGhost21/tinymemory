@@ -31,7 +31,7 @@ impl<P: GuardPolicy> MemoryCore for GuardedProvider<P> {
         session_id: Option<&str>,
         taint: MemoryTaint,
     ) -> Result<(), MemoryError> {
-        let policy = self.policy();
+        let policy = &**self.policy();
         policy.admit_write(Capability::Core, "core.store", namespace, true)?;
 
         let taint = policy.stamp_taint(taint);
@@ -48,13 +48,13 @@ impl<P: GuardPolicy> MemoryCore for GuardedProvider<P> {
     }
 
     async fn get(&self, namespace: &str, key: &str) -> Result<Option<MemoryEntry>, MemoryError> {
-        let policy = self.policy();
+        let policy = &**self.policy();
         policy.admit_read(Capability::Core, "core.get", namespace, false)?;
         self.inner().get(namespace, key).await
     }
 
     async fn forget(&self, namespace: &str, key: &str) -> Result<bool, MemoryError> {
-        let policy = self.policy();
+        let policy = &**self.policy();
         policy.admit_write(Capability::Core, "core.forget", namespace, false)?;
         self.inner().forget(namespace, key).await
     }
@@ -65,7 +65,7 @@ impl<P: GuardPolicy> MemoryCore for GuardedProvider<P> {
         category: Option<&MemoryCategory>,
         session_id: Option<&str>,
     ) -> Result<Vec<MemoryEntry>, MemoryError> {
-        let policy = self.policy();
+        let policy = &**self.policy();
         policy.admit_read(
             Capability::Core,
             "core.list",
@@ -81,7 +81,7 @@ impl<P: GuardPolicy> MemoryCore for GuardedProvider<P> {
     }
 
     async fn namespaces(&self) -> Result<Vec<NamespaceSummary>, MemoryError> {
-        let policy = self.policy();
+        let policy = &**self.policy();
         policy.admit_read(Capability::Core, "core.namespaces", NO_NAMESPACE, false)?;
         self.inner().namespaces().await
     }
@@ -116,7 +116,7 @@ impl<P: GuardPolicy> MemoryRecall for GuardedProvider<P> {
         opts: &OwnedRecallOpts,
         scope: Option<&SourceScope>,
     ) -> Result<Vec<MemoryEntry>, MemoryError> {
-        let policy = self.policy();
+        let policy = &**self.policy();
         // The query text itself crosses the boundary on an external driver.
         policy.admit_read(
             Capability::Recall,
@@ -155,7 +155,7 @@ impl<P: GuardPolicy> MemoryPortability for GuardedProvider<P> {
         cursor: Option<&str>,
         limit: usize,
     ) -> Result<ExportPage, MemoryError> {
-        let policy = self.policy();
+        let policy = &**self.policy();
         policy.admit_read(
             Capability::Portability,
             "portability.export_page",
@@ -177,7 +177,7 @@ impl<P: GuardPolicy> MemoryPortability for GuardedProvider<P> {
         &self,
         records: Vec<ExportRecord>,
     ) -> Result<ImportOutcome, MemoryError> {
-        let policy = self.policy();
+        let policy = &**self.policy();
         policy.admit_write(
             Capability::Portability,
             "portability.import_records",
