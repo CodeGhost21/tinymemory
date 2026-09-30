@@ -176,6 +176,10 @@ Over the hosted wire both halves are shaped for a billed, rate-limited API:
   that name the first account's tenant root).
 - Tests cover path mapping for every operation, envelope unwrap, 401/402/429/400
   mapping, per-request bearer resolution, the bulk fallback and the poll.
+- Recall quality and latency against the embedded engine are measured with
+  `tinymemory::conformance::parity` through the facade's `recall_parity`
+  example, and recorded on openhuman#6718 before hosted memory replaces the
+  embedded engine anywhere.
 
 ## Open questions
 

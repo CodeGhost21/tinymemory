@@ -38,6 +38,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod parity;
 pub mod reference;
 pub mod suite;
 
