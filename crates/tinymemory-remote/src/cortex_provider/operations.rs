@@ -34,7 +34,10 @@ use super::types::ExperienceInput;
 /// CortexDB exposed as mandatory storage plus native ingestion and answers.
 pub struct CortexProvider {
     mandatory: MemoryTraitProvider,
-    dialect: CortexDialect,
+    pub(super) dialect: CortexDialect,
+    /// Pauses a hosted import takes at one record while the backend is
+    /// unavailable; see `portability.rs`.
+    pub(super) import_patience: Vec<std::time::Duration>,
 }
 
 impl std::fmt::Debug for CortexProvider {
@@ -55,11 +58,12 @@ impl CortexProvider {
         Self {
             mandatory: MemoryTraitProvider::new(Arc::new(memory), driver_id(dialect.wire)),
             dialect,
+            import_patience: super::portability::IMPORT_PATIENCE.to_vec(),
         }
     }
 
     async fn experience(&self, input: ExperienceInput<'_>) -> Result<(String, bool), MemoryError> {
-        let request = Self::experience_request(input)?;
+        let request = self.experience_request(input)?;
         let answer: Value = self
             .dialect
             .submit_experience(&request, true)
@@ -68,7 +72,7 @@ impl CortexProvider {
         receipt(&answer)
     }
 
-    fn experience_request(input: ExperienceInput<'_>) -> Result<Value, MemoryError> {
+    fn experience_request(&self, input: ExperienceInput<'_>) -> Result<Value, MemoryError> {
         let ExperienceInput {
             namespace,
             modality,
@@ -91,7 +95,7 @@ impl CortexProvider {
                 "namespace, modality, key, and content must not be empty".to_string(),
             ));
         }
-        let scope = CortexDialect::scope_of(namespace).map_err(engine_error)?;
+        let scope = self.dialect.scope_for(namespace).map_err(engine_error)?;
         let envelope = json!({
             "k": key,
             "c": body,
@@ -290,14 +294,20 @@ impl MemoryPortability for CortexProvider {
         cursor: Option<&str>,
         limit: usize,
     ) -> Result<ExportPage, MemoryError> {
-        self.mandatory.export_page(cursor, limit).await
+        match self.dialect.wire {
+            CortexWire::Direct => self.mandatory.export_page(cursor, limit).await,
+            CortexWire::TinyHumans => self.hosted_export_page(cursor, limit).await,
+        }
     }
 
     async fn import_records(
         &self,
         records: Vec<ExportRecord>,
     ) -> Result<ImportOutcome, MemoryError> {
-        self.mandatory.import_records(records).await
+        match self.dialect.wire {
+            CortexWire::Direct => self.mandatory.import_records(records).await,
+            CortexWire::TinyHumans => self.hosted_import_records(records).await,
+        }
     }
 }
 
@@ -376,7 +386,7 @@ impl MemoryConversationIngest for CortexProvider {
                 serde_json::to_string(&payload)?
             );
             let key = format!("message:{conversation_id}:{index}");
-            items.push(Self::experience_request(ExperienceInput {
+            items.push(self.experience_request(ExperienceInput {
                 namespace: &namespace,
                 modality: "conversation",
                 role: Some(&role),
@@ -525,7 +535,7 @@ impl MemoryAnswer for CortexProvider {
                 "CortexDB answers cannot safely apply the requested recall filters".to_string(),
             ));
         }
-        let scope = CortexDialect::scope_of(namespace).map_err(engine_error)?;
+        let scope = self.dialect.scope_for(namespace).map_err(engine_error)?;
         let pack: Value = self
             .dialect
             .client
