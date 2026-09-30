@@ -1940,6 +1940,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tinymemory-safety"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "regex",
+ "serde_json",
+]
+
+[[package]]
 name = "tinymemory-sources"
 version = "0.1.0"
 dependencies = [

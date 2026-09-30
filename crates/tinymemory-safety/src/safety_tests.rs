@@ -15,7 +15,6 @@ fn sanitize_json(value: &Value) -> Sanitized<Value> {
     sanitize_json_with(value, Policy::corroborated())
 }
 
-
 #[test]
 fn sanitize_text_redacts_bearer_and_openai_key() {
     let key = openai_key_fixture();

@@ -7,7 +7,6 @@ fn redact_pii(text: &str) -> Sanitized<String> {
     redact_pii_with(text, Policy::corroborated())
 }
 
-
 fn redacts(input: &str, token: &str) {
     let out = redact_pii(input);
     assert!(
