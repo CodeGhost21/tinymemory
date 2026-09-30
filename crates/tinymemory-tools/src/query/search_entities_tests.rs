@@ -8,10 +8,7 @@ fn parameters_schema_requires_query() {
     let tool = MemoryTreeSearchEntitiesTool::new(NoHost);
     let schema = tool.parameters_schema();
     assert_eq!(schema["required"], json!(["query"]));
-    assert_eq!(
-        schema["properties"]["limit"]["description"].is_string(),
-        true
-    );
+    assert!(schema["properties"]["limit"]["description"].is_string());
 }
 
 #[test]
