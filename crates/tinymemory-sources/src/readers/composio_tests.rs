@@ -1,6 +1,7 @@
 //! Tests for the surrounding module.
 
 use super::*;
+use std::path::Path;
 
 fn test_source() -> MemorySourceEntry {
     MemorySourceEntry {
@@ -37,4 +38,16 @@ async fn list_items_returns_connection_as_item() {
         .unwrap();
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].id, "cmp_123");
+}
+
+#[tokio::test]
+async fn read_item_describes_the_provider_pipeline() {
+    let content = ComposioReader
+        .read_item(&test_source(), "cmp_123", Path::new("."))
+        .await
+        .unwrap();
+    assert_eq!(content.title, "gmail sync data");
+    assert!(content.body.contains("provider sync pipeline"));
+    assert_eq!(content.metadata["toolkit"], "gmail");
+    assert_eq!(content.metadata["connection_id"], "cmp_123");
 }
