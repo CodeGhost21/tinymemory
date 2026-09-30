@@ -41,6 +41,10 @@ crates/
 ├── tinymemory-sync/    the engine-neutral Composio payload normalisers, so a
 │                       host binding a driver that is not TinyCortex can run
 │                       them
+├── tinymemory-guard/   the policy decorator over any `MemoryProvider`: tier,
+│                       source scope, taint, redaction, char budgets and audit,
+│                       all consulted through the host-implemented
+│                       `GuardPolicy` trait
 ├── tinymemory-sources/ memory-source contracts and readers — local folders
 │                       always, GitHub/RSS/web pages behind `network`
 ├── tinymemory-documents/ document and URL intake: sniff a format, convert it
