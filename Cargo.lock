@@ -1728,6 +1728,7 @@ dependencies = [
  "tinycortex-api",
  "tinyinference-embeddings",
  "tinyinference-llm",
+ "tinymemory-safety",
  "tokio",
  "toml",
  "tracing",

@@ -76,6 +76,9 @@ exclude = ["vendor", "crates/tinymemory-module", "worktrees"]
 # same way it already patches tinycortex.
 [patch."https://github.com/tinyhumansai/tinymemory"]
 tinymemory-api = { path = "crates/tinymemory-api" }
+# `tinycortex` takes the shared scrubber by git for the same reason, and for the
+# same reason it must resolve to this workspace's copy.
+tinymemory-safety = { path = "crates/tinymemory-safety" }
 
 # TinyCortex pins TinyInference by git until it is published. Collapse that git
 # source onto the same checkout `tinymemory-core` resolves through crates.io so
