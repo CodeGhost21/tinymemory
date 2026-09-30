@@ -6,6 +6,21 @@ use tempfile::TempDir;
 use super::*;
 use serde_json::json;
 
+impl ConversationStore {
+    pub(super) fn lock_identity_for_test(&self) -> usize {
+        std::sync::Arc::as_ptr(&self.locks) as usize
+    }
+
+    pub(super) fn thread_lock_count_for_test(&self) -> usize {
+        self.locks
+            .threads
+            .lock()
+            .values()
+            .filter(|lock| lock.strong_count() > 0)
+            .count()
+    }
+}
+
 fn make_store() -> (TempDir, ConversationStore) {
     let temp = TempDir::new().expect("tempdir");
     let store = ConversationStore::new(temp.path().to_path_buf());

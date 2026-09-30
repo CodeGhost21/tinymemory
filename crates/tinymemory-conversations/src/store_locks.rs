@@ -21,7 +21,7 @@ pub(super) struct StoreLocks {
     pub(super) metadata: Mutex<()>,
     /// Only one cold scan may construct this root's in-memory index.
     pub(super) index_build: Mutex<()>,
-    threads: Mutex<HashMap<String, Weak<Mutex<()>>>>,
+    pub(super) threads: Mutex<HashMap<String, Weak<Mutex<()>>>>,
     /// Appends completed while a cold scan is in flight. `None` means no scan
     /// is active, so the warm-cache path alone owns index maintenance.
     pending_index_appends: Mutex<Option<Vec<(String, ConversationMessage)>>>,
@@ -66,15 +66,6 @@ impl StoreLocks {
     /// Call only while holding the lifecycle write guard.
     pub(super) fn clear_threads(&self) {
         self.threads.lock().clear();
-    }
-
-    #[cfg(test)]
-    pub(super) fn thread_count(&self) -> usize {
-        self.threads
-            .lock()
-            .values()
-            .filter(|lock| lock.strong_count() > 0)
-            .count()
     }
 }
 
