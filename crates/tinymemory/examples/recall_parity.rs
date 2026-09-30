@@ -226,6 +226,9 @@ impl EmbeddingProvider for Shared {
     }
 }
 
+/// How long one embeddings request may take, body included.
+const EMBED_TIMEOUT: std::time::Duration = std::time::Duration::from_mins(1);
+
 /// An OpenAI-compatible `/embeddings` endpoint, from the environment.
 struct RemoteEmbedder {
     http: reqwest::Client,
@@ -281,6 +284,9 @@ impl EmbeddingProvider for RemoteEmbedder {
             .post(format!("{}/embeddings", self.base))
             .bearer_auth(&self.key)
             .json(&serde_json::json!({ "model": self.model, "input": texts }))
+            // From connecting to the end of the body, so an endpoint that
+            // accepts and then stalls fails the run instead of hanging it.
+            .timeout(EMBED_TIMEOUT)
             .send()
             .await?
             .error_for_status()?
