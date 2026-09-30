@@ -41,6 +41,7 @@
 pub mod reference;
 pub mod suite;
 
+pub use reference::fixed::{FixedRecallProvider, FIXED_RECALL_DRIVER_ID};
 pub use reference::full::{Call, RecordingProvider, FULL_DRIVER_ID};
 pub use reference::{InMemoryProvider, REFERENCE_DRIVER_ID};
 pub use suite::{
