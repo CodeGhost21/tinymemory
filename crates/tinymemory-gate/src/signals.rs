@@ -47,13 +47,14 @@ fn sample_power(env: &SignalEnv) -> (bool, Option<f32>) {
     // explicit truthy/falsy tokens count: garbage values yield None so
     // the real probe still gets to answer (vs. silently coercing to
     // "on battery" and triggering throttling on every misconfigured host).
-    let env_on_ac = std::env::var(env.on_ac_power).ok().and_then(|v| {
-        match v.to_ascii_lowercase().as_str() {
-            "1" | "true" | "yes" => Some(true),
-            "0" | "false" | "no" => Some(false),
-            _ => None,
-        }
-    });
+    let env_on_ac =
+        std::env::var(env.on_ac_power)
+            .ok()
+            .and_then(|v| match v.to_ascii_lowercase().as_str() {
+                "1" | "true" | "yes" => Some(true),
+                "0" | "false" | "no" => Some(false),
+                _ => None,
+            });
     let env_charge = std::env::var(env.battery_charge)
         .ok()
         .and_then(|v| v.parse::<f32>().ok())
@@ -144,6 +145,7 @@ fn probe_battery() -> Result<BatteryProbe, starship_battery::Error> {
     Ok(BatteryProbe { on_ac, charge })
 }
 
+#[cfg(any(feature = "battery", test))]
 fn include_charge_sample(total: &mut f32, count: &mut f32, charge: f32) {
     if charge.is_finite() {
         *total += charge;
