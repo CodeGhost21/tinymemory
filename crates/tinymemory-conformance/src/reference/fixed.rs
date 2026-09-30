@@ -157,7 +157,14 @@ mod tests {
     async fn writes_are_dropped_and_reads_answer_empty() {
         let driver = FixedRecallProvider::new(vec![]);
         driver
-            .store("ns", "k", "v", MemoryCategory::Core, None, MemoryTaint::Internal)
+            .store(
+                "ns",
+                "k",
+                "v",
+                MemoryCategory::Core,
+                None,
+                MemoryTaint::Internal,
+            )
             .await
             .unwrap();
         assert!(driver.get("ns", "k").await.unwrap().is_none());

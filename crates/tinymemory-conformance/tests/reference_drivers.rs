@@ -240,7 +240,10 @@ async fn the_full_driver_serves_seeded_episodic_reads() {
         .with_session_turns(vec![turn.clone()])
         .with_pending_segments(vec![segment("a"), segment("b")]);
     let episodic = provider.as_episodic().expect("episodic family");
-    assert_eq!(episodic.session_turns("s").await.expect("turns"), vec![turn]);
+    assert_eq!(
+        episodic.session_turns("s").await.expect("turns"),
+        vec![turn]
+    );
     let pending = episodic.segments_pending_summary(1).await.expect("pending");
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].segment_id, "a");
@@ -255,7 +258,14 @@ async fn the_reference_driver_reports_its_length() {
     let provider = InMemoryProvider::new();
     assert!(provider.is_empty());
     provider
-        .store("ns", "k", "v", MemoryCategory::Core, None, MemoryTaint::Internal)
+        .store(
+            "ns",
+            "k",
+            "v",
+            MemoryCategory::Core,
+            None,
+            MemoryTaint::Internal,
+        )
         .await
         .expect("store");
     assert_eq!(provider.len(), 1);
