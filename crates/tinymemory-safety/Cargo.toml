@@ -1,0 +1,24 @@
+[package]
+name = "tinymemory-safety"
+publish = false
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96"
+license = "GPL-3.0-only"
+description = "Secret and PII scrubbing for memory writes: credential patterns, sensitive-key classifier, checksum-gated multilingual national-ID redaction"
+repository = "https://github.com/tinyhumansai/tinymemory"
+
+# Deliberately tiny: a scrubber is regexes over text and JSON. No engine, no
+# runtime, no storage, no contract crate — so the TinyCortex engine, the
+# `tinymemory-core` store and a host can all depend on it without pulling
+# anything else in, and without a cycle.
+[dependencies]
+regex = "1"
+serde_json = "1"
+log = "0.4"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
