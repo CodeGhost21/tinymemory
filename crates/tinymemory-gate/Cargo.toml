@@ -1,0 +1,42 @@
+[package]
+name = "tinymemory-gate"
+publish = false
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96"
+license = "GPL-3.0-only"
+description = "The scheduler gate: host power/CPU/deployment sampling and the cooperative back-pressure that keeps background memory work from lagging the machine"
+repository = "https://github.com/tinyhumansai/tinymemory"
+
+# The decision itself (`decide`, `Signals`, `Policy`, the config) is the
+# contract crate's. This crate is the half that needs a runtime and hardware
+# probes, which `tinymemory-api` forbids by construction: it samples the host,
+# keeps the cached policy, and parks callers until the policy lets them run.
+# Process-wide wiring (the singleton, the signed-out override, test isolation)
+# stays with the host.
+[dependencies]
+tinymemory-api = { path = "../tinymemory-api" }
+log = "0.4"
+parking_lot = "0.12"
+sysinfo = { version = "0.33", default-features = false, features = ["system"] }
+tokio = { version = "1", features = ["sync", "time", "rt"] }
+# Cross-platform battery probe. Maintained fork of the abandoned `battery`
+# crate. Off, there is no hardware probe at all and a machine is treated as
+# plugged in with no battery.
+starship-battery = { version = "0.10", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "time", "test-util"] }
+
+[features]
+default = []
+# The real battery probe. Without it `require_ac_power` and `battery_floor` stop
+# being enforced; CPU throttling and server-mode detection are unaffected.
+battery = ["dep:starship-battery"]
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
