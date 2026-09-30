@@ -23,3 +23,21 @@ fn timer_dispatch_constructs_only_readers_that_never_need_network() {
         assert!(reader_for(&kind).is_none());
     }
 }
+
+#[cfg(feature = "network")]
+#[test]
+fn request_dispatch_hands_out_a_reader_for_every_kind() {
+    use tinymemory_sources::readers::reader_for_request;
+
+    for kind in [
+        SourceKind::Composio,
+        SourceKind::Conversation,
+        SourceKind::Folder,
+        SourceKind::GithubRepo,
+        SourceKind::TwitterQuery,
+        SourceKind::RssFeed,
+        SourceKind::WebPage,
+    ] {
+        assert_eq!(reader_for_request(&kind).kind(), kind);
+    }
+}
