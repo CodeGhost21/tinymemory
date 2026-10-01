@@ -268,7 +268,7 @@ async fn a_moved_turn_never_takes_an_id_later_in_its_batch() {
 
     // An hour ahead of every id handed out so far, so the next one is known.
     let ahead = super::super::episodic::next_turn_id() + 3_600_000_000;
-    super::super::episodic::turn_ids_continue_after(ahead);
+    super::super::episodic::test::turn_ids_continue_after(ahead);
     let later = ahead + 1;
     let outcome = to
         .import_episodic(EpisodicRecords::Turns(vec![

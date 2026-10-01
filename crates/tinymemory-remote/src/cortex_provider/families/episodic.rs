@@ -41,13 +41,6 @@ use crate::cortex_provider::CortexProvider;
 /// The last turn id this process handed out.
 static LAST_TURN_ID: AtomicI64 = AtomicI64::new(0);
 
-/// Makes the next turn id at least one past `id`, so a test can know what
-/// [`next_turn_id`] hands out next.
-#[cfg(test)]
-pub(super) fn turn_ids_continue_after(id: i64) {
-    LAST_TURN_ID.fetch_max(id, Ordering::SeqCst);
-}
-
 /// A new turn id: the current microsecond, or one past the last id if that is
 /// not already later.
 pub(super) fn next_turn_id() -> i64 {
@@ -319,6 +312,7 @@ impl MemoryEpisodic for CortexProvider {
     }
 }
 
+// Visible to the sibling families' tests, which use its helpers.
 #[cfg(test)]
 #[path = "episodic_test.rs"]
-mod test;
+pub(super) mod test;
