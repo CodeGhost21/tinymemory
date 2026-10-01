@@ -107,7 +107,7 @@ composition — no storage engine, no HTTP stack, no native library.
 | `memory-git` | git-backed diff snapshots (implies `tinycortex`; links libgit2) |
 | `contacts` | the macOS address-book seeding path (implies `core`) |
 | `test-support` | the workspace's test doubles and helpers |
-| `full` | every feature above except `test-support` |
+| `full` | `engines`, `core`, `sync`, `sources-network`, `documents-network`, `conformance`, and `memory-git`; not `factory`, `livingbrain`, `contacts`, or `test-support` |
 
 Capability features imply the engine that serves them, so asking for a
 capability cannot produce a build where nothing implements it. `test-support`
@@ -226,8 +226,8 @@ for assistant-memory workloads; wrong for high-volume keyed storage.
 
 `MemoryProvider` is an object-safe trait with **three mandatory** capability
 families and independently negotiated optional ones. The mandatory three are supertraits, so
-a driver missing any of them cannot be constructed; the optional seventeen are
-reached through `as_ingest()` / `as_tree()` / … accessors that default to `None`,
+a driver missing any of them cannot be constructed; the optional twenty-three
+are reached through `as_ingest()` / `as_tree()` / … accessors that default to `None`,
 so a minimal driver implements what it supports and inherits correct absence for
 everything else.
 

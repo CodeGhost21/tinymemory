@@ -79,10 +79,13 @@ ImportRecords(records)                                       -> ImportOutcome
 
 These are `tinymemory_api`'s `MemoryProvider` and its three mandatory
 supertraits, one method per method, borrows replaced by owned equivalents. The
-host binds an `Arc<dyn MemoryProvider>`, so a client that forwards each method
-one-for-one **is** a complete provider with no translation layer. Nothing
-cleverer is offered on purpose: batching or combined calls would put engine
-semantics on the wire where two sides could disagree about them.
+same object also carries a member for every method of every optional family —
+the full list is the `#[tinybus::interface]` impl in
+`crates/tinymemory-module/src/service/mod.rs`. The host binds an
+`Arc<dyn MemoryProvider>`, so a client that forwards each method one-for-one
+**is** a complete provider with no translation layer. Nothing cleverer is
+offered on purpose: batching or combined calls would put engine semantics on
+the wire where two sides could disagree about them.
 
 **No new types were needed.** Every value crossing is already `Serialize` +
 `Deserialize` in `tinymemory-api` — including `MemoryCategory` (a string with a
@@ -90,14 +93,14 @@ semantics on the wire where two sides could disagree about them.
 which carry hand-written impls. This is why there is no `wire` *type* module
 here, unlike the tinywallet module.
 
-### Only the mandatory three
+### Every family the bound provider serves
 
-`tinymemory-tinycortex` advertises Core, Recall and Portability, because the ten
-optional families are reached through engine entry points needing a host's
-configuration, embedding compute and job queue. This module serves exactly that.
-Serving more would advertise capabilities whose accessors return nothing, which
-`audit_provider` exists to catch, and would make the host register RPC methods
-that answer errors.
+The module binds the full `TinycortexProvider`
+(`crates/tinymemory-module/src/provider.rs`), and `Capabilities()` returns that
+provider's own advertised set. Each optional-family member reaches the provider
+through its `as_*` accessor; when the accessor returns `None`, the call is
+refused with `MemoryError::Unsupported` naming the capability, never answered
+with an empty result.
 
 ### Everything travels inline, but not unbounded
 
@@ -106,8 +109,8 @@ constraint — a byte array costs ~3.5 bytes per byte — and here it is not: me
 entries are text, ~1.1× as JSON. So there is no blob store, no chunking and no
 held output. The tinydocs module's whole staging apparatus is absent.
 
-Inline is not the same as unbounded, though, and the three list-returning methods
-are bounded differently:
+Inline is not the same as unbounded, though, and the three mandatory
+list-returning methods are bounded differently:
 
 | Method | Caller can bound | Module bounds |
 | --- | --- | --- |
@@ -121,9 +124,11 @@ cannot cross a frame — and at that point a host cannot enumerate its own valid
 stored data at all. `Recall`'s `limit` bounds the count but not the bytes: fifty
 entries each holding a large document overflow just the same.
 
-Both are therefore checked against an 8 MiB ceiling on estimated content (plus a
-512-byte per-entry allowance for the surrounding JSON, so a million empty entries
-trip it too) and **refuse** with `BudgetExceeded`.
+Both are therefore checked against an 8 MiB ceiling on the response's serialized
+JSON size (which counts each entry's surrounding JSON, so a million empty entries
+trip it too) and **refuse** with `BudgetExceeded`. Optional-family members that
+return lists, such as `QueryDocuments` and `QuerySource`, are held to the same
+`MAX_RESPONSE_BYTES` ceiling before they cross the bus.
 
 Refusing rather than truncating is the load-bearing part. With no cursor, a
 short list is indistinguishable from a complete one, so a silently truncated
