@@ -182,6 +182,5 @@ pub fn fallback_summary(inputs: &[SummaryInput], budget: u32) -> SummaryOutput {
         token_count: output.token_count,
         entities: output.entities,
         topics: output.topics,
-        ..SummaryOutput::default()
     }
 }
