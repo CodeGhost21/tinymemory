@@ -1932,6 +1932,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "futures",
+ "log",
  "regex",
  "reqwest",
  "schemars",

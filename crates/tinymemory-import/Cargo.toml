@@ -1,0 +1,36 @@
+[package]
+name = "tinymemory-import"
+publish = false
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96"
+license = "GPL-3.0-only"
+description = "One-shot memory importers: read another assistant's workspace (OpenClaw, Hermes) and write it into any TinyMemory `Memory`"
+repository = "https://github.com/tinyhumansai/tinymemory"
+
+# An importer reads another product's on-disk workspace and writes what it
+# finds into a `Memory` the host hands over, so this crate needs the contract
+# and a SQLite reader for OpenClaw's `brain.db`, and nothing else from the
+# engine. Which `Memory` to write into (the bound driver, refusing the null
+# one) is the host's call and arrives as a closure.
+[dependencies]
+tinymemory-api = { path = "../tinymemory-api" }
+anyhow = "1"
+directories = "6"
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+# Read-only access to the source database. Same pin and feature set as
+# `tinymemory-core`, so a host that links both compiles one SQLite.
+rusqlite = { version = "=0.40.2", features = ["bundled"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt"] }
+async-trait = "0.1"
+serde_json = "1"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }

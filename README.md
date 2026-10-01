@@ -41,10 +41,21 @@ crates/
 ├── tinymemory-sync/    the engine-neutral Composio payload normalisers, so a
 │                       host binding a driver that is not TinyCortex can run
 │                       them
+├── tinymemory-import/  one-shot importers (OpenClaw, Hermes workspaces) that write
+│                       into any `Memory` the host hands over
+├── tinymemory-gate/    the scheduler gate: host power/CPU sampling and the
+│                       cooperative wait that keeps background memory work
+│                       from lagging the machine
 ├── tinymemory-guard/   the policy decorator over any `MemoryProvider`: tier,
 │                       source scope, taint, redaction, char budgets and audit,
 │                       all consulted through the host-implemented
 │                       `GuardPolicy` trait
+├── tinymemory-safety/  secret and PII scrubbing (credential patterns,
+│                       checksum-gated national-ID redaction) shared by
+│                       TinyCortex, `tinymemory-core` and the host
+├── tinymemory-tools/   the memory agent tools (tree retrieval, raw and vector
+│                       search, tool-scoped rules) as `tinytools::Tool`s over any
+│                       provider, behind a host seam
 ├── tinymemory-sources/ memory-source contracts and readers — local folders
 │                       always, GitHub/RSS/web pages behind `network`
 ├── tinymemory-documents/ document and URL intake: sniff a format, convert it

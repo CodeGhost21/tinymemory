@@ -1,6 +1,6 @@
 //! Scheduler-gate configuration — controls when background AI work runs.
 //!
-//! Consumed by `openhuman::cron::scheduler_gate`.
+//! Consumed by `tinymemory-gate` and, through it, the host's scheduler gate.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -113,8 +113,9 @@ impl Default for SchedulerGateConfig {
 // `cron::scheduler_gate::policy` because the extracted sync loops read them on
 // every tick to decide whether to back off. They are inert `Copy` enums with no
 // dependencies. The pure *decision function* that produces a `Policy` from
-// sampled signals lives beside them in `scheduler_gate_decide`; only the
-// sampling of those signals stays in the host, where the hardware is.
+// sampled signals lives beside them in `scheduler_gate_decide`; the
+// sampling of those signals and the cooperative wait live in `tinymemory-gate`
+// (which needs a runtime and hardware probes this crate forbids).
 
 /// Why the gate is currently paused. Carried by [`Policy::Paused`] so
 /// downstream consumers (UI, logging, observability) can surface a

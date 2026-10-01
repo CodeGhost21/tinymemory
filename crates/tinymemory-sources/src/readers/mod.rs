@@ -22,15 +22,24 @@
 //! [`reader_for`] therefore still means "route this through the host's sync
 //! runner", which is what keeps the host in charge of hitting the network.
 //!
-//! `composio` and `twitter_query` have no reader here at all — the former is a
-//! credentialed OAuth pipeline, the latter is unimplemented.
+//! `composio` and `twitter_query` are represented by placeholder readers
+//! ([`composio::ComposioReader`], [`twitter::TwitterReader`]): the former lists
+//! a connection as a single sync target because its data arrives through the
+//! credentialed provider pipeline, the latter validates the source and reports
+//! that the API integration is not configured. Neither fetches anything, and
+//! neither is handed out by [`reader_for`].
+//!
+//! A host servicing an *explicit user request* (not a timer) that wants one
+//! reader for any kind uses [`reader_for_request`].
 
+pub mod composio;
 pub mod conversation;
 pub mod folder;
 #[cfg(feature = "network")]
 pub mod github;
 #[cfg(feature = "network")]
 pub mod rss;
+pub mod twitter;
 #[cfg(feature = "network")]
 pub mod web_page;
 
@@ -47,7 +56,6 @@ pub mod ssrf;
 use async_trait::async_trait;
 
 use crate::SourceResult;
-#[cfg(feature = "network")]
 use tinymemory_api::error::MemoryError;
 
 use super::types::{MemorySourceEntry, SourceContent, SourceItem, SourceKind};
@@ -104,13 +112,32 @@ pub fn reader_for(kind: &SourceKind) -> Option<Box<dyn SourceReader>> {
     }
 }
 
+/// Get a reader for **any** source kind, for a caller servicing an explicit user
+/// request naming one source (an RPC handler), not a timer.
+///
+/// Unlike [`reader_for`] this hands out the network readers, so the caller has
+/// already decided the fetch is allowed. **Do not reuse it from a polling
+/// loop**: the host stays in charge of egress, OAuth and cost budgeting by
+/// constructing a network reader deliberately there.
+#[cfg(feature = "network")]
+pub fn reader_for_request(kind: &SourceKind) -> Box<dyn SourceReader> {
+    match kind {
+        SourceKind::Composio => Box::new(composio::ComposioReader),
+        SourceKind::Conversation => Box::new(conversation::ConversationReader),
+        SourceKind::Folder => Box::new(folder::FolderReader),
+        SourceKind::GithubRepo => Box::new(github::GithubReader),
+        SourceKind::TwitterQuery => Box::new(twitter::TwitterReader),
+        SourceKind::RssFeed => Box::new(rss::RssReader::new()),
+        SourceKind::WebPage => Box::new(web_page::WebPageReader),
+    }
+}
+
 /// Wrap a reader's plain-string failure as a [`MemoryError`].
 ///
 /// The network readers below carry their diagnostics as `String` internally.
 /// [`MemoryError::Other`] is `#[error(transparent)]`, so `to_string()` on the
 /// result reproduces the original message byte-for-byte — callers that match on
 /// reader error text keep working unchanged.
-#[cfg(feature = "network")]
 pub(crate) fn into_engine_error(message: String) -> MemoryError {
     MemoryError::Other(anyhow::anyhow!(message))
 }

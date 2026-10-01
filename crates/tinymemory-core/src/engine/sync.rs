@@ -435,9 +435,9 @@ impl ExternalSourceReader for HostSyncAdapter {
             )
         })?;
         let items = reader
-            .list_items(&host_source, &**config)
+            .list_items(&host_source, config.workspace_dir())
             .await
-            .map_err(anyhow::Error::msg)?;
+            .map_err(|error| anyhow::Error::msg(error.to_string()))?;
         serde_json::from_value(serde_json::to_value(items)?).map_err(Into::into)
     }
 
@@ -458,9 +458,9 @@ impl ExternalSourceReader for HostSyncAdapter {
             )
         })?;
         let content = reader
-            .read_item(&host_source, item_id, &**config)
+            .read_item(&host_source, item_id, config.workspace_dir())
             .await
-            .map_err(anyhow::Error::msg)?;
+            .map_err(|error| anyhow::Error::msg(error.to_string()))?;
         serde_json::from_value(serde_json::to_value(content)?).map_err(Into::into)
     }
 }
