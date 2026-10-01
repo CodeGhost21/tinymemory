@@ -10,7 +10,7 @@ use serde_json::json;
 use std::fmt::Write;
 
 use crate::MemoryToolHost;
-use tinymemory_api::types::MemoryItemKind;
+use tinymemory_api::types::{MemoryItemKind, NamespaceMemoryHit};
 use tinytools::{Tool, ToolCallOptions, ToolExposure, ToolResult, ToolRunContext};
 
 pub struct MemoryHybridSearchTool<H> {
@@ -149,6 +149,64 @@ struct Args {
     limit: u32,
     #[serde(default)]
     include_breakdown: bool,
+}
+
+/// Whether `hits` were ranked without anything measured: each has a positive
+/// final score and no signal at all — no similarity, keyword, graph, episodic
+/// or freshness.
+///
+/// That is the mark a driver ranking without scoring leaves (hosted CortexDB
+/// reports a hit's rank and nothing else), and a weighted sum of signals cannot
+/// produce it, so a driver that scores is never read as one.
+fn rank_only(hits: &[NamespaceMemoryHit]) -> bool {
+    !hits.is_empty()
+        && hits.iter().all(|hit| {
+            let signals = &hit.score_breakdown;
+            signals.final_score > 0.0
+                && signals.vector_similarity == 0.0
+                && signals.keyword_relevance == 0.0
+                && signals.graph_relevance == 0.0
+                && signals.episodic_relevance == 0.0
+                && signals.freshness == 0.0
+        })
+}
+
+/// The hits to show, best first and at most `limit`, each with the score it is
+/// shown with, and whether that score is the engine's rank.
+///
+/// A rank-only driver leaves nothing to re-weight: its order is the ranking,
+/// and a weighted sum of its zeros would report no results at all. Any other
+/// driver's hits are re-scored with `profile`, and a hit scoring nothing is
+/// dropped.
+fn ordered(
+    hits: &[NamespaceMemoryHit],
+    profile: &WeightProfile,
+    limit: usize,
+) -> (Vec<(usize, f64)>, bool) {
+    let ranked = rank_only(hits);
+    let mut rescored: Vec<(usize, f64)> = hits
+        .iter()
+        .enumerate()
+        .map(|(i, hit)| {
+            if ranked {
+                return (i, hit.score);
+            }
+            let bd = &hit.score_breakdown;
+            let score = hybrid_final_score(
+                profile,
+                bd.graph_relevance,
+                bd.vector_similarity,
+                bd.keyword_relevance,
+                bd.freshness,
+            );
+            (i, score)
+        })
+        .filter(|(_, score)| *score > 0.0)
+        .collect();
+    // Stable, so equal scores keep the engine's order.
+    rescored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    rescored.truncate(limit);
+    (rescored, ranked)
 }
 
 fn default_mode() -> String {
@@ -303,26 +361,12 @@ impl<H: MemoryToolHost> Tool for MemoryHybridSearchTool<H> {
             return Ok(ToolResult::success("No results found."));
         }
 
-        // Re-score using the selected weight profile
-        let mut rescored: Vec<(usize, f64)> = hits
-            .iter()
-            .enumerate()
-            .map(|(i, hit)| {
-                let bd = &hit.score_breakdown;
-                let score = hybrid_final_score(
-                    &profile,
-                    bd.graph_relevance,
-                    bd.vector_similarity,
-                    bd.keyword_relevance,
-                    bd.freshness,
-                );
-                (i, score)
-            })
-            .filter(|(_, score)| *score > 0.0)
-            .collect();
-
-        rescored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        rescored.truncate(limit as usize);
+        let (rescored, ranked) = ordered(&hits, &profile, limit as usize);
+        if ranked {
+            log::debug!(
+                "[tool][memory_hybrid_search] driver ranks without signals; keeping its order"
+            );
+        }
 
         let mut output = format!(
             "Found {} results (mode={}):\n\n",
@@ -330,8 +374,14 @@ impl<H: MemoryToolHost> Tool for MemoryHybridSearchTool<H> {
             parsed.mode,
         );
 
-        for (hit_idx, score) in &rescored {
+        for (position, (hit_idx, score)) in rescored.iter().enumerate() {
             let hit = &hits[*hit_idx];
+            // A rank is not a relevance, so it is not shown as a percentage.
+            let mark = if ranked {
+                format!("#{}", position + 1)
+            } else {
+                format!("{:.0}%", score * 100.0)
+            };
             let preview: String = hit.content.chars().take(200).collect();
             let truncated = if hit.content.chars().count() > 200 {
                 "..."
@@ -340,8 +390,8 @@ impl<H: MemoryToolHost> Tool for MemoryHybridSearchTool<H> {
             };
             let _ = writeln!(
                 output,
-                "- [{:.0}%] [{}] {}: {}{}",
-                score * 100.0,
+                "- [{}] [{}] {}: {}{}",
+                mark,
                 kind_label(&hit.kind),
                 hit.key,
                 preview,
