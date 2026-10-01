@@ -614,16 +614,31 @@ async fn recovery_waits_out_a_slow_listing_and_a_rate_limit() {
 /// An export record for a keyed entry, as another engine's export would
 /// produce it.
 fn record(namespace: &str, key: &str, content: &str) -> ExportRecord {
+    record_as(
+        namespace,
+        key,
+        content,
+        (MemoryCategory::Core, None, MemoryTaint::Internal),
+    )
+}
+
+/// [`record`], with the category, session and taint given.
+fn record_as(
+    namespace: &str,
+    key: &str,
+    content: &str,
+    (category, session_id, taint): (MemoryCategory, Option<&str>, MemoryTaint),
+) -> ExportRecord {
     tinymemory_api::mandatory::to_record(MemoryEntry {
         id: format!("rec-{key}"),
         key: key.to_string(),
         content: content.to_string(),
         namespace: Some(namespace.to_string()),
-        category: MemoryCategory::Core,
+        category,
         timestamp: String::new(),
-        session_id: None,
+        session_id: session_id.map(str::to_string),
         score: None,
-        taint: MemoryTaint::Internal,
+        taint,
     })
 }
 
@@ -711,8 +726,8 @@ async fn a_hosted_import_waits_once_per_scope_and_never_probes_recall() {
     );
     assert_eq!(
         count_requests(&state, "GET /memory/events"),
-        1,
-        "one visibility wait for the scope's last record"
+        2,
+        "one read of what the scope holds, one visibility wait for its last record"
     );
     for i in 0..5 {
         let back = p
@@ -722,6 +737,113 @@ async fn a_hosted_import_waits_once_per_scope_and_never_probes_recall() {
             .expect("imported record is readable");
         assert_eq!(back.content, format!("value {i}"));
     }
+}
+
+/// An import run again writes only what changed. A record held with the same
+/// content, category, session and taint is skipped; a change to any of them
+/// is written.
+#[tokio::test]
+async fn a_hosted_import_run_again_writes_only_what_changed() {
+    let (endpoint, state) = hosted_backend().await;
+    let p = provider(&endpoint);
+    let keys = ["same", "edited", "category", "session", "taint"];
+    let first = || keys.iter().map(|key| record("again", key, "v1")).collect();
+    let outcome = p.import_records(first()).await.expect("import");
+    assert_eq!(
+        (outcome.imported, outcome.skipped, outcome.failed),
+        (5, 0, 0)
+    );
+    let outcome = p.import_records(first()).await.expect("import again");
+    assert_eq!(
+        (outcome.imported, outcome.skipped, outcome.failed),
+        (0, 5, 0),
+        "{outcome:?}"
+    );
+    assert_eq!(count_requests(&state, "POST /memory/experience"), 5);
+
+    let core = MemoryCategory::Core;
+    let internal = MemoryTaint::Internal;
+    let changed = vec![
+        record("again", "same", "v1"),
+        record("again", "edited", "v2"),
+        record_as(
+            "again",
+            "category",
+            "v1",
+            (MemoryCategory::Custom("pinned".into()), None, internal),
+        ),
+        record_as(
+            "again",
+            "session",
+            "v1",
+            (core.clone(), Some("s1"), internal),
+        ),
+        record_as(
+            "again",
+            "taint",
+            "v1",
+            (core, None, MemoryTaint::ExternalSync),
+        ),
+        record("again", "new", "v1"),
+    ];
+    let outcome = p.import_records(changed).await.expect("import changes");
+    assert_eq!(
+        (outcome.imported, outcome.skipped, outcome.failed),
+        (5, 1, 0),
+        "{outcome:?}"
+    );
+    assert_eq!(count_requests(&state, "POST /memory/experience"), 10);
+    let edited = p.get("again", "edited").await.expect("get").expect("held");
+    assert_eq!(edited.content, "v2");
+
+    // Custom categories round-trip, so an unchanged one is still skipped.
+    let pinned = record_as(
+        "again",
+        "category",
+        "v1",
+        (MemoryCategory::Custom("pinned".into()), None, internal),
+    );
+    let outcome = p.import_records(vec![pinned]).await.expect("import");
+    assert_eq!((outcome.imported, outcome.skipped), (0, 1), "{outcome:?}");
+}
+
+/// A record repeated in one batch is written once: the batch counts what it
+/// wrote as held.
+#[tokio::test]
+async fn a_record_repeated_in_one_batch_is_written_once() {
+    let (endpoint, state) = hosted_backend().await;
+    let p = provider(&endpoint);
+    let outcome = p
+        .import_records(vec![record("twice", "k", "v"), record("twice", "k", "v")])
+        .await
+        .expect("import");
+    assert_eq!((outcome.imported, outcome.skipped), (1, 1), "{outcome:?}");
+    assert_eq!(count_requests(&state, "POST /memory/experience"), 1);
+}
+
+/// The read of what a namespace holds rides out a rate-limit window like a
+/// write does, and fails the batch only once every pause is spent.
+#[tokio::test]
+async fn a_hosted_import_rides_out_a_rate_limited_read() {
+    let (endpoint, state) = hosted_backend().await;
+    let p = provider(&endpoint).with_import_patience(vec![std::time::Duration::from_millis(20)]);
+    // Each round is three quick attempts, so seven refusals outlast two
+    // rounds (one pause) and are ridden out by a third (two pauses).
+    state.rate_limit_events.store(7, Ordering::SeqCst);
+    let error = p
+        .import_records(vec![record("listed", "k", "v")])
+        .await
+        .expect_err("one pause is not enough for seven refusals");
+    assert!(matches!(error, MemoryError::Unavailable(_)), "{error:?}");
+    assert_eq!(count_requests(&state, "POST /memory/experience"), 0);
+
+    state.rate_limit_events.store(7, Ordering::SeqCst);
+    let p = p.with_import_patience(vec![std::time::Duration::from_millis(20); 2]);
+    let outcome = p
+        .import_records(vec![record("listed", "k", "v")])
+        .await
+        .expect("two pauses ride it out");
+    assert_eq!((outcome.imported, outcome.failed), (1, 0), "{outcome:?}");
 }
 
 #[tokio::test]
