@@ -81,7 +81,7 @@ use crate::provider::sync::MemorySourceSync;
 /// supertraits, so a driver missing any of them cannot be constructed as a
 /// provider at all.
 ///
-/// The seventeen optional families are reached through the `as_*` accessors
+/// The twenty-three optional families are reached through the `as_*` accessors
 /// below. Each defaults to `None`, so a minimal driver implements only what it
 /// supports and inherits correct absence for everything else.
 #[async_trait]
@@ -261,7 +261,7 @@ pub trait MemoryProvider: MemoryCore + MemoryRecall + MemoryPortability + 'stati
     /// agree; [`crate::provider::audit_provider`] is where they are compared.
     ///
     /// The mandatory three are always `true` because they are supertraits. The
-    /// remaining seventeen delegate to their accessor.
+    /// remaining twenty-three delegate to their accessor.
     ///
     /// The `match` is deliberately exhaustive: [`Capability`] is not
     /// `#[non_exhaustive]`, so adding a family without adding an accessor and
