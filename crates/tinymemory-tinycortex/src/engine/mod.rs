@@ -1577,9 +1577,9 @@ impl MemoryTree for TinycortexProvider {
             token_count: output.token_count,
             entities: output.entities,
             topics: output.topics,
-            input_tokens: output.input_tokens,
-            output_tokens: output.output_tokens,
-            charged_amount_usd: output.charged_amount_usd,
+            // The driver's chat host reports no provider usage, so the wire
+            // usage fields keep their defaults (zero tokens, no charge).
+            ..SummaryOutput::default()
         })
     }
 
