@@ -2,7 +2,7 @@
 //!
 //! ## Why these exist at all
 //!
-//! [`MemoryProvider::as_tree`] and its nine siblings return a **borrow** of a
+//! `MemoryProvider::as_tree` and its nine siblings return a **borrow** of a
 //! family trait object. If [`GuardedProvider`]'s override simply forwarded
 //! `self.inner.as_tree()`, every caller that reached memory through a family
 //! accessor would hold a raw, unguarded driver handle — and the guard's whole
@@ -25,7 +25,7 @@
 //! has no way to express that without unsafe pinning. Holding
 //! `Arc<dyn MemoryProvider>` and re-deriving the family per call sidesteps it
 //! entirely, at the cost of one `Option` unwrap that is structurally
-//! unreachable — see [`family`](GuardedTree::family).
+//! unreachable — see `family`.
 //!
 //! [`GuardedProvider`]: crate::GuardedProvider
 

@@ -371,6 +371,17 @@ All four advertise the mandatory Core, Recall, and Portability families. The
 live Docker harness and conformance command are documented in
 [`integration/remote-engines/`](integration/remote-engines/README.md).
 
+`tinymemory::conformance::parity` measures how well an engine finds what it was
+given — hit@1, hit@5, MRR, and store and recall latency over a bundled corpus
+of notes and paraphrased questions. The `recall_parity` example runs it on the
+full embedded engine and on hosted CortexDB side by side (its docs list the
+environment it reads):
+
+```sh
+cargo run -p tinymemory --example recall_parity \
+    --features tinycortex,core,tinyhumans,conformance
+```
+
 LivingBrain is different: its hosted API accepts asynchronous captures and
 returns compiled pages, native semantic search, graph data, and markdown
 exports. It is available behind `livingbrain`, but is intentionally a

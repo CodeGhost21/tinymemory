@@ -38,6 +38,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod parity;
 pub mod reference;
 pub mod suite;
 
@@ -45,9 +46,12 @@ pub use reference::fixed::{FixedRecallProvider, FIXED_RECALL_DRIVER_ID};
 pub use reference::full::{Call, RecordingProvider, FULL_DRIVER_ID};
 pub use reference::{InMemoryProvider, REFERENCE_DRIVER_ID};
 pub use suite::{
-    assert_awkward_content_round_trips, assert_capability_audit, assert_documents_round_trip,
+    assert_answer_is_grounded, assert_answer_refuses_an_empty_question,
+    assert_awkward_content_round_trips, assert_capability_audit, assert_conversation_ingest,
+    assert_document_ingest, assert_documents_round_trip, assert_event_ingest,
     assert_export_cursor_terminates, assert_export_import_round_trip, assert_forget_is_idempotent,
-    assert_kv_round_trip, assert_list_filters_narrow, assert_namespaces_are_isolated,
+    assert_ingest_families, assert_kv_round_trip, assert_learning_ingest,
+    assert_list_filters_narrow, assert_namespaces_are_isolated,
     assert_namespaces_preserve_their_section, assert_provider,
     assert_recall_respects_limit_and_namespace, assert_store_get_round_trip,
     assert_taint_is_preserved, assert_upsert_replaces_rather_than_duplicates,

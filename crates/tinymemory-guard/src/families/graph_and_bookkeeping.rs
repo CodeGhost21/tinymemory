@@ -122,7 +122,7 @@ impl<P: GuardPolicy> MemoryEntities for GuardedEntities<P> {
     }
 
     /// Returns ids only, never content. A caller still has to read those chunks
-    /// through [`MemoryChunks`] to see anything, and that path applies the
+    /// through `MemoryChunks` to see anything, and that path applies the
     /// scope intersection.
     async fn entity_chunk_ids(
         &self,

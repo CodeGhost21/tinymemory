@@ -67,6 +67,10 @@ tinymemory-conformance = { path = "../tinymemory-conformance" }
 # The extracted Composio normalisers, for the integration test that runs them
 # against a driver that is not TinyCortex (issue #18 §B3).
 tinymemory-sync = { path = "../tinymemory-sync" }
+# The `recall_parity` example's OpenAI-compatible embedder for the embedded
+# engine. Already in the graph through `tinymemory-remote`; dev-only, so no
+# consumer links an HTTP stack for it.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 # Every crate in this workspace is reachable from here by a feature named after
 # it, so a host takes one dependency and states what it wants rather than
@@ -201,3 +205,7 @@ private_intra_doc_links = "warn"
 [[example]]
 name = "tinycortex"
 required-features = ["tinycortex"]
+
+[[example]]
+name = "recall_parity"
+required-features = ["tinycortex", "core", "tinyhumans", "conformance"]
