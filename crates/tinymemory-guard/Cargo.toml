@@ -1,0 +1,38 @@
+[package]
+name = "tinymemory-guard"
+publish = false
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96"
+license = "GPL-3.0-only"
+description = "Policy decorator over any TinyMemory MemoryProvider: tier, scope, taint, redaction, budgets, audit"
+repository = "https://github.com/tinyhumansai/tinymemory"
+
+# Deliberately as light as the contract crate it decorates: no engine, no
+# runtime, no storage. The policy itself (what a tier is, where the ambient
+# scope comes from, how a secret is scrubbed, who hears about a denial) is the
+# host's, injected through the `GuardPolicy` trait.
+[dependencies]
+tinymemory-api = { path = "../tinymemory-api" }
+# Every capability-family trait is an object-safe async trait.
+async-trait = "0.1"
+# Some contract methods (the tree writes) take `chrono::DateTime<Utc>`; the
+# same feature set the contract's wire crate uses, so the types unify.
+chrono = { version = "0.4", features = ["serde"] }
+# `redact_outbound_json` takes and returns a `serde_json::Value`.
+serde_json = "1"
+# Grep-friendly `[memory:guard]` log lines.
+log = "0.4"
+# The span every guarded call's admission decision runs inside.
+tracing = "0.1"
+
+[dev-dependencies]
+# The recording driver the tests wrap, and the mandatory-only null driver.
+tinymemory-conformance = { path = "../tinymemory-conformance" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }

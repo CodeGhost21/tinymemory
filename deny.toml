@@ -70,4 +70,10 @@ unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # TinyInference's pinned tinytools-agent dependency is a sibling TinyHumans repo.
-allow-git = ["https://github.com/tinyhumansai/tinytools"]
+# TinyCortex takes the shared `tinymemory-safety` scrubber from this repository
+# by git. Once that crate lives in this workspace the root `[patch]` table
+# redirects it to the in-tree path; until then the pinned rev is fetched.
+allow-git = [
+    "https://github.com/tinyhumansai/tinytools",
+    "https://github.com/tinyhumansai/tinymemory",
+]

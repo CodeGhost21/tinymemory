@@ -145,6 +145,24 @@ impl InMemoryProvider {
         Self::default()
     }
 
+    /// How many entries are stored, for assertions about pruning.
+    ///
+    /// Recovers from a poisoned lock rather than failing: this is an inspection
+    /// helper for tests, and a second panic would only hide the first.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.rows
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len()
+    }
+
+    /// Whether the store holds nothing.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Locks the row map, mapping a poisoned lock onto a contract error.
     ///
     /// A poisoned lock means a previous caller panicked mid-write. Returning an
@@ -344,3 +362,6 @@ impl MemoryProvider for InMemoryProvider {
 
 /// A driver that serves every optional family, for hosts testing above the contract.
 pub mod full;
+
+/// A driver whose `recall` answers with a fixed entry list.
+pub mod fixed;

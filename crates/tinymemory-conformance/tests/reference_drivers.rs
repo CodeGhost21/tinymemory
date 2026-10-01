@@ -217,3 +217,57 @@ async fn the_full_driver_retains_every_family_it_serves() {
         "set_goals stored nothing goals can see"
     );
 }
+
+/// `with_session_turns` / `with_pending_segments` seed what the episodic
+/// reads answer, and `segments_pending_summary` honours its `limit`.
+#[tokio::test]
+async fn the_full_driver_serves_seeded_episodic_reads() {
+    use tinymemory_api::provider::episodic::{ConversationSegment, EpisodicTurn};
+
+    let turn: EpisodicTurn = serde_json::from_value(serde_json::json!({
+        "session_id": "s", "timestamp": 1.0, "role": "user", "content": "hi"
+    }))
+    .expect("turn fixture");
+    let segment = |id: &str| -> ConversationSegment {
+        serde_json::from_value(serde_json::json!({
+            "segment_id": id, "session_id": "s", "namespace": "ns",
+            "start_episodic_id": 1, "start_timestamp": 1.0, "turn_count": 1,
+            "open": false
+        }))
+        .expect("segment fixture")
+    };
+    let provider = tinymemory_conformance::RecordingProvider::new()
+        .with_session_turns(vec![turn.clone()])
+        .with_pending_segments(vec![segment("a"), segment("b")]);
+    let episodic = provider.as_episodic().expect("episodic family");
+    assert_eq!(
+        episodic.session_turns("s").await.expect("turns"),
+        vec![turn]
+    );
+    let pending = episodic.segments_pending_summary(1).await.expect("pending");
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].segment_id, "a");
+}
+
+/// `len` counts stored rows, so a pruning test can assert on it.
+#[tokio::test]
+async fn the_reference_driver_reports_its_length() {
+    use tinymemory_api::provider::MemoryCore;
+    use tinymemory_api::types::{MemoryCategory, MemoryTaint};
+
+    let provider = InMemoryProvider::new();
+    assert!(provider.is_empty());
+    provider
+        .store(
+            "ns",
+            "k",
+            "v",
+            MemoryCategory::Core,
+            None,
+            MemoryTaint::Internal,
+        )
+        .await
+        .expect("store");
+    assert_eq!(provider.len(), 1);
+    assert!(!provider.is_empty());
+}
