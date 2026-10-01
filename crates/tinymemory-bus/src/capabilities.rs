@@ -126,6 +126,10 @@ pub enum Capability {
     EventIngest,
     /// Agentic, grounded answer synthesis.
     Answer,
+    /// Handing out the whole episodic record a page at a time, and taking one
+    /// in — what a switch of drivers needs and the episodic family cannot
+    /// enumerate.
+    EpisodicPortability,
 }
 
 impl Capability {
@@ -134,7 +138,7 @@ impl Capability {
     /// Declaration order is also bit order in [`Capabilities`] and iteration
     /// order in its serialized form, so this slice is the single ordering
     /// authority for the whole module.
-    pub const ALL: [Capability; 26] = [
+    pub const ALL: [Capability; 27] = [
         Capability::Core,
         Capability::Recall,
         Capability::Ingest,
@@ -164,6 +168,7 @@ impl Capability {
         Capability::LearningIngest,
         Capability::EventIngest,
         Capability::Answer,
+        Capability::EpisodicPortability,
     ];
 
     /// The families a driver must advertise to be bindable at all.
@@ -215,6 +220,7 @@ impl Capability {
             Self::LearningIngest => "learning_ingest",
             Self::EventIngest => "event_ingest",
             Self::Answer => "answer",
+            Self::EpisodicPortability => "episodic_portability",
         }
     }
 
@@ -270,6 +276,7 @@ impl Capability {
             Self::LearningIngest => 23,
             Self::EventIngest => 24,
             Self::Answer => 25,
+            Self::EpisodicPortability => 26,
         }
     }
 

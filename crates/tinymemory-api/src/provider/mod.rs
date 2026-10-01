@@ -24,8 +24,10 @@
 //!   ├─ as_profile()      -> Option<&dyn MemoryProfile>
 //!   ├─ as_episodic()     -> Option<&dyn MemoryEpisodic>
 //!   ├─ as_source_sync()  -> Option<&dyn MemorySourceSync>
-//!   └─ as_coding_sessions()
-//!                        -> Option<&dyn MemoryCodingSessions>
+//!   ├─ as_coding_sessions()
+//!   │                    -> Option<&dyn MemoryCodingSessions>
+//!   └─ as_episodic_portability()
+//!                        -> Option<&dyn MemoryEpisodicPortability>
 //! ```
 //!
 //! The mandatory three are supertraits, so "mandatory" is enforced by the type
@@ -104,7 +106,9 @@ pub use diagnosis::{
 };
 pub use driver::MemoryProvider;
 pub use episodic::{
-    ConversationSegment, EpisodicEvent, EpisodicTurn, EventKind, MemoryEpisodic, SegmentStatus,
+    ConversationSegment, EpisodicEvent, EpisodicExportPage, EpisodicImportOutcome, EpisodicPart,
+    EpisodicRecords, EpisodicTurn, EventKind, MemoryEpisodic, MemoryEpisodicPortability,
+    SegmentEmbedding, SegmentStatus, TurnIdRemap,
 };
 pub use knowledge::{MemoryDiff, MemoryEntities, MemoryGraph, INBOUND_SCAN_LIMIT};
 pub use mandatory::{MemoryCore, MemoryPortability, MemoryRecall};

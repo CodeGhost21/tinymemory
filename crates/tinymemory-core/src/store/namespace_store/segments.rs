@@ -555,7 +555,7 @@ fn truncate_utf8_safe(s: &str, max_chars: usize) -> String {
 
 // ── helpers ──
 
-fn row_to_segment(row: &rusqlite::Row<'_>) -> rusqlite::Result<ConversationSegment> {
+pub(super) fn row_to_segment(row: &rusqlite::Row<'_>) -> rusqlite::Result<ConversationSegment> {
     let embedding_blob: Option<Vec<u8>> = row.get(9)?;
     let status_str: String = row.get(11)?;
     Ok(ConversationSegment {
@@ -595,7 +595,7 @@ fn cosine_similarity_f32(a: &[f32], b: &[f32]) -> f32 {
     }
 }
 
-fn vec_to_bytes(v: &[f32]) -> Vec<u8> {
+pub(super) fn vec_to_bytes(v: &[f32]) -> Vec<u8> {
     v.iter().flat_map(|f| f.to_le_bytes()).collect()
 }
 
@@ -607,7 +607,7 @@ fn bytes_to_vec(bytes: &[u8]) -> Vec<f32> {
         .collect()
 }
 
-fn decode_embedding_row(bytes: &[u8], dim: i64) -> anyhow::Result<Option<Vec<f32>>> {
+pub(super) fn decode_embedding_row(bytes: &[u8], dim: i64) -> anyhow::Result<Option<Vec<f32>>> {
     if dim < 0 {
         anyhow::bail!("segment embedding has negative dimension {dim}");
     }

@@ -441,7 +441,7 @@ pub fn extract_events_heuristic(text: &str) -> Vec<(EventType, String)> {
 
 // ── helpers ──
 
-fn row_to_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<EventRecord> {
+pub(super) fn row_to_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<EventRecord> {
     let embedding_blob: Option<Vec<u8>> = row.get(9)?;
     let event_type_str: String = row.get(4)?;
     Ok(EventRecord {
@@ -460,7 +460,7 @@ fn row_to_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<EventRecord> {
     })
 }
 
-fn vec_to_bytes(v: &[f32]) -> Vec<u8> {
+pub(super) fn vec_to_bytes(v: &[f32]) -> Vec<u8> {
     v.iter().flat_map(|f| f.to_le_bytes()).collect()
 }
 

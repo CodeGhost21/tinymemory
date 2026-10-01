@@ -51,6 +51,10 @@ use crate::error::MemoryError;
 pub use tinymemory_bus::provider::episodic::{
     ConversationSegment, EpisodicEvent, EpisodicTurn, EventKind, SegmentStatus,
 };
+pub use tinymemory_bus::provider::episodic_portability::{
+    EpisodicExportPage, EpisodicImportOutcome, EpisodicPart, EpisodicRecords, SegmentEmbedding,
+    TurnIdRemap,
+};
 
 /// The turn-by-turn conversation record.
 ///
@@ -209,4 +213,56 @@ pub trait MemoryEpisodic: Send + Sync {
     ) -> Result<Vec<ConversationSegment>, MemoryError> {
         Ok(Vec::new())
     }
+}
+
+/// Moving the whole episodic record between drivers.
+///
+/// Reached through
+/// [`MemoryProvider::as_episodic_portability`](super::MemoryProvider::as_episodic_portability).
+/// See `tinymemory_bus::provider::episodic_portability` for why this is a
+/// family of its own and how turn ids survive a copy.
+#[async_trait]
+pub trait MemoryEpisodicPortability: Send + Sync {
+    /// One page of `part`, starting at `cursor` (`None` for the first page).
+    ///
+    /// Each live record of the part appears once in a walk, in an order the
+    /// driver keeps stable from page to page. Turns carry their ids, segments
+    /// their whole current state. A page holds at most `limit` records and may
+    /// hold fewer — a driver bounds a page by size as well — so only a missing
+    /// [`EpisodicExportPage::next_cursor`] ends the walk.
+    ///
+    /// # Errors
+    ///
+    /// [`MemoryError::Invalid`] for a zero `limit` or a cursor this driver did
+    /// not issue, otherwise backend failures.
+    async fn export_episodic(
+        &self,
+        part: EpisodicPart,
+        cursor: Option<&str>,
+        limit: usize,
+    ) -> Result<EpisodicExportPage, MemoryError>;
+
+    /// Write `records` as given, and report what happened to each.
+    ///
+    /// Idempotent, so a copy that stopped part-way can be run again:
+    ///
+    /// - a turn is stored under its own id; one the driver already holds
+    ///   exactly as given is skipped, and one that meets a *different* turn
+    ///   under its id is stored under a new id, reported in
+    ///   [`EpisodicImportOutcome::remapped`]. A turn without an id is refused;
+    /// - a segment replaces the segment with its id, whole;
+    /// - an event replaces the event with its id;
+    /// - an embedding replaces the one for its segment and model signature.
+    ///
+    /// A record the driver refuses counts as failed, with a reason that names
+    /// it and never its content, and the rest of the batch goes on.
+    ///
+    /// # Errors
+    ///
+    /// Failures that make the whole batch meaningless: the backend is down,
+    /// or refuses the credential.
+    async fn import_episodic(
+        &self,
+        records: EpisodicRecords,
+    ) -> Result<EpisodicImportOutcome, MemoryError>;
 }

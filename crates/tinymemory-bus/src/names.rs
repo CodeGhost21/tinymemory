@@ -314,6 +314,12 @@ pub mod methods {
     pub const SET_SEGMENT_SUMMARY: &str = "SetSegmentSummary";
     /// `SegmentsPendingSummary` — closed segments with no summary yet.
     pub const SEGMENTS_PENDING_SUMMARY: &str = "SegmentsPendingSummary";
+
+    // Moving the whole episodic record between drivers.
+    /// `ExportEpisodic` — one page of one part of the episodic record.
+    pub const EXPORT_EPISODIC: &str = "ExportEpisodic";
+    /// `ImportEpisodic` — write records of one part of the episodic record.
+    pub const IMPORT_EPISODIC: &str = "ImportEpisodic";
     /// `UpsertSegmentEmbedding` — upsert segment embedding.
     pub const UPSERT_SEGMENT_EMBEDDING: &str = "UpsertSegmentEmbedding";
     /// `InsertEvent` — record one extracted event against its segment.
@@ -379,7 +385,7 @@ pub mod methods {
 /// The order matters: `tinybus`'s `Interface::members()` returns declaration
 /// order, and the module compares the two sequences directly rather than as
 /// sets, so a reordering is caught alongside an addition or a removal.
-pub const METHODS: [&str; 144] = [
+pub const METHODS: [&str; 146] = [
     methods::DRIVER_ID,
     methods::CAPABILITIES,
     methods::HEALTH,
@@ -531,6 +537,10 @@ pub const METHODS: [&str; 144] = [
     // same reason as the round above it. Its family sits at slots 55-63; filed
     // there it would have renumbered all eighty members after it.
     methods::SEGMENTS_PENDING_SUMMARY,
+    // Episodic-portability round (openhuman#6718): a new family, appended at
+    // the tail like every round before it.
+    methods::EXPORT_EPISODIC,
+    methods::IMPORT_EPISODIC,
 ];
 
 #[cfg(test)]

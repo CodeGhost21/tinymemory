@@ -60,6 +60,7 @@ pub use factories::{
     active_embedding_signature, create_memory, create_memory_for_migration,
     create_memory_with_local_ai, effective_embedding_settings, effective_memory_backend_name,
 };
+pub use namespace_store::episodic_portability;
 pub use namespace_store::events;
 pub use namespace_store::fts5;
 pub use namespace_store::profile;

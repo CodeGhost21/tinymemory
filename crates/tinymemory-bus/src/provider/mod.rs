@@ -13,6 +13,7 @@
 pub mod chunks;
 pub mod diagnosis;
 pub mod episodic;
+pub mod episodic_portability;
 pub mod people;
 pub mod profile;
 pub mod retrieval;

@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use tinymemory_api::capabilities::{Capabilities, Capability};
 use tinymemory_api::error::MemoryError;
 use tinymemory_api::health::MemoryHealth;
+use tinymemory_api::provider::episodic::MemoryEpisodicPortability;
 use tinymemory_api::provider::operations::{
     MemoryAnswer, MemoryConversationIngest, MemoryDocumentIngest, MemoryEventIngest,
     MemoryLearningIngest,
@@ -20,10 +21,10 @@ use tinymemory_api::provider::{
 
 use crate::families::{
     GuardedAnswer, GuardedChunks, GuardedCodingSessions, GuardedConversationIngest, GuardedDiff,
-    GuardedDocumentIngest, GuardedDocuments, GuardedEntities, GuardedEpisodic, GuardedEventIngest,
-    GuardedGoals, GuardedGraph, GuardedIngest, GuardedLearningIngest, GuardedMaintenance,
-    GuardedPeople, GuardedProfile, GuardedRetrieval, GuardedScoring, GuardedSourceSync,
-    GuardedSources, GuardedToolMemory, GuardedTree,
+    GuardedDocumentIngest, GuardedDocuments, GuardedEntities, GuardedEpisodic,
+    GuardedEpisodicPortability, GuardedEventIngest, GuardedGoals, GuardedGraph, GuardedIngest,
+    GuardedLearningIngest, GuardedMaintenance, GuardedPeople, GuardedProfile, GuardedRetrieval,
+    GuardedScoring, GuardedSourceSync, GuardedSources, GuardedToolMemory, GuardedTree,
 };
 use crate::policy::GuardPolicy;
 
@@ -67,6 +68,7 @@ pub struct GuardedProvider<P: GuardPolicy> {
     learning_ingest: Option<GuardedLearningIngest<P>>,
     event_ingest: Option<GuardedEventIngest<P>>,
     answer: Option<GuardedAnswer<P>>,
+    episodic_portability: Option<GuardedEpisodicPortability<P>>,
 }
 
 impl<P: GuardPolicy> GuardedProvider<P> {
@@ -107,6 +109,7 @@ impl<P: GuardPolicy> GuardedProvider<P> {
             learning_ingest: family!(LearningIngest, GuardedLearningIngest),
             event_ingest: family!(EventIngest, GuardedEventIngest),
             answer: family!(Answer, GuardedAnswer),
+            episodic_portability: family!(EpisodicPortability, GuardedEpisodicPortability),
             inner,
             policy,
         }
@@ -174,6 +177,12 @@ impl<P: GuardPolicy> MemoryProvider for GuardedProvider<P> {
 
     fn as_answer(&self) -> Option<&dyn MemoryAnswer> {
         self.answer.as_ref().map(|g| g as &dyn MemoryAnswer)
+    }
+
+    fn as_episodic_portability(&self) -> Option<&dyn MemoryEpisodicPortability> {
+        self.episodic_portability
+            .as_ref()
+            .map(|g| g as &dyn MemoryEpisodicPortability)
     }
 
     fn as_ingest(&self) -> Option<&dyn MemoryIngest> {

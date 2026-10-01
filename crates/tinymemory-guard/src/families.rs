@@ -31,6 +31,7 @@
 
 mod types;
 
+mod episodic_portability;
 mod graph_and_bookkeeping;
 mod ingest_and_tree;
 mod retrieval_and_profile;
@@ -38,8 +39,8 @@ mod typed_ingest_and_answer;
 
 pub use types::{
     GuardedAnswer, GuardedChunks, GuardedCodingSessions, GuardedConversationIngest, GuardedDiff,
-    GuardedDocumentIngest, GuardedDocuments, GuardedEntities, GuardedEpisodic, GuardedEventIngest,
-    GuardedGoals, GuardedGraph, GuardedIngest, GuardedLearningIngest, GuardedMaintenance,
-    GuardedPeople, GuardedProfile, GuardedRetrieval, GuardedScoring, GuardedSourceSync,
-    GuardedSources, GuardedToolMemory, GuardedTree,
+    GuardedDocumentIngest, GuardedDocuments, GuardedEntities, GuardedEpisodic,
+    GuardedEpisodicPortability, GuardedEventIngest, GuardedGoals, GuardedGraph, GuardedIngest,
+    GuardedLearningIngest, GuardedMaintenance, GuardedPeople, GuardedProfile, GuardedRetrieval,
+    GuardedScoring, GuardedSourceSync, GuardedSources, GuardedToolMemory, GuardedTree,
 };

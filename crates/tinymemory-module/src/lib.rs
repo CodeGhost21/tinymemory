@@ -571,6 +571,9 @@ mod exports {
             "Recall",
             "ExportPage",
             "ImportRecords",
+            // The episodic record, moved whole between drivers.
+            "ExportEpisodic",
+            "ImportEpisodic",
             // People.
             "ListPeople",
             "GetPerson",

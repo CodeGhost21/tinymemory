@@ -13,7 +13,7 @@ use std::sync::Arc;
 use tinymemory_api::capabilities::Capability;
 use tinymemory_api::error::MemoryError;
 use tinymemory_api::provider::chunks::MemoryChunks;
-use tinymemory_api::provider::episodic::MemoryEpisodic;
+use tinymemory_api::provider::episodic::{MemoryEpisodic, MemoryEpisodicPortability};
 use tinymemory_api::provider::operations::{
     MemoryAnswer, MemoryConversationIngest, MemoryDocumentIngest, MemoryEventIngest,
     MemoryLearningIngest,
@@ -223,4 +223,11 @@ decorator!(
     dyn MemoryAnswer,
     as_answer,
     Answer
+);
+decorator!(
+    /// Guarded [`MemoryEpisodicPortability`].
+    GuardedEpisodicPortability,
+    dyn MemoryEpisodicPortability,
+    as_episodic_portability,
+    EpisodicPortability
 );

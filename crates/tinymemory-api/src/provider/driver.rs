@@ -57,7 +57,7 @@ use crate::error::MemoryError;
 use crate::health::MemoryHealth;
 use crate::provider::chunks::MemoryChunks;
 use crate::provider::content::{MemoryDocuments, MemoryIngest, MemoryTree};
-use crate::provider::episodic::MemoryEpisodic;
+use crate::provider::episodic::{MemoryEpisodic, MemoryEpisodicPortability};
 use crate::provider::knowledge::{MemoryDiff, MemoryEntities, MemoryGraph};
 use crate::provider::mandatory::{MemoryCore, MemoryPortability, MemoryRecall};
 use crate::provider::operations::{
@@ -249,6 +249,11 @@ pub trait MemoryProvider: MemoryCore + MemoryRecall + MemoryPortability + 'stati
         None
     }
 
+    /// Moving the whole episodic record in and out, when advertised.
+    fn as_episodic_portability(&self) -> Option<&dyn MemoryEpisodicPortability> {
+        None
+    }
+
     /// Whether `capability` is actually **reachable** on this driver.
     ///
     /// This is the implementation-side truth, as opposed to
@@ -287,6 +292,7 @@ pub trait MemoryProvider: MemoryCore + MemoryRecall + MemoryPortability + 'stati
             Capability::LearningIngest => self.as_learning_ingest().is_some(),
             Capability::EventIngest => self.as_event_ingest().is_some(),
             Capability::Answer => self.as_answer().is_some(),
+            Capability::EpisodicPortability => self.as_episodic_portability().is_some(),
         }
     }
 }

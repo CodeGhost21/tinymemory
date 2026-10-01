@@ -3145,6 +3145,11 @@ impl MemoryProvider for TinycortexProvider {
     fn as_answer(&self) -> Option<&dyn MemoryAnswer> {
         Some(self)
     }
+    fn as_episodic_portability(
+        &self,
+    ) -> Option<&dyn tinymemory_api::provider::MemoryEpisodicPortability> {
+        Some(self)
+    }
 }
 
 // ── Source sync ──────────────────────────────────────────────────────────────
@@ -4820,6 +4825,8 @@ fn segment_to_contract(
         end_seq: segment.end_seq,
     }
 }
+
+mod episodic_portability;
 
 #[cfg(test)]
 mod test;
