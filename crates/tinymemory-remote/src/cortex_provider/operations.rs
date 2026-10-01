@@ -16,8 +16,10 @@ use tinymemory_api::provider::types::{
 };
 use tinymemory_api::provider::{
     AnswerCitation, AnswerRequest, AnswerResponse, AnswerStep, MemoryAnswer,
-    MemoryConversationIngest, MemoryCore, MemoryDocumentIngest, MemoryEventIngest,
-    MemoryLearningIngest, MemoryPortability, MemoryProvider, MemoryRecall, RawMemoryEvent,
+    MemoryConversationIngest, MemoryCore, MemoryDocumentIngest, MemoryDocuments, MemoryEpisodic,
+    MemoryEventIngest, MemoryGoals, MemoryIngest, MemoryLearningIngest, MemoryMaintenance,
+    MemoryPortability, MemoryProfile, MemoryProvider, MemoryRecall, MemoryRetrieval, MemoryScoring,
+    MemorySourceSink, MemoryToolMemory, MemoryTree, RawMemoryEvent,
 };
 use tinymemory_api::recall::OwnedRecallOpts;
 use tinymemory_api::types::{
@@ -38,6 +40,8 @@ pub struct CortexProvider {
     /// Pauses a hosted import takes at one record while the backend is
     /// unavailable; see `portability.rs`.
     pub(super) import_patience: Vec<std::time::Duration>,
+    /// What the hosted families keep between calls; see `families`.
+    pub(super) families: super::families::FamilyState,
 }
 
 impl std::fmt::Debug for CortexProvider {
@@ -59,7 +63,14 @@ impl CortexProvider {
             mandatory: MemoryTraitProvider::new(Arc::new(memory), driver_id(dialect.wire)),
             dialect,
             import_patience: super::portability::IMPORT_PATIENCE.to_vec(),
+            families: super::families::FamilyState::default(),
         }
+    }
+
+    /// Whether this provider speaks the TinyHumans wire, which alone serves
+    /// the hosted families.
+    pub(super) fn hosted(&self) -> bool {
+        self.dialect.wire == CortexWire::TinyHumans
     }
 
     async fn experience(&self, input: ExperienceInput<'_>) -> Result<(String, bool), MemoryError> {
@@ -704,12 +715,28 @@ impl MemoryProvider for CortexProvider {
     }
 
     fn capabilities(&self) -> Capabilities {
-        Capabilities::mandatory()
+        let served = Capabilities::mandatory()
             .with(Capability::DocumentIngest)
             .with(Capability::ConversationIngest)
             .with(Capability::LearningIngest)
             .with(Capability::EventIngest)
-            .with(Capability::Answer)
+            .with(Capability::Answer);
+        if !self.hosted() {
+            return served;
+        }
+        // The hosted families: `docs/specs/tinyhumans-hosted-families.md`.
+        served
+            .with(Capability::Goals)
+            .with(Capability::ToolMemory)
+            .with(Capability::Documents)
+            .with(Capability::Sources)
+            .with(Capability::Maintenance)
+            .with(Capability::Retrieval)
+            .with(Capability::Profile)
+            .with(Capability::Episodic)
+            .with(Capability::Scoring)
+            .with(Capability::Tree)
+            .with(Capability::Ingest)
     }
 
     async fn health(&self) -> MemoryHealth {
@@ -734,5 +761,49 @@ impl MemoryProvider for CortexProvider {
 
     fn as_answer(&self) -> Option<&dyn MemoryAnswer> {
         Some(self)
+    }
+
+    fn as_goals(&self) -> Option<&dyn MemoryGoals> {
+        self.hosted().then_some(self as &dyn MemoryGoals)
+    }
+
+    fn as_tool_memory(&self) -> Option<&dyn MemoryToolMemory> {
+        self.hosted().then_some(self as &dyn MemoryToolMemory)
+    }
+
+    fn as_documents(&self) -> Option<&dyn MemoryDocuments> {
+        self.hosted().then_some(self as &dyn MemoryDocuments)
+    }
+
+    fn as_sources(&self) -> Option<&dyn MemorySourceSink> {
+        self.hosted().then_some(self as &dyn MemorySourceSink)
+    }
+
+    fn as_maintenance(&self) -> Option<&dyn MemoryMaintenance> {
+        self.hosted().then_some(self as &dyn MemoryMaintenance)
+    }
+
+    fn as_retrieval(&self) -> Option<&dyn MemoryRetrieval> {
+        self.hosted().then_some(self as &dyn MemoryRetrieval)
+    }
+
+    fn as_profile(&self) -> Option<&dyn MemoryProfile> {
+        self.hosted().then_some(self as &dyn MemoryProfile)
+    }
+
+    fn as_episodic(&self) -> Option<&dyn MemoryEpisodic> {
+        self.hosted().then_some(self as &dyn MemoryEpisodic)
+    }
+
+    fn as_scoring(&self) -> Option<&dyn MemoryScoring> {
+        self.hosted().then_some(self as &dyn MemoryScoring)
+    }
+
+    fn as_tree(&self) -> Option<&dyn MemoryTree> {
+        self.hosted().then_some(self as &dyn MemoryTree)
+    }
+
+    fn as_ingest(&self) -> Option<&dyn MemoryIngest> {
+        self.hosted().then_some(self as &dyn MemoryIngest)
     }
 }

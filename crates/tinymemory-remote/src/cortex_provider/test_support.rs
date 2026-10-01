@@ -9,4 +9,11 @@ impl CortexProvider {
         self.import_patience = pauses;
         self
     }
+
+    /// Replaces what the hosted families keep between calls, so a test can
+    /// pace synced writes and reuse probe answers on its own clock.
+    pub(crate) fn with_families(mut self, families: super::families::FamilyState) -> Self {
+        self.families = families;
+        self
+    }
 }

@@ -209,7 +209,7 @@ minimal working wiring.
 | `cognee` | Cognee, hosted or self-hosted | external | 3 (mandatory) |
 | `cortex` | CortexDB, hosted or self-hosted | external | mandatory + document, conversation, learning, event, and answer |
 | `agentmemory` | AgentMemory, self-hosted | external | 3 (mandatory) |
-| `tinyhumans` | CortexDB via the TinyHumans backend | external | same as `cortex` (see [the spec](docs/specs/tinyhumans-hosted-cortex.md)) |
+| `tinyhumans` | CortexDB via the TinyHumans backend | external | as `cortex`, plus goals, tool memory, documents, sources, maintenance, retrieval (scored by rank), ingest, profile, episodic, scoring and the derived-understanding tree (see [the spec](docs/specs/tinyhumans-hosted-cortex.md) and [the families](docs/specs/tinyhumans-hosted-families.md)) |
 | `memory-git` | add-on: git-backed diff snapshots | — | requires `tinycortex` |
 | *(none)* | `NullMemoryProvider` | null | contract + registry only, 40 crates |
 

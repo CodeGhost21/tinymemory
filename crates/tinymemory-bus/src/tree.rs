@@ -296,6 +296,16 @@ pub struct TreeSummary {
     pub time_range_start: DateTime<Utc>,
     /// Inclusive end of the time span this node's children cover.
     pub time_range_end: DateTime<Utc>,
+    /// The node's text, cut to a label as [`TreeLeaf::preview`] is, when the
+    /// driver serves it inline.
+    ///
+    /// `None` from a driver that keeps each summary as a file in its content
+    /// vault, as the embedded engine does, where a caller reads the text by
+    /// path. `Some` from a driver that keeps no such file — hosted memory,
+    /// whose nodes are the server's concepts, beliefs and facts — and a caller
+    /// must not look for a file for such a node.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
 }
 
 /// One leaf and the summary it was sealed under.

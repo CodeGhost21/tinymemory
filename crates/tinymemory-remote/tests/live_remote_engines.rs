@@ -26,10 +26,17 @@ use std::sync::Arc;
 
 use reqwest::Method;
 use serde_json::json;
+use tinymemory_api::chunks::DataSource;
 use tinymemory_api::error::MemoryError;
+use tinymemory_api::goals::{GoalItem, GoalsDoc};
 use tinymemory_api::health::MemoryHealth;
-use tinymemory_api::provider::{MemoryCore, MemoryProvider, MemoryRecall};
+use tinymemory_api::provider::types::{IngestItem, SourceItem};
+use tinymemory_api::provider::{
+    EpisodicTurn, FacetState, FacetType, MemoryCore, MemoryProvider, MemoryRecall, ProfileFacet,
+    UserState,
+};
 use tinymemory_api::recall::OwnedRecallOpts;
+use tinymemory_api::tool_memory::{ToolMemoryPriority, ToolMemoryRule, ToolMemorySource};
 use tinymemory_api::types::{MemoryCategory, MemoryTaint};
 use tinymemory_remote::{
     cortex_provider, supermemory_provider, tinyhumans_provider, CortexMemory, StaticBearer,
@@ -114,6 +121,219 @@ async fn live_tinyhumans_upholds_the_provider_contract() -> anyhow::Result<()> {
     );
     tinymemory_conformance::assert_provider(provider.clone()).await;
     tinymemory_conformance::assert_answer_is_grounded(provider.as_ref()).await;
+    Ok(())
+}
+
+/// The hosted families against the real backend: goals, a tool rule, a source
+/// batch and its removal, and a healthy diagnosis. The contract run above
+/// already covers documents, because the suite checks every family a provider
+/// advertises.
+///
+/// Needs the same variables as the contract run. It restores the account's own
+/// goals and removes everything else it writes.
+#[tokio::test]
+async fn live_tinyhumans_serves_its_families() -> anyhow::Result<()> {
+    let Some((url, token)) = tinyhumans_credentials("TOKEN") else {
+        return Ok(());
+    };
+    let provider = tinyhumans_provider(&url, Arc::new(StaticBearer::new(token)))?;
+    let run = nonce();
+
+    let goals = provider
+        .as_goals()
+        .ok_or_else(|| anyhow::anyhow!("hosted memory must serve goals"))?;
+    let before = goals.goals().await?;
+    let probe = GoalsDoc {
+        items: vec![GoalItem {
+            id: format!("live-{run}"),
+            text: "a live probe goal".to_string(),
+        }],
+    };
+    goals.set_goals(probe.clone()).await?;
+    let read_back = goals.goals().await;
+    goals.set_goals(before).await?;
+    anyhow::ensure!(read_back? == probe, "the goals document did not round-trip");
+
+    let rules = provider
+        .as_tool_memory()
+        .ok_or_else(|| anyhow::anyhow!("hosted memory must serve tool rules"))?;
+    let tool = format!("live-{run}");
+    rules
+        .put_tool_rule(ToolMemoryRule {
+            id: "r1".to_string(),
+            ..ToolMemoryRule::new(
+                &tool,
+                "a live probe rule",
+                ToolMemoryPriority::High,
+                ToolMemorySource::default(),
+            )
+        })
+        .await?;
+    let listed = rules.tool_rules(&tool).await?;
+    let removed = rules.delete_tool_rule(&tool, "r1").await?;
+    anyhow::ensure!(
+        listed.len() == 1 && removed,
+        "the tool rule did not round-trip: listed {listed:?}, removed {removed}"
+    );
+
+    let sink = provider
+        .as_sources()
+        .ok_or_else(|| anyhow::anyhow!("hosted memory must serve the source sink"))?;
+    let source = format!("folder:live-{run}");
+    let batch = vec![SourceItem {
+        item_id: "1".to_string(),
+        title: "Live probe".to_string(),
+        content: format!("a synced item for run {run}"),
+        mime: None,
+        url: None,
+        updated_at_ms: None,
+        tags: Vec::new(),
+    }];
+    let first = sink
+        .accept_source_items(&source, "folder", batch.clone(), MemoryTaint::ExternalSync)
+        .await?;
+    let again = sink
+        .accept_source_items(&source, "folder", batch, MemoryTaint::ExternalSync)
+        .await?;
+    let forgotten = sink.forget_source(&source).await?;
+    anyhow::ensure!(
+        first.written == 1 && again.already_ingested && forgotten == 1,
+        "the source batch did not round-trip: {first:?}, {again:?}, forgot {forgotten}"
+    );
+
+    let diagnosis = provider
+        .as_maintenance()
+        .ok_or_else(|| anyhow::anyhow!("hosted memory must serve maintenance"))?
+        .diagnose()
+        .await?;
+    anyhow::ensure!(
+        diagnosis.healthy,
+        "the hosted service diagnosed unhealthy: {diagnosis:?}"
+    );
+    Ok(())
+}
+
+/// The per-turn families, ingestion and the forest, against the real service.
+///
+/// Turns and segments have no delete in the contract, so they stay in the
+/// account's bookkeeping; point this at a scratch account.
+#[tokio::test]
+async fn live_tinyhumans_serves_its_per_turn_families() -> anyhow::Result<()> {
+    let Some((url, token)) = tinyhumans_credentials("TOKEN") else {
+        return Ok(());
+    };
+    let provider = tinyhumans_provider(&url, Arc::new(StaticBearer::new(token)))?;
+    let run = nonce();
+    let session = format!("live-{run}");
+
+    let episodic = provider
+        .as_episodic()
+        .ok_or_else(|| anyhow::anyhow!("hosted memory must serve episodic memory"))?;
+    let turn = episodic
+        .insert_turn(&EpisodicTurn {
+            id: None,
+            session_id: session.clone(),
+            timestamp: 1.0,
+            role: "user".to_string(),
+            content: format!("a live probe turn for run {run}"),
+            lesson: None,
+            tool_calls_json: None,
+            cost_microdollars: 0,
+        })
+        .await?;
+    let turns = episodic.session_turns(&session).await?;
+    anyhow::ensure!(
+        turns.iter().any(|t| t.id == Some(turn)),
+        "the turn did not read back: {turns:?}"
+    );
+    episodic
+        .create_segment(
+            &format!("seg-{run}"),
+            &session,
+            "global",
+            turn,
+            None,
+            1.0,
+            1.0,
+        )
+        .await?;
+    let open = episodic.open_segment(&session).await?;
+    episodic.close_segment(&format!("seg-{run}"), 2.0).await?;
+    anyhow::ensure!(open.is_some(), "the segment did not open");
+
+    let profile = provider
+        .as_profile()
+        .ok_or_else(|| anyhow::anyhow!("hosted memory must serve the profile"))?;
+    let key = format!("live/{run}");
+    profile
+        .upsert_facet(&ProfileFacet {
+            facet_id: format!("live-{run}"),
+            facet_type: FacetType::Context,
+            key: key.clone(),
+            value: "a live probe facet".to_string(),
+            confidence: 0.5,
+            evidence_count: 1,
+            source_segment_ids: None,
+            first_seen_at: 1.0,
+            last_seen_at: 1.0,
+            state: FacetState::Active,
+            stability: 0.5,
+            user_state: UserState::Auto,
+            evidence_refs: Vec::new(),
+            class: None,
+            cue_families: None,
+        })
+        .await?;
+    let read = profile.get_facet(&key).await?;
+    let deleted = profile.delete_facet(&key).await?;
+    anyhow::ensure!(read.is_some() && deleted, "the facet did not round-trip");
+
+    let source = format!("conversations:live-{run}");
+    let ingested = provider
+        .as_ingest()
+        .ok_or_else(|| anyhow::anyhow!("hosted memory must serve ingest"))?
+        .ingest_chat(vec![IngestItem {
+            namespace: None,
+            source: DataSource::Conversation,
+            source_id: source.clone(),
+            owner: session.clone(),
+            source_ref: None,
+            content: format!("a live probe message for run {run}"),
+            mime: None,
+            timestamp: None,
+            tags: Vec::new(),
+            author: Some("user".to_string()),
+            channel_label: None,
+            platform: None,
+            to: Vec::new(),
+            cc: Vec::new(),
+            subject: None,
+            list_unsubscribe: None,
+            taint: MemoryTaint::Internal,
+            path_scope: None,
+        }])
+        .await?;
+    let leaves = provider
+        .as_retrieval()
+        .ok_or_else(|| anyhow::anyhow!("hosted memory must serve retrieval"))?
+        .retrieve_leaves(&ingested.ids, None)
+        .await?;
+    let forgotten = provider
+        .as_sources()
+        .ok_or_else(|| anyhow::anyhow!("hosted memory must serve the source sink"))?
+        .forget_source(&source)
+        .await?;
+    anyhow::ensure!(
+        ingested.written == 1 && leaves.len() == 1 && forgotten == 1,
+        "the ingested message did not round-trip: {ingested:?}, {} leaves, forgot {forgotten}",
+        leaves.len()
+    );
+
+    provider
+        .as_tree()
+        .ok_or_else(|| anyhow::anyhow!("hosted memory must serve the tree"))?
+        .summary_forest(50, None)
+        .await?;
     Ok(())
 }
 

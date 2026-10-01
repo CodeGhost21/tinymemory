@@ -1359,6 +1359,9 @@ impl MemoryTree for TinycortexProvider {
                             child_ids: serde_json::from_str(&child_ids_json).unwrap_or_default(),
                             time_range_start: at_ms(row.get(7)?),
                             time_range_end: at_ms(row.get(8)?),
+                            // The text is the summary's file in the content
+                            // vault; a caller reads it by path.
+                            preview: None,
                         })
                     })?
                     .collect::<rusqlite::Result<Vec<_>>>()?;

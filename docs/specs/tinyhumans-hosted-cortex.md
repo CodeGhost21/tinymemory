@@ -16,15 +16,17 @@ session as the credential, without the user pasting an engine key. The existing
 Goals:
 
 - Reuse the `cortex` adapter's append-and-fold storage, ingestion and answer
-  code over the hosted routes, with the same capabilities as `CortexProvider`.
+  code over the hosted routes. The hosted wire also serves the optional
+  families in [tinyhumans-hosted-families.md](tinyhumans-hosted-families.md).
 - Resolve the credential per request, so a refreshing session works.
 - Map the backend's typed failures onto the existing `MemoryError` taxonomy.
 - Let a host list and build engines from configuration (`tinymemory::factory`)
   and copy memories between two providers (`tinymemory::migrate`).
 
 Non-goals: changing the backend, exposing hosted-only routes that have no
-`MemoryProvider` counterpart (`facts`, `beliefs`, `understanding`,
-`derivation-status`, `blobs`), or a wire-level `MemoryError` change.
+`MemoryProvider` counterpart (`derivation-status`, `blobs`), or a wire-level
+`MemoryError` change. The derived layers (`facts`, `beliefs`,
+`understanding`) are read only to draw the tree family's forest.
 
 ## Proposed behavior
 
@@ -42,6 +44,10 @@ Base is the backend origin (default `https://api.tinyhumans.ai`), no `/v1`.
 | delete | `POST v1/forget` | `POST memory/forget` |
 | answer | `POST v1/answer` | `POST memory/answer` |
 | scopes | `GET v1/scopes/list?limit=N` | `GET memory/scopes` |
+| list by label | — | `GET memory/events?scope=S&labels=L1,L2` (one parameter) |
+| newest events | — | the front of `GET memory/events`, which lists newest first |
+| event by id | — | `GET memory/events/{id}` |
+| derived layers | — | `GET memory/{facts,beliefs,understanding}?scope=S` (paged) |
 | health | `GET v1/admin/health` | `GET memory/scopes?prefix=tmh:probe&limit=1` |
 
 Every body carries `scope`. Responses are `{"success":true,"data":<body>}`; the
@@ -154,6 +160,11 @@ Over the hosted wire both halves are shaped for a billed, rate-limited API:
 ## Invariants and constraints
 
 - Direct-mode behavior is unchanged.
+- A hosted keyed write — `store`, the tombstone behind `forget`, and every
+  family record — carries its key's lookup label (`tm:kh:` and a 16-hex-digit
+  digest) in `context.labels`, so a key can be listed without walking its
+  scope. Records written before this carry none, and a labelled read that
+  misses a key walks the scope instead.
 - No token appears in any `Debug` output or error message.
 - Hosted mode never sends a `/v1` path, `wait=`, a bulk route or an unknown
   `answer` key.

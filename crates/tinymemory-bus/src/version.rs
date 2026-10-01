@@ -60,7 +60,7 @@
 /// added to a family a driver may already advertise** (negotiation is
 /// family-granular, not method-granular, so that case cannot be made minor-safe
 /// by negotiation alone).
-pub const CONTRACT_VERSION: (u16, u16) = (4, 1);
+pub const CONTRACT_VERSION: (u16, u16) = (4, 2);
 
 /// Whether a driver speaking `remote` can be bound against this build.
 ///

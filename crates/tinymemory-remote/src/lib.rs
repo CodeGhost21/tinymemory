@@ -12,6 +12,7 @@ pub mod cognee;
 mod cognee_graph;
 mod common;
 pub mod cortex;
+mod cortex_labels;
 mod cortex_provider;
 mod graph_provider;
 mod hosted;
@@ -75,8 +76,12 @@ pub fn cortex_provider(memory: CortexMemory) -> CortexProvider {
 ///
 /// `backend_base_url` is the backend origin (for example
 /// `https://api.tinyhumans.ai`); `bearer` supplies the session JWT or
-/// `tiny_live_` API key on every request. Capabilities are those of
-/// [`CortexProvider`]; it reports the `tinyhumans` driver id.
+/// `tiny_live_` API key on every request. It serves what the `cortex` driver
+/// serves, plus goals, tool rules, documents, the source sink, maintenance,
+/// retrieval scored by rank, ingest, the learned profile, episodic memory,
+/// scoring and a tree drawn from the server's derived understanding
+/// (`docs/specs/tinyhumans-hosted-families.md`); it reports the `tinyhumans`
+/// driver id.
 ///
 /// # Errors
 ///
@@ -150,6 +155,8 @@ pub fn mem0_graph_provider(memory: Mem0Memory) -> GraphMemoryProvider {
 mod failure_test;
 #[cfg(test)]
 mod hosted_test;
+#[cfg(test)]
+mod hosted_test_support;
 
 pub mod agentmemory;
 #[cfg(test)]

@@ -7,7 +7,7 @@
 use super::*;
 
 #[test]
-fn contract_version_is_four_one() {
+fn contract_version_is_four_two() {
     // (4, 0): the six runtime-tree members and `flavour_profile` were added to
     // `Tree` — a family a driver may ALREADY advertise. The rule makes that a
     // major bump and not a minor one, and the reason is the whole point of the
@@ -31,7 +31,11 @@ fn contract_version_is_four_one() {
     //
     // (4, 1): the five granular operation capabilities are new families, so
     // capability negotiation makes their addition minor-safe.
-    assert_eq!(CONTRACT_VERSION, (4, 1));
+    //
+    // (4, 2): `TreeSummary::preview`, a new optional field. An older kernel
+    // skips it when decoding, and a driver that leaves it out sends nothing,
+    // so the rule counts it minor-safe.
+    assert_eq!(CONTRACT_VERSION, (4, 2));
 }
 
 #[test]

@@ -602,6 +602,8 @@ pub(crate) struct CortexLog {
     idempotency: BTreeMap<String, (String, String)>,
     next_offset: u64,
     next_id: u64,
+    /// Every event id a selective forget removed, in order.
+    pub(crate) forgotten: Vec<String>,
 }
 
 pub(crate) type CortexStore = Arc<Mutex<CortexLog>>;
@@ -652,14 +654,29 @@ pub(crate) async fn cortex_experience(
         .unwrap_or_default()
         .to_string();
     let content = body.get("content").cloned().unwrap_or_default();
-    log.events.push(json!({
+    // The engine keeps the caller's context — labels and `observed_at`
+    // included — and stamps its own `recorded_at`. A double that dropped the
+    // context would make every label lookup look broken.
+    let mut context = body
+        .get("context")
+        .cloned()
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({}));
+    context["recorded_at"] = json!("2026-09-02T00:00:00Z");
+    let mut event = json!({
         "id": id,
         "scope": scope,
         "modality": modality,
         "wal_offset": offset,
         "content": content,
-        "context": { "recorded_at": "2026-09-02T00:00:00Z" },
-    }));
+        "context": context,
+    });
+    // Kept on the event only so a test can see what the write asked for; the
+    // adapter never reads it back.
+    if let Some(directives) = body.get("directives") {
+        event["directives"] = directives.clone();
+    }
+    log.events.push(event);
     // The real id, not a placeholder: `/v1/experience` answers with the id the
     // event was actually stored under, and the adapter waits on that id
     // becoming readable before it reports the write as done.
@@ -717,6 +734,30 @@ pub(crate) async fn cortex_events(
         .get("limit")
         .and_then(|v| v.parse().ok())
         .unwrap_or(50);
+    // The engine splits its label filter on commas and keeps an event carrying
+    // any one of the pieces.
+    let wanted: Vec<&str> = params
+        .get("labels")
+        .map(|labels| {
+            labels
+                .split(',')
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    let labelled = |event: &Value| {
+        wanted.is_empty()
+            || event
+                .pointer("/context/labels")
+                .and_then(Value::as_array)
+                .is_some_and(|labels| {
+                    labels
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .any(|label| wanted.contains(&label))
+                })
+    };
     // Newest first, and every record emitted twice, because that is what the
     // engine does. Both details are load-bearing: an adapter that trusted array
     // order instead of `wal_offset`, or that assumed `items` held distinct
@@ -729,6 +770,7 @@ pub(crate) async fn cortex_events(
         .iter()
         .rev()
         .filter(|e| e.get("scope").and_then(Value::as_str) == Some(scope.as_str()))
+        .filter(|e| labelled(e))
     {
         stream.push(event.clone());
         stream.push(event.clone());
@@ -798,6 +840,14 @@ pub(crate) async fn cortex_forget(
 
     let before = log.events.len();
     if selective {
+        let removed: Vec<String> = log
+            .events
+            .iter()
+            .filter_map(|e| e.get("id").and_then(Value::as_str))
+            .filter(|id| ids.iter().any(|wanted| wanted == id))
+            .map(str::to_string)
+            .collect();
+        log.forgotten.extend(removed);
         log.events.retain(|e| {
             !ids.contains(
                 &e.get("id")
@@ -837,10 +887,70 @@ pub(crate) async fn cortex_recall(
         .get("query")
         .and_then(Value::as_str)
         .unwrap_or_default();
+    // `descend` recalls the scope and everything under it.
+    let descend = body.get("view").and_then(Value::as_str) == Some("descend");
+    let in_scope = |event: &Value| {
+        let held = event
+            .get("scope")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        held == scope || (descend && held.starts_with(&format!("{scope}/")))
+    };
+    // A metadata label filter keeps an event carrying any one of the labels.
+    let wanted: Vec<&str> = body
+        .pointer("/filters/metadata/labels")
+        .and_then(Value::as_array)
+        .map(|labels| labels.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    let labelled = |event: &Value| {
+        wanted.is_empty()
+            || event
+                .pointer("/context/labels")
+                .and_then(Value::as_array)
+                .is_some_and(|labels| {
+                    labels
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .any(|label| wanted.contains(&label))
+                })
+    };
+    // `temporal.valid_during` keeps what was observed (else recorded) inside
+    // the half-open window. RFC 3339 stamps in one zone compare as strings.
+    let window: Option<(String, String)> = body
+        .pointer("/temporal/valid_during")
+        .and_then(Value::as_array)
+        .and_then(|bounds| {
+            Some((
+                bounds.first()?.as_str()?.to_string(),
+                bounds.get(1)?.as_str()?.to_string(),
+            ))
+        });
+    let observed = |event: &Value| {
+        let at = event
+            .pointer("/context/observed_at")
+            .or_else(|| event.pointer("/context/recorded_at"))
+            .and_then(Value::as_str)
+            .and_then(|at| tinymemory_api::chrono::DateTime::parse_from_rfc3339(at).ok());
+        window.as_ref().is_none_or(|(since, until)| {
+            let bound =
+                |stamp: &str| tinymemory_api::chrono::DateTime::parse_from_rfc3339(stamp).ok();
+            match (at, bound(since), bound(until)) {
+                (Some(at), Some(since), Some(until)) => at >= since && at < until,
+                _ => false,
+            }
+        })
+    };
+    // The engine answers at most the events budget it was given.
+    let budget = body
+        .pointer("/budgets/per_layer_limits/events")
+        .and_then(Value::as_u64)
+        .map_or(usize::MAX, |limit| {
+            usize::try_from(limit).unwrap_or(usize::MAX)
+        });
     let hits: Vec<Value> = log
         .events
         .iter()
-        .filter(|e| e.get("scope").and_then(Value::as_str) == Some(scope))
+        .filter(|e| in_scope(e) && labelled(e) && observed(e))
         .filter(|e| {
             query.is_empty()
                 || e.pointer("/content/text")
@@ -858,6 +968,7 @@ pub(crate) async fn cortex_recall(
             }
             hit
         })
+        .take(budget)
         .collect();
     Json(json!({ "pack_id": "pack_test", "layers": { "events": hits } }))
 }
@@ -903,10 +1014,18 @@ pub(crate) async fn cortex_scopes(
         .and_then(|l| l.parse::<usize>().ok())
         .unwrap_or(50);
     let log = store.lock().expect("cortex log");
+    // A prefix names a scope and everything under it.
+    let prefix = params.get("prefix").cloned();
+    let under = |path: &str| {
+        prefix
+            .as_deref()
+            .is_none_or(|prefix| path == prefix || path.starts_with(&format!("{prefix}/")))
+    };
     let mut paths: Vec<String> = log
         .events
         .iter()
         .filter_map(|e| e.get("scope").and_then(Value::as_str))
+        .filter(|path| under(path))
         .map(str::to_string)
         .collect();
     paths.sort();
@@ -917,7 +1036,7 @@ pub(crate) async fn cortex_scopes(
     }))
 }
 
-async fn cortex_backend() -> String {
+pub(crate) async fn cortex_backend() -> String {
     let store: CortexStore = Arc::new(Mutex::new(CortexLog::default()));
     let app = Router::new()
         .route("/v1/experience", post(cortex_experience))

@@ -178,6 +178,14 @@ const RECALL_QUERY_CAP: usize = 256;
 /// failure this whole adapter exists to avoid.
 const MAX_PAGES: usize = 500;
 
+/// Most listing pages [`CortexDialect::newest`] reads: enough for a few
+/// hundred distinct events at the engine's page size, never a walk.
+const NEWEST_MAX_PAGES: usize = 4;
+
+/// The most event ids one removal names. A key rewritten often can have many
+/// versions to retire, and one request per hundred keeps each body small.
+const FORGET_BATCH: usize = 100;
+
 /// How many scopes one `v1/scopes/list` call asks for.
 ///
 /// The endpoint defaults to **50** and says so nowhere: its OpenAPI entry
@@ -216,6 +224,12 @@ pub(crate) enum Route {
     Forget,
     Answer,
     Scopes,
+    /// The facts the engine derived from a scope.
+    Facts,
+    /// The beliefs the engine consolidated in a scope.
+    Beliefs,
+    /// The concepts the engine synthesised in a scope.
+    Understanding,
 }
 
 impl CortexWire {
@@ -228,12 +242,18 @@ impl CortexWire {
             (Self::Direct, Route::Forget) => "v1/forget",
             (Self::Direct, Route::Answer) => "v1/answer",
             (Self::Direct, Route::Scopes) => "v1/scopes/list",
+            (Self::Direct, Route::Facts) => "v1/facts",
+            (Self::Direct, Route::Beliefs) => "v1/beliefs",
+            (Self::Direct, Route::Understanding) => "v1/understanding",
             (Self::TinyHumans, Route::Experience) => "memory/experience",
             (Self::TinyHumans, Route::Events) => "memory/events",
             (Self::TinyHumans, Route::Recall) => "memory/recall",
             (Self::TinyHumans, Route::Forget) => "memory/forget",
             (Self::TinyHumans, Route::Answer) => "memory/answer",
             (Self::TinyHumans, Route::Scopes) => "memory/scopes",
+            (Self::TinyHumans, Route::Facts) => "memory/facts",
+            (Self::TinyHumans, Route::Beliefs) => "memory/beliefs",
+            (Self::TinyHumans, Route::Understanding) => "memory/understanding",
         }
     }
 
@@ -242,7 +262,7 @@ impl CortexWire {
     /// The engine accepts [`MAX_SCOPE_SEGMENTS`]. The memory API behind the
     /// TinyHumans backend re-roots every scope under the caller's tenant
     /// (`oc:u-<id>/…`), which spends one of them.
-    const fn max_scope_segments(self) -> usize {
+    pub(crate) const fn max_scope_segments(self) -> usize {
         match self {
             Self::Direct => MAX_SCOPE_SEGMENTS,
             Self::TinyHumans => MAX_SCOPE_SEGMENTS - 1,
@@ -367,30 +387,46 @@ impl CortexMemory {
 /// Anything the log cannot carry natively goes here: the key that identifies
 /// the record, the category, the session, and the taint.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-struct Envelope {
+pub(crate) struct Envelope {
     /// TinyMemory's logical key. The whole reason this wrapper exists.
-    k: String,
+    pub(crate) k: String,
     /// The caller's content, untouched.
-    c: String,
+    pub(crate) c: String,
     /// Category, as its wire string.
     #[serde(default)]
-    cat: Option<String>,
+    pub(crate) cat: Option<String>,
     /// Session id, when the caller supplied one.
     #[serde(default)]
-    s: Option<String>,
+    pub(crate) s: Option<String>,
     /// Provenance taint. Persisted rather than dropped, because the default
     /// `store_with_taint` silently launders `ExternalSync` into internal trust.
     #[serde(default)]
-    t: Option<String>,
+    pub(crate) t: Option<String>,
     /// Tombstone marker. A `true` here means "this key is deleted as of this
     /// event". The fold reads newest-wins, so a tombstone written after the
     /// last value makes the key read as absent even if the underlying events
     /// are still on disk. See [`Dialect::delete`] for why we write one.
     #[serde(default)]
-    d: bool,
-    /// Original product-facing payload for granular ingestion operations.
+    pub(crate) d: bool,
+    /// Original product-facing payload for granular ingestion operations, or
+    /// a family record's provenance.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    x: Option<Value>,
+    pub(crate) x: Option<Value>,
+}
+
+/// What a keyed write carries beyond the envelope `store` writes.
+///
+/// The default is exactly `store`'s request, so the storage tier and a family
+/// record share one write path and one set of retry guarantees.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct KeyedWrite {
+    /// Lookup labels for `context.labels`.
+    pub(crate) labels: Vec<String>,
+    /// Bookkeeping: the engine must neither embed the record into recall nor
+    /// extract facts or beliefs from it.
+    pub(crate) inert: bool,
+    /// `context.observed_at`, RFC 3339.
+    pub(crate) observed_at: Option<String>,
 }
 
 /// One event as the fold needs to see it.
@@ -505,7 +541,7 @@ impl CortexDialect {
     /// Returns `None` for a scope this adapter did not write, which is what
     /// keeps `scopes()` from reporting somebody else's Cortex scopes as
     /// namespaces of ours.
-    fn namespace_of(scope: &str) -> Option<String> {
+    pub(crate) fn namespace_of(scope: &str) -> Option<String> {
         let mut out = Vec::new();
         for segment in scope.split('/').filter(|s| !s.is_empty()) {
             let (kind, body) = segment.split_once(':')?;
@@ -542,19 +578,38 @@ impl CortexDialect {
     ///   record is present. We drop the repeats by event id here so no caller
     ///   downstream has to know.
     async fn events(&self, scope: &str) -> anyhow::Result<Vec<Value>> {
+        self.events_matching(scope, None).await
+    }
+
+    /// [`Self::events`], narrowed to the events carrying any one of `labels`
+    /// when that is `Some`.
+    ///
+    /// `labels` is one comma-separated list: the engine splits its label filter
+    /// on commas, and the hosted backend refuses a repeated `labels=`
+    /// parameter, so several lookups share one parameter rather than repeating
+    /// it. A caller must still re-check what it gets back, because the filter
+    /// narrows by label and a label is a digest, not the value itself.
+    pub(crate) async fn events_matching(
+        &self,
+        scope: &str,
+        labels: Option<&str>,
+    ) -> anyhow::Result<Vec<Value>> {
         let mut all = Vec::new();
         let mut seen = std::collections::HashSet::new();
         let mut cursor: Option<String> = None;
+        let filter = labels
+            .map(|labels| format!("&labels={}", urlencoding(labels)))
+            .unwrap_or_default();
         for _ in 0..MAX_PAGES {
             let base = self.wire.path(Route::Events);
             let path = match &cursor {
                 Some(c) => format!(
-                    "{base}?scope={scope}&limit={PAGE_SIZE}&cursor={cursor}",
+                    "{base}?scope={scope}&limit={PAGE_SIZE}{filter}&cursor={cursor}",
                     scope = urlencoding(scope),
                     cursor = urlencoding(c)
                 ),
                 None => format!(
-                    "{base}?scope={scope}&limit={PAGE_SIZE}",
+                    "{base}?scope={scope}&limit={PAGE_SIZE}{filter}",
                     scope = urlencoding(scope)
                 ),
             };
@@ -778,7 +833,7 @@ impl CortexDialect {
     ///
     /// A prefix is only stripped when the text does not parse without it, so an
     /// envelope whose content legitimately begins with a bracket is untouched.
-    fn envelope_of(text: &str) -> Option<Envelope> {
+    pub(crate) fn envelope_of(text: &str) -> Option<Envelope> {
         if let Ok(envelope) = serde_json::from_str::<Envelope>(text) {
             return Some(envelope);
         }
@@ -836,10 +891,7 @@ impl CortexDialect {
                     .to_string(),
                 session_id: envelope.s,
                 score: None,
-                taint: match envelope.t.as_deref() {
-                    Some("external_sync") => MemoryTaint::ExternalSync,
-                    _ => MemoryTaint::Internal,
-                },
+                taint: taint_of(envelope.t.as_deref()),
             };
             latest.insert(
                 envelope.k,
@@ -1047,38 +1099,201 @@ impl CortexDialect {
         entry: &StoredEntry,
     ) -> anyhow::Result<Option<AppendedEvent>> {
         let scope = self.scope_for(&entry.namespace)?;
-        let text = serde_json::to_string(&Envelope {
+        let envelope = Envelope {
             k: entry.key.clone(),
             c: entry.content.clone(),
             cat: Some(entry.category.to_string()),
             s: entry.session_id.clone(),
-            t: Some(
-                match entry.taint {
-                    MemoryTaint::ExternalSync => "external_sync",
-                    _ => "internal",
-                }
-                .to_string(),
-            ),
+            t: Some(taint_wire(entry.taint).to_string()),
             d: false,
             x: None,
-        })?;
-        let request = json!({
+        };
+        let write = KeyedWrite {
+            labels: self.lookup_labels(&entry.key),
+            ..KeyedWrite::default()
+        };
+        self.append_envelope(&scope, &envelope, &write).await
+    }
+
+    /// The lookup labels a keyed write of `key` carries on this wire.
+    ///
+    /// Hosted only. A family reads a key by its label rather than by walking
+    /// the scope, and a `store` of the same key must be visible to that read,
+    /// so the storage tier labels its writes too. The Direct wire writes
+    /// exactly what it always has.
+    fn lookup_labels(&self, key: &str) -> Vec<String> {
+        match self.wire {
+            CortexWire::Direct => Vec::new(),
+            CortexWire::TinyHumans => vec![crate::cortex_labels::key(key)],
+        }
+    }
+
+    /// Appends one version of a keyed record to `scope`, without waiting for
+    /// it to become readable.
+    ///
+    /// The one keyed write path. `store` sends the default [`KeyedWrite`]; a
+    /// family record adds labels, an observed time, or inert directives. Either
+    /// way the request goes through [`Self::append_keyed`], so every keyed
+    /// write keeps the one-claim retry and the outcome-unknown recovery.
+    pub(crate) async fn append_envelope(
+        &self,
+        scope: &str,
+        envelope: &Envelope,
+        write: &KeyedWrite,
+    ) -> anyhow::Result<Option<AppendedEvent>> {
+        let text = serde_json::to_string(envelope)?;
+        let mut context = serde_json::Map::new();
+        if !write.labels.is_empty() {
+            context.insert("labels".to_string(), json!(write.labels));
+        }
+        if let Some(observed_at) = &write.observed_at {
+            context.insert("observed_at".to_string(), json!(observed_at));
+        }
+        let mut request = json!({
             "scope": scope,
             "modality": "observation",
             // Fresh per write. See `upsert`.
             "idempotency_key": fresh_idempotency_key(),
             "content": { "kind": "message", "role": "user", "text": text },
-            "context": {},
+            "context": Value::Object(context),
         });
-        let accepted = self.append_keyed(&request, &entry.key).await?;
+        if write.inert {
+            request["directives"] = json!({ "embed": "none", "extract": [] });
+        }
+        let accepted = self.append_keyed(&request, &envelope.k).await?;
         Ok(accepted
             .get("event_id")
             .and_then(Value::as_str)
             .map(|id| AppendedEvent {
-                scope,
+                scope: scope.to_string(),
                 id: id.to_string(),
                 text,
             }))
+    }
+
+    /// Removes named events from a scope, at most [`FORGET_BATCH`] ids a
+    /// request, with a note saying why.
+    ///
+    /// The batched sibling of [`Self::forget_events`], for the hosted families,
+    /// which can retire more versions at once than one request should name.
+    /// Each batch keeps that call's retry and its reading of a 404 on a retry.
+    pub(crate) async fn forget_event_ids(
+        &self,
+        scope: &str,
+        ids: &[String],
+        note: &str,
+    ) -> anyhow::Result<()> {
+        for batch in ids.chunks(FORGET_BATCH) {
+            self.forget_named(scope, batch.to_vec(), note).await?;
+        }
+        Ok(())
+    }
+
+    /// One event by its id, or `None` when the engine holds no such event.
+    ///
+    /// An id outside the engine's `[A-Za-z0-9_-]{1,128}` is `None` without a
+    /// request, because it cannot name an event and the memory API would
+    /// answer it with a generic 400. The route addresses an event by id alone,
+    /// so a caller must check the event's scope before acting on it.
+    ///
+    /// # Errors
+    ///
+    /// Backend failures other than "no such event".
+    pub(crate) async fn event_by_id(&self, id: &str) -> anyhow::Result<Option<Value>> {
+        let well_formed = (1..=128).contains(&id.len())
+            && id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+        if !well_formed {
+            return Ok(None);
+        }
+        let path = format!("{}/{id}", self.wire.path(Route::Events));
+        match self
+            .client
+            .json::<Value>(Method::GET, &path, None, Attempts::RetryTransient)
+            .await
+        {
+            Ok(event) => Ok(Some(event)),
+            Err(error)
+                if matches!(
+                    error.downcast_ref::<tinymemory_api::error::MemoryError>(),
+                    Some(tinymemory_api::error::MemoryError::NotFound(_))
+                ) =>
+            {
+                Ok(None)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    /// The newest `count` distinct events of `scope`, newest first, narrowed
+    /// to those carrying any one of `labels` when that is `Some`.
+    ///
+    /// The engine lists a scope newest first, so this reads from the front of
+    /// the listing rather than walking it: page by page until `count` distinct
+    /// events are in hand, the listing ends, or [`NEWEST_MAX_PAGES`] pages
+    /// have been read. A page's `limit` counts the engine's duplicate copies
+    /// (see [`Self::events`]), so each page asks for twice what is missing. A
+    /// record's older versions and tombstones count toward `count` like any
+    /// other event.
+    ///
+    /// # Errors
+    ///
+    /// Backend failures.
+    pub(crate) async fn newest(
+        &self,
+        scope: &str,
+        labels: Option<&str>,
+        count: usize,
+    ) -> anyhow::Result<Vec<Value>> {
+        let filter = labels
+            .map(|labels| format!("&labels={}", urlencoding(labels)))
+            .unwrap_or_default();
+        let mut found = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut cursor: Option<String> = None;
+        for _ in 0..NEWEST_MAX_PAGES {
+            let missing = count.saturating_sub(found.len());
+            if missing == 0 {
+                break;
+            }
+            let mut path = format!(
+                "{base}?scope={scope}&limit={limit}{filter}",
+                base = self.wire.path(Route::Events),
+                scope = urlencoding(scope),
+                limit = missing.saturating_mul(2).clamp(1, PAGE_SIZE)
+            );
+            if let Some(cursor) = &cursor {
+                path.push_str(&format!("&cursor={}", urlencoding(cursor)));
+            }
+            let page: Value = self
+                .client
+                .json(Method::GET, &path, None, Attempts::RetryTransient)
+                .await?;
+            for event in page
+                .get("items")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                let fresh = event
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .is_none_or(|id| seen.insert(id.to_string()));
+                if fresh && found.len() < count {
+                    found.push(event.clone());
+                }
+            }
+            let next = page
+                .get("next_cursor")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            match (page.get("has_more").and_then(Value::as_bool), next) {
+                (Some(true), Some(next)) => cursor = Some(next),
+                _ => break,
+            }
+        }
+        Ok(found)
     }
 
     /// Removes named events from a scope.
@@ -1087,11 +1302,17 @@ impl CortexDialect {
     /// idempotent, and a retry that finds them already gone (404) has done
     /// its job. Direct mode sends it once, as it always has.
     async fn forget_events(&self, scope: &str, ids: Vec<String>) -> anyhow::Result<()> {
+        self.forget_named(scope, ids, "tinymemory: delete(namespace, key)")
+            .await
+    }
+
+    /// [`Self::forget_events`] with the audit note as an argument.
+    async fn forget_named(&self, scope: &str, ids: Vec<String>, note: &str) -> anyhow::Result<()> {
         let body = json!({
             "scope": scope,
             "layers": ["events"],
             "selector": { "memory_ids": ids },
-            "audit_note": "tinymemory: delete(namespace, key)",
+            "audit_note": note,
         });
         let path = self.wire.path(Route::Forget);
         let mut attempt = 0;
@@ -1266,6 +1487,23 @@ impl CortexDialect {
     }
 }
 
+/// A taint as the envelope's `t` spells it.
+pub(crate) fn taint_wire(taint: MemoryTaint) -> &'static str {
+    match taint {
+        MemoryTaint::ExternalSync => "external_sync",
+        _ => "internal",
+    }
+}
+
+/// The taint an envelope's `t` names. Anything but `external_sync` reads as
+/// internal, which is what every record written before `t` existed means.
+pub(crate) fn taint_of(wire: Option<&str>) -> MemoryTaint {
+    match wire {
+        Some("external_sync") => MemoryTaint::ExternalSync,
+        _ => MemoryTaint::Internal,
+    }
+}
+
 /// A fresh idempotency key for every write.
 ///
 /// Never TinyMemory's key: reusing that is what produces
@@ -1313,7 +1551,7 @@ pub(crate) fn fresh_idempotency_key() -> String {
 /// The cursor is the reason this is general: it is opaque engine output, and a
 /// `+`, `&`, `=`, `#` or `?` in one would silently reshape the query string
 /// rather than fail. Encoding by byte also keeps multi-byte UTF-8 correct.
-fn urlencoding(value: &str) -> String {
+pub(crate) fn urlencoding(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for byte in value.as_bytes() {
         match byte {
@@ -1420,12 +1658,18 @@ impl Dialect for CortexDialect {
             d: true,
             x: None,
         })?;
+        let labels = self.lookup_labels(key);
+        let context = if labels.is_empty() {
+            json!({})
+        } else {
+            json!({ "labels": labels })
+        };
         let request = json!({
             "scope": scope,
             "modality": "conversation",
             "idempotency_key": fresh_idempotency_key(),
             "content": { "kind": "message", "role": "user", "text": tombstone },
-            "context": {},
+            "context": context,
         });
         let accepted = self.append_keyed(&request, key).await?;
         // The tombstone IS the delete; the next read must see it.

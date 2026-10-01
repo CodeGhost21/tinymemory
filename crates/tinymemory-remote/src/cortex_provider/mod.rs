@@ -1,5 +1,6 @@
 //! Capability-accurate CortexDB provider composition.
 
+mod families;
 mod operations;
 mod portability;
 mod types;
