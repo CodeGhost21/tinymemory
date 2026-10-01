@@ -2,8 +2,11 @@
 
 ## Status and owner
 
-Draft, pending acceptance on openhuman#6718 (decision D4: which families hosted
-memory serves, and in what order). Owner: TinyMemory maintainers.
+Draft, pending acceptance on openhuman#6718. The first five families shipped
+first; the per-turn families, retrieval, ingestion and the derived forest
+followed once the product decisions below were taken (D2: recall scores are
+ranks; D4: serve every family a hosted account can back). Owner: TinyMemory
+maintainers.
 
 Extends [CortexDB via the TinyHumans backend](tinyhumans-hosted-cortex.md),
 which stays the source of truth for the wire, auth, errors and idempotency.
@@ -20,8 +23,9 @@ answers. A host that binds it loses every feature built on another family:
   memory were broken.
 
 In OpenHuman this reads as Composio sync failing on hosted memory, Brain panels
-marked "Not available", and memory E2E suites that can only run on the local
-module (openhuman#6718 acceptance criterion 10).
+marked "Not available", no episodic or learned-profile memory, an empty Brain
+graph, and memory E2E suites that can only run on the local module
+(openhuman#6718 acceptance criterion 10).
 
 The backend already exposes what these families need beyond the mandatory
 routes: a `labels=` filter on `GET memory/events`, and `GET memory/events/{id}`.
@@ -31,8 +35,9 @@ The adapter uses neither today.
 
 Goals:
 
-- Serve `Goals`, `ToolMemory`, `Documents`, `Sources` (the sink) and
-  `Maintenance` over the TinyHumans wire.
+- Serve `Goals`, `ToolMemory`, `Documents`, `Sources` (the sink),
+  `Maintenance`, `Retrieval`, `Ingest`, `Profile`, `Episodic`, `Scoring` and
+  `Tree` over the TinyHumans wire.
 - Keep the Direct (`cortex`) wire byte-for-byte unchanged, including its
   advertised capabilities.
 - Build on the record format the adapter already writes. A record written by
@@ -45,13 +50,12 @@ Goals:
 
 Non-goals:
 
-- `Retrieval`. Its hits need a similarity the engine does not return, and the
-  host policy for unscored recall is still open (openhuman#6718, D2).
-- `Profile`, `Episodic` and `Scoring`. They write on every turn, and billing
-  each of those writes is a product decision.
-- `Tree` (the facts, beliefs and understanding forest). It needs a contract
-  change, and it can only be verified on an engine that derives those layers.
-- `SourceSync`. The pipelines stay in the host.
+- A similarity score. The engine ranks recall and returns no score, so hits
+  are scored by rank (D2), and nothing claims a similarity.
+- Summaries written by a model. The adapter reaches none, so `Tree::summarise`
+  folds only nothing.
+- `SourceSync`. The pipelines stay in the host, which syncs local sources
+  through the sink.
 - `People` and `CodingSessions` (privacy), and `Entities`, `Graph`, `Diff`,
   `Chunks` (no server support).
 - Changing the backend, the memory API, or the record format (D3).
@@ -64,8 +68,9 @@ A keyed record is still one event per version, carrying the adapter's JSON
 envelope in `content.text`: key `k`, content `c`, category `cat`, session `s`,
 taint `t`, tombstone `d`. On the TinyHumans wire only:
 
-- **Lookup labels** in `context.labels`: `tm:kh:<h>` for the key, and
-  `tm:srh:<h>` for the source when there is one. `<h>` is the first 16 lowercase
+- **Lookup labels** in `context.labels`: `tm:kh:<h>` for the key,
+  `tm:srh:<h>` for the source when there is one, and `tm:sh:<h>` for the
+  session when there is one. `<h>` is the first 16 lowercase
   hex digits of the value's SHA-256: fixed length, and never a comma, which the
   engine's label filter splits on. `store` and its tombstone carry the key label
   too, so a family read of a key sees what the storage tier wrote.
@@ -119,10 +124,13 @@ the adapter's namespace listing drops:
 | --- | --- |
 | `tmi:goals` | the goals document |
 | `tmi:documents/<namespace scope>` | each document's title, tags and other details |
+| `tmi:profile` | the learned profile's facets |
+| `tmi:turns`, `tmi:segments` | episodic turns and conversation segments, session-labelled |
+| `tmi:episodic-events`, `tmi:segment-embeddings` | events extracted from segments, and segment embeddings |
 
 So bookkeeping never appears in `namespaces`, `list`, `export_page` or
 namespace recall. As a consequence, `migrate::copy` moves a document's content
-but not its details, and does not move goals.
+but not its details, and does not move goals, the profile or episodic memory.
 
 ### Goals
 
@@ -249,11 +257,99 @@ works:
   defaults. `purge_all`, `reset_derived_index` and the backfill calls are not
   offered.
 
+### Retrieval
+
+The engine ranks recall but returns no score and offers no way to ask for one,
+so a hit's score is its rank: 1.0 for the first, 0.1 less for each after, never
+below 0.1. That fills `score` and `final_score` only. No similarity was
+measured, so `vector_similarity` stays 0, and a host floor on similarity reads
+these hits as carrying no similarity evidence.
+
+- **Source recall.** `fast_retrieve`, `cover_window` and `retrieve_source`
+  recall with `view: descend` from `sources`, or one kind's namespace, and
+  answer each record's newest version as a leaf. The caller's source scope, or
+  the one source asked for, is a `filters.metadata.labels` filter inside the
+  recall (any label matches), so other sources cannot fill the events budget;
+  each leaf is re-checked against its `x.prov.src`. An empty scope answers
+  nothing without a request. A time window is `temporal.valid_during`.
+- **Leaves by id.** `retrieve_leaves` reads `GET memory/events/{id}` and keeps
+  an event only when the answer names one of this account's scopes.
+- **Namespace recall.** `recall_namespace_scored` answers the engine's first
+  three hits at most, since a rank says nothing about whether the tail is
+  relevant. `recall_namespace_recent` scores by freshness.
+- **No tree, no entities.** `retrieve_children` answers empty;
+  `search_entities` refuses an unknown kind and is otherwise `Unsupported`.
+
+### Ingest
+
+`ingest_document`, `ingest_chat` and `ingest_email` write content records:
+
+- **Where.** An item's own namespace, else its kind's source namespace
+  (`sources/chat`, `sources/email`, `sources/documents`), so retrieval, the
+  forest and its leaves reach it.
+- **Keys.** A document is `document:<source_id>`, and a new version retires the
+  old. A message is `message:<source_id>:<digest of the whole message>`: a host
+  may send every batch of a conversation under one source id, and keys by
+  position would fold one batch into the next.
+- **Text.** Mail carries `From:`, `To:`, `Cc:`, `Subject:` and
+  `List-Unsubscribe:` lines above its content, as the embedded engine writes
+  them. A chat message carries its owning session.
+- **Cost.** A message or document already held unchanged is not written again.
+  The backend has no bulk route: a batch is one paced write per message, then
+  one wait for the last.
+
+### Profile
+
+Each facet is an inert record keyed by the facet's key in `tmi:profile`,
+holding the facet as JSON. The host owns stability and state; listings are
+filtered and ordered here. `upsert_provider_facet` merges as the embedded
+engine does: a re-observation adds evidence and its segment, and overwrites
+the value only when at least as confident; a new facet's class comes from its
+key prefix, then its type. `workflow_identity_matches` applies SQL `LIKE`.
+
+### Episodic
+
+Turns, segments, extracted events and segment embeddings are inert records in
+their own scopes. Turns and segments carry their session's label, so the reads
+a host makes on every turn — the session's turns, its open segment — list one
+session, never the history. A turn's id is the microsecond it was recorded at,
+bumped past the last id the process handed out. Nothing is ever pending a
+summary: a recap needs a model the adapter does not reach.
+
+### Scoring
+
+`extract_entities` runs on the device: emails, URLs, `@handles`, `name#1234`
+discriminators and `#hashtags` (also as topics). `embed_text` is `Unsupported`:
+the memory API has no route to embed text on request. `embedder_slug` is
+`cloud`.
+
+### Tree
+
+The server derives facts, beliefs and concepts per scope, each citing what it
+came from, served at `GET memory/{facts,beliefs,understanding}`. The forest
+reads those layers for `global` and the three source namespaces:
+
+- facts are level 1 over the events they cite, beliefs level 2 over facts,
+  concepts level 3 over beliefs and facts;
+- each node hangs under the most confident node a level up that cites it, so
+  the forest stays a tree, and carries its text as `TreeSummary::preview`
+  (contract 4.2);
+- what the server set aside (superseded, struck, deprecated, merged) is left
+  out, and a source-scoped caller is answered no derived nodes;
+- a layer is read to 2,000 items per namespace, and one reading is reused for
+  a minute, because the layer routes share the backend's rate limit.
+
+`recent_leaves` reads the newest records of the same namespaces, each under
+the fact that cites it, a source scope narrowing each listing by label.
+`summarise` folds nothing into an empty summary and is otherwise `Unsupported`;
+`flush_source_tree` is 0, `root_summaries_with_caps` empty, `flavour_profile`
+`None`. The members that write or walk a tree are `Unsupported`.
+
 ### Capabilities
 
 | Wire | Advertises |
 | --- | --- |
-| TinyHumans | mandatory + `DocumentIngest`, `ConversationIngest`, `LearningIngest`, `EventIngest`, `Answer` + `Goals`, `ToolMemory`, `Documents`, `Sources`, `Maintenance` |
+| TinyHumans | mandatory + `DocumentIngest`, `ConversationIngest`, `LearningIngest`, `EventIngest`, `Answer` + `Goals`, `ToolMemory`, `Documents`, `Sources`, `Maintenance`, `Retrieval`, `Ingest`, `Profile`, `Episodic`, `Scoring`, `Tree` |
 | Direct | unchanged |
 
 Every `as_*` accessor matches, and `audit_provider` holds on both wires.
@@ -270,6 +366,8 @@ Every `as_*` accessor matches, and `audit_provider` holds on both wires.
   one segment more than its namespace.
 - No response key named `scope` or `path` is used to carry record data: the
   memory API rewrites those keys everywhere in a response.
+- A rank is never reported as a similarity.
+- A source scope is applied inside the request, never only after it.
 
 ## Acceptance criteria
 
@@ -278,16 +376,20 @@ Every `as_*` accessor matches, and `audit_provider` holds on both wires.
 - The double enforces the backend's behavior this relies on: one `labels=`
   parameter, `GET memory/events/{id}`, and the tenant scope grammar.
 - Unit tests cover each family's contract, the supersede and tombstone paths,
-  the label-miss fallback, pacing, partial-batch failure, and the probe
-  classification and cache.
+  the label-miss fallback, pacing, partial-batch failure, the probe
+  classification and cache, rank scores and the three-hit cap, scope filters
+  inside the request, per-message keys, session-labelled reads, the facet
+  merge, and the forest's placement, set-aside rules, paging and cache.
 - On a live account (`TINYMEMORY_TEST_TINYHUMANS_*`), goals, a tool rule, a
   document and a source batch round-trip, and `forget_source` removes the
   batch.
 
 ## Open questions
 
-- D2: the unscored-recall policy decides how `Retrieval` would score hits, and
-  whether `query_documents` should keep the estimate.
+- `query_documents` keeps its rank-and-overlap estimate, while `Retrieval`
+  reports bare ranks (D2). Whether documents should report ranks too is open.
+- Every per-turn family write is billed. A host should expect a few calls per
+  conversation turn, and more when a segment closes.
 - Source namespaces are fixed per kind. A host that wants one namespace per
   connection needs a contract field.
 - A new or changed source item costs one billed write, plus a removal when it

@@ -77,7 +77,9 @@ pub fn cortex_provider(memory: CortexMemory) -> CortexProvider {
 /// `backend_base_url` is the backend origin (for example
 /// `https://api.tinyhumans.ai`); `bearer` supplies the session JWT or
 /// `tiny_live_` API key on every request. It serves what the `cortex` driver
-/// serves, plus goals, tool rules, documents, the source sink and maintenance
+/// serves, plus goals, tool rules, documents, the source sink, maintenance,
+/// retrieval scored by rank, ingest, the learned profile, episodic memory,
+/// scoring and a tree drawn from the server's derived understanding
 /// (`docs/specs/tinyhumans-hosted-families.md`); it reports the `tinyhumans`
 /// driver id.
 ///

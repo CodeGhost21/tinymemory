@@ -1,13 +1,16 @@
 //! Optional families served over the TinyHumans hosted wire.
 //!
 //! Specified in `docs/specs/tinyhumans-hosted-families.md`. Goals, tool rules,
-//! documents, the source sink and maintenance, built on the record format the
-//! adapter already writes, so a family record is readable by the mandatory
+//! documents, the source sink, maintenance, retrieval, ingest, the learned
+//! profile, episodic memory, scoring and the tree, built on the record format
+//! the adapter already writes, so a family record is readable by the mandatory
 //! surface and the other way round. The Direct wire advertises none of them.
 //!
 //! - [`records`] is the keyed record layer every family writes through: lookup
 //!   labels, provenance, inert bookkeeping, and retiring superseded versions.
 //! - [`scopes`] names the bookkeeping scopes, which no namespace maps to.
+//! - [`understanding`] reads the server's derived layers as the forest the
+//!   tree family answers.
 //! - One module per family implements its contract trait on
 //!   [`CortexProvider`](super::CortexProvider).
 

@@ -24,8 +24,9 @@ Goals:
   and copy memories between two providers (`tinymemory::migrate`).
 
 Non-goals: changing the backend, exposing hosted-only routes that have no
-`MemoryProvider` counterpart (`facts`, `beliefs`, `understanding`,
-`derivation-status`, `blobs`), or a wire-level `MemoryError` change.
+`MemoryProvider` counterpart (`derivation-status`, `blobs`), or a wire-level
+`MemoryError` change. The derived layers (`facts`, `beliefs`,
+`understanding`) are read only to draw the tree family's forest.
 
 ## Proposed behavior
 
@@ -44,7 +45,9 @@ Base is the backend origin (default `https://api.tinyhumans.ai`), no `/v1`.
 | answer | `POST v1/answer` | `POST memory/answer` |
 | scopes | `GET v1/scopes/list?limit=N` | `GET memory/scopes` |
 | list by label | — | `GET memory/events?scope=S&labels=L1,L2` (one parameter) |
+| newest events | — | the front of `GET memory/events`, which lists newest first |
 | event by id | — | `GET memory/events/{id}` |
+| derived layers | — | `GET memory/{facts,beliefs,understanding}?scope=S` (paged) |
 | health | `GET v1/admin/health` | `GET memory/scopes?prefix=tmh:probe&limit=1` |
 
 Every body carries `scope`. Responses are `{"success":true,"data":<body>}`; the
