@@ -24,8 +24,8 @@ pub use crate::engine::backend::chunks::StagedChunk;
 #[cfg(feature = "memory-git")]
 pub use crate::engine::backend::store::content::wiki_git;
 pub use crate::engine::backend::store::content::{
-    atomic, compose, obsidian, paths, raw, stage_chunks, StagedSummary,
-    SummaryComposeInput, SummaryTreeKind,
+    atomic, compose, obsidian, paths, raw, stage_chunks, StagedSummary, SummaryComposeInput,
+    SummaryTreeKind,
 };
 
 /// Update the `tags:` block in a summary's on-disk `.md` file after an
