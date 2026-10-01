@@ -9,6 +9,9 @@
   — goals, tool rules, documents, the source sink, maintenance, retrieval,
   ingest, profile, episodic, scoring and the derived-understanding tree over
   `/memory/*`.
+- [Copying a store between drivers](store-migration.md) — `migrate::copy_all`
+  and the `EpisodicPortability` family: document details, goals, the profile,
+  the episodic record, and ingested content re-sent raw.
 - [Granular ingestion and retrieval API](ingestion-retrieval-api.md)
 - [LivingBrain remote Brain API](livingbrain-remote-api.md)
 
