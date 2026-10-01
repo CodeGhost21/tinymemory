@@ -1,33 +1,16 @@
-//! Source reader trait and per-kind implementations.
+//! Source readers: the engine-neutral trait and implementations live in
+//! `tinymemory-sources`; this module names them under the path this crate's
+//! callers already use and adds the one dispatch decision that is the engine's.
+//!
+//! The adapters that used to live here (one per kind, each a `&Config` /
+//! `Result<_, String>` shell over the `tinymemory-sources` reader) are gone:
+//! call sites hand the reader `config.workspace_dir()` themselves.
 
-pub mod conversation;
-pub mod folder;
-pub mod github;
-pub mod rss;
-pub mod twitter;
-pub mod web_page;
+pub use tinymemory_sources::readers::{
+    conversation, folder, github, rss, twitter, web_page, SourceReader,
+};
 
-use async_trait::async_trait;
-
-use crate::sources::types::{MemorySourceEntry, SourceContent, SourceItem, SourceKind};
-use crate::Config;
-
-/// A reader that can list items and read content from a memory source.
-#[async_trait]
-pub trait SourceReader: Send + Sync {
-    fn kind(&self) -> SourceKind;
-    async fn list_items(
-        &self,
-        source: &MemorySourceEntry,
-        config: &Config,
-    ) -> Result<Vec<SourceItem>, String>;
-    async fn read_item(
-        &self,
-        source: &MemorySourceEntry,
-        item_id: &str,
-        config: &Config,
-    ) -> Result<SourceContent, String>;
-}
+use crate::sources::types::SourceKind;
 
 /// Get the reader for a given source kind, if this crate has one.
 ///

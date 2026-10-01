@@ -40,6 +40,7 @@
 
 pub mod raw_kind;
 pub mod readers;
+pub mod reconcile;
 pub mod registry;
 pub mod types;
 pub mod validation;

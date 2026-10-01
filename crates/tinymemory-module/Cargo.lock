@@ -1764,6 +1764,7 @@ dependencies = [
  "tinycortex-api",
  "tinyinference-embeddings",
  "tinyinference-llm",
+ "tinymemory-safety",
  "tokio",
  "toml",
  "tracing",
@@ -1825,7 +1826,7 @@ dependencies = [
 
 [[package]]
 name = "tinymemory"
-version = "1.18.0"
+version = "1.19.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1914,6 +1915,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tinymemory-safety"
+version = "0.1.0"
+source = "git+https://github.com/tinyhumansai/tinymemory?rev=b49650e1eac6d55a41f641f4ec8a683a25df9518#b49650e1eac6d55a41f641f4ec8a683a25df9518"
+dependencies = [
+ "log",
+ "regex",
+ "serde_json",
+]
+
+[[package]]
 name = "tinymemory-sources"
 version = "0.1.0"
 dependencies = [
@@ -1921,6 +1932,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "futures",
+ "log",
  "regex",
  "reqwest",
  "schemars",

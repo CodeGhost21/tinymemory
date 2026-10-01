@@ -11,6 +11,7 @@ use tinymemory_api::chunks::Chunk;
 use tinymemory_api::error::MemoryError;
 use tinymemory_api::goals::GoalsDoc;
 use tinymemory_api::health::MemoryHealth;
+use tinymemory_api::provider::episodic::{ConversationSegment, EpisodicTurn};
 use tinymemory_api::provider::sessions::{
     CodingSessionIngestReport, CodingSessionIngestRequest, CodingSessionSource,
 };
@@ -133,6 +134,12 @@ pub struct RecordingProvider {
     /// What `namespaces` returns, so a namespace can look populated (Lane B
     /// asks for the count before it pays for an embed) without a real store.
     namespace_summaries: Mutex<Vec<NamespaceSummary>>,
+    /// What `session_turns` returns, so the archivist's finalize path can be
+    /// driven past its empty-entries early return without an engine behind it.
+    session_turns: Mutex<Vec<EpisodicTurn>>,
+    /// What `segments_pending_summary` returns, so a re-summarisation pass can
+    /// be driven over a known queue.
+    pending_segments: Mutex<Vec<ConversationSegment>>,
     /// Documents written through [`MemoryDocuments::put_document`], keyed the
     /// way the contract upserts them.
     documents: Mutex<std::collections::HashMap<(String, String), StoredMemoryDocument>>,
@@ -171,6 +178,8 @@ impl RecordingProvider {
             fast_retrieve_result: Mutex::new(RetrievalResponse::default()),
             namespace_hits: Mutex::new(Vec::new()),
             namespace_summaries: Mutex::new(Vec::new()),
+            session_turns: Mutex::new(Vec::new()),
+            pending_segments: Mutex::new(Vec::new()),
             documents: Mutex::new(std::collections::HashMap::new()),
             kv: Mutex::new(std::collections::HashMap::new()),
             relations: Mutex::new(std::collections::HashMap::new()),
@@ -205,6 +214,23 @@ impl RecordingProvider {
     #[must_use]
     pub fn with_namespace_summaries(self, summaries: Vec<NamespaceSummary>) -> Self {
         *lock(&self.namespace_summaries) = summaries;
+        self
+    }
+
+    /// Sets what [`MemoryEpisodic::session_turns`] returns. Without this a
+    /// finalize path stops at its empty-entries early return and never reaches
+    /// the recap it is being tested for.
+    #[must_use]
+    pub fn with_session_turns(self, turns: Vec<EpisodicTurn>) -> Self {
+        *lock(&self.session_turns) = turns;
+        self
+    }
+
+    /// Sets the queue [`MemoryEpisodic::segments_pending_summary`] drains from.
+    /// The default is empty, the state a healthy store is in.
+    #[must_use]
+    pub fn with_pending_segments(self, segments: Vec<ConversationSegment>) -> Self {
+        *lock(&self.pending_segments) = segments;
         self
     }
 
@@ -1359,7 +1385,7 @@ impl MemoryEpisodic for RecordingProvider {
         _session_id: &str,
     ) -> Result<Vec<tinymemory_api::provider::episodic::EpisodicTurn>, MemoryError> {
         self.record(Call::plain("episodic.session_turns"));
-        Ok(vec![])
+        Ok(lock(&self.session_turns).clone())
     }
 
     async fn open_segment(
@@ -1375,10 +1401,16 @@ impl MemoryEpisodic for RecordingProvider {
     /// call cannot hold a caller to making it.
     async fn segments_pending_summary(
         &self,
-        _limit: u32,
+        limit: u32,
     ) -> Result<Vec<tinymemory_api::provider::episodic::ConversationSegment>, MemoryError> {
         self.record(Call::plain("episodic.segments_pending_summary"));
-        Ok(vec![])
+        // Honour `limit` — a fake that ignored it would let a test drive more
+        // segments than the caller asked for and hide a bounded-recovery bug.
+        Ok(lock(&self.pending_segments)
+            .iter()
+            .take(limit as usize)
+            .cloned()
+            .collect())
     }
 
     async fn create_segment(
