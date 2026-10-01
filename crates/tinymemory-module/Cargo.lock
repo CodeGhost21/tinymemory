@@ -276,15 +276,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dirs"
-version = "7.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d57d423b3c82e89b9a24ca3091fee61f456a26edbd28d26c65906f4bc1dcd8f"
-dependencies = [
- "dirs-sys",
-]
-
-[[package]]
 name = "dirs-sys"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1743,7 +1734,6 @@ dependencies = [
  "async-trait",
  "block2",
  "chrono",
- "dirs 7.0.0",
  "futures",
  "git2",
  "hex",
@@ -1868,7 +1858,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
- "dirs 6.0.0",
+ "dirs",
  "log",
  "parking_lot",
  "rand",
@@ -1976,8 +1966,8 @@ dependencies = [
 
 [[package]]
 name = "tinytools"
-version = "0.3.0"
-source = "git+https://github.com/tinyhumansai/tinytools?rev=a5d04a7f3af0abc1dd748f87f94871b36ae9fe71#a5d04a7f3af0abc1dd748f87f94871b36ae9fe71"
+version = "0.5.0"
+source = "git+https://github.com/tinyhumansai/tinytools?rev=8feb5571e52baa145b5c7c473b16cd59de2b103a#8feb5571e52baa145b5c7c473b16cd59de2b103a"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1987,8 +1977,8 @@ dependencies = [
 
 [[package]]
 name = "tinytools-agent"
-version = "0.3.0"
-source = "git+https://github.com/tinyhumansai/tinytools?rev=a5d04a7f3af0abc1dd748f87f94871b36ae9fe71#a5d04a7f3af0abc1dd748f87f94871b36ae9fe71"
+version = "0.5.0"
+source = "git+https://github.com/tinyhumansai/tinytools?rev=8feb5571e52baa145b5c7c473b16cd59de2b103a#8feb5571e52baa145b5c7c473b16cd59de2b103a"
 dependencies = [
  "regex",
  "serde",

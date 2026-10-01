@@ -35,7 +35,6 @@ pub mod backfill;
 pub mod chat;
 pub mod chat_host;
 pub mod config_loader;
-pub mod conversations;
 pub(crate) mod corruption;
 pub mod diff;
 pub mod embedding_adapter;
@@ -69,7 +68,6 @@ pub mod people;
 pub mod preferences;
 pub mod queue;
 pub mod remember;
-pub mod rpc_models;
 pub mod scheduler_gate;
 pub mod search;
 pub mod shutdown;
@@ -104,7 +102,6 @@ pub use ingestion::{
     IngestionState, IngestionStatusSnapshot, MemoryIngestionConfig, MemoryIngestionRequest,
     MemoryIngestionResult, DEFAULT_MEMORY_EXTRACTION_MODEL,
 };
-pub use rpc_models::*;
 pub use store::types::NamespaceDocumentInput;
 pub use store::{MemoryClient, UnifiedMemory};
 pub use traits::{Memory, MemoryCategory, MemoryEntry, MemoryTaint, NamespaceSummary, RecallOpts};
