@@ -14,6 +14,7 @@
 mod documents;
 mod episodic;
 mod goals;
+mod ingest;
 mod maintenance;
 mod profile;
 mod records;

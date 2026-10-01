@@ -59,7 +59,7 @@ impl Pacing {
     }
 
     /// Returns once this write may go, and books the next slot.
-    async fn wait(&self) {
+    pub(super) async fn wait(&self) {
         let mut next = self.next.lock().await;
         if let Some(at) = *next {
             let now = Instant::now();
