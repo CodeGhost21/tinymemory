@@ -8,12 +8,16 @@ use tinymemory_conformance::suite::assert_capability_audit;
 
 use crate::cortex_provider::families::test_support::hosted;
 
-const HOSTED_FAMILIES: [Capability; 5] = [
+const HOSTED_FAMILIES: [Capability; 9] = [
     Capability::Goals,
     Capability::ToolMemory,
     Capability::Documents,
     Capability::Sources,
     Capability::Maintenance,
+    Capability::Retrieval,
+    Capability::Profile,
+    Capability::Episodic,
+    Capability::Scoring,
 ];
 
 #[tokio::test]
@@ -24,12 +28,8 @@ async fn hosted_memory_advertises_the_families_it_serves() {
         assert!(capabilities.contains(family), "{family:?}");
     }
     for absent in [
-        Capability::Retrieval,
         Capability::Tree,
         Capability::SourceSync,
-        Capability::Profile,
-        Capability::Episodic,
-        Capability::Scoring,
         Capability::People,
         Capability::CodingSessions,
         Capability::Entities,

@@ -12,11 +12,15 @@
 //!   [`CortexProvider`](super::CortexProvider).
 
 mod documents;
+mod episodic;
 mod goals;
 mod maintenance;
+mod profile;
 mod records;
 mod relevance;
+mod retrieval;
 mod scopes;
+mod scoring;
 mod sources;
 mod tool_rules;
 

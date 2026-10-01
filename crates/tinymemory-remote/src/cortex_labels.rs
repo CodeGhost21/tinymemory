@@ -38,6 +38,11 @@ pub(crate) fn source(source_id: &str) -> String {
     format!("tm:srh:{}", digest(source_id))
 }
 
+/// The label every hosted family record of session `session_id` carries.
+pub(crate) fn session(session_id: &str) -> String {
+    format!("tm:sh:{}", digest(session_id))
+}
+
 #[cfg(test)]
 #[path = "cortex_labels_test.rs"]
 mod test;

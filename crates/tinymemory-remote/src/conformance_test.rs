@@ -887,10 +887,63 @@ pub(crate) async fn cortex_recall(
         .get("query")
         .and_then(Value::as_str)
         .unwrap_or_default();
+    // `descend` recalls the scope and everything under it.
+    let descend = body.get("view").and_then(Value::as_str) == Some("descend");
+    let in_scope = |event: &Value| {
+        let held = event
+            .get("scope")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        held == scope || (descend && held.starts_with(&format!("{scope}/")))
+    };
+    // A metadata label filter keeps an event carrying any one of the labels.
+    let wanted: Vec<&str> = body
+        .pointer("/filters/metadata/labels")
+        .and_then(Value::as_array)
+        .map(|labels| labels.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    let labelled = |event: &Value| {
+        wanted.is_empty()
+            || event
+                .pointer("/context/labels")
+                .and_then(Value::as_array)
+                .is_some_and(|labels| {
+                    labels
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .any(|label| wanted.contains(&label))
+                })
+    };
+    // `temporal.valid_during` keeps what was observed (else recorded) inside
+    // the half-open window. RFC 3339 stamps in one zone compare as strings.
+    let window: Option<(String, String)> = body
+        .pointer("/temporal/valid_during")
+        .and_then(Value::as_array)
+        .and_then(|bounds| {
+            Some((
+                bounds.first()?.as_str()?.to_string(),
+                bounds.get(1)?.as_str()?.to_string(),
+            ))
+        });
+    let observed = |event: &Value| {
+        let at = event
+            .pointer("/context/observed_at")
+            .or_else(|| event.pointer("/context/recorded_at"))
+            .and_then(Value::as_str)
+            .and_then(|at| tinymemory_api::chrono::DateTime::parse_from_rfc3339(at).ok());
+        window.as_ref().is_none_or(|(since, until)| {
+            let bound =
+                |stamp: &str| tinymemory_api::chrono::DateTime::parse_from_rfc3339(stamp).ok();
+            match (at, bound(since), bound(until)) {
+                (Some(at), Some(since), Some(until)) => at >= since && at < until,
+                _ => false,
+            }
+        })
+    };
     let hits: Vec<Value> = log
         .events
         .iter()
-        .filter(|e| e.get("scope").and_then(Value::as_str) == Some(scope))
+        .filter(|e| in_scope(e) && labelled(e) && observed(e))
         .filter(|e| {
             query.is_empty()
                 || e.pointer("/content/text")

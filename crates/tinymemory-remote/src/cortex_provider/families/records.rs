@@ -207,6 +207,11 @@ pub(super) struct Version {
     pub(super) deleted: bool,
     /// When the engine recorded it, RFC 3339, or empty.
     pub(super) recorded_at: String,
+    /// When its content was true, RFC 3339, when the write said.
+    pub(super) observed_at: Option<String>,
+    /// The scope the event lives in, as the read path reported it; empty when
+    /// the read path named none.
+    pub(super) scope: String,
     /// The record it carries.
     pub(super) record: Record,
 }
@@ -226,6 +231,15 @@ impl Version {
             deleted: envelope.d,
             recorded_at: event
                 .pointer("/context/recorded_at")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            observed_at: event
+                .pointer("/context/observed_at")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            scope: event
+                .get("scope")
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string(),
@@ -376,6 +390,42 @@ impl<'a> Records<'a> {
             .collect())
     }
 
+    /// The live version of every key in `place` written in `session_id`,
+    /// re-checked against the session each record carries.
+    ///
+    /// # Errors
+    ///
+    /// Backend failures.
+    pub(super) async fn of_session(
+        &self,
+        place: &Place,
+        session_id: &str,
+    ) -> anyhow::Result<Vec<Version>> {
+        let events = self
+            .dialect
+            .events_matching(&place.scope, Some(&labels::session(session_id)))
+            .await?;
+        Ok(by_key(&events)
+            .values()
+            .filter_map(|versions| newest_live(versions).cloned())
+            .filter(|version| version.record.session_id.as_deref() == Some(session_id))
+            .collect())
+    }
+
+    /// Writes `record` under a key that has never been written — a fresh turn
+    /// or event id — and waits until it can be read. Nothing is looked up or
+    /// retired, because there is nothing older to find.
+    ///
+    /// # Errors
+    ///
+    /// Backend failures on the write or the wait.
+    pub(super) async fn insert(&self, place: &Place, record: &Record) -> anyhow::Result<()> {
+        if let Some(event) = self.append(place, record, None, false).await? {
+            self.wait(place, &event).await?;
+        }
+        Ok(())
+    }
+
     /// Writes `record` as its key's newest version, waits until it can be
     /// read, then retires the versions it replaced.
     ///
@@ -425,6 +475,9 @@ impl<'a> Records<'a> {
         let mut labels = vec![labels::key(&record.key)];
         if let Some(source) = &record.provenance.source {
             labels.push(labels::source(source));
+        }
+        if let Some(session) = &record.session_id {
+            labels.push(labels::session(session));
         }
         let write = KeyedWrite {
             labels,

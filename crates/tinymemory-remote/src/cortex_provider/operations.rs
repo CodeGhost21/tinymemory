@@ -16,9 +16,10 @@ use tinymemory_api::provider::types::{
 };
 use tinymemory_api::provider::{
     AnswerCitation, AnswerRequest, AnswerResponse, AnswerStep, MemoryAnswer,
-    MemoryConversationIngest, MemoryCore, MemoryDocumentIngest, MemoryDocuments, MemoryEventIngest,
-    MemoryGoals, MemoryLearningIngest, MemoryMaintenance, MemoryPortability, MemoryProvider,
-    MemoryRecall, MemorySourceSink, MemoryToolMemory, RawMemoryEvent,
+    MemoryConversationIngest, MemoryCore, MemoryDocumentIngest, MemoryDocuments, MemoryEpisodic,
+    MemoryEventIngest, MemoryGoals, MemoryLearningIngest, MemoryMaintenance, MemoryPortability,
+    MemoryProfile, MemoryProvider, MemoryRecall, MemoryRetrieval, MemoryScoring, MemorySourceSink,
+    MemoryToolMemory, RawMemoryEvent,
 };
 use tinymemory_api::recall::OwnedRecallOpts;
 use tinymemory_api::types::{
@@ -730,6 +731,10 @@ impl MemoryProvider for CortexProvider {
             .with(Capability::Documents)
             .with(Capability::Sources)
             .with(Capability::Maintenance)
+            .with(Capability::Retrieval)
+            .with(Capability::Profile)
+            .with(Capability::Episodic)
+            .with(Capability::Scoring)
     }
 
     async fn health(&self) -> MemoryHealth {
@@ -774,5 +779,21 @@ impl MemoryProvider for CortexProvider {
 
     fn as_maintenance(&self) -> Option<&dyn MemoryMaintenance> {
         self.hosted().then_some(self as &dyn MemoryMaintenance)
+    }
+
+    fn as_retrieval(&self) -> Option<&dyn MemoryRetrieval> {
+        self.hosted().then_some(self as &dyn MemoryRetrieval)
+    }
+
+    fn as_profile(&self) -> Option<&dyn MemoryProfile> {
+        self.hosted().then_some(self as &dyn MemoryProfile)
+    }
+
+    fn as_episodic(&self) -> Option<&dyn MemoryEpisodic> {
+        self.hosted().then_some(self as &dyn MemoryEpisodic)
+    }
+
+    fn as_scoring(&self) -> Option<&dyn MemoryScoring> {
+        self.hosted().then_some(self as &dyn MemoryScoring)
     }
 }

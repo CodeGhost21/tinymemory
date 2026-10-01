@@ -8,6 +8,21 @@
 /// The goals document.
 pub(super) const GOALS: &str = "tmi:goals";
 
+/// The learned profile's facets.
+pub(super) const PROFILE: &str = "tmi:profile";
+
+/// Episodic turns.
+pub(super) const TURNS: &str = "tmi:turns";
+
+/// Conversation segments.
+pub(super) const SEGMENTS: &str = "tmi:segments";
+
+/// Episodic events.
+pub(super) const EPISODIC_EVENTS: &str = "tmi:episodic-events";
+
+/// Segment embeddings.
+pub(super) const SEGMENT_EMBEDDINGS: &str = "tmi:segment-embeddings";
+
 /// The parent of every document-details scope.
 const DOCUMENT_DETAILS: &str = "tmi:documents";
 
