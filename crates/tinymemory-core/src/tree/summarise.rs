@@ -86,17 +86,13 @@ pub(super) fn retryable(error: &anyhow::Error) -> bool {
 
 pub use crate::engine::backend::tree::{SummaryContext, SummaryInput};
 
-/// Compatibility result carrying provider usage alongside the crate-owned
-/// summary output fields.
+/// The summary output fields.
 #[derive(Clone, Debug, Default)]
 pub struct SummaryOutput {
     pub content: String,
     pub token_count: u32,
     pub entities: Vec<String>,
     pub topics: Vec<String>,
-    pub input_tokens: u64,
-    pub output_tokens: u64,
-    pub charged_amount_usd: Option<f64>,
 }
 
 pub async fn summarise(
@@ -128,10 +124,10 @@ pub async fn summarise(
     // summary for good. See `retryable` for what does and does not qualify.
     let started = Instant::now();
     let mut attempt = 0_u32;
-    let (text, usage) = loop {
+    let text = loop {
         attempt += 1;
         let outcome = provider
-            .chat_for_text_with_usage(&ChatPrompt {
+            .chat_for_text(&ChatPrompt {
                 system: prepared.system.clone(),
                 user: prepared.user.clone(),
                 temperature: 0.0,
@@ -167,26 +163,15 @@ pub async fn summarise(
     };
     let output =
         crate::engine::backend::tree::finish_provider_summary(&text, prepared.effective_budget);
-    let input_tokens = usage.as_ref().map_or(0, |usage| usage.input_tokens);
-    let output_tokens = usage.as_ref().map_or(0, |usage| usage.output_tokens);
-    let charged_amount_usd = usage
-        .as_ref()
-        .map(|usage| usage.charged_amount_usd)
-        .filter(|amount| *amount > 0.0);
     log::debug!(
-        "[memory_tree::summarise] complete tokens={} usage_input={} usage_output={}",
-        output.token_count,
-        input_tokens,
-        output_tokens
+        "[memory_tree::summarise] complete tokens={}",
+        output.token_count
     );
     Ok(SummaryOutput {
         content: output.content,
         token_count: output.token_count,
         entities: output.entities,
         topics: output.topics,
-        input_tokens,
-        output_tokens,
-        charged_amount_usd,
     })
 }
 
