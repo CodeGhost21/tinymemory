@@ -86,8 +86,9 @@ fn placement(source_id: &str, source_kind: &str) -> SourceKind {
     }
 }
 
-/// The namespace every synced record lands under.
-pub(super) const SOURCES: &str = "sources";
+/// Every kind of source, each synced into a namespace of its own.
+pub(super) const KINDS: [SourceKind; 3] =
+    [SourceKind::Chat, SourceKind::Email, SourceKind::Document];
 
 /// The namespace a kind of source lands in.
 pub(super) fn namespace_of(kind: SourceKind) -> &'static str {
