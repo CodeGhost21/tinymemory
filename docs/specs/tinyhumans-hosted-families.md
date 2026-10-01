@@ -130,7 +130,9 @@ the adapter's namespace listing drops:
 
 So bookkeeping never appears in `namespaces`, `list`, `export_page` or
 namespace recall. As a consequence, `migrate::copy` moves a document's content
-but not its details, and does not move goals, the profile or episodic memory.
+but not its details, and does not move goals, the profile or episodic memory;
+`migrate::copy_all` moves those through their families (see
+[store-migration.md](store-migration.md)).
 
 ### Goals
 
@@ -318,6 +320,13 @@ session, never the history. A turn's id is the microsecond it was recorded at,
 bumped past the last id the process handed out. Nothing is ever pending a
 summary: a recap needs a model the adapter does not reach.
 
+`EpisodicPortability` (contract 4.3) pages each of the four scopes out in key
+order — turns by id — folding the scope per page, and writes pages back by
+appending without per-record waits, then waiting once for the last. A turn
+keeps its id unless another turn holds it; then its session is searched for
+the copy an earlier run made, and only then does it take a fresh id. See
+[store-migration.md](store-migration.md).
+
 ### Scoring
 
 `extract_entities` runs on the device: emails, URLs, `@handles`, `name#1234`
@@ -351,7 +360,7 @@ the fact that cites it, a source scope narrowing each listing by label.
 
 | Wire | Advertises |
 | --- | --- |
-| TinyHumans | mandatory + `DocumentIngest`, `ConversationIngest`, `LearningIngest`, `EventIngest`, `Answer` + `Goals`, `ToolMemory`, `Documents`, `Sources`, `Maintenance`, `Retrieval`, `Ingest`, `Profile`, `Episodic`, `Scoring`, `Tree` |
+| TinyHumans | mandatory + `DocumentIngest`, `ConversationIngest`, `LearningIngest`, `EventIngest`, `Answer` + `Goals`, `ToolMemory`, `Documents`, `Sources`, `Maintenance`, `Retrieval`, `Ingest`, `Profile`, `Episodic`, `Scoring`, `Tree`, `EpisodicPortability` |
 | Direct | unchanged |
 
 Every `as_*` accessor matches, and `audit_provider` holds on both wires.

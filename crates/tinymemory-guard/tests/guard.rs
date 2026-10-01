@@ -595,3 +595,81 @@ async fn family_writes_pass_through_a_policy_that_does_not_redact() {
         .expect("put_document");
     assert_eq!(driver.only_call().content.as_deref(), Some("a SECRET"));
 }
+
+// ── Episodic portability ────────────────────────────────────────────────────
+
+fn turn(content: &str) -> tinymemory_api::provider::EpisodicTurn {
+    tinymemory_api::provider::EpisodicTurn {
+        id: Some(1),
+        session_id: "s1".into(),
+        timestamp: 1.0,
+        role: "user".into(),
+        content: content.into(),
+        lesson: None,
+        tool_calls_json: None,
+        cost_microdollars: 0,
+    }
+}
+
+#[tokio::test]
+async fn an_episodic_import_is_a_write_and_is_refused_by_a_read_only_policy() {
+    use tinymemory_api::provider::{EpisodicPart, EpisodicRecords};
+    let (driver, _policy, guard) = guarded(TestPolicy::new().readonly());
+    let family = guard
+        .as_episodic_portability()
+        .expect("the guard serves what the driver serves");
+    family
+        .import_episodic(EpisodicRecords::Turns(vec![turn("hello")]))
+        .await
+        .expect_err("a read-only policy refuses an import");
+    assert_eq!(driver.call_count(), 0, "{:?}", driver.calls());
+
+    // An export only reads, so the same policy lets it through.
+    let page = family
+        .export_episodic(EpisodicPart::Turns, None, 10)
+        .await
+        .expect("export");
+    assert!(page.records.is_empty());
+    assert_eq!(driver.call_count(), 1);
+}
+
+#[tokio::test]
+async fn an_episodic_import_is_redacted_like_a_recorded_turn() {
+    use tinymemory_api::provider::{EpisodicEvent, EpisodicRecords, EventKind};
+    let (driver, _policy, guard) = guarded(TestPolicy::new().redacting());
+    let family = guard.as_episodic_portability().unwrap();
+    family
+        .import_episodic(EpisodicRecords::Turns(vec![turn("my SECRET plan")]))
+        .await
+        .expect("import turns");
+    family
+        .import_episodic(EpisodicRecords::Events(vec![EpisodicEvent {
+            event_id: "ev-1".into(),
+            segment_id: "seg-1".into(),
+            session_id: "s1".into(),
+            namespace: "global".into(),
+            kind: EventKind::Fact,
+            content: "the SECRET is out".into(),
+            subject: None,
+            timestamp_ref: None,
+            confidence: 1.0,
+            embedding: None,
+            source_turn_ids: None,
+            created_at: 1.0,
+        }]))
+        .await
+        .expect("import events");
+    let contents: Vec<String> = driver
+        .calls()
+        .into_iter()
+        .filter(|call| call.method == "episodic_portability.import_episodic")
+        .filter_map(|call| call.content)
+        .collect();
+    assert_eq!(
+        contents,
+        vec![
+            "my [REDACTED] plan".to_string(),
+            "the [REDACTED] is out".to_string()
+        ]
+    );
+}

@@ -615,6 +615,9 @@ const EXPECTED_METHODS: &[&str] = &[
     "Recall",
     "ExportPage",
     "ImportRecords",
+    // The episodic record, moved whole between drivers.
+    "ExportEpisodic",
+    "ImportEpisodic",
     // People.
     "ListPeople",
     "GetPerson",
@@ -1703,6 +1706,23 @@ async fn portability_and_lifecycle_round_trip(bus: &tinybus::Proxy) {
         .call("ImportRecords", (page.records,))
         .await
         .expect("ImportRecords");
+
+    // The episodic record crosses the bus a part at a time, in both directions.
+    let episodic: tinymemory_api::provider::EpisodicExportPage = bus
+        .call(
+            "ExportEpisodic",
+            (
+                tinymemory_api::provider::EpisodicPart::Turns,
+                Option::<String>::None,
+                16_u32,
+            ),
+        )
+        .await
+        .expect("ExportEpisodic");
+    let _: tinymemory_api::provider::EpisodicImportOutcome = bus
+        .call("ImportEpisodic", (episodic.records,))
+        .await
+        .expect("ImportEpisodic");
 
     let invalid_store: Result<String, _> = bus.call("OpenStore", ("../escape",)).await;
     assert!(invalid_store.is_err());

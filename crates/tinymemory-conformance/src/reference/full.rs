@@ -1282,6 +1282,11 @@ impl MemoryProvider for RecordingProvider {
     fn as_answer(&self) -> Option<&dyn MemoryAnswer> {
         Some(self)
     }
+    fn as_episodic_portability(
+        &self,
+    ) -> Option<&dyn tinymemory_api::provider::MemoryEpisodicPortability> {
+        Some(self)
+    }
 }
 
 // The two families tinymemory v1.7.0 added. `capabilities()` above answers
@@ -1483,6 +1488,66 @@ impl MemoryEpisodic for RecordingProvider {
         Ok(())
     }
 }
+#[async_trait]
+impl tinymemory_api::provider::MemoryEpisodicPortability for RecordingProvider {
+    async fn export_episodic(
+        &self,
+        part: tinymemory_api::provider::EpisodicPart,
+        _cursor: Option<&str>,
+        _limit: usize,
+    ) -> Result<tinymemory_api::provider::EpisodicExportPage, MemoryError> {
+        self.record(Call::plain("episodic_portability.export_episodic"));
+        Ok(tinymemory_api::provider::EpisodicExportPage {
+            records: tinymemory_api::provider::EpisodicRecords::empty(part),
+            next_cursor: None,
+        })
+    }
+
+    async fn import_episodic(
+        &self,
+        records: tinymemory_api::provider::EpisodicRecords,
+    ) -> Result<tinymemory_api::provider::EpisodicImportOutcome, MemoryError> {
+        use tinymemory_api::provider::EpisodicRecords;
+        // Records the text it was handed, as `insert_turn` does: an import
+        // carries the same conversation, and a guard that stopped redacting
+        // it would otherwise be invisible to every test.
+        let content = match &records {
+            EpisodicRecords::Turns(turns) => Some(
+                turns
+                    .iter()
+                    .map(|turn| turn.content.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ),
+            EpisodicRecords::Segments(segments) => Some(
+                segments
+                    .iter()
+                    .filter_map(|segment| segment.summary.as_deref())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ),
+            EpisodicRecords::Events(events) => Some(
+                events
+                    .iter()
+                    .map(|event| event.content.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ),
+            EpisodicRecords::SegmentEmbeddings(_) => None,
+        };
+        self.record(Call {
+            method: "episodic_portability.import_episodic".into(),
+            content,
+            taint: None,
+            scoped: None,
+        });
+        Ok(tinymemory_api::provider::EpisodicImportOutcome {
+            imported: records.len() as u64,
+            ..Default::default()
+        })
+    }
+}
+
 #[async_trait]
 impl MemoryProfile for RecordingProvider {
     async fn list_active_facets(&self) -> Result<Vec<ProfileFacet>, MemoryError> {

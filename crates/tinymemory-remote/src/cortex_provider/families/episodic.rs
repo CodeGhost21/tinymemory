@@ -43,7 +43,7 @@ static LAST_TURN_ID: AtomicI64 = AtomicI64::new(0);
 
 /// A new turn id: the current microsecond, or one past the last id if that is
 /// not already later.
-fn next_turn_id() -> i64 {
+pub(super) fn next_turn_id() -> i64 {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |elapsed| {
@@ -62,18 +62,18 @@ fn next_turn_id() -> i64 {
 /// A segment as stored: the contract's shape, and when it was created, which
 /// orders a session's segments.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct StoredSegment {
+pub(super) struct StoredSegment {
     #[serde(flatten)]
-    segment: ConversationSegment,
-    created_at: f64,
+    pub(super) segment: ConversationSegment,
+    pub(super) created_at: f64,
 }
 
-fn parse<T: for<'de> Deserialize<'de>>(version: &Version) -> Option<T> {
+pub(super) fn parse<T: for<'de> Deserialize<'de>>(version: &Version) -> Option<T> {
     serde_json::from_str(&version.record.content).ok()
 }
 
 /// An inert record of `session`, under `key`.
-fn session_record(key: impl Into<String>, content: String, session: &str) -> Record {
+pub(super) fn session_record(key: impl Into<String>, content: String, session: &str) -> Record {
     Record {
         session_id: Some(session.to_string()),
         ..Record::plain(key, content)
@@ -81,7 +81,7 @@ fn session_record(key: impl Into<String>, content: String, session: &str) -> Rec
 }
 
 impl CortexProvider {
-    fn episodic_place(&self, scope: &str) -> Result<Place, MemoryError> {
+    pub(super) fn episodic_place(&self, scope: &str) -> Result<Place, MemoryError> {
         Place::bookkeeping(&self.dialect, scope.to_string()).map_err(engine_error)
     }
 

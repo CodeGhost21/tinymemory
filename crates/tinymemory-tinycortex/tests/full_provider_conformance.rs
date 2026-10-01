@@ -4167,3 +4167,163 @@ async fn a_blank_source_item_id_fails_the_batch_after_the_items_before_it() {
         "the items before the blank one are written; the ones after it are not"
     );
 }
+
+/// The whole episodic record pages out of one store and into another: turns
+/// keep their ids where they can, a turn that meets another under its id is
+/// remapped and reported, segments arrive whole, and a second pass writes
+/// nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_episodic_record_moves_between_stores_and_a_second_pass_is_a_no_op() {
+    use tinymemory_api::provider::{
+        EpisodicEvent, EpisodicPart, EpisodicRecords, EpisodicTurn, EventKind, MemoryProvider,
+        SegmentStatus,
+    };
+
+    fn turn(session: &str, content: &str, at: f64) -> EpisodicTurn {
+        EpisodicTurn {
+            id: None,
+            session_id: session.into(),
+            timestamp: at,
+            role: "user".into(),
+            content: content.into(),
+            lesson: None,
+            tool_calls_json: None,
+            cost_microdollars: 0,
+        }
+    }
+
+    let from_dir = tempfile::tempdir().expect("source workspace");
+    let to_dir = tempfile::tempdir().expect("target workspace");
+    let from = provider_over(from_dir.path());
+    let to = provider_over(to_dir.path());
+
+    let source = from.as_episodic().expect("Episodic");
+    let mut ids = Vec::new();
+    for (n, content) in ["plan the trip", "book flights", "pack bags"]
+        .iter()
+        .enumerate()
+    {
+        ids.push(
+            source
+                .insert_turn(&turn("session-1", content, 10.0 + n as f64))
+                .await
+                .expect("insert turn"),
+        );
+    }
+    source
+        .create_segment("seg-1", "session-1", "global", ids[0], Some(0), 10.0, 10.0)
+        .await
+        .expect("create segment");
+    source
+        .append_turn("seg-1", ids[1], Some(1), 11.0, 11.0)
+        .await
+        .expect("append turn");
+    source.close_segment("seg-1", 12.0).await.expect("close");
+    source
+        .set_segment_summary("seg-1", "planning a trip", 12.0)
+        .await
+        .expect("summary");
+    source
+        .insert_event(&EpisodicEvent {
+            event_id: "ev-1".into(),
+            segment_id: "seg-1".into(),
+            session_id: "session-1".into(),
+            namespace: "global".into(),
+            kind: EventKind::Decision,
+            content: "flights get booked".into(),
+            subject: None,
+            timestamp_ref: None,
+            confidence: 0.9,
+            embedding: None,
+            source_turn_ids: Some(format!("[{},{}]", ids[0], ids[1])),
+            created_at: 12.0,
+        })
+        .await
+        .expect("event");
+    source
+        .upsert_segment_embedding("seg-1", "sig-a", &[0.5, 0.25], 12.0)
+        .await
+        .expect("embedding");
+
+    // The target already holds a turn of its own under the first id.
+    let held = to
+        .as_episodic()
+        .expect("Episodic")
+        .insert_turn(&turn("session-0", "an older conversation", 1.0))
+        .await
+        .expect("target turn");
+    assert_eq!(held, ids[0], "both stores number from the same start");
+
+    let export = from.as_episodic_portability().expect("EpisodicPortability");
+    let import = to.as_episodic_portability().expect("EpisodicPortability");
+    let mut totals = std::collections::HashMap::new();
+    let mut remapped = [Vec::new(), Vec::new()];
+    for (pass, moved) in remapped.iter_mut().enumerate() {
+        for part in EpisodicPart::ALL {
+            let mut cursor: Option<String> = None;
+            loop {
+                let page = export
+                    .export_episodic(part, cursor.as_deref(), 2)
+                    .await
+                    .expect("export page");
+                assert_eq!(page.records.part(), part);
+                if !page.records.is_empty() {
+                    let outcome = import
+                        .import_episodic(page.records)
+                        .await
+                        .expect("import page");
+                    assert_eq!(outcome.failed, 0, "{:?}", outcome.errors);
+                    let entry = totals.entry((pass, part)).or_insert((0, 0));
+                    entry.0 += outcome.imported;
+                    entry.1 += outcome.skipped;
+                    moved.extend(outcome.remapped);
+                }
+                match page.next_cursor {
+                    Some(next) => cursor = Some(next),
+                    None => break,
+                }
+            }
+        }
+    }
+
+    assert_eq!(totals[&(0, EpisodicPart::Turns)], (3, 0));
+    assert_eq!(totals[&(0, EpisodicPart::Segments)], (1, 0));
+    assert_eq!(totals[&(0, EpisodicPart::Events)], (1, 0));
+    assert_eq!(totals[&(0, EpisodicPart::SegmentEmbeddings)], (1, 0));
+    for part in EpisodicPart::ALL {
+        let (imported, _) = totals[&(1, part)];
+        assert_eq!(imported, 0, "the second pass wrote {part} again");
+    }
+    assert_eq!(remapped[0].len(), 1, "only the colliding turn moves");
+    assert_eq!(remapped[0][0].from, ids[0]);
+    assert_eq!(
+        remapped[1], remapped[0],
+        "a second pass finds the moved turn where the first put it, and says so"
+    );
+    let remapped = &remapped[0];
+
+    let target = to.as_episodic().expect("Episodic");
+    let turns = target.session_turns("session-1").await.expect("turns");
+    assert_eq!(turns.len(), 3);
+    assert_eq!(turns[0].id, Some(remapped[0].to));
+    assert_eq!(turns[1].id, Some(ids[1]), "a free id is kept");
+    let others = target.session_turns("session-0").await.expect("turns");
+    assert_eq!(others.len(), 1, "the target's own turn is untouched");
+
+    let page = import
+        .export_episodic(EpisodicPart::Segments, None, 10)
+        .await
+        .expect("segments");
+    assert!(
+        matches!(
+            &page.records,
+            EpisodicRecords::Segments(segments)
+                if segments.len() == 1
+                    && segments[0].status == Some(SegmentStatus::Summarised)
+                    && segments[0].summary.as_deref() == Some("planning a trip")
+                    && segments[0].turn_count == 2
+        ),
+        "the segment arrives whole: {:?}",
+        page.records
+    );
+}

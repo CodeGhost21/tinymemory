@@ -115,6 +115,12 @@ fn the_newest_members_are_appended_rather_than_filed_with_their_family() {
     // renumber every member from 56 on.
     assert_eq!(METHODS[143], methods::SEGMENTS_PENDING_SUMMARY);
     assert_eq!(methods::SEGMENTS_PENDING_SUMMARY, "SegmentsPendingSummary");
+    // Episodic-portability round (openhuman#6718): slots 144 and 145, a new
+    // family's two members.
+    assert_eq!(METHODS[144], methods::EXPORT_EPISODIC);
+    assert_eq!(METHODS[145], methods::IMPORT_EPISODIC);
+    assert_eq!(methods::EXPORT_EPISODIC, "ExportEpisodic");
+    assert_eq!(methods::IMPORT_EPISODIC, "ImportEpisodic");
 }
 
 #[test]
@@ -155,7 +161,7 @@ fn the_runtime_tree_doors_hold_the_wire_slots_they_were_released_in() {
     // reason the summariser-door test above gives: member order is wire order,
     // and an assertion measured from the end moves silently under the next
     // append — which is exactly the edit this exists to catch.
-    assert_eq!(METHODS.len(), 144);
+    assert_eq!(METHODS.len(), 146);
     assert_eq!(METHODS[131], methods::RUNTIME_BUFFER_WRITE);
     assert_eq!(METHODS[132], methods::RUNTIME_READ_NODE);
     assert_eq!(METHODS[133], methods::RUNTIME_READ_CHILDREN);

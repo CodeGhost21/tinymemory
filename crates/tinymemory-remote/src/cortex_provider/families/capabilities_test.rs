@@ -8,7 +8,7 @@ use tinymemory_conformance::suite::assert_capability_audit;
 
 use crate::cortex_provider::families::test_support::hosted;
 
-const HOSTED_FAMILIES: [Capability; 11] = [
+const HOSTED_FAMILIES: [Capability; 12] = [
     Capability::Goals,
     Capability::ToolMemory,
     Capability::Documents,
@@ -20,6 +20,7 @@ const HOSTED_FAMILIES: [Capability; 11] = [
     Capability::Scoring,
     Capability::Tree,
     Capability::Ingest,
+    Capability::EpisodicPortability,
 ];
 
 #[tokio::test]

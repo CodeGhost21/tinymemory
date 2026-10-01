@@ -70,21 +70,17 @@ CREATE TRIGGER IF NOT EXISTS episodic_au AFTER UPDATE ON episodic_log BEGIN
 END;
 "#;
 
-/// Insert an episodic entry.
-/// Insert one episodic turn, returning the row id it was assigned.
-///
-/// # Why the id comes back from here
-///
-/// Callers used to insert and then issue `SELECT last_insert_rowid()`. That is
-/// **connection-local** state: this store hands the same `Arc<Mutex<Connection>>`
-/// to several writers, so an interleaved insert between the two statements
-/// returns the wrong id — and the caller files the turn under the wrong
-/// conversation segment. Reading it here, still under the lock taken for the
-/// insert, is the only place it can be read correctly.
-pub fn episodic_insert(
-    conn: &Arc<Mutex<Connection>>,
-    entry: &EpisodicEntry,
-) -> anyhow::Result<i64> {
+/// A turn's text as the store keeps it: sanitized, never raw.
+pub(super) struct StoredText {
+    pub(super) content: String,
+    pub(super) lesson: Option<String>,
+    pub(super) tool_calls_json: Option<String>,
+}
+
+/// The text `entry` is stored with, or an error when its session id or role
+/// looks like a secret. Every write of a turn goes through here, so an
+/// imported turn is held to the same rules as a recorded one.
+pub(super) fn stored_text(entry: &EpisodicEntry) -> anyhow::Result<StoredText> {
     if safety::has_likely_secret(&entry.session_id) || safety::has_likely_secret(&entry.role) {
         tracing::warn!(
             "[memory:safety] episodic insert rejected secret-like session/role session_chars={} role_chars={}",
@@ -137,7 +133,28 @@ pub fn episodic_insert(
             report.pii_redactions
         );
     }
+    Ok(StoredText {
+        content: content.value,
+        lesson: lesson.map(|value| value.value),
+        tool_calls_json: tool_calls_json.map(|value| value.value),
+    })
+}
 
+/// Insert one episodic turn, returning the row id it was assigned.
+///
+/// # Why the id comes back from here
+///
+/// Callers used to insert and then issue `SELECT last_insert_rowid()`. That is
+/// **connection-local** state: this store hands the same `Arc<Mutex<Connection>>`
+/// to several writers, so an interleaved insert between the two statements
+/// returns the wrong id — and the caller files the turn under the wrong
+/// conversation segment. Reading it here, still under the lock taken for the
+/// insert, is the only place it can be read correctly.
+pub fn episodic_insert(
+    conn: &Arc<Mutex<Connection>>,
+    entry: &EpisodicEntry,
+) -> anyhow::Result<i64> {
+    let text = stored_text(entry)?;
     let conn = conn.lock();
     conn.execute(
         "INSERT INTO episodic_log (session_id, timestamp, role, content, lesson, tool_calls_json, cost_microdollars)
@@ -146,9 +163,9 @@ pub fn episodic_insert(
             &entry.session_id,
             entry.timestamp,
             &entry.role,
-            content.value,
-            lesson.map(|value| value.value),
-            tool_calls_json.map(|value| value.value),
+            text.content,
+            text.lesson,
+            text.tool_calls_json,
             entry.cost_microdollars as i64,
         ],
     )?;

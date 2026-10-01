@@ -182,7 +182,10 @@ use tinymemory_api::provider::chunks::{
     SourceIngestStatus, SourceTotal,
 };
 use tinymemory_api::provider::diagnosis::{DegradedCapabilities, Diagnosis};
-use tinymemory_api::provider::episodic::{ConversationSegment, EpisodicEvent, EpisodicTurn};
+use tinymemory_api::provider::episodic::{
+    ConversationSegment, EpisodicEvent, EpisodicExportPage, EpisodicImportOutcome, EpisodicPart,
+    EpisodicRecords, EpisodicTurn,
+};
 use tinymemory_api::provider::people::{
     AddressBookSeedOutcome, PersonHandle, PersonInteraction, PersonRecord, PersonScore,
     RankedPerson, ResolvedPerson,
@@ -2279,6 +2282,41 @@ impl MemoryService {
             .segments_pending_summary(limit)
             .await
             .map_err(|error| into_bus_error(&error))
+    }
+
+    // ── Episodic portability (openhuman#6718) ────────────────────────────────
+    // A new family's two members, appended at the tail for the positional
+    // reason above.
+
+    /// One page of one part of the episodic record.
+    async fn export_episodic(
+        &self,
+        part: EpisodicPart,
+        cursor: Option<String>,
+        limit: u32,
+    ) -> BusResult<EpisodicExportPage> {
+        let page = require_family!(
+            self,
+            as_episodic_portability,
+            Capability::EpisodicPortability
+        )
+        .export_episodic(part, cursor.as_deref(), limit as usize)
+        .await
+        .map_err(|error| into_bus_error(&error))?;
+        ensure_response_fits(&page, "ExportEpisodic")?;
+        Ok(page)
+    }
+
+    /// Write records of one part of the episodic record.
+    async fn import_episodic(&self, records: EpisodicRecords) -> BusResult<EpisodicImportOutcome> {
+        require_family!(
+            self,
+            as_episodic_portability,
+            Capability::EpisodicPortability
+        )
+        .import_episodic(records)
+        .await
+        .map_err(|error| into_bus_error(&error))
     }
 }
 

@@ -19,9 +19,9 @@ use super::*;
 use serde_json::json;
 
 #[test]
-fn capability_has_exactly_the_twenty_six_contract_families() {
-    assert_eq!(Capability::ALL.len(), 26);
-    assert_eq!(Capability::all().len(), 26);
+fn capability_has_exactly_the_twenty_seven_contract_families() {
+    assert_eq!(Capability::ALL.len(), 27);
+    assert_eq!(Capability::all().len(), 27);
 
     let names: Vec<&str> = Capability::ALL.iter().map(|c| c.as_str()).collect();
     assert_eq!(
@@ -53,6 +53,7 @@ fn capability_has_exactly_the_twenty_six_contract_families() {
             "learning_ingest",
             "event_ingest",
             "answer",
+            "episodic_portability",
         ]
     );
 }

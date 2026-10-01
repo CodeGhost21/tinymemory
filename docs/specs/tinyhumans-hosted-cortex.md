@@ -141,7 +141,10 @@ or `Static` for a token a user pasted).
 
 `tinymemory::migrate::copy(from, to, progress)` walks `export_page` to the end
 and feeds each page to `import_records`. It never deletes from the source and
-reports `pages`, `records`, `imported`, `skipped`, `failed`.
+reports `pages`, `records`, `imported`, `skipped`, `failed`. `migrate::copy_all`
+runs it and then moves what the export does not carry — document details,
+goals, the profile, the episodic record, ingested content — as
+[store-migration.md](store-migration.md) specifies.
 
 Over the hosted wire both halves are shaped for a billed, rate-limited API:
 

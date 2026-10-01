@@ -35,7 +35,10 @@ fn contract_version_is_four_two() {
     // (4, 2): `TreeSummary::preview`, a new optional field. An older kernel
     // skips it when decoding, and a driver that leaves it out sends nothing,
     // so the rule counts it minor-safe.
-    assert_eq!(CONTRACT_VERSION, (4, 2));
+    //
+    // (4, 3): `EpisodicPortability`, a new family. An older driver never
+    // advertises it, so a kernel never calls into it there.
+    assert_eq!(CONTRACT_VERSION, (4, 3));
 }
 
 #[test]

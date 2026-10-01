@@ -16,6 +16,7 @@
 
 mod documents;
 mod episodic;
+mod episodic_portability;
 mod goals;
 mod ingest;
 mod maintenance;

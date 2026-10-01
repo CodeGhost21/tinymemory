@@ -26,6 +26,7 @@ pub struct UnifiedMemory {
 }
 
 mod documents;
+pub mod episodic_portability;
 pub mod events;
 pub mod fts5;
 mod graph;

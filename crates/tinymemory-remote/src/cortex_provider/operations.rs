@@ -737,6 +737,7 @@ impl MemoryProvider for CortexProvider {
             .with(Capability::Scoring)
             .with(Capability::Tree)
             .with(Capability::Ingest)
+            .with(Capability::EpisodicPortability)
     }
 
     async fn health(&self) -> MemoryHealth {
@@ -793,6 +794,13 @@ impl MemoryProvider for CortexProvider {
 
     fn as_episodic(&self) -> Option<&dyn MemoryEpisodic> {
         self.hosted().then_some(self as &dyn MemoryEpisodic)
+    }
+
+    fn as_episodic_portability(
+        &self,
+    ) -> Option<&dyn tinymemory_api::provider::MemoryEpisodicPortability> {
+        self.hosted()
+            .then_some(self as &dyn tinymemory_api::provider::MemoryEpisodicPortability)
     }
 
     fn as_scoring(&self) -> Option<&dyn MemoryScoring> {
