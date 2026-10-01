@@ -54,7 +54,6 @@ mod error_reporter;
 mod events;
 mod nlp;
 mod routes;
-mod usage;
 
 #[cfg(feature = "test-support")]
 pub mod test_support;
@@ -84,7 +83,6 @@ pub use subsystems::{
     MemoryDriverConfig, MemoryHooksConfig, MemorySubsystemConfig, SubsystemsConfig,
 };
 pub use tinymemory_bus::evidence::EvidenceRef;
-pub use usage::UsageInfo;
 
 /// Effective default global memory-sync cadence (seconds) used when
 /// [`MemoryHostConfig::memory_sync_interval_secs`] is `None` — i.e. the user has

@@ -20,11 +20,9 @@
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use tinyinference_llm::model::{ChatModel, ModelResponse};
+use tinyinference_llm::model::ChatModel;
 
 use crate::Config;
-
-pub use tinymemory_api::host::UsageInfo;
 
 /// Builds chat models on the core's behalf.
 pub trait ChatHost: Send + Sync + std::fmt::Debug {
@@ -48,13 +46,6 @@ pub trait ChatHost: Send + Sync + std::fmt::Debug {
         config: &Config,
         temperature: f64,
     ) -> Result<(Arc<dyn ChatModel<()>>, String), String>;
-
-    /// Extract token accounting from a completed model response.
-    ///
-    /// The host's own usage metadata rides in the response's provider-specific
-    /// `raw` payload under a key only it knows, which is why this cannot be a
-    /// free function here.
-    fn usage_from_response(&self, response: &ModelResponse) -> Option<UsageInfo>;
 
     /// Whether summarisation can run right now, and a user-facing explanation.
     ///
@@ -133,13 +124,6 @@ pub fn inference_test_guard() -> std::sync::MutexGuard<'static, ()> {
     GUARD
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
-
-/// Token accounting from a completed model response, or `None` when the
-/// provider reported none or no host is installed.
-#[must_use]
-pub fn usage_from_response(response: &ModelResponse) -> Option<UsageInfo> {
-    chat_host()?.usage_from_response(response)
 }
 
 /// Whether summarisation can run, and why. Reports unavailable when unwired.

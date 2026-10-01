@@ -18,6 +18,32 @@ fn has_default_details(title: &str, key: &str, source_type: &str, priority: &str
     title == key && source_type == "chat" && priority == "medium"
 }
 
+/// Whether `namespace` lies under one of `prefixes`, in either spelling a
+/// driver may list it in: as written, or as the embedded engine stores it,
+/// with every character outside `[A-Za-z0-9_/-]` turned to `_`. That engine
+/// lists the stored spelling, so a synced `source:gmail:…` namespace comes
+/// back as `source_gmail_…` and a written-only comparison never matches it.
+/// The engine already reads both spellings as one namespace.
+pub(super) fn skipped_namespace(namespace: &str, prefixes: &[String]) -> bool {
+    prefixes.iter().any(|prefix| {
+        namespace.starts_with(prefix.as_str()) || namespace.starts_with(&stored_spelling(prefix))
+    })
+}
+
+/// `name` as the embedded engine stores a namespace: characters outside
+/// `[A-Za-z0-9_/-]` become `_`.
+fn stored_spelling(name: &str) -> String {
+    name.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '/') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
 /// The `(namespace, key)` of every document a `list_documents` page names.
 fn listed(page: &serde_json::Value) -> Vec<(String, String)> {
     page.get("documents")
@@ -59,12 +85,7 @@ pub(super) async fn documents(
     };
     let mut report = StepReport::new(step);
     let mut namespaces = source.list_namespaces().await?;
-    namespaces.retain(|namespace| {
-        !options
-            .skip_namespace_prefixes
-            .iter()
-            .any(|prefix| namespace.starts_with(prefix.as_str()))
-    });
+    namespaces.retain(|namespace| !skipped_namespace(namespace, &options.skip_namespace_prefixes));
     namespaces.sort();
     namespaces.dedup();
     for namespace in namespaces {

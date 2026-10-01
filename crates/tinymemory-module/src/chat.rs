@@ -70,13 +70,6 @@ impl tinymemory_core::chat_host::ChatHost for BusChatHost {
         ))
     }
 
-    fn usage_from_response(
-        &self,
-        _response: &ModelResponse,
-    ) -> Option<tinymemory_api::host::UsageInfo> {
-        None
-    }
-
     fn summarizer_available(&self, _config: &tinymemory_core::Config) -> (bool, &'static str) {
         (true, "served by the TinyMemory host callback")
     }

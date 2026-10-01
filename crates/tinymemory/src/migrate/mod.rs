@@ -282,7 +282,8 @@ pub struct CopyOptions {
     /// [`MigrateStep::Documents`]. The defaults are where the embedded engine
     /// (`source:`) and hosted memory (`sources/`) keep synced items: their
     /// details describe a sync, and their content moves with the keyed
-    /// records and the replay.
+    /// records and the replay. A prefix matches in the embedded engine's
+    /// stored spelling too, which it lists namespaces in (`source_`).
     pub skip_namespace_prefixes: Vec<String>,
 }
 

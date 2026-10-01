@@ -427,3 +427,42 @@ fn a_replayed_sources_provider_and_taint_come_from_its_id() {
     assert_eq!(taint_of("conversations:agent"), MemoryTaint::Internal);
     assert_eq!(taint_of("gmail:me|t1"), MemoryTaint::ExternalSync);
 }
+
+/// The embedded engine lists namespaces in their stored spelling, so its
+/// synced `source:gmail:…` items come back as `source_gmail_…`. The step
+/// still leaves those, and hosted memory's `sources/…`, to the replay rather
+/// than re-putting every synced item whole, and keeps a namespace that only
+/// looks alike.
+#[tokio::test]
+async fn synced_namespaces_are_skipped_in_the_spelling_the_engine_lists() {
+    let source = Fake::serving(&EVERYTHING);
+    {
+        let mut documents = source.documents.lock().unwrap();
+        for d in [
+            document("notes", "titled", "Trip plan", &["travel"]),
+            document("source_gmail_ca_x1", "thread-1", "Re: invoice", &[]),
+            document("sources/email", "thread-2", "Re: invoice", &[]),
+            document("source-notes", "kept", "Not a sync", &[]),
+        ] {
+            documents.insert((d.namespace.clone(), d.key.clone()), d);
+        }
+    }
+    let target = Fake::serving(&EVERYTHING);
+    let report = copy_all(&source, &target, &options(), |_| {})
+        .await
+        .expect("copy");
+
+    let documents = report.step(MigrateStep::Documents).unwrap();
+    assert_eq!((documents.read, documents.written), (2, 2), "{report:?}");
+    let copied: Vec<String> = target
+        .documents
+        .lock()
+        .unwrap()
+        .keys()
+        .map(|(namespace, _)| namespace.clone())
+        .collect();
+    assert_eq!(
+        copied,
+        vec!["notes".to_string(), "source-notes".to_string()]
+    );
+}

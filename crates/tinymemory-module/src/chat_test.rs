@@ -97,7 +97,6 @@ async fn configured_role_and_model_cross_the_chat_bridge() {
         .invoke(&(), ModelRequest::new(vec![Message::user("summarize")]))
         .await
         .expect("chat call");
-    assert!(bridge.usage_from_response(&response).is_none());
     assert!(matches!(
         response.message.content.as_slice(),
         [ContentBlock::Text(text)] if text == "summarizer:1"
