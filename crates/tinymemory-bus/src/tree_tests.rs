@@ -288,3 +288,35 @@ fn a_tree_status_keeps_its_absent_timestamps_absent() {
     assert_eq!(decoded.depth, 5);
     assert_eq!(decoded.newest_entry, Some(run_at));
 }
+
+#[test]
+fn a_summary_without_a_preview_sends_nothing_and_an_older_one_decodes() {
+    // A driver that keeps each summary as a file leaves `preview` out, so its
+    // wire bytes are what they were before the field existed; and a summary
+    // an older driver sent, with no `preview` key, decodes to `None`.
+    let at = Utc.with_ymd_and_hms(2026, 9, 1, 0, 0, 0).unwrap();
+    let summary = TreeSummary {
+        id: "s1".to_string(),
+        tree_id: "t1".to_string(),
+        tree_kind: "understanding".to_string(),
+        tree_scope: "global".to_string(),
+        level: 2,
+        parent_id: None,
+        child_ids: vec!["f1".to_string()],
+        time_range_start: at,
+        time_range_end: at,
+        preview: None,
+    };
+    let wire = serde_json::to_value(&summary).unwrap();
+    assert!(wire.get("preview").is_none(), "{wire}");
+    let decoded: TreeSummary = serde_json::from_value(wire).unwrap();
+    assert_eq!(decoded, summary);
+
+    let served = TreeSummary {
+        preview: Some("Prefers terse answers".to_string()),
+        ..summary
+    };
+    let decoded: TreeSummary =
+        serde_json::from_str(&serde_json::to_string(&served).unwrap()).unwrap();
+    assert_eq!(decoded.preview.as_deref(), Some("Prefers terse answers"));
+}
