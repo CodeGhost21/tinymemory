@@ -354,9 +354,13 @@ async fn namespace_recall_answers_the_top_of_the_engines_ranking() {
     assert_eq!(scores.len(), 3);
     assert_eq!(scores[0], 1.0);
     assert!(scores.windows(2).all(|pair| pair[0] > pair[1]));
-    assert!(hits
-        .iter()
-        .all(|h| h.score_breakdown.vector_similarity == h.score));
+    for hit in &hits {
+        assert_eq!(hit.score_breakdown.final_score, hit.score);
+        assert_eq!(
+            hit.score_breakdown.vector_similarity, 0.0,
+            "a rank is not a similarity"
+        );
+    }
     let without = provider
         .recall_namespace_scored("notes", "tea", 10, Some("s1"))
         .await

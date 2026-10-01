@@ -5,10 +5,13 @@
 //! The engine ranks recall but returns no score, and its recall API offers none
 //! to ask for. So a hit's score here is its place in the engine's ranking: the
 //! best hit scores 1.0 and each later one 0.1 less, down to 0.1. That says how
-//! the engine ordered the hits, not how relevant any of them is, and a host
-//! reading it as similarity must not floor on it. Namespace recall therefore
-//! answers only the engine's first [`RANKED_NOTES`] hits: a rank says nothing
-//! about whether the tail is relevant at all, so the tail is never offered.
+//! the engine ordered the hits, not how relevant any of them is. It fills
+//! `score` and `final_score` only: no similarity was measured, so a namespace
+//! hit's `vector_similarity` stays 0, and a host that floors on similarity
+//! reads these hits as carrying no similarity evidence rather than as close
+//! matches. Namespace recall answers only the engine's first [`RANKED_NOTES`]
+//! hits: a rank says nothing about whether the tail is relevant at all, so the
+//! tail is never offered.
 //!
 //! # A tree with only leaves
 //!
@@ -193,7 +196,8 @@ fn response(mut hits: Vec<RetrievalHit>, limit: usize) -> RetrievalResponse {
     }
 }
 
-/// One namespace hit, `score` filling the fields a host reads.
+/// One namespace hit scored `score`, which is a rank or a recency and never a
+/// similarity, so the similarity signal stays 0.
 fn namespace_hit(namespace: &str, version: &Version, score: f64, fresh: f64) -> NamespaceMemoryHit {
     let record = &version.record;
     let document_id = record.provenance.document.clone();
@@ -215,7 +219,6 @@ fn namespace_hit(namespace: &str, version: &Version, score: f64, fresh: f64) -> 
         updated_at: seconds(&version.recorded_at),
         score,
         score_breakdown: RetrievalScoreBreakdown {
-            vector_similarity: score,
             freshness: fresh,
             final_score: score,
             ..RetrievalScoreBreakdown::default()
