@@ -67,7 +67,7 @@ async fn every_mandatory_method_answers_rather_than_panicking() {
         .export_page(None, 10)
         .await
         .expect("export answers");
-    assert!(page.records.is_empty());
+    assert_eq!(page.records.len(), 0);
     assert!(page.next_cursor.is_none(), "an empty export must terminate");
 
     let outcome = provider

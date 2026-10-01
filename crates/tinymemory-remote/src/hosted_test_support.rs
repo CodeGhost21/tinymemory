@@ -25,6 +25,19 @@ use crate::conformance_test::{
 };
 use crate::{tinyhumans_provider, StaticBearer};
 
+/// Decrement `counter` by one if it is non-zero (compare-exchange loop);
+/// returns whether a unit was taken.
+fn take_one(counter: &AtomicUsize) -> bool {
+    let mut current = counter.load(Ordering::SeqCst);
+    while current > 0 {
+        match counter.compare_exchange(current, current - 1, Ordering::SeqCst, Ordering::SeqCst) {
+            Ok(_) => return true,
+            Err(actual) => current = actual,
+        }
+    }
+    false
+}
+
 /// Keys the hosted `answer` schema allows; anything else is a 400.
 const ANSWER_KEYS: [&str; 10] = [
     "scope",
@@ -201,11 +214,7 @@ async fn experience(
     }
     // The backend's rate limiter answers before the memory API sees the
     // request, so no claim is taken.
-    if state
-        .rate_limit_experience
-        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-        .is_ok()
-    {
+    if take_one(&state.rate_limit_experience) {
         return (
             StatusCode::TOO_MANY_REQUESTS,
             Json(json!({ "success": false, "error": "slow down", "errorCode": "RATE_LIMITED" })),
@@ -231,11 +240,7 @@ async fn experience(
             );
         }
     }
-    if state
-        .claim_then_fail
-        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-        .is_ok()
-    {
+    if take_one(&state.claim_then_fail) {
         return (
             StatusCode::BAD_GATEWAY,
             Json(
@@ -251,11 +256,7 @@ async fn experience(
         );
     }
     let (status, Json(value)) = cortex_experience(State(state.log.clone()), Json(body)).await;
-    if state
-        .apply_then_fail
-        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-        .is_ok()
-    {
+    if take_one(&state.apply_then_fail) {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({ "success": false, "error": "lost", "errorCode": "UNAVAILABLE" })),
@@ -295,22 +296,14 @@ async fn events(
             })),
         );
     }
-    if state
-        .rate_limit_events
-        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-        .is_ok()
-    {
+    if take_one(&state.rate_limit_events) {
         return (
             StatusCode::TOO_MANY_REQUESTS,
             Json(json!({ "success": false, "error": "slow down", "errorCode": "RATE_LIMITED" })),
         );
     }
     let Json(mut page) = cortex_events(State(state.log.clone()), Query(params)).await;
-    if state
-        .hide_listing_for
-        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-        .is_ok()
-    {
+    if take_one(&state.hide_listing_for) {
         page["items"] = json!([]);
         page["has_more"] = json!(false);
     }
@@ -378,11 +371,7 @@ async fn forget(
     if let Some(refused) = refuse_body_scope(&body) {
         return refused;
     }
-    if state
-        .rate_limit_forget
-        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-        .is_ok()
-    {
+    if take_one(&state.rate_limit_forget) {
         return (
             StatusCode::TOO_MANY_REQUESTS,
             Json(json!({ "success": false, "error": "slow down", "errorCode": "RATE_LIMITED" })),

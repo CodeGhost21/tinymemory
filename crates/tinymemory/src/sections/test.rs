@@ -795,7 +795,7 @@ async fn the_whole_surface_succeeds_on_a_provider_that_retains_nothing() {
             .await
             .expect("list")
             .is_empty());
-        assert!(view.scopes().await.expect("scopes").is_empty());
+        assert_eq!(view.scopes().await.expect("scopes").len(), 0);
         assert!(view
             .list_section(None, None)
             .await
