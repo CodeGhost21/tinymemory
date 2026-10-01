@@ -1947,7 +1947,7 @@ dependencies = [
 
 [[package]]
 name = "tinymemory"
-version = "1.22.1"
+version = "1.22.2"
 dependencies = [
  "anyhow",
  "async-trait",
