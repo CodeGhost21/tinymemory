@@ -76,13 +76,6 @@ impl crate::chat_host::ChatHost for TestChatHost {
         Err("TestChatHost does not build models — model routing is host behaviour".to_string())
     }
 
-    fn usage_from_response(
-        &self,
-        _response: &tinyinference_llm::model::ModelResponse,
-    ) -> Option<tinymemory_api::host::UsageInfo> {
-        None
-    }
-
     fn summarizer_available(&self, _config: &Config) -> (bool, &'static str) {
         (true, "test chat host reports a summariser")
     }

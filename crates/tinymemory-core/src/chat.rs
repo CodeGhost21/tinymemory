@@ -11,7 +11,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::chat_host::{create_chat_model_with_model_id, provider_for_role, UsageInfo};
+use crate::chat_host::{create_chat_model_with_model_id, provider_for_role};
 use crate::Config;
 use tinyinference_llm::message::Message;
 use tinyinference_llm::model::{ChatModel, ModelRequest};
@@ -41,24 +41,6 @@ pub trait ChatProvider: Send + Sync {
     async fn chat_for_text(&self, prompt: &ChatPrompt) -> Result<String> {
         self.chat_for_json(prompt).await
     }
-
-    /// Like `chat_for_text`, but also surfaces the provider-reported
-    /// [`UsageInfo`] (real token counts + `charged_amount_usd`) when the
-    /// backing provider returns it.
-    ///
-    /// The default implementation simply runs `chat_for_text` and reports
-    /// `None` usage, so implementors (e.g. test doubles, external impls)
-    /// that don't thread usage keep compiling unchanged. The production
-    /// `InferenceChatProvider` overrides this to route through the
-    /// inference `Provider::chat` API, which already parses usage out of
-    /// the backend response.
-    async fn chat_for_text_with_usage(
-        &self,
-        prompt: &ChatPrompt,
-    ) -> Result<(String, Option<UsageInfo>)> {
-        let text = self.chat_for_text(prompt).await?;
-        Ok((text, None))
-    }
 }
 
 struct InferenceChatProvider {
@@ -77,18 +59,8 @@ impl InferenceChatProvider {
         }
     }
 
+    /// Run the prompt through the crate model interface and return the text.
     async fn run(&self, prompt: &ChatPrompt) -> Result<String> {
-        let (text, _usage) = self.run_with_usage(prompt).await?;
-        Ok(text)
-    }
-
-    /// Run the prompt through the inference `Provider::chat` API and return
-    /// both the text and the provider-reported usage. Memory historically
-    /// called `chat_with_history` (which returns only `String` and drops
-    /// the parsed usage); routing through `chat` instead lets us thread the
-    /// real token counts + `charged_amount_usd` into the sync audit log
-    /// (issue #3110) without re-deriving them from `body.len() / 4`.
-    async fn run_with_usage(&self, prompt: &ChatPrompt) -> Result<(String, Option<UsageInfo>)> {
         log::debug!(
             "[memory::chat] provider={} kind={} model={} sys_chars={} user_chars={}",
             self.display,
@@ -114,8 +86,8 @@ impl InferenceChatProvider {
         let response = self.inner.invoke(&(), request).await?;
 
         // Fail fast on a missing body rather than masking it as an empty
-        // string: an empty summary would still be ingested (and, post-#3110,
-        // counted against the run's real charge) as if it were valid output.
+        // string: an empty summary would still be ingested as if it were valid
+        // output.
         // The caller's fallback path (`fallback_summary`) is the correct
         // recovery for a silent provider, and it only runs on `Err`.
         let text = response.text();
@@ -126,22 +98,15 @@ impl InferenceChatProvider {
                 prompt.kind
             );
         }
-        // Recover the full host usage (real token counts + backend-charged USD +
-        // context window) the adapter round-tripped through the response (G1).
-        let usage = crate::chat_host::usage_from_response(&response);
 
         log::debug!(
-            "[memory::chat] provider={} kind={} response_chars={} usage_present={} input_tokens={} output_tokens={} charged_usd={}",
+            "[memory::chat] provider={} kind={} response_chars={}",
             self.display,
             prompt.kind,
             text.len(),
-            usage.is_some(),
-            usage.as_ref().map(|u| u.input_tokens).unwrap_or(0),
-            usage.as_ref().map(|u| u.output_tokens).unwrap_or(0),
-            usage.as_ref().map(|u| u.charged_amount_usd).unwrap_or(0.0),
         );
 
-        Ok((text, usage))
+        Ok(text)
     }
 }
 
@@ -157,13 +122,6 @@ impl ChatProvider for InferenceChatProvider {
 
     async fn chat_for_text(&self, prompt: &ChatPrompt) -> Result<String> {
         self.run(prompt).await
-    }
-
-    async fn chat_for_text_with_usage(
-        &self,
-        prompt: &ChatPrompt,
-    ) -> Result<(String, Option<UsageInfo>)> {
-        self.run_with_usage(prompt).await
     }
 }
 

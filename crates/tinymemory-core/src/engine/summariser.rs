@@ -31,9 +31,9 @@ impl HostSummariser {
                 entities: output.entities,
                 topics: output.topics,
             },
-            input_tokens: output.input_tokens,
-            output_tokens: output.output_tokens,
-            charged_amount_usd: output.charged_amount_usd,
+            input_tokens: 0,
+            output_tokens: 0,
+            charged_amount_usd: None,
         })
     }
 }
