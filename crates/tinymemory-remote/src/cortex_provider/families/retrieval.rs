@@ -22,7 +22,9 @@
 //! the host can walk: each synced item is one record, a leaf with no parent.
 //!
 //! - `fast_retrieve` and `retrieve_source` recall across the source namespaces,
-//!   or one kind's, and answer leaves.
+//!   or one kind's, and answer leaves. Each kind is its own recall: one
+//!   recall over the parent namespace is not ranked by the query, see
+//!   `source_leaves` below.
 //! - `cover_window` recalls what was observed in a window.
 //! - `retrieve_leaves` reads events by id.
 //! - `retrieve_children` has nothing to walk and answers empty, which is what
@@ -49,7 +51,7 @@ use tinymemory_api::types::{MemoryItemKind, NamespaceMemoryHit, RetrievalScoreBr
 
 use super::records::{Place, Records, Version};
 use super::relevance::freshness;
-use super::sources::{namespace_of as source_namespace, SOURCES};
+use super::sources::{namespace_of as source_namespace, KINDS};
 use crate::common::Attempts;
 use crate::cortex::{CortexDialect, Route};
 use crate::cortex_labels;
@@ -160,6 +162,23 @@ pub(super) fn source_filter(sources: &[String]) -> String {
         .join(",")
 }
 
+/// `rankings` merged a rank at a time: the first of each, in the order given,
+/// then the second of each, and so on. A ranking that runs out drops out.
+fn interleave<T>(rankings: Vec<Vec<T>>) -> Vec<T> {
+    let mut rankings: Vec<std::vec::IntoIter<T>> =
+        rankings.into_iter().map(Vec::into_iter).collect();
+    let mut merged = Vec::new();
+    loop {
+        let before = merged.len();
+        for ranking in &mut rankings {
+            merged.extend(ranking.next());
+        }
+        if merged.len() == before {
+            return merged;
+        }
+    }
+}
+
 /// One synced record as a leaf, scored `score`.
 fn leaf(version: &Version, score: f64) -> RetrievalHit {
     let namespace =
@@ -263,8 +282,17 @@ impl CortexProvider {
             .unwrap_or_default())
     }
 
-    /// Recall across the synced records — every source namespace, or one
+    /// Recall across the synced records — every kind's namespace, or one
     /// kind's — as leaves in the engine's order.
+    ///
+    /// Each kind is recalled on its own, all at once, and with no kind asked
+    /// for their rankings are interleaved: the best hit of each kind, then the
+    /// second of each, and so on. One recall over the parent namespace with
+    /// `view: descend` would be one request, but the engine does not rank it
+    /// by the query. It answered the same records of one kind whatever was
+    /// asked, so a match of another kind was never found. Recalled per kind,
+    /// each ranking follows the query, and no kind's matches can fill an
+    /// events budget the others needed.
     ///
     /// The caller's source scope, or the one source asked for, narrows the
     /// recall itself by label, so a disallowed source cannot crowd permitted
@@ -279,10 +307,7 @@ impl CortexProvider {
         fetch: usize,
         scope: Option<&SourceScope>,
     ) -> Result<Vec<RetrievalHit>, MemoryError> {
-        let namespace = kind.map_or(SOURCES, source_namespace);
-        let place = Place::family_namespace(&self.dialect, namespace).map_err(engine_error)?;
         let mut body = json!({
-            "scope": place.scope,
             "view": "descend",
             "include": ["events"],
             "budgets": { "per_layer_limits": { "events": fetch } },
@@ -311,12 +336,32 @@ impl CortexProvider {
             }
             body["filters"] = json!({ "metadata": { "labels": labels } });
         }
-        let leaves = ranked(&self.recall_events(&body).await?)
-            .into_iter()
-            .filter(|version| {
-                source_id.is_none_or(|id| version.record.provenance.source.as_deref() == Some(id))
+        let kinds = kind.map_or(KINDS.to_vec(), |kind| vec![kind]);
+        let mut recalls = Vec::with_capacity(kinds.len());
+        for kind in kinds {
+            let place = Place::family_namespace(&self.dialect, source_namespace(kind))
+                .map_err(engine_error)?;
+            let mut body = body.clone();
+            body["scope"] = json!(place.scope);
+            recalls.push(async move { self.recall_events(&body).await });
+        }
+        let rankings = futures::future::try_join_all(recalls)
+            .await?
+            .iter()
+            .map(|events| {
+                ranked(events)
+                    .into_iter()
+                    .filter(|version| {
+                        source_id.is_none_or(|id| {
+                            version.record.provenance.source.as_deref() == Some(id)
+                        })
+                    })
+                    .filter(|version| visible(scope, version.record.provenance.source.as_deref()))
+                    .collect()
             })
-            .filter(|version| visible(scope, version.record.provenance.source.as_deref()))
+            .collect();
+        let leaves = interleave(rankings)
+            .into_iter()
             .enumerate()
             .map(|(position, version)| leaf(&version, rank_score(position)))
             .collect();
