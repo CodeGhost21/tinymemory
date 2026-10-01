@@ -193,4 +193,5 @@ fn is_probably_text(bytes: &[u8]) -> bool {
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

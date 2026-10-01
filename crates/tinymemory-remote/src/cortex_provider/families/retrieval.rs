@@ -577,5 +577,5 @@ impl MemoryRetrieval for CortexProvider {
 }
 
 #[cfg(test)]
-#[path = "retrieval_test.rs"]
+#[path = "retrieval_tests.rs"]
 mod test;

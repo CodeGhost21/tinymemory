@@ -220,7 +220,7 @@ use tinymemory_api::wire;
 #[path = "instrumentation.rs"]
 mod instrumentation;
 #[cfg(test)]
-#[path = "instrumentation_test.rs"]
+#[path = "instrumentation_tests.rs"]
 mod instrumentation;
 
 /// Well-known name exported by the `TinyMemory` module.
@@ -2404,5 +2404,5 @@ pub(crate) async fn serve(
 }
 
 #[cfg(test)]
-#[path = "test.rs"]
+#[path = "mod_tests.rs"]
 mod test;

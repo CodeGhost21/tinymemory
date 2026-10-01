@@ -92,4 +92,5 @@ pub fn provider(memory: Arc<dyn tinycortex::memory::Memory>) -> TinycortexDocume
 }
 
 #[cfg(test)]
+#[path = "conformance_tests.rs"]
 mod conformance_test;

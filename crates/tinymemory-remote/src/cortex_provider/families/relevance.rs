@@ -88,5 +88,5 @@ pub(super) fn freshness(age_secs: f64) -> f64 {
 }
 
 #[cfg(test)]
-#[path = "relevance_test.rs"]
+#[path = "relevance_tests.rs"]
 mod test;

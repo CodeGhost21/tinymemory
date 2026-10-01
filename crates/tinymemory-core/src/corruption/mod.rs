@@ -260,4 +260,5 @@ pub(crate) fn startup_integrity_check(config: &Config) {
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

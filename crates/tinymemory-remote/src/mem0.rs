@@ -728,7 +728,7 @@ impl Dialect for Mem0Dialect {
 }
 
 #[cfg(test)]
-#[path = "mem0_test.rs"]
+#[path = "mem0_tests.rs"]
 mod test;
 
 #[cfg(test)]

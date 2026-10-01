@@ -319,5 +319,5 @@ impl ModuleConfig {
 }
 
 #[cfg(test)]
-#[path = "config_test.rs"]
+#[path = "config_tests.rs"]
 mod test;

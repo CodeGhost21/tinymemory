@@ -179,5 +179,5 @@ impl<'a> Sections<'a> {
 }
 
 #[cfg(test)]
-#[path = "test.rs"]
+#[path = "mod_tests.rs"]
 mod test;

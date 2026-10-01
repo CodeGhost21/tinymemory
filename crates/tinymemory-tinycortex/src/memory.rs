@@ -159,5 +159,5 @@ impl Memory for TinycortexMemory {
 }
 
 #[cfg(test)]
-#[path = "memory_test.rs"]
+#[path = "memory_tests.rs"]
 mod test;

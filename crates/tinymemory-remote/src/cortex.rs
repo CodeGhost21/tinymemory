@@ -1827,7 +1827,7 @@ impl Memory for CortexMemory {
 }
 
 #[cfg(test)]
-#[path = "cortex_test.rs"]
+#[path = "cortex_tests.rs"]
 mod test;
 
 #[cfg(test)]

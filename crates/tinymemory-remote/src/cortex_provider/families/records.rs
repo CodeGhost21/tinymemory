@@ -574,5 +574,5 @@ impl<'a> Records<'a> {
 }
 
 #[cfg(test)]
-#[path = "records_test.rs"]
+#[path = "records_tests.rs"]
 mod test;

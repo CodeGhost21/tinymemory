@@ -48,5 +48,5 @@ impl MemoryGoals for CortexProvider {
 }
 
 #[cfg(test)]
-#[path = "goals_test.rs"]
+#[path = "goals_tests.rs"]
 mod test;

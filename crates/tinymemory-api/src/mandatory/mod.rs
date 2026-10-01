@@ -50,7 +50,7 @@ mod provider;
 pub use provider::MemoryTraitProvider;
 
 #[cfg(test)]
-#[path = "test.rs"]
+#[path = "mod_tests.rs"]
 mod test;
 
 /// The [`ExportRecord::kind`] emitted and accepted by the mandatory-only

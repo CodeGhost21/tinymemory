@@ -90,5 +90,5 @@ impl MemoryToolMemory for CortexProvider {
 }
 
 #[cfg(test)]
-#[path = "tool_rules_test.rs"]
+#[path = "tool_rules_tests.rs"]
 mod test;

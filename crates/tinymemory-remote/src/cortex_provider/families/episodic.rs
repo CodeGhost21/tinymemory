@@ -314,5 +314,5 @@ impl MemoryEpisodic for CortexProvider {
 
 // Visible to the sibling families' tests, which use its helpers.
 #[cfg(test)]
-#[path = "episodic_test.rs"]
+#[path = "episodic_tests.rs"]
 pub(super) mod test;

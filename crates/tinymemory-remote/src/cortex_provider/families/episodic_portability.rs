@@ -586,5 +586,5 @@ impl MemoryEpisodicPortability for CortexProvider {
 }
 
 #[cfg(test)]
-#[path = "episodic_portability_test.rs"]
+#[path = "episodic_portability_tests.rs"]
 mod test;

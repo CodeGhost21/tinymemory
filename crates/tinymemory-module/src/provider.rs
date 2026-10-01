@@ -84,5 +84,5 @@ pub(crate) fn provider(config: &ModuleConfig, client: Arc<MemoryClient>) -> Tiny
 }
 
 #[cfg(test)]
-#[path = "provider_test.rs"]
+#[path = "provider_tests.rs"]
 mod test;

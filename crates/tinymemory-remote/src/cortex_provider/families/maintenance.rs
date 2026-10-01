@@ -215,5 +215,5 @@ impl MemoryMaintenance for CortexProvider {
 }
 
 #[cfg(test)]
-#[path = "maintenance_test.rs"]
+#[path = "maintenance_tests.rs"]
 mod test;

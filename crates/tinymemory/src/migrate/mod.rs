@@ -336,6 +336,7 @@ fn unserved(side: &str, family: crate::capabilities::Capability) -> String {
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;
 
 #[cfg(test)]

@@ -334,5 +334,5 @@ impl MemorySourceSink for CortexProvider {
 }
 
 #[cfg(test)]
-#[path = "sources_test.rs"]
+#[path = "sources_tests.rs"]
 mod test;

@@ -107,5 +107,5 @@ impl ChatModel<()> for BusChatModel {
 }
 
 #[cfg(test)]
-#[path = "chat_test.rs"]
+#[path = "chat_tests.rs"]
 mod test;

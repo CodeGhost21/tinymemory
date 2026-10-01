@@ -47,7 +47,7 @@ mod class;
 pub use class::{DriverClass, DriverClassParseError};
 
 #[cfg(test)]
-#[path = "test.rs"]
+#[path = "mod_tests.rs"]
 mod test;
 
 /// The driver id reserved for the null placeholder, re-exported from the

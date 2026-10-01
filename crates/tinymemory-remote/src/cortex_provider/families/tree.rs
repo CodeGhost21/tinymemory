@@ -206,5 +206,5 @@ impl MemoryTree for CortexProvider {
 }
 
 #[cfg(test)]
-#[path = "tree_test.rs"]
+#[path = "tree_tests.rs"]
 mod test;

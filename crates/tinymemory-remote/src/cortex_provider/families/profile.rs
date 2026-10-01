@@ -295,5 +295,5 @@ impl MemoryProfile for CortexProvider {
 }
 
 #[cfg(test)]
-#[path = "profile_test.rs"]
+#[path = "profile_tests.rs"]
 mod test;

@@ -402,4 +402,5 @@ fn collapse_whitespace(text: &str) -> String {
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

@@ -33,5 +33,5 @@ pub(super) fn document_details(namespace_scope: &str) -> String {
 }
 
 #[cfg(test)]
-#[path = "scopes_test.rs"]
+#[path = "scopes_tests.rs"]
 mod test;

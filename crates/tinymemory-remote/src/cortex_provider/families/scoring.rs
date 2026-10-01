@@ -150,5 +150,5 @@ impl MemoryScoring for CortexProvider {
 }
 
 #[cfg(test)]
-#[path = "scoring_test.rs"]
+#[path = "scoring_tests.rs"]
 mod test;

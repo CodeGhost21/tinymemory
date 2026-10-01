@@ -319,5 +319,5 @@ pub fn bus_provider_signature(name: &str, model_id: &str, dims: usize) -> String
 }
 
 #[cfg(test)]
-#[path = "embedding_test.rs"]
+#[path = "embedding_tests.rs"]
 mod test;

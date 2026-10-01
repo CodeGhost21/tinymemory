@@ -44,5 +44,5 @@ pub(crate) fn session(session_id: &str) -> String {
 }
 
 #[cfg(test)]
-#[path = "cortex_labels_test.rs"]
+#[path = "cortex_labels_tests.rs"]
 mod test;

@@ -50,5 +50,5 @@ pub(crate) async fn hold_global_seams_async() -> MutexGuard<'static, ()> {
 }
 
 #[cfg(test)]
-#[path = "seam_lock_test.rs"]
+#[path = "seam_lock_tests.rs"]
 mod test;

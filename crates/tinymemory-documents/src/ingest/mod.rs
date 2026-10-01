@@ -218,4 +218,5 @@ impl<'a> DocumentIntake<'a> {
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

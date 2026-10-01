@@ -60,5 +60,5 @@ impl Default for FamilyState {
 mod test_support;
 
 #[cfg(test)]
-#[path = "capabilities_test.rs"]
+#[path = "capabilities_tests.rs"]
 mod capabilities_test;
