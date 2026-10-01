@@ -324,15 +324,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dirs"
-version = "7.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d57d423b3c82e89b9a24ca3091fee61f456a26edbd28d26c65906f4bc1dcd8f"
-dependencies = [
- "dirs-sys",
-]
-
-[[package]]
 name = "dirs-sys"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1874,7 +1865,6 @@ dependencies = [
  "async-trait",
  "block2",
  "chrono",
- "dirs 7.0.0",
  "futures",
  "git2",
  "hex",
@@ -2037,7 +2027,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
- "dirs 6.0.0",
+ "dirs",
  "log",
  "parking_lot",
  "rand 0.10.2",
