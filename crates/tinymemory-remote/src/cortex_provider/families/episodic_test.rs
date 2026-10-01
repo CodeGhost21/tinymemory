@@ -281,3 +281,9 @@ async fn episodic_records_are_bookkeeping_not_memory() {
         .expect("create");
     assert!(provider.namespaces().await.expect("namespaces").is_empty());
 }
+
+/// Makes the next turn id at least one past `id`, so a test elsewhere in the
+/// families can know what [`next_turn_id`] hands out next.
+pub(in crate::cortex_provider::families) fn turn_ids_continue_after(id: i64) {
+    LAST_TURN_ID.fetch_max(id, std::sync::atomic::Ordering::SeqCst);
+}

@@ -23,9 +23,11 @@
 //! A turn keeps its id unless a different turn holds it. Then the turn's
 //! session is searched for an identical turn an earlier copy moved, and only
 //! if there is none does it take a fresh id, from [`next_turn_id`] — above
-//! every turn already recorded, so it cannot meet a turn still to come.
+//! every turn already recorded, and never one a turn still to come in the same
+//! batch carries. Later batches look up what earlier ones wrote, which is
+//! readable by then: each batch waits for its last write.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -224,6 +226,12 @@ impl CortexProvider {
         // A session's turns, read only when one of its turns meets another
         // under its id.
         let mut sessions: HashMap<String, Vec<EpisodicTurn>> = HashMap::new();
+        // The lookup above was made before this batch wrote anything, so the
+        // batch keeps its own account: every id it carries is spoken for — a
+        // fresh id must not land on a turn still to come in it — and every
+        // turn it writes is what a later turn under that id meets.
+        let mut reserved: HashSet<i64> = turns.iter().filter_map(|t| t.id).collect();
+        let mut written: HashMap<i64, EpisodicTurn> = HashMap::new();
         let mut last = None;
         for turn in turns {
             let Some(id) = turn.id else {
@@ -245,10 +253,11 @@ impl CortexProvider {
                 cost_microdollars: turn.cost_microdollars.max(0),
                 ..turn
             };
-            let current = held
-                .get(&turn_key(id))
-                .and_then(|versions| newest_live(versions))
-                .and_then(parse::<EpisodicTurn>);
+            let current = written.get(&id).cloned().or_else(|| {
+                held.get(&turn_key(id))
+                    .and_then(|versions| newest_live(versions))
+                    .and_then(parse::<EpisodicTurn>)
+            });
             let target = match current {
                 Some(existing) if existing == wanted => {
                     outcome.skipped += 1;
@@ -281,7 +290,11 @@ impl CortexProvider {
                         outcome.remapped.push(TurnIdRemap { from: id, to: at });
                         continue;
                     }
-                    next_turn_id()
+                    let mut fresh = next_turn_id();
+                    while reserved.contains(&fresh) {
+                        fresh = next_turn_id();
+                    }
+                    fresh
                 }
             };
             let stored = EpisodicTurn {
@@ -302,6 +315,8 @@ impl CortexProvider {
                             to: target,
                         });
                     }
+                    reserved.insert(target);
+                    written.insert(target, stored);
                     last = appended.or(last);
                 }
                 Err(Fault::Refused(why)) => refuse(&mut outcome, format!("turn {id}: {why}")),
