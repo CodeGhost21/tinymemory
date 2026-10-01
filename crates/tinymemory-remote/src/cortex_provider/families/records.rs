@@ -49,9 +49,9 @@ const CLEARED: &str = "tinymemory: cleared";
 pub(super) struct Place {
     /// The scope path written to and listed.
     pub(super) scope: String,
-    /// Whether every record here carries lookup labels. A user namespace does
-    /// not: `store` writes none, so a labelled read that misses a key there
-    /// must walk the scope.
+    /// Whether every record here carries lookup labels. A user namespace may
+    /// not: `store` wrote none before it labelled its hosted writes, so a
+    /// labelled read that misses a key there must walk the scope.
     labelled_only: bool,
     /// Whether records here are bookkeeping: written inert, and waited on by
     /// the listing alone because nothing recalls them.
@@ -328,8 +328,8 @@ impl<'a> Records<'a> {
         }
         let missed = keys.iter().any(|key| !found.contains_key(*key));
         if missed && walk_on_miss {
-            // `store` writes no labels, so a key it wrote is only found by
-            // walking the scope.
+            // A version `store` wrote before it labelled its hosted writes
+            // carries no label, so its key is only found by walking the scope.
             let events = self.dialect.events_matching(&place.scope, None).await?;
             for (key, versions) in by_key(&events) {
                 if keys.contains(&key.as_str()) && !found.contains_key(&key) {
@@ -431,10 +431,11 @@ impl<'a> Records<'a> {
     ///
     /// `observed_at` is when the content was true, RFC 3339.
     ///
-    /// Only labelled versions are retired. Walking a user namespace to find a
-    /// version `store` wrote would cost every new key a whole-scope listing;
-    /// such a version stays in the log, as `store`'s own rewrites always have,
-    /// and the fold reads past it.
+    /// Only labelled versions are retired. Walking a user namespace to find an
+    /// unlabelled version — one `store` wrote before it labelled its hosted
+    /// writes — would cost every new key a whole-scope listing; such a version
+    /// stays in the log, as `store`'s own rewrites always have, and the fold
+    /// reads past it.
     ///
     /// # Errors
     ///
