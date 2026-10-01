@@ -5,13 +5,16 @@
 //! The engine ranks recall but returns no score, and its recall API offers none
 //! to ask for. So a hit's score here is its place in the engine's ranking: the
 //! best hit scores 1.0 and each later one 0.1 less, down to 0.1. That says how
-//! the engine ordered the hits, not how relevant any of them is. It fills
-//! `score` and `final_score` only: no similarity was measured, so a namespace
-//! hit's `vector_similarity` stays 0, and a host that floors on similarity
-//! reads these hits as carrying no similarity evidence rather than as close
-//! matches. Namespace recall answers only the engine's first [`RANKED_NOTES`]
-//! hits: a rank says nothing about whether the tail is relevant at all, so the
-//! tail is never offered.
+//! the engine ordered the hits, not how relevant any of them is. A namespace
+//! hit carries it in `score` and `final_score` only, and every signal of its
+//! breakdown — similarity, keyword, graph, episodic, freshness — stays 0,
+//! because the engine reported none. A positive final score over no signal is
+//! the mark of a ranking that measured nothing: a host that floors on a signal
+//! reads these hits as carrying no evidence rather than as close matches, and
+//! a host that knows the mark keeps the engine's order. Namespace recall
+//! answers only the engine's first [`RANKED_NOTES`] hits: a rank says nothing
+//! about whether the tail is relevant at all, so the tail is never offered.
+//! Recent recall is ranked by recency, which it reports as its freshness.
 //!
 //! # A tree with only leaves
 //!
@@ -206,8 +209,7 @@ fn response(mut hits: Vec<RetrievalHit>, limit: usize) -> RetrievalResponse {
     }
 }
 
-/// One namespace hit scored `score`, which is a rank or a recency and never a
-/// similarity, so the similarity signal stays 0.
+/// One namespace hit scored `score`, carrying `fresh` as its only signal.
 fn namespace_hit(namespace: &str, version: &Version, score: f64, fresh: f64) -> NamespaceMemoryHit {
     let record = &version.record;
     let document_id = record.provenance.document.clone();
@@ -467,7 +469,6 @@ impl MemoryRetrieval for CortexProvider {
             }))
             .await?;
         let excluded = exclude_session_id.map(str::trim).filter(|s| !s.is_empty());
-        let now = Utc::now().timestamp_millis() as f64 / 1000.0;
         Ok(ranked(&events)
             .into_iter()
             .filter(|version| {
@@ -475,9 +476,9 @@ impl MemoryRetrieval for CortexProvider {
             })
             .take(limit.min(RANKED_NOTES))
             .enumerate()
+            // The rank is all the engine reported: no signal, not even recency.
             .map(|(position, version)| {
-                let fresh = freshness(now - seconds(&version.recorded_at));
-                namespace_hit(namespace, &version, rank_score(position), fresh)
+                namespace_hit(namespace, &version, rank_score(position), 0.0)
             })
             .collect())
     }

@@ -261,9 +261,11 @@ works:
 
 The engine ranks recall but returns no score and offers no way to ask for one,
 so a hit's score is its rank: 1.0 for the first, 0.1 less for each after, never
-below 0.1. That fills `score` and `final_score` only. No similarity was
-measured, so `vector_similarity` stays 0, and a host floor on similarity reads
-these hits as carrying no similarity evidence.
+below 0.1. That fills `score` and `final_score` only, and every signal of the
+breakdown (similarity, keyword, graph, episodic, freshness) stays 0: a positive
+final score over no signal marks a ranking that measured nothing. A host floor
+on a signal reads these hits as carrying no evidence; a host that knows the
+mark keeps the engine's order. Recent recall reports its recency as freshness.
 
 - **Source recall.** `fast_retrieve`, `cover_window` and `retrieve_source`
   recall with `view: descend` from `sources`, or one kind's namespace, and
@@ -366,7 +368,7 @@ Every `as_*` accessor matches, and `audit_provider` holds on both wires.
   one segment more than its namespace.
 - No response key named `scope` or `path` is used to carry record data: the
   memory API rewrites those keys everywhere in a response.
-- A rank is never reported as a similarity.
+- A rank is never reported as a signal.
 - A source scope is applied inside the request, never only after it.
 
 ## Acceptance criteria

@@ -383,10 +383,18 @@ async fn namespace_recall_answers_the_top_of_the_engines_ranking() {
     assert_eq!(scores[0], 1.0);
     assert!(scores.windows(2).all(|pair| pair[0] > pair[1]));
     for hit in &hits {
-        assert_eq!(hit.score_breakdown.final_score, hit.score);
+        let signals = &hit.score_breakdown;
+        assert_eq!(signals.final_score, hit.score);
         assert_eq!(
-            hit.score_breakdown.vector_similarity, 0.0,
-            "a rank is not a similarity"
+            (
+                signals.vector_similarity,
+                signals.keyword_relevance,
+                signals.graph_relevance,
+                signals.episodic_relevance,
+                signals.freshness,
+            ),
+            (0.0, 0.0, 0.0, 0.0, 0.0),
+            "a rank carries no signal"
         );
     }
     let without = provider
@@ -428,6 +436,11 @@ async fn recent_recall_is_newest_first() {
         .expect("recent");
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].key, "new");
+    assert_eq!(hits[0].score, hits[0].score_breakdown.freshness);
+    assert!(
+        hits[0].score > 0.0,
+        "recency is the signal recent recall reports"
+    );
     assert!(provider
         .recall_namespace_recent("notes", 0)
         .await
