@@ -10,7 +10,7 @@
 //! - [`MemoryStoreRawChunksTool`]  — structured chunk filter by source/owner/
 //!   time/tags.
 //! - [`MemoryStoreKindsTool`]      — introspection: enumerate every
-//!   [`MemoryKind`] the store supports.
+//!   `MemoryKind` the store supports.
 //!
 //! All three are async, return JSON, and follow the project Tool trait.
 
