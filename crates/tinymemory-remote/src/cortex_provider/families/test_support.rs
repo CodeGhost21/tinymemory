@@ -37,3 +37,8 @@ pub(crate) async fn hosted() -> (CortexProvider, Shared) {
 pub(crate) fn requests(state: &Shared) -> Vec<String> {
     state.seen.lock().expect("seen").requests.clone()
 }
+
+/// The recall bodies the double has seen, in the order they arrived.
+pub(crate) fn recalls(state: &Shared) -> Vec<serde_json::Value> {
+    state.seen.lock().expect("seen").recalls.clone()
+}

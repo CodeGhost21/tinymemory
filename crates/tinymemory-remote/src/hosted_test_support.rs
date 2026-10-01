@@ -47,6 +47,8 @@ pub(crate) struct Seen {
     pub(crate) auth: Vec<String>,
     /// `(body idempotency_key, Idempotency-Key header)` of every experience write.
     pub(crate) idempotency: Vec<(Option<String>, Option<String>)>,
+    /// The body of every recall, in the order they arrived.
+    pub(crate) recalls: Vec<Value>,
 }
 
 pub(crate) struct Hosted {
@@ -356,6 +358,7 @@ async fn recall(
     if let Some(early) = gate(&state, "POST", &uri, &headers) {
         return early;
     }
+    state.seen.lock().expect("seen").recalls.push(body.clone());
     if let Some(refused) = refuse_body_scope(&body) {
         return refused;
     }

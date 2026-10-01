@@ -12,7 +12,7 @@ use tinymemory_api::provider::{
 use tinymemory_api::types::{MemoryCategory, MemoryTaint};
 
 use super::*;
-use crate::cortex_provider::families::test_support::hosted;
+use crate::cortex_provider::families::test_support::{hosted, recalls};
 
 fn item(id: &str, content: &str, updated_at_ms: Option<i64>) -> SourceItem {
     SourceItem {
@@ -155,6 +155,64 @@ async fn a_restricted_caller_is_not_crowded_out_by_other_sources() {
         .expect("retrieve");
     let bodies: Vec<&str> = response.hits.iter().map(|h| h.content.as_str()).collect();
     assert_eq!(bodies, ["oolong invoice"]);
+}
+
+#[test]
+fn rankings_interleave_a_rank_at_a_time() {
+    assert_eq!(
+        interleave(vec![vec![1, 4, 6], vec![], vec![2, 5], vec![3]]),
+        [1, 2, 3, 4, 5, 6]
+    );
+    assert!(interleave::<u8>(Vec::new()).is_empty());
+}
+
+/// Each kind of source is its own recall, so however many records one kind
+/// matches, the best match of another still makes the cut. One recall over
+/// the parent namespace is not ranked by the query on the hosted engine, and
+/// its one events budget went to whichever kind filled it first.
+#[tokio::test]
+async fn every_kind_is_recalled_on_its_own_so_none_crowds_another_out() {
+    let (provider, state) = hosted().await;
+    sync(
+        &provider,
+        "gmail:me",
+        (0..12)
+            .map(|i| item(&format!("m{i}"), "oolong order", None))
+            .collect(),
+    )
+    .await;
+    sync(
+        &provider,
+        "notion:ws",
+        vec![item("p1", "oolong tasting notes", None)],
+    )
+    .await;
+    let before = recalls(&state).len();
+    let response = provider
+        .fast_retrieve("oolong", fast(2), None)
+        .await
+        .expect("retrieve");
+    let bodies: Vec<&str> = response.hits.iter().map(|h| h.content.as_str()).collect();
+    assert_eq!(bodies, ["oolong order", "oolong tasting notes"]);
+    assert!(response.truncated);
+    let mut scopes: Vec<String> = recalls(&state)[before..]
+        .iter()
+        .map(|body| body["scope"].as_str().expect("a scope").to_string())
+        .collect();
+    scopes.sort();
+    let mut expected: Vec<String> = KINDS
+        .iter()
+        .map(|kind| {
+            Place::family_namespace(&provider.dialect, source_namespace(*kind))
+                .expect("a place")
+                .scope
+        })
+        .collect();
+    expected.sort();
+    assert_eq!(
+        scopes, expected,
+        "one recall per kind, none over the parent"
+    );
 }
 
 #[tokio::test]

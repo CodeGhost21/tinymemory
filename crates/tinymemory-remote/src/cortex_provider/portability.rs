@@ -18,8 +18,15 @@
 //! each record, then waiting once per scope for the last event it wrote — the
 //! log is ordered, so that event becoming listable implies the earlier ones
 //! are. The records and the cursor format are the mandatory ones.
+//!
+//! An append is a new version even when the record is already there, so an
+//! import run again would write every record twice. Before a batch first
+//! writes to a namespace, it reads what the namespace holds, with the fold
+//! export reads, and skips each record held unchanged. A copy run again writes
+//! only what changed since. A first copy pays one listing per namespace in
+//! each batch, which answers empty.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use tinymemory_api::error::MemoryError;
 use tinymemory_api::mandatory::{engine_error, read_record, to_record};
@@ -127,9 +134,12 @@ impl CortexProvider {
 
     /// `import_records` for the hosted wire. See the module docs.
     ///
-    /// A record the backend refuses (a 400-class answer, or a namespace that
-    /// cannot be a hosted scope) is counted in [`ImportOutcome::failed`] with a
-    /// reason that names the record and the backend's code, never its content.
+    /// A record the namespace already holds with the same content, category,
+    /// session and taint is counted in [`ImportOutcome::skipped`] and not
+    /// written. A record the backend refuses (a 400-class answer, or a
+    /// namespace that cannot be a hosted scope) is counted in
+    /// [`ImportOutcome::failed`] with a reason that names the record and the
+    /// backend's code, never its content.
     /// A backend that stays unavailable through every import pause, or that
     /// refuses the credential or the credit balance, fails the batch:
     /// continuing would only fail every remaining record the same way.
@@ -140,6 +150,9 @@ impl CortexProvider {
         let mut outcome = ImportOutcome::default();
         // The last event appended to each scope: the one to wait for.
         let mut last: BTreeMap<String, AppendedEvent> = BTreeMap::new();
+        // What each namespace holds, by key, read before its first write and
+        // kept current with what this batch writes.
+        let mut held: HashMap<String, HashMap<String, StoredEntry>> = HashMap::new();
         for record in records {
             let entry = match read_record(&record) {
                 Ok(entry) => entry,
@@ -156,12 +169,25 @@ impl CortexProvider {
                 entry.session_id.as_deref(),
                 record.taint,
             );
+            if !held.contains_key(&entry.namespace) {
+                let entries = self.held_patiently(&entry.namespace).await?;
+                held.insert(entry.namespace.clone(), entries);
+            }
+            let namespace = held.entry(entry.namespace.clone()).or_default();
+            if namespace
+                .get(&stored.key)
+                .is_some_and(|current| unchanged(current, &stored))
+            {
+                outcome.skipped = outcome.skipped.saturating_add(1);
+                continue;
+            }
             match self.append_patiently(&stored).await {
                 Ok(appended) => {
                     outcome.imported = outcome.imported.saturating_add(1);
                     if let Some(event) = appended {
                         last.insert(event.scope.clone(), event);
                     }
+                    namespace.insert(stored.key.clone(), stored);
                 }
                 Err(RecordFault::Refused(why)) => {
                     note_failure(&mut outcome, format!("record {}: {why}", record.id));
@@ -176,6 +202,41 @@ impl CortexProvider {
                 .map_err(engine_error)?;
         }
         Ok(outcome)
+    }
+
+    /// What `namespace` holds now, by key, pausing between attempts while the
+    /// backend says it cannot serve right now, as [`Self::append_patiently`]
+    /// does.
+    ///
+    /// Empty for a namespace that cannot be a hosted scope: nothing is held
+    /// there, and writing its records refuses them one by one.
+    async fn held_patiently(
+        &self,
+        namespace: &str,
+    ) -> Result<HashMap<String, StoredEntry>, MemoryError> {
+        if self.dialect.scope_for(namespace).is_err() {
+            return Ok(HashMap::new());
+        }
+        let mut pauses = self.import_patience.iter();
+        loop {
+            let error = match self.dialect.namespace_entries(namespace).await {
+                Ok(entries) => {
+                    return Ok(entries
+                        .into_iter()
+                        .map(|entry| (entry.key.clone(), entry))
+                        .collect());
+                }
+                Err(error) => engine_error(error),
+            };
+            let busy = matches!(
+                error,
+                MemoryError::Unavailable(_) | MemoryError::Timeout(_) | MemoryError::Unreachable(_)
+            );
+            match pauses.next() {
+                Some(pause) if busy => tokio::time::sleep(*pause).await,
+                _ => return Err(error),
+            }
+        }
     }
 
     /// Appends one record, pausing between attempts while the backend says it
@@ -217,6 +278,15 @@ impl CortexProvider {
             }
         }
     }
+}
+
+/// Whether `held` already is `wanted`: the same content, category, session and
+/// taint. Its id and timestamp are the write's, not the record's.
+fn unchanged(held: &StoredEntry, wanted: &StoredEntry) -> bool {
+    held.content == wanted.content
+        && held.category == wanted.category
+        && held.session_id == wanted.session_id
+        && held.taint == wanted.taint
 }
 
 /// Counts one failed record and keeps a bounded number of reasons.
