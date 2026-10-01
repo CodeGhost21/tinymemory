@@ -64,12 +64,15 @@ async fn a_conversation_round_trips_through_the_section_surface() {
         .forget("thread-8f21", "turn-1")
         .await
         .expect("forget"));
-    assert!(sections
-        .conversations()
-        .scopes()
-        .await
-        .expect("scopes")
-        .is_empty());
+    assert_eq!(
+        sections
+            .conversations()
+            .scopes()
+            .await
+            .expect("scopes")
+            .len(),
+        0
+    );
 }
 
 #[tokio::test]
@@ -207,12 +210,10 @@ async fn a_custom_section_is_a_first_class_citizen() {
     assert_eq!(scopes[0].scope(), "deploys");
 
     // …and it is not mistaken for one of the named sections.
-    assert!(sections
-        .documents()
-        .scopes()
-        .await
-        .expect("scopes")
-        .is_empty());
+    assert_eq!(
+        sections.documents().scopes().await.expect("scopes").len(),
+        0
+    );
 }
 
 #[tokio::test]
