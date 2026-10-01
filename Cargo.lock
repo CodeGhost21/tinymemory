@@ -2222,19 +2222,8 @@ dependencies = [
  "tinyinference-embeddings",
  "tinymemory-api",
  "tinymemory-conformance",
- "tinytools 0.5.0",
+ "tinytools 0.5.0 (git+https://github.com/tinyhumansai/tinytools?rev=67a7f709b390615d4228f7feec63359718649651)",
  "tokio",
-]
-
-[[package]]
-name = "tinytools"
-version = "0.3.0"
-source = "git+https://github.com/tinyhumansai/tinytools?rev=a5d04a7f3af0abc1dd748f87f94871b36ae9fe71#a5d04a7f3af0abc1dd748f87f94871b36ae9fe71"
-dependencies = [
- "anyhow",
- "async-trait",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -2249,14 +2238,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "tinytools"
+version = "0.5.0"
+source = "git+https://github.com/tinyhumansai/tinytools?rev=8feb5571e52baa145b5c7c473b16cd59de2b103a#8feb5571e52baa145b5c7c473b16cd59de2b103a"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "tinytools-agent"
-version = "0.3.0"
-source = "git+https://github.com/tinyhumansai/tinytools?rev=a5d04a7f3af0abc1dd748f87f94871b36ae9fe71#a5d04a7f3af0abc1dd748f87f94871b36ae9fe71"
+version = "0.5.0"
+source = "git+https://github.com/tinyhumansai/tinytools?rev=8feb5571e52baa145b5c7c473b16cd59de2b103a#8feb5571e52baa145b5c7c473b16cd59de2b103a"
 dependencies = [
  "regex",
  "serde",
  "serde_json",
- "tinytools 0.3.0",
+ "tinytools 0.5.0 (git+https://github.com/tinyhumansai/tinytools?rev=8feb5571e52baa145b5c7c473b16cd59de2b103a)",
 ]
 
 [[package]]
