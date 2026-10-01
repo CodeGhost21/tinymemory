@@ -19,7 +19,7 @@ use tinymemory_api::provider::{
     MemoryConversationIngest, MemoryCore, MemoryDocumentIngest, MemoryDocuments, MemoryEpisodic,
     MemoryEventIngest, MemoryGoals, MemoryLearningIngest, MemoryMaintenance, MemoryPortability,
     MemoryProfile, MemoryProvider, MemoryRecall, MemoryRetrieval, MemoryScoring, MemorySourceSink,
-    MemoryToolMemory, RawMemoryEvent,
+    MemoryToolMemory, MemoryTree, RawMemoryEvent,
 };
 use tinymemory_api::recall::OwnedRecallOpts;
 use tinymemory_api::types::{
@@ -735,6 +735,7 @@ impl MemoryProvider for CortexProvider {
             .with(Capability::Profile)
             .with(Capability::Episodic)
             .with(Capability::Scoring)
+            .with(Capability::Tree)
     }
 
     async fn health(&self) -> MemoryHealth {
@@ -795,5 +796,9 @@ impl MemoryProvider for CortexProvider {
 
     fn as_scoring(&self) -> Option<&dyn MemoryScoring> {
         self.hosted().then_some(self as &dyn MemoryScoring)
+    }
+
+    fn as_tree(&self) -> Option<&dyn MemoryTree> {
+        self.hosted().then_some(self as &dyn MemoryTree)
     }
 }

@@ -129,6 +129,34 @@ async fn a_restricted_caller_sees_only_its_sources() {
     assert!(none.hits.is_empty(), "an empty scope denies every source");
 }
 
+/// The caller's sources narrow the recall itself: however many records other
+/// sources hold, they cannot fill the events budget before a permitted one.
+#[tokio::test]
+async fn a_restricted_caller_is_not_crowded_out_by_other_sources() {
+    let (provider, _state) = hosted().await;
+    sync(
+        &provider,
+        "gmail:you",
+        (0..12)
+            .map(|i| item(&format!("y{i}"), "oolong order", None))
+            .collect(),
+    )
+    .await;
+    sync(
+        &provider,
+        "gmail:me",
+        vec![item("m1", "oolong invoice", None)],
+    )
+    .await;
+    let scope = SourceScope::new(["gmail:me"]);
+    let response = provider
+        .fast_retrieve("oolong", fast(1), Some(&scope))
+        .await
+        .expect("retrieve");
+    let bodies: Vec<&str> = response.hits.iter().map(|h| h.content.as_str()).collect();
+    assert_eq!(bodies, ["oolong invoice"]);
+}
+
 #[tokio::test]
 async fn an_empty_query_or_limit_is_handled_before_any_request() {
     let (provider, _state) = hosted().await;

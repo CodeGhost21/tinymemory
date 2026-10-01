@@ -940,6 +940,13 @@ pub(crate) async fn cortex_recall(
             }
         })
     };
+    // The engine answers at most the events budget it was given.
+    let budget = body
+        .pointer("/budgets/per_layer_limits/events")
+        .and_then(Value::as_u64)
+        .map_or(usize::MAX, |limit| {
+            usize::try_from(limit).unwrap_or(usize::MAX)
+        });
     let hits: Vec<Value> = log
         .events
         .iter()
@@ -961,6 +968,7 @@ pub(crate) async fn cortex_recall(
             }
             hit
         })
+        .take(budget)
         .collect();
     Json(json!({ "pack_id": "pack_test", "layers": { "events": hits } }))
 }

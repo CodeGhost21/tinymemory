@@ -178,6 +178,10 @@ const RECALL_QUERY_CAP: usize = 256;
 /// failure this whole adapter exists to avoid.
 const MAX_PAGES: usize = 500;
 
+/// Most listing pages [`CortexDialect::newest`] reads: enough for a few
+/// hundred distinct events at the engine's page size, never a walk.
+const NEWEST_MAX_PAGES: usize = 4;
+
 /// The most event ids one removal names. A key rewritten often can have many
 /// versions to retire, and one request per hundred keeps each body small.
 const FORGET_BATCH: usize = 100;
@@ -220,6 +224,12 @@ pub(crate) enum Route {
     Forget,
     Answer,
     Scopes,
+    /// The facts the engine derived from a scope.
+    Facts,
+    /// The beliefs the engine consolidated in a scope.
+    Beliefs,
+    /// The concepts the engine synthesised in a scope.
+    Understanding,
 }
 
 impl CortexWire {
@@ -232,12 +242,18 @@ impl CortexWire {
             (Self::Direct, Route::Forget) => "v1/forget",
             (Self::Direct, Route::Answer) => "v1/answer",
             (Self::Direct, Route::Scopes) => "v1/scopes/list",
+            (Self::Direct, Route::Facts) => "v1/facts",
+            (Self::Direct, Route::Beliefs) => "v1/beliefs",
+            (Self::Direct, Route::Understanding) => "v1/understanding",
             (Self::TinyHumans, Route::Experience) => "memory/experience",
             (Self::TinyHumans, Route::Events) => "memory/events",
             (Self::TinyHumans, Route::Recall) => "memory/recall",
             (Self::TinyHumans, Route::Forget) => "memory/forget",
             (Self::TinyHumans, Route::Answer) => "memory/answer",
             (Self::TinyHumans, Route::Scopes) => "memory/scopes",
+            (Self::TinyHumans, Route::Facts) => "memory/facts",
+            (Self::TinyHumans, Route::Beliefs) => "memory/beliefs",
+            (Self::TinyHumans, Route::Understanding) => "memory/understanding",
         }
     }
 
@@ -1210,6 +1226,76 @@ impl CortexDialect {
         }
     }
 
+    /// The newest `count` distinct events of `scope`, newest first, narrowed
+    /// to those carrying any one of `labels` when that is `Some`.
+    ///
+    /// The engine lists a scope newest first, so this reads from the front of
+    /// the listing rather than walking it: page by page until `count` distinct
+    /// events are in hand, the listing ends, or [`NEWEST_MAX_PAGES`] pages
+    /// have been read. A page's `limit` counts the engine's duplicate copies
+    /// (see [`Self::events`]), so each page asks for twice what is missing. A
+    /// record's older versions and tombstones count toward `count` like any
+    /// other event.
+    ///
+    /// # Errors
+    ///
+    /// Backend failures.
+    pub(crate) async fn newest(
+        &self,
+        scope: &str,
+        labels: Option<&str>,
+        count: usize,
+    ) -> anyhow::Result<Vec<Value>> {
+        let filter = labels
+            .map(|labels| format!("&labels={}", urlencoding(labels)))
+            .unwrap_or_default();
+        let mut found = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut cursor: Option<String> = None;
+        for _ in 0..NEWEST_MAX_PAGES {
+            let missing = count.saturating_sub(found.len());
+            if missing == 0 {
+                break;
+            }
+            let mut path = format!(
+                "{base}?scope={scope}&limit={limit}{filter}",
+                base = self.wire.path(Route::Events),
+                scope = urlencoding(scope),
+                limit = missing.saturating_mul(2).clamp(1, PAGE_SIZE)
+            );
+            if let Some(cursor) = &cursor {
+                path.push_str(&format!("&cursor={}", urlencoding(cursor)));
+            }
+            let page: Value = self
+                .client
+                .json(Method::GET, &path, None, Attempts::RetryTransient)
+                .await?;
+            for event in page
+                .get("items")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                let fresh = event
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .is_none_or(|id| seen.insert(id.to_string()));
+                if fresh && found.len() < count {
+                    found.push(event.clone());
+                }
+            }
+            let next = page
+                .get("next_cursor")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            match (page.get("has_more").and_then(Value::as_bool), next) {
+                (Some(true), Some(next)) => cursor = Some(next),
+                _ => break,
+            }
+        }
+        Ok(found)
+    }
+
     /// Removes named events from a scope.
     ///
     /// Hosted mode retries a transient fault: forgetting named events is
@@ -1465,7 +1551,7 @@ pub(crate) fn fresh_idempotency_key() -> String {
 /// The cursor is the reason this is general: it is opaque engine output, and a
 /// `+`, `&`, `=`, `#` or `?` in one would silently reshape the query string
 /// rather than fail. Encoding by byte also keeps multi-byte UTF-8 correct.
-fn urlencoding(value: &str) -> String {
+pub(crate) fn urlencoding(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for byte in value.as_bytes() {
         match byte {

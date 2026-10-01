@@ -9,7 +9,7 @@
 
 #![allow(clippy::expect_used, clippy::panic)]
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -81,6 +81,9 @@ pub(crate) struct Hosted {
     pub(crate) ignore_scope_limit: AtomicBool,
     /// Event ids `GET /memory/events/{id}` answers with a null scope.
     pub(crate) foreign: Mutex<HashSet<String>>,
+    /// What the derived-layer routes answer, by `(layer, scope)`: `facts`,
+    /// `beliefs` or `understanding`, and the scope the request names.
+    pub(crate) layers: Mutex<HashMap<(String, String), Vec<Value>>>,
 }
 
 pub(crate) type Shared = Arc<Hosted>;
@@ -409,6 +412,51 @@ async fn scopes(
     envelope(StatusCode::OK, value)
 }
 
+/// One page of a derived layer: `GET /memory/{facts,beliefs,understanding}`,
+/// paged by `limit` and an offset `cursor` as the engine pages them.
+async fn layer(
+    State(state): State<Shared>,
+    uri: Uri,
+    headers: HeaderMap,
+    Query(params): Query<std::collections::BTreeMap<String, String>>,
+) -> (StatusCode, Json<Value>) {
+    if let Some(early) = gate(&state, "GET", &uri, &headers) {
+        return early;
+    }
+    let scope = params.get("scope").cloned().unwrap_or_default();
+    if let Some(refused) = refuse_scope(&scope) {
+        return refused;
+    }
+    let name = uri
+        .path()
+        .rsplit('/')
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    let items = state
+        .layers
+        .lock()
+        .expect("layers")
+        .get(&(name, scope))
+        .cloned()
+        .unwrap_or_default();
+    let cursor: usize = params
+        .get("cursor")
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(0);
+    let limit: usize = params
+        .get("limit")
+        .and_then(|l| l.parse().ok())
+        .unwrap_or(50);
+    let page: Vec<Value> = items.iter().skip(cursor).take(limit).cloned().collect();
+    let next = cursor + page.len();
+    let mut body = json!({ "items": page, "has_more": next < items.len() });
+    if next < items.len() {
+        body["next_cursor"] = json!(next.to_string());
+    }
+    envelope(StatusCode::OK, body)
+}
+
 async fn answer(
     State(state): State<Shared>,
     uri: Uri,
@@ -472,6 +520,7 @@ pub(crate) async fn hosted_backend() -> (String, Shared) {
         claim_then_fail: AtomicUsize::new(0),
         rate_limit_forget: AtomicUsize::new(0),
         foreign: Mutex::new(HashSet::new()),
+        layers: Mutex::new(HashMap::new()),
     });
     let app = Router::new()
         .route("/memory/experience", post(experience))
@@ -481,6 +530,9 @@ pub(crate) async fn hosted_backend() -> (String, Shared) {
         .route("/memory/forget", post(forget))
         .route("/memory/scopes", get(scopes))
         .route("/memory/answer", post(answer))
+        .route("/memory/facts", get(layer))
+        .route("/memory/beliefs", get(layer))
+        .route("/memory/understanding", get(layer))
         .with_state(state.clone());
     (serve(app).await, state)
 }

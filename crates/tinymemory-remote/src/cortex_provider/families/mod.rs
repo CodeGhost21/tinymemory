@@ -23,9 +23,12 @@ mod scopes;
 mod scoring;
 mod sources;
 mod tool_rules;
+mod tree;
+mod understanding;
 
 use maintenance::{ProbeCache, FAILED_FOR, HEALTHY_FOR};
 use sources::{Pacing, SOURCE_PACING};
+use understanding::{ForestCache, FOREST_TTL};
 
 /// What the families keep between calls on one provider.
 #[derive(Debug)]
@@ -34,6 +37,8 @@ pub(crate) struct FamilyState {
     pub(crate) pacing: Pacing,
     /// The last health-probe answer.
     pub(crate) probe: ProbeCache,
+    /// The last reading of the server's derived layers.
+    pub(crate) forest: ForestCache,
 }
 
 impl Default for FamilyState {
@@ -41,6 +46,7 @@ impl Default for FamilyState {
         Self {
             pacing: Pacing::new(SOURCE_PACING),
             probe: ProbeCache::new(HEALTHY_FOR, FAILED_FOR),
+            forest: ForestCache::new(FOREST_TTL),
         }
     }
 }

@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use super::maintenance::ProbeCache;
 use super::sources::Pacing;
+use super::understanding::{ForestCache, FOREST_TTL};
 use super::FamilyState;
 use crate::cortex_provider::CortexProvider;
 use crate::hosted_test_support::{hosted_backend, provider_with_budget, Shared};
@@ -17,6 +18,7 @@ impl FamilyState {
         Self {
             pacing: Pacing::new(pacing),
             probe: ProbeCache::new(healthy_for, failed_for),
+            forest: ForestCache::new(FOREST_TTL),
         }
     }
 }

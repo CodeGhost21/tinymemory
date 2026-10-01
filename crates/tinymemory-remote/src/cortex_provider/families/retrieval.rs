@@ -90,7 +90,7 @@ fn fetch_for(limit: usize) -> usize {
 }
 
 /// The time an RFC 3339 stamp names, or the epoch.
-fn datetime(stamp: &str) -> DateTime<Utc> {
+pub(super) fn datetime(stamp: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(stamp)
         .map(|at| at.with_timezone(&Utc))
         .unwrap_or_default()
@@ -115,7 +115,7 @@ fn recent_window(days: u32) -> Value {
 
 /// The newest recalled version of each key, in the order the engine ranked
 /// its first appearance. Tombstones and empty records are dropped.
-fn ranked(events: &[Value]) -> Vec<Version> {
+pub(super) fn ranked(events: &[Value]) -> Vec<Version> {
     let mut order: Vec<String> = Vec::new();
     let mut newest: HashMap<String, Version> = HashMap::new();
     for version in events.iter().filter_map(Version::of) {
@@ -139,12 +139,22 @@ fn ranked(events: &[Value]) -> Vec<Version> {
 
 /// Whether a caller restricted to `scope` may see a record synced from
 /// `source`. A restricted caller never sees a record whose source is unknown.
-fn visible(scope: Option<&SourceScope>, source: Option<&str>) -> bool {
+pub(super) fn visible(scope: Option<&SourceScope>, source: Option<&str>) -> bool {
     match (scope, source) {
         (None, _) => true,
         (Some(scope), Some(source)) => scope.allows_source_id(source),
         (Some(_), None) => false,
     }
+}
+
+/// The lookup labels of `sources`, as one filter that keeps a record synced
+/// from any of them.
+pub(super) fn source_filter(sources: &[String]) -> String {
+    sources
+        .iter()
+        .map(|source| cortex_labels::source(source))
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 /// One synced record as a leaf, scored `score`.
@@ -253,6 +263,11 @@ impl CortexProvider {
 
     /// Recall across the synced records — every source namespace, or one
     /// kind's — as leaves in the engine's order.
+    ///
+    /// The caller's source scope, or the one source asked for, narrows the
+    /// recall itself by label, so a disallowed source cannot crowd permitted
+    /// ones out of what the engine ranks. Each leaf is still re-checked: a
+    /// label is a digest, not the source id.
     async fn source_leaves(
         &self,
         query: Option<&str>,
@@ -276,9 +291,23 @@ impl CortexProvider {
         if let Some(temporal) = temporal {
             body["temporal"] = temporal;
         }
-        if let Some(source_id) = source_id {
-            body["filters"] =
-                json!({ "metadata": { "labels": [cortex_labels::source(source_id)] } });
+        let labels: Option<Vec<String>> = match (source_id, scope) {
+            (Some(source_id), _) => Some(vec![cortex_labels::source(source_id)]),
+            (None, Some(scope)) => Some(
+                scope
+                    .allow
+                    .iter()
+                    .map(|s| cortex_labels::source(s))
+                    .collect(),
+            ),
+            (None, None) => None,
+        };
+        if let Some(labels) = labels {
+            if labels.is_empty() {
+                // An empty scope denies every source.
+                return Ok(Vec::new());
+            }
+            body["filters"] = json!({ "metadata": { "labels": labels } });
         }
         let leaves = ranked(&self.recall_events(&body).await?)
             .into_iter()
