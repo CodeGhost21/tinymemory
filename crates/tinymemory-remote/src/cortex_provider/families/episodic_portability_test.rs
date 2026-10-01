@@ -249,3 +249,47 @@ fn a_page_stops_at_its_limit_or_its_byte_budget() {
     let (taken, next) = page(Vec::<(String, usize)>::new(), 10, |_| 1);
     assert!(taken.is_empty() && next.is_none());
 }
+
+/// A turn moved off a taken id never lands on a turn still to come in the
+/// same batch. The id the generator hands out next is made to be exactly the
+/// id a later turn in the batch carries; without the batch's own account the
+/// moved turn would take it and the later turn would overwrite it.
+#[tokio::test]
+async fn a_moved_turn_never_takes_an_id_later_in_its_batch() {
+    let (to, _state) = hosted().await;
+    to.import_episodic(EpisodicRecords::Turns(vec![turn(
+        Some(7),
+        "session-0",
+        "an older conversation",
+        1.0,
+    )]))
+    .await
+    .expect("seed");
+
+    // An hour ahead of every id handed out so far, so the next one is known.
+    let ahead = super::super::episodic::next_turn_id() + 3_600_000_000;
+    super::super::episodic::turn_ids_continue_after(ahead);
+    let later = ahead + 1;
+    let outcome = to
+        .import_episodic(EpisodicRecords::Turns(vec![
+            turn(Some(7), "session-1", "moved", 5.0),
+            turn(Some(later), "session-1", "comes later", 6.0),
+        ]))
+        .await
+        .expect("import");
+    assert_eq!(outcome.imported, 2);
+    assert_eq!(outcome.remapped.len(), 1);
+    assert_ne!(
+        outcome.remapped[0].to, later,
+        "the later turn's id stays its own"
+    );
+
+    let turns = to.session_turns("session-1").await.expect("turns");
+    let contents: Vec<&str> = turns.iter().map(|t| t.content.as_str()).collect();
+    assert_eq!(
+        contents,
+        ["moved", "comes later"],
+        "neither overwrote the other"
+    );
+    assert_eq!(turns[1].id, Some(later));
+}
