@@ -551,6 +551,8 @@ impl Memory for UnifiedMemory {
         })
         .await
         .map(|written| {
+            // Detached on purpose: the vectors still land after `store` returns.
+            drop(written.vectors);
             log::trace!(
                 "[memory] stored without waiting for vectors document_id={}",
                 written.document_id
