@@ -5,70 +5,85 @@ edition = "2021"
 rust-version = "1.96"
 license = "GPL-3.0-only"
 repository = "https://github.com/tinyhumansai/tinymemory"
-description = "Engine-neutral memory-source contracts: what a source is, and what a reader hands back"
+description = "Source readers for TinyMemory: folders, files, links, GitHub, RSS, Composio payloads and conversations turned into StoreItems"
 publish = false
 
 [dependencies]
+# The contract: every reader's output ends as a `StoreItem` carrying
+# `MemoryMeta`, and `tinymemory_api::Error` is what a host maps reader failures
+# onto.
+tinymemory-api = { path = "../tinymemory-api" }
+# Conversion to markdown (`markdown_from_text`, `document_item`), the size cap
+# a fetch reads up to, and `language_for_path` for code files. Sources sit
+# above documents: documents does no I/O, sources does all of it.
+tinymemory-documents = { path = "../tinymemory-documents" }
+# The crate-wide `Error`.
+thiserror = "2"
 # The source types are serde shapes: they are persisted in the host's source
 # registry and cross the RPC surface.
 serde = { version = "1", features = ["derive"] }
 # `MemorySourceEntry` and friends appear in generated schemas, same as the
 # contract crate's own types.
 schemars = "1.2"
-# `MemorySourceEntry::metadata` is an open `Value` — connector-specific config
-# the host round-trips without interpreting.
+# `MemorySourceEntry::metadata`-style open values, thread files, and every
+# Composio payload are JSON.
 serde_json = "1"
-# `MemorySourcePatch::validate_for_kind` reports which field is inapplicable to
-# a kind; the engine typed that with anyhow and the message is the payload.
-anyhow = "1"
-# The contract, for `MemoryError` — `ensure_within_base` reports `PathEscape`,
-# which the contract already models, so readers speak the same error language
-# as the drivers they feed.
-tinymemory-api = { path = "../tinymemory-api" }
-# The readers are the I/O half of this crate: they walk folders, fetch feeds,
-# scrape pages and call the GitHub API. These are theirs, and the reason the
-# readers live here rather than in the contract crate — `tinymemory-api`
-# forbids exactly this list (#18 §D4).
+# `SourceReader` is an object-safe async trait so network and local readers
+# share one surface.
 async-trait = "0.1"
-futures = { version = "0.3", optional = true }
+# The folder reader compiles a source's glob to a regex.
 regex = "1.10"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"], optional = true }
+# The folder reader walks the directory tree.
 walkdir = "2"
-# Diagnostics on the network readers' fetch paths.
-tracing = { version = "0.1", optional = true }
-# Feed and issue timestamps.
-chrono = { version = "0.4", features = ["serde"], optional = true }
-# The GitHub reader shells out to `git` for clones.
-tokio = { version = "1", features = ["process", "io-util"], optional = true }
+# Timestamps: `MemoryMeta::observed_at`, file mtimes, feed and issue dates,
+# Gmail `Date:` headers. `clock` is needed by the Composio email normaliser,
+# which renders a message time in the host's local timezone.
+chrono = { version = "0.4", features = ["clock", "serde"] }
 # The registry is the host's `sources.toml`: it reads, mutates and rewrites it.
 toml = "1.1"
-# Diagnostics on the always-compiled placeholder readers.
+# Diagnostics on the local readers, the registry and the Slack normaliser.
 log = "0.4"
-# New sources get a generated id.
+# Diagnostics on the network readers and the Gmail normaliser.
+tracing = "0.1"
+# New sources get a generated id; registry temp files get a unique name.
 uuid = { version = "1", features = ["v4"] }
+# The readers that fetch over the network — GitHub, RSS, web pages, URL fetch.
+futures = { version = "0.3", optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"], optional = true }
+# The GitHub reader shells out to `git` and `gh`; the SSRF resolver looks up
+# hosts.
+tokio = { version = "1", features = ["process", "io-util", "net", "time"], optional = true }
 
 [dev-dependencies]
 tempfile = "3"
 # The reader tests are async.
-tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "net", "io-util"] }
 
 [features]
-# Nothing by default: a host that only reads local folders and conversations
-# links no HTTP stack.
+# Nothing by default: a host that only reads local folders, files and
+# conversations links no HTTP stack.
 default = []
-# The readers that fetch over the network — GitHub, RSS, web pages. The engine
-# spelled this gate `sync`; renamed here because `tinymemory-sync` is a
-# different crate in this workspace and one name for two things is how the
-# `SourceKind` confusion started.
-network = ["dep:reqwest", "dep:futures", "dep:tracing", "dep:chrono", "dep:tokio"]
+# The readers that fetch over the network — GitHub, RSS, web pages — and
+# `fetch::fetch_url`, all behind the shared SSRF guard.
+network = ["dep:reqwest", "dep:futures", "dep:tokio"]
 
 [lints.rust]
 unsafe_code = "forbid"
 missing_docs = "warn"
+missing_debug_implementations = "warn"
 unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }
 unwrap_used = "warn"
 expect_used = "warn"
 panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+
+[lints.rustdoc]
+broken_intra_doc_links = "warn"
+private_intra_doc_links = "warn"
