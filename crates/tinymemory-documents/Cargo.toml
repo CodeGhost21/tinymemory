@@ -1,47 +1,31 @@
 [package]
 name = "tinymemory-documents"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 rust-version = "1.96"
 license = "GPL-3.0-only"
 repository = "https://github.com/tinyhumansai/tinymemory"
-description = "Document and URL intake for TinyMemory: sniff a format, convert it to markdown, put it in whichever engine is bound"
+description = "Document intake for TinyMemory: sniff a format, convert it to markdown, emit a StoreItem::Document"
 publish = false
 
 [dependencies]
-# The contract. Everything this crate produces is handed to a `MemoryProvider`,
-# and every error it returns is a `MemoryError`, so intake speaks the same
-# language as the drivers it feeds.
+# The contract. Intake emits `StoreItem::Document` with the caller's
+# `MemoryMeta`, so the item it builds is exactly what an engine stores.
 tinymemory-api = { path = "../tinymemory-api" }
 # `DocumentConverter` is an object-safe async trait: a host swaps the converter
-# without this crate knowing which one it got.
+# (a PDF or DOCX extractor) without this crate knowing which one it got.
 async-trait = "0.1"
-# `ConvertedDocument::metadata` is an open `Value`, and `MemoryDocuments`
-# returns its listings as one.
+# `ConvertedDocument::metadata` is an open `Value` a converter fills with
+# whatever it learned (page count, author, its own name).
 serde_json = "1"
-# The intake types are persisted by whichever engine receives them and cross
-# the testing harness's HTTP boundary.
+# `DocumentFormat` and `ConvertedDocument` cross host boundaries as JSON.
 serde = { version = "1", features = ["derive"] }
-# Ingested content carries an event time for tree placement.
-chrono = { version = "0.4", features = ["serde"] }
-# The URL path reuses the source readers' SSRF guard rather than growing a
-# second one — see `fetch`. Optional because a host that only accepts uploads
-# links no HTTP stack.
-tinymemory-sources = { path = "../tinymemory-sources", optional = true }
-# The fetch path needs the response's status, content type and body. Same
-# default-features-off rustls configuration as `tinymemory-sources`, so the two
-# do not pull in two TLS backends.
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
+# The crate-wide `Error`.
+thiserror = "2"
 
 [dev-dependencies]
-# The converter and ingest paths are async.
+# The converter and item paths are async.
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
-
-[features]
-# Nothing by default: uploads and conversion need no network.
-default = []
-# The URL intake path, and with it the SSRF guard and an HTTP client.
-network = ["dep:tinymemory-sources", "tinymemory-sources/network", "dep:reqwest"]
 
 [lints.rust]
 unsafe_code = "forbid"
