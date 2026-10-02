@@ -98,7 +98,11 @@ impl HttpClient {
     ///
     /// [`Error::Config`] for an unparsable or non-HTTP(S) endpoint, a
     /// cleartext non-loopback endpoint, or a blank static credential.
-    pub(crate) fn new(wire: CortexWire, endpoint: &str, credential: CortexCredential) -> Result<Self> {
+    pub(crate) fn new(
+        wire: CortexWire,
+        endpoint: &str,
+        credential: CortexCredential,
+    ) -> Result<Self> {
         let mut url = Url::parse(endpoint)
             .map_err(|_| Error::Config("memory endpoint is not a valid URL".to_string()))?;
         if !matches!(url.scheme(), "http" | "https") {
@@ -169,7 +173,10 @@ impl HttpClient {
             ))
         })?;
         let header = credential_header(&token)?;
-        Ok(self.inner.request(method, url).header(AUTHORIZATION, header))
+        Ok(self
+            .inner
+            .request(method, url)
+            .header(AUTHORIZATION, header))
     }
 
     /// Sends a JSON request and returns the decoded body (unwrapped from the
@@ -206,13 +213,16 @@ impl HttpClient {
     /// One attempt of a hosted write under a caller-chosen `Idempotency-Key`,
     /// so the caller can reuse one claim across its own retries.
     pub(crate) async fn json_keyed(&self, path: &str, body: &Value, key: &str) -> Result<Value> {
-        self.attempt(Method::POST, path, Some(body), Some(key)).await
+        self.attempt(Method::POST, path, Some(body), Some(key))
+            .await
     }
 
     /// GETs `path` and checks it succeeds (and, hosted, that the envelope
     /// says so). One attempt: a probe reports what it saw.
     pub(crate) async fn probe(&self, path: &str) -> Result<()> {
-        self.attempt(Method::GET, path, None, None).await.map(|_| ())
+        self.attempt(Method::GET, path, None, None)
+            .await
+            .map(|_| ())
     }
 
     /// One send.
@@ -239,7 +249,9 @@ impl HttpClient {
         if !status.is_success() {
             let text = body::read_error_body(response).await;
             return Err(match self.wire {
-                CortexWire::Direct => failure::direct_status_error(self.host(), label, status, &text),
+                CortexWire::Direct => {
+                    failure::direct_status_error(self.host(), label, status, &text)
+                }
                 CortexWire::TinyHumans => {
                     failure::hosted_status_error(self.host(), label, status, &text)
                 }
@@ -283,9 +295,7 @@ fn build_inner(timeout: Duration) -> Result<reqwest::Client> {
 pub(crate) fn credential_header(token: &str) -> Result<HeaderValue> {
     let token = token.trim();
     if token.is_empty() {
-        return Err(Error::Unauthorized(
-            "the credential is empty".to_string(),
-        ));
+        return Err(Error::Unauthorized("the credential is empty".to_string()));
     }
     let mut header = HeaderValue::from_str(&format!("Bearer {token}")).map_err(|_| {
         Error::Unauthorized("the credential is not a valid HTTP header value".to_string())

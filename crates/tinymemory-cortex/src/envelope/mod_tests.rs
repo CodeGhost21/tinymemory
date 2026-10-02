@@ -54,7 +54,11 @@ fn every_kind_round_trips_through_its_events() {
             .collect();
         let rebuilt = rebuild(&decoded).unwrap();
         assert_eq!(rebuilt, item);
-        assert_eq!(rebuilt.fingerprint(), id, "identity survives the round trip");
+        assert_eq!(
+            rebuilt.fingerprint(),
+            id,
+            "identity survives the round trip"
+        );
     }
 }
 
@@ -78,7 +82,10 @@ fn a_conversation_is_one_event_per_turn_in_order() {
 fn a_recall_rendering_is_read_as_well_as_the_stored_text() {
     let envelope = &Envelope::for_item(&conversation(), "id").unwrap()[0];
     let stored = envelope.encode().unwrap();
-    assert_eq!(Envelope::decode(&format!("[user] {stored}")).as_ref(), Some(envelope));
+    assert_eq!(
+        Envelope::decode(&format!("[user] {stored}")).as_ref(),
+        Some(envelope)
+    );
     assert_eq!(Envelope::decode(&stored).as_ref(), Some(envelope));
 }
 
@@ -110,7 +117,10 @@ fn observed_at_and_labels_reach_the_event_context() {
     let item = StoreItem::document("text", meta);
     let envelope = &Envelope::for_item(&item, "id").unwrap()[0];
     let request = envelope.request("payload");
-    assert_eq!(request["context"]["observed_at"], "2026-01-02T03:04:05+00:00");
+    assert_eq!(
+        request["context"]["observed_at"],
+        "2026-01-02T03:04:05+00:00"
+    );
     assert_eq!(request["context"]["labels"][0], labels::item("id"));
     assert_eq!(request["scope"], "tm:memory/tm:documents");
     assert_ne!(

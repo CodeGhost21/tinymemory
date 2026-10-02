@@ -99,7 +99,9 @@ async fn forget_names_events_in_memory_ids_never_an_empty_selector() {
 async fn forget_batches_event_ids_at_one_hundred() {
     let (endpoint, state) = direct_double().await;
     let engine = direct_engine(&endpoint);
-    let turns: Vec<Turn> = (0..230).map(|i| Turn::new(Role::User, format!("t{i}"))).collect();
+    let turns: Vec<Turn> = (0..230)
+        .map(|i| Turn::new(Role::User, format!("t{i}")))
+        .collect();
     let item = StoreItem::Conversation {
         turns,
         meta: thread_meta("big"),
@@ -150,7 +152,11 @@ async fn a_failed_write_is_sent_once_and_reads_retry() {
     state.claim_then_fail.store(1, Ordering::SeqCst);
     let error = engine.store(sample_items().remove(0)).await.unwrap_err();
     assert!(matches!(error, Error::Unavailable(_)), "{error:?}");
-    assert_eq!(state.count("POST /v1/experience"), 1, "a write is never retried");
+    assert_eq!(
+        state.count("POST /v1/experience"),
+        1,
+        "a write is never retried"
+    );
 
     state.rate_limit_events.store(2, Ordering::SeqCst);
     let listed = engine

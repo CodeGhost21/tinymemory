@@ -31,21 +31,31 @@ async fn every_kind_round_trips_through_store_list_fetch_and_forget() {
             .await
             .unwrap();
         let kinds: Vec<_> = fetched.hits.iter().map(|h| h.kind).collect();
-        assert!(kinds.contains(&ItemKind::Conversation), "{wire:?}: {fetched:?}");
+        assert!(
+            kinds.contains(&ItemKind::Conversation),
+            "{wire:?}: {fetched:?}"
+        );
         assert!(kinds.contains(&ItemKind::Learning));
         let chat = fetched
             .hits
             .iter()
             .find(|h| h.kind == ItemKind::Conversation)
             .unwrap();
-        assert_eq!(chat.text, items()[1].render_text(), "the whole conversation");
+        assert_eq!(
+            chat.text,
+            items()[1].render_text(),
+            "the whole conversation"
+        );
         assert!(fetched.hits.windows(2).all(|w| w[0].score > w[1].score));
 
         let ids: Vec<_> = items().iter().map(|i| i.fingerprint().into()).collect();
         let report = engine.forget(ForgetTarget::Ids(ids)).await.unwrap();
         assert_eq!(report.forgotten, 3, "{wire:?}");
         assert_eq!(state.event_count(), 0, "{wire:?}: every turn removed too");
-        let empty = engine.list(ListRequest::new(MetaFilter::default(), 10)).await.unwrap();
+        let empty = engine
+            .list(ListRequest::new(MetaFilter::default(), 10))
+            .await
+            .unwrap();
         assert!(empty.items.is_empty());
     }
 }
@@ -65,7 +75,10 @@ async fn an_identical_store_is_a_replay_that_writes_nothing() {
                 .skip(writes)
                 .cloned()
                 .collect();
-            assert!(new_posts.is_empty(), "a replay writes nothing: {new_posts:?}");
+            assert!(
+                new_posts.is_empty(),
+                "a replay writes nothing: {new_posts:?}"
+            );
         }
     }
 }
@@ -80,8 +93,14 @@ async fn an_item_forgotten_and_stored_again_is_written_again() {
             .await
             .unwrap();
         let again = engine.store(item).await.unwrap();
-        assert!(!again.replayed, "fresh keys: the engine's kept idempotency record must not swallow it");
-        let listed = engine.list(ListRequest::new(MetaFilter::default(), 5)).await.unwrap();
+        assert!(
+            !again.replayed,
+            "fresh keys: the engine's kept idempotency record must not swallow it"
+        );
+        let listed = engine
+            .list(ListRequest::new(MetaFilter::default(), 5))
+            .await
+            .unwrap();
         assert_eq!(listed.items.len(), 1);
     }
 }
@@ -90,7 +109,10 @@ async fn an_item_forgotten_and_stored_again_is_written_again() {
 async fn keyword_and_vector_fetch_are_unsupported_without_a_request() {
     for (engine, state) in both().await {
         for mode in [FetchMode::Keyword, FetchMode::Vector] {
-            let error = engine.fetch(FetchRequest::new("q", mode, 5)).await.unwrap_err();
+            let error = engine
+                .fetch(FetchRequest::new("q", mode, 5))
+                .await
+                .unwrap_err();
             assert!(matches!(error, Error::Unsupported(_)), "{error:?}");
         }
         assert!(state.requests().is_empty());
@@ -101,13 +123,20 @@ async fn keyword_and_vector_fetch_are_unsupported_without_a_request() {
 async fn invalid_requests_are_refused_before_any_request() {
     for (engine, state) in both().await {
         let blank = StoreItem::document("  ", MemoryMeta::default());
-        assert!(matches!(engine.store(blank).await, Err(Error::InvalidRequest(_))));
         assert!(matches!(
-            engine.forget(ForgetTarget::Filter(MetaFilter::default())).await,
+            engine.store(blank).await,
             Err(Error::InvalidRequest(_))
         ));
         assert!(matches!(
-            engine.list(ListRequest::new(MetaFilter::default(), 0)).await,
+            engine
+                .forget(ForgetTarget::Filter(MetaFilter::default()))
+                .await,
+            Err(Error::InvalidRequest(_))
+        ));
+        assert!(matches!(
+            engine
+                .list(ListRequest::new(MetaFilter::default(), 0))
+                .await,
             Err(Error::InvalidRequest(_))
         ));
         assert!(matches!(
@@ -130,7 +159,10 @@ async fn forget_by_filter_removes_only_what_matches() {
         };
         let report = engine.forget(ForgetTarget::Filter(filter)).await.unwrap();
         assert_eq!(report.forgotten, 1);
-        let left = engine.list(ListRequest::new(MetaFilter::default(), 10)).await.unwrap();
+        let left = engine
+            .list(ListRequest::new(MetaFilter::default(), 10))
+            .await
+            .unwrap();
         let kinds: Vec<_> = left.items.iter().map(|h| h.kind).collect();
         assert_eq!(kinds, vec![ItemKind::Document, ItemKind::Learning]);
     }
@@ -149,7 +181,12 @@ async fn recall_answers_once_from_one_pack_with_filtered_citations() {
         assert_eq!(answer.answer, "grounded answer for which editor helix");
         assert_eq!(answer.model.as_deref(), Some("reasoning"));
         assert!(!answer.citations.is_empty() && answer.citations.len() <= 2);
-        assert!(answer.citations.iter().all(|c| c.kind != ItemKind::Document && c.score.is_none()));
+        assert!(
+            answer
+                .citations
+                .iter()
+                .all(|c| c.kind != ItemKind::Document && c.score.is_none())
+        );
         let seen = state.seen.lock().unwrap();
         assert_eq!(seen.recalls.len(), 1, "one pack");
         assert_eq!(seen.recalls[0]["scope"], "tm:memory");
@@ -165,7 +202,10 @@ async fn recall_over_one_kind_uses_that_kind_scope() {
         let mut req = RecallRequest::new("anything", 3);
         req.filter = MetaFilter::kinds([ItemKind::Document]);
         let answer = engine.recall(req).await.unwrap();
-        assert!(answer.citations.is_empty(), "no decodable events, still an answer");
+        assert!(
+            answer.citations.is_empty(),
+            "no decodable events, still an answer"
+        );
         assert!(!answer.answer.is_empty());
         let seen = state.seen.lock().unwrap();
         assert_eq!(seen.recalls[0]["scope"], "tm:memory/tm:documents");
@@ -193,8 +233,10 @@ async fn health_is_ok_degraded_or_down_with_a_redacted_reason() {
 async fn a_pack_without_a_pack_id_or_answer_text_is_an_engine_error() {
     use axum::routing::post;
     use axum::{Json, Router};
-    let app = Router::new()
-        .route("/v1/recall", post(|| async { Json(serde_json::json!({ "layers": {} })) }));
+    let app = Router::new().route(
+        "/v1/recall",
+        post(|| async { Json(serde_json::json!({ "layers": {} })) }),
+    );
     let endpoint = crate::testing::serve(app).await;
     let error = direct_engine(&endpoint)
         .recall(RecallRequest::new("q", 1))
@@ -205,10 +247,13 @@ async fn a_pack_without_a_pack_id_or_answer_text_is_an_engine_error() {
 
 #[test]
 fn debug_names_the_engine_but_never_the_credential() {
-    let engine = CortexEngine::direct("https://db.example", CortexCredential::api_key("ctx_secret"))
-        .unwrap()
-        .with_request_timeout(Duration::from_secs(5))
-        .unwrap();
+    let engine = CortexEngine::direct(
+        "https://db.example",
+        CortexCredential::api_key("ctx_secret"),
+    )
+    .unwrap()
+    .with_request_timeout(Duration::from_secs(5))
+    .unwrap();
     let rendered = format!("{engine:?}");
     assert!(rendered.contains("cortexdb") && rendered.contains("db.example"));
     assert!(!rendered.contains("ctx_secret"));
@@ -221,7 +266,10 @@ async fn a_store_succeeds_when_ranked_recall_is_down() {
     for (engine, state) in both().await {
         state.recall_down.store(true, Ordering::SeqCst);
         engine.store(items().remove(0)).await.unwrap();
-        let listed = engine.list(ListRequest::new(MetaFilter::default(), 5)).await.unwrap();
+        let listed = engine
+            .list(ListRequest::new(MetaFilter::default(), 5))
+            .await
+            .unwrap();
         assert_eq!(listed.items.len(), 1, "the settle probe is best-effort");
     }
 }

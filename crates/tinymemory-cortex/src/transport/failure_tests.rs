@@ -75,7 +75,12 @@ fn direct_statuses_map_onto_the_contract() {
 #[test]
 fn a_hosted_failure_carries_its_code_and_402_is_insufficient_credits() {
     let body = r#"{"success":false,"error":"top up","errorCode":"USER_INSUFFICIENT_CREDITS"}"#;
-    let error = hosted_status_error("api.example", "memory/experience", StatusCode::PAYMENT_REQUIRED, body);
+    let error = hosted_status_error(
+        "api.example",
+        "memory/experience",
+        StatusCode::PAYMENT_REQUIRED,
+        body,
+    );
     assert!(matches!(error, Error::Engine(_)), "{error:?}");
     assert!(is_insufficient_credits(&error));
     assert_eq!(error_code(&error), Some("USER_INSUFFICIENT_CREDITS"));
@@ -93,7 +98,12 @@ fn a_hosted_failure_carries_its_code_and_402_is_insufficient_credits() {
     assert!(matches!(conflict, Error::Conflict(_)));
     assert_eq!(error_code(&conflict), Some("CONFLICT"));
 
-    let limited = hosted_status_error("h", "memory/events", StatusCode::TOO_MANY_REQUESTS, "not json");
+    let limited = hosted_status_error(
+        "h",
+        "memory/events",
+        StatusCode::TOO_MANY_REQUESTS,
+        "not json",
+    );
     assert!(matches!(limited, Error::Unavailable(_)));
     assert_eq!(error_code(&limited), Some("RATE_LIMITED"));
 }
@@ -106,12 +116,17 @@ fn a_hostile_error_code_cannot_break_the_prefix() {
         StatusCode::BAD_REQUEST,
         r#"{"errorCode":"bad] code\n","error":"x"}"#,
     );
-    assert_eq!(error_code(&error), Some("BADCODEN"));
+    assert_eq!(error_code(&error), Some("BADCODE"));
 }
 
 #[test]
 fn the_envelope_is_unwrapped_and_its_absence_is_an_engine_error() {
-    let ok = unwrap_envelope("h", "memory/events", StatusCode::OK, br#"{"success":true,"data":{"a":1}}"#);
+    let ok = unwrap_envelope(
+        "h",
+        "memory/events",
+        StatusCode::OK,
+        br#"{"success":true,"data":{"a":1}}"#,
+    );
     assert_eq!(ok.unwrap(), serde_json::json!({ "a": 1 }));
     for body in [
         br#"{"success":true}"#.as_slice(),

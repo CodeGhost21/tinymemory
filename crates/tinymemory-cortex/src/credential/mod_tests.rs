@@ -14,10 +14,7 @@ fn debug_never_shows_a_token() {
 
 #[tokio::test]
 async fn both_kinds_resolve_to_their_token() {
-    assert_eq!(
-        CortexCredential::api_key("k").resolve().await.unwrap(),
-        "k"
-    );
+    assert_eq!(CortexCredential::api_key("k").resolve().await.unwrap(), "k");
     let dynamic = CortexCredential::Dynamic(Arc::new(StaticBearer::new("t")));
     assert_eq!(dynamic.resolve().await.unwrap(), "t");
 }

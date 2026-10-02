@@ -109,9 +109,10 @@ impl Log {
                 requests.len()
             )));
         }
-        results
-            .last()
-            .map_or_else(|| Err(Error::Engine("empty bulk results".to_string())), receipt)
+        results.last().map_or_else(
+            || Err(Error::Engine("empty bulk results".to_string())),
+            receipt,
+        )
     }
 
     /// One hosted write under one claim, with the outcome-unknown recovery.

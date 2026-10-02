@@ -47,7 +47,11 @@ impl TransportClass {
 /// failures, so checking it first collapses every class into "could not
 /// connect". TLS is recognised from the chain's text because rustls' error
 /// types are not public dependencies of this crate.
-pub(crate) fn classify_transport(is_timeout: bool, is_connect: bool, chain: &str) -> TransportClass {
+pub(crate) fn classify_transport(
+    is_timeout: bool,
+    is_connect: bool,
+    chain: &str,
+) -> TransportClass {
     let lower = chain.to_ascii_lowercase();
     if is_timeout {
         TransportClass::Timeout
@@ -92,7 +96,9 @@ pub(crate) fn transport_error(host: &str, error: &reqwest::Error) -> Error {
     if chain.is_empty() {
         Error::Unavailable(format!("memory API request to {host}: {described}"))
     } else {
-        Error::Unavailable(format!("memory API request to {host}: {described} — {chain}"))
+        Error::Unavailable(format!(
+            "memory API request to {host}: {described} — {chain}"
+        ))
     }
 }
 
@@ -124,7 +130,12 @@ fn by_status(status: StatusCode, head: String, detail: &str) -> Error {
 }
 
 /// The error for a non-success status from CortexDB's own API.
-pub(crate) fn direct_status_error(host: &str, label: &str, status: StatusCode, body: &str) -> Error {
+pub(crate) fn direct_status_error(
+    host: &str,
+    label: &str,
+    status: StatusCode,
+    body: &str,
+) -> Error {
     let head = match status.as_u16() {
         401 | 403 => format!(
             "memory API {label} on {host}: the credential was rejected (HTTP {status}); check \
@@ -138,7 +149,12 @@ pub(crate) fn direct_status_error(host: &str, label: &str, status: StatusCode, b
 /// The error for a TinyHumans failure: a non-2xx status or a
 /// `{success:false}` body. The backend's `errorCode` leads the message as
 /// `[CODE] `.
-pub(crate) fn hosted_status_error(host: &str, label: &str, status: StatusCode, body: &str) -> Error {
+pub(crate) fn hosted_status_error(
+    host: &str,
+    label: &str,
+    status: StatusCode,
+    body: &str,
+) -> Error {
     let parsed: Option<Value> = serde_json::from_str(body).ok();
     let code = parsed
         .as_ref()
@@ -167,9 +183,17 @@ pub(crate) fn hosted_status_error(host: &str, label: &str, status: StatusCode, b
 
 /// Unwraps `{success:true,data}`. `{success:false}`, a missing `data` and a
 /// body without the envelope are all errors.
-pub(crate) fn unwrap_envelope(host: &str, label: &str, status: StatusCode, body: &[u8]) -> Result<Value, Error> {
-    let mut value: Value = serde_json::from_slice(body)
-        .map_err(|_| Error::Engine(format!("memory API {label} on {host} returned invalid JSON")))?;
+pub(crate) fn unwrap_envelope(
+    host: &str,
+    label: &str,
+    status: StatusCode,
+    body: &[u8],
+) -> Result<Value, Error> {
+    let mut value: Value = serde_json::from_slice(body).map_err(|_| {
+        Error::Engine(format!(
+            "memory API {label} on {host} returned invalid JSON"
+        ))
+    })?;
     match value.get("success").and_then(Value::as_bool) {
         Some(true) => value.get_mut("data").map(Value::take).ok_or_else(|| {
             Error::Engine(format!(

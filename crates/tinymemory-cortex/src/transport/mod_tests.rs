@@ -6,10 +6,10 @@ use super::*;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use crate::testing::serve;
 use axum::Router;
 use axum::http::StatusCode;
 use axum::routing::any;
-use crate::testing::serve;
 
 fn client(endpoint: &str) -> HttpClient {
     let mut client = HttpClient::new(
@@ -40,14 +40,21 @@ fn credentialed_cleartext_is_refused_except_on_loopback() {
         "http://[::1]:3141",
         "http://localhost:3141",
     ] {
-        assert!(HttpClient::new(CortexWire::TinyHumans, allowed, key()).is_ok(), "{allowed}");
+        assert!(
+            HttpClient::new(CortexWire::TinyHumans, allowed, key()).is_ok(),
+            "{allowed}"
+        );
     }
 }
 
 #[test]
 fn a_blank_static_key_is_a_configuration_error() {
     assert!(matches!(
-        HttpClient::new(CortexWire::Direct, "https://x", CortexCredential::api_key("  ")),
+        HttpClient::new(
+            CortexWire::Direct,
+            "https://x",
+            CortexCredential::api_key("  ")
+        ),
         Err(Error::Config(_))
     ));
 }
@@ -65,7 +72,10 @@ fn a_token_that_cannot_be_a_header_is_unauthorized_and_not_echoed() {
     assert!(matches!(error, Error::Unauthorized(_)), "{error:?}");
     let rendered = format!("{error:?}");
     assert!(!rendered.contains("supersecret") && !rendered.contains("X-Injected"));
-    assert!(matches!(credential_header("   "), Err(Error::Unauthorized(_))));
+    assert!(matches!(
+        credential_header("   "),
+        Err(Error::Unauthorized(_))
+    ));
 }
 
 #[tokio::test]
@@ -83,16 +93,23 @@ async fn a_built_request_carries_a_sensitive_authorization() {
 
 #[test]
 fn every_write_key_is_fresh_and_names_its_process() {
-    let keys: std::collections::HashSet<String> = (0..1000).map(|_| fresh_idempotency_key()).collect();
+    let keys: std::collections::HashSet<String> =
+        (0..1000).map(|_| fresh_idempotency_key()).collect();
     assert_eq!(keys.len(), 1000);
     let salt = |k: &str| k.split('-').nth(1).map(str::to_string);
-    assert_eq!(salt(&fresh_idempotency_key()), salt(&fresh_idempotency_key()));
+    assert_eq!(
+        salt(&fresh_idempotency_key()),
+        salt(&fresh_idempotency_key())
+    );
     assert!(fresh_idempotency_key().starts_with("tm-"));
 }
 
 #[test]
 fn urlencoding_escapes_everything_a_cursor_could_reshape() {
-    assert_eq!(urlencode("tm:memory/tm:documents"), "tm%3Amemory%2Ftm%3Adocuments");
+    assert_eq!(
+        urlencode("tm:memory/tm:documents"),
+        "tm%3Amemory%2Ftm%3Adocuments"
+    );
     assert_eq!(urlencode("a+b&c=d#e?f"), "a%2Bb%26c%3Dd%23e%3Ff");
     assert_eq!(urlencode("Az09-._~"), "Az09-._~");
     assert_eq!(urlencode("é"), "%C3%A9");
@@ -116,14 +133,26 @@ async fn counting(status: StatusCode) -> (String, Arc<AtomicUsize>) {
 async fn transient_failures_retry_reads_three_times_and_writes_once() {
     let (endpoint, hits) = counting(StatusCode::SERVICE_UNAVAILABLE).await;
     let c = client(&endpoint);
-    let read = c.json(Method::GET, "v1/events", None, Attempts::RetryTransient).await;
+    let read = c
+        .json(Method::GET, "v1/events", None, Attempts::RetryTransient)
+        .await;
     assert!(matches!(read, Err(Error::Unavailable(_))), "{read:?}");
-    assert_eq!(hits.swap(0, Ordering::SeqCst), 3, "a read retries to the cap");
+    assert_eq!(
+        hits.swap(0, Ordering::SeqCst),
+        3,
+        "a read retries to the cap"
+    );
 
     let body = serde_json::json!({});
-    let write = c.json(Method::POST, "v1/experience", Some(&body), Attempts::Once).await;
+    let write = c
+        .json(Method::POST, "v1/experience", Some(&body), Attempts::Once)
+        .await;
     assert!(matches!(write, Err(Error::Unavailable(_))), "{write:?}");
-    assert_eq!(hits.load(Ordering::SeqCst), 1, "a write is sent exactly once");
+    assert_eq!(
+        hits.load(Ordering::SeqCst),
+        1,
+        "a write is sent exactly once"
+    );
 }
 
 #[tokio::test]
@@ -157,7 +186,10 @@ async fn an_endless_error_body_is_capped_rather_than_buffered() {
     )
     .await
     .expect("an endless error body was buffered instead of capped");
-    assert!(matches!(outcome, Err(Error::InvalidRequest(_))), "{outcome:?}");
+    assert!(
+        matches!(outcome, Err(Error::InvalidRequest(_))),
+        "{outcome:?}"
+    );
 }
 
 #[tokio::test]
@@ -165,7 +197,9 @@ async fn a_success_body_over_the_cap_is_refused() {
     let app = Router::new().fallback(any(|| async { "y".repeat(4096) }));
     let endpoint = serve(app).await;
     let response = reqwest::get(format!("{endpoint}/x")).await.unwrap();
-    let error = body::read_limited(response, "v1/x", 1024).await.unwrap_err();
+    let error = body::read_limited(response, "v1/x", 1024)
+        .await
+        .unwrap_err();
     assert!(matches!(error, Error::Engine(_)));
     assert!(error.to_string().contains("limit"), "{error}");
 }

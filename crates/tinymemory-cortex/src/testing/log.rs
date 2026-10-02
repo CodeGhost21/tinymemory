@@ -45,7 +45,10 @@ fn labelled(event: &Value, wanted: &[&str]) -> bool {
 }
 
 fn str_of<'a>(value: &'a Value, pointer: &str) -> &'a str {
-    value.pointer(pointer).and_then(Value::as_str).unwrap_or_default()
+    value
+        .pointer(pointer)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
 }
 
 impl CortexLog {
@@ -88,11 +91,22 @@ impl CortexLog {
     /// the copies, an offset `cursor`.
     pub(crate) fn page(&self, params: &BTreeMap<String, String>) -> Value {
         let scope = params.get("scope").cloned().unwrap_or_default();
-        let cursor: usize = params.get("cursor").and_then(|v| v.parse().ok()).unwrap_or(0);
-        let limit: usize = params.get("limit").and_then(|v| v.parse().ok()).unwrap_or(50);
+        let cursor: usize = params
+            .get("cursor")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        let limit: usize = params
+            .get("limit")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(50);
         let wanted: Vec<&str> = params
             .get("labels")
-            .map(|l| l.split(',').map(str::trim).filter(|l| !l.is_empty()).collect())
+            .map(|l| {
+                l.split(',')
+                    .map(str::trim)
+                    .filter(|l| !l.is_empty())
+                    .collect()
+            })
             .unwrap_or_default();
         let mut stream = Vec::new();
         for event in self
@@ -119,20 +133,32 @@ impl CortexLog {
         let ids: Vec<String> = body
             .pointer("/selector/memory_ids")
             .and_then(Value::as_array)
-            .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
             .unwrap_or_default();
         let selective = !ids.is_empty();
         if selective && confirm_all {
-            return (400, json!({ "error_code": "AMBIGUOUS_SELECTOR_CONFIRM_ALL" }));
+            return (
+                400,
+                json!({ "error_code": "AMBIGUOUS_SELECTOR_CONFIRM_ALL" }),
+            );
         }
         if !selective && !confirm_all {
-            return (422, json!({ "error_code": "EMPTY_SELECTOR_WITHOUT_CONFIRMATION" }));
+            return (
+                422,
+                json!({ "error_code": "EMPTY_SELECTOR_WITHOUT_CONFIRMATION" }),
+            );
         }
         let before = self.events.len();
         if selective {
-            let (gone, kept): (Vec<Value>, Vec<Value>) = std::mem::take(&mut self.events)
-                .into_iter()
-                .partition(|e| str_of(e, "/scope") == scope && ids.iter().any(|id| id == str_of(e, "/id")));
+            let (gone, kept): (Vec<Value>, Vec<Value>) =
+                std::mem::take(&mut self.events).into_iter().partition(|e| {
+                    str_of(e, "/scope") == scope && ids.iter().any(|id| id == str_of(e, "/id"))
+                });
             self.forgotten
                 .extend(gone.iter().map(|e| str_of(e, "/id").to_string()));
             self.events = kept;
@@ -140,7 +166,10 @@ impl CortexLog {
             self.events.retain(|e| str_of(e, "/scope") != scope);
         }
         let deleted = before - self.events.len();
-        (200, json!({ "deleted": { "events": deleted }, "requested": ids.len() }))
+        (
+            200,
+            json!({ "deleted": { "events": deleted }, "requested": ids.len() }),
+        )
     }
 
     /// `POST /v1/recall`: events ranked by how many query words they hold.

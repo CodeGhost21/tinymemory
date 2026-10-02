@@ -33,7 +33,10 @@ fn pack_budgets(limit: usize) -> Value {
     let base = limit / DERIVED_LAYERS.len();
     let remainder = limit % DERIVED_LAYERS.len();
     for (index, layer) in DERIVED_LAYERS.into_iter().enumerate() {
-        layers.insert(layer.to_string(), json!(base + usize::from(index < remainder)));
+        layers.insert(
+            layer.to_string(),
+            json!(base + usize::from(index < remainder)),
+        );
     }
     Value::Object(layers)
 }

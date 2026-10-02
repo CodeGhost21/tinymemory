@@ -41,7 +41,11 @@ fn a_pack_ranks_each_item_once_at_its_best_position_and_filters() {
 
 #[test]
 fn kinds_interleave_rank_by_rank() {
-    let envelope = |text: &str| Envelope::for_item(&doc(text, None), text).unwrap().remove(0);
+    let envelope = |text: &str| {
+        Envelope::for_item(&doc(text, None), text)
+            .unwrap()
+            .remove(0)
+    };
     let merged = interleave(vec![
         vec![envelope("d1"), envelope("d2"), envelope("d3")],
         vec![envelope("l1")],
@@ -58,6 +62,13 @@ fn a_labelled_filter_narrows_the_recall_body() {
     };
     let body = recall_body("tm:memory/tm:documents", "q", 9, &filter);
     assert_eq!(body["budgets"]["per_layer_limits"]["events"], 9);
-    assert_eq!(body["filters"]["metadata"]["labels"][0], json!(format!("tm:t:{}", labels::digest("t"))));
-    assert!(recall_body("s", "q", 1, &MetaFilter::default()).get("filters").is_none());
+    assert_eq!(
+        body["filters"]["metadata"]["labels"][0],
+        json!(format!("tm:t:{}", labels::digest("t")))
+    );
+    assert!(
+        recall_body("s", "q", 1, &MetaFilter::default())
+            .get("filters")
+            .is_none()
+    );
 }

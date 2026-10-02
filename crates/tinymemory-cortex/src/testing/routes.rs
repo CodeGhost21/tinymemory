@@ -51,7 +51,9 @@ fn fail(state: &Shared, code: u16, error_code: &str) -> Reply {
     if state.hosted {
         (
             status(code),
-            Json(json!({ "success": false, "error": format!("failed: {error_code}"), "errorCode": error_code })),
+            Json(
+                json!({ "success": false, "error": format!("failed: {error_code}"), "errorCode": error_code }),
+            ),
         )
     } else {
         (status(code), Json(json!({ "error_code": error_code })))
@@ -78,13 +80,17 @@ fn refuse_scope(state: &Shared, scope: &str) -> Option<Reply> {
     if !state.hosted {
         return None;
     }
-    let id_chars =
-        |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    let id_chars = |s: &str| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    };
     let segments: Vec<&str> = scope.split('/').collect();
     let well_formed = segments.len() <= TENANT_SCOPE_SEGMENTS
-        && segments
-            .iter()
-            .all(|s| s.split_once(':').is_some_and(|(k, i)| id_chars(k) && id_chars(i)));
+        && segments.iter().all(|s| {
+            s.split_once(':')
+                .is_some_and(|(k, i)| id_chars(k) && id_chars(i))
+        });
     (!well_formed).then(|| fail(state, 400, "BAD_REQUEST"))
 }
 
@@ -152,19 +158,35 @@ fn write_one(state: &Shared, headers: &HeaderMap, body: &Value) -> Reply {
     relay(state, applied)
 }
 
-async fn experience(State(state): State<Shared>, uri: Uri, headers: HeaderMap, Json(body): Json<Value>) -> Reply {
+async fn experience(
+    State(state): State<Shared>,
+    uri: Uri,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Reply {
     if let Some(early) = gate(&state, "POST", &uri, &headers) {
         return early;
     }
     write_one(&state, &headers, &body)
 }
 
-async fn bulk(State(state): State<Shared>, uri: Uri, headers: HeaderMap, Json(body): Json<Value>) -> Reply {
+async fn bulk(
+    State(state): State<Shared>,
+    uri: Uri,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Reply {
     if let Some(early) = gate(&state, "POST", &uri, &headers) {
         return early;
     }
     let mut results = Vec::new();
-    for (index, item) in body["items"].as_array().cloned().unwrap_or_default().iter().enumerate() {
+    for (index, item) in body["items"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .enumerate()
+    {
         let (code, Json(receipt)) = write_one(&state, &headers, item);
         if !code.is_success() {
             return (code, Json(receipt));
@@ -175,7 +197,11 @@ async fn bulk(State(state): State<Shared>, uri: Uri, headers: HeaderMap, Json(bo
             "replayed_from_idempotency": receipt["replayed_from_idempotency"],
         }));
     }
-    ok(&state, 200, json!({ "accepted": results.len(), "results": results }))
+    ok(
+        &state,
+        200,
+        json!({ "accepted": results.len(), "results": results }),
+    )
 }
 
 async fn events(
@@ -207,7 +233,12 @@ async fn events(
     ok(&state, 200, page)
 }
 
-async fn recall(State(state): State<Shared>, uri: Uri, headers: HeaderMap, Json(body): Json<Value>) -> Reply {
+async fn recall(
+    State(state): State<Shared>,
+    uri: Uri,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Reply {
     if let Some(early) = gate(&state, "POST", &uri, &headers) {
         return early;
     }
@@ -222,7 +253,12 @@ async fn recall(State(state): State<Shared>, uri: Uri, headers: HeaderMap, Json(
     ok(&state, 200, pack)
 }
 
-async fn forget(State(state): State<Shared>, uri: Uri, headers: HeaderMap, Json(body): Json<Value>) -> Reply {
+async fn forget(
+    State(state): State<Shared>,
+    uri: Uri,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Reply {
     if let Some(early) = gate(&state, "POST", &uri, &headers) {
         return early;
     }
@@ -237,7 +273,12 @@ async fn forget(State(state): State<Shared>, uri: Uri, headers: HeaderMap, Json(
     relay(&state, result)
 }
 
-async fn answer(State(state): State<Shared>, uri: Uri, headers: HeaderMap, Json(body): Json<Value>) -> Reply {
+async fn answer(
+    State(state): State<Shared>,
+    uri: Uri,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Reply {
     if let Some(early) = gate(&state, "POST", &uri, &headers) {
         return early;
     }
@@ -247,7 +288,9 @@ async fn answer(State(state): State<Shared>, uri: Uri, headers: HeaderMap, Json(
     }
     let object = body.as_object().cloned().unwrap_or_default();
     let strict_violation = object.keys().any(|k| !ANSWER_KEYS.contains(&k.as_str()))
-        || object.get("answer_instructions").is_some_and(Value::is_null);
+        || object
+            .get("answer_instructions")
+            .is_some_and(Value::is_null);
     if state.hosted && strict_violation {
         return fail(&state, 400, "VALIDATION_ERROR");
     }

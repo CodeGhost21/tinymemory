@@ -53,16 +53,23 @@ impl Log {
 
     /// Blocks until the listing of `scope` narrowed to `label` carries
     /// `event_id`; fails once the visibility budget has passed.
-    pub(crate) async fn await_listed(&self, scope: &str, label: &str, event_id: &str) -> Result<()> {
+    pub(crate) async fn await_listed(
+        &self,
+        scope: &str,
+        label: &str,
+        event_id: &str,
+    ) -> Result<()> {
         let deadline = tokio::time::Instant::now() + self.timing.visibility;
         let mut delay = self.timing.poll;
         let labels = [label.to_string()];
         loop {
             // Newest first, so one page is enough to see a write just made.
             match self.page(scope, Some(&labels), None, PAGE_SIZE).await {
-                Ok(page) if page.items.iter().any(|e| {
-                    e.get("id").and_then(Value::as_str) == Some(event_id)
-                }) =>
+                Ok(page)
+                    if page
+                        .items
+                        .iter()
+                        .any(|e| e.get("id").and_then(Value::as_str) == Some(event_id)) =>
                 {
                     return Ok(());
                 }

@@ -20,7 +20,10 @@ fn a_cursor_from_the_other_operation_or_garbage_is_invalid() {
     let fetch = encode('f', &FetchCursor { offset: 3 }).unwrap();
     for bad in [fetch.as_str(), "lzz", "l123", "", "l"] {
         assert!(
-            matches!(decode::<ListCursor>('l', bad), Err(Error::InvalidRequest(_))),
+            matches!(
+                decode::<ListCursor>('l', bad),
+                Err(Error::InvalidRequest(_))
+            ),
             "{bad:?}"
         );
     }

@@ -59,7 +59,11 @@ async fn a_cursor_crosses_from_one_kind_scope_to_the_next() {
         }
         assert_eq!(
             kinds,
-            vec![ItemKind::Document, ItemKind::Conversation, ItemKind::Learning]
+            vec![
+                ItemKind::Document,
+                ItemKind::Conversation,
+                ItemKind::Learning
+            ]
         );
     }
 }
@@ -95,7 +99,10 @@ async fn a_labelled_filter_narrows_server_side_and_is_rechecked() {
             thread_id: Some("t-learn".into()),
             ..MetaFilter::default()
         };
-        let page = engine.list(ListRequest::new(filter.clone(), 10)).await.unwrap();
+        let page = engine
+            .list(ListRequest::new(filter.clone(), 10))
+            .await
+            .unwrap();
         assert_eq!(page.items.len(), 1);
         assert_eq!(page.items[0].kind, ItemKind::Learning);
         let thread_label = format!(
@@ -152,9 +159,15 @@ async fn a_walk_past_the_page_ceiling_is_refused_not_truncated() {
         repo: Some("o/r".into()),
         ..MetaFilter::default()
     };
-    let error = engine.forget(ForgetTarget::Filter(filter)).await.unwrap_err();
+    let error = engine
+        .forget(ForgetTarget::Filter(filter))
+        .await
+        .unwrap_err();
     assert!(error.to_string().contains("pages"), "{error}");
-    let listed = engine.list(ListRequest::new(MetaFilter::default(), 5)).await.unwrap_err();
+    let listed = engine
+        .list(ListRequest::new(MetaFilter::default(), 5))
+        .await
+        .unwrap_err();
     assert!(listed.to_string().contains("pages"), "{listed}");
 }
 

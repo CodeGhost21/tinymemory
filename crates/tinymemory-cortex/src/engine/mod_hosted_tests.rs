@@ -3,11 +3,11 @@
 //! recovery, and riding out rate limits.
 
 use super::*;
+use crate::StaticBearer;
 use crate::error::{error_code, is_insufficient_credits};
 use crate::testing::{hosted_double, hosted_engine, sample_items, serve};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use crate::StaticBearer;
 use tinymemory_api::{FetchMode, MetaFilter};
 
 #[tokio::test]
@@ -25,11 +25,17 @@ async fn every_operation_maps_to_a_memory_path_and_never_a_v1_one() {
         .fetch(FetchRequest::new("helix", FetchMode::Hybrid, 5))
         .await
         .unwrap();
-    engine.recall(RecallRequest::new("which editor", 3)).await.unwrap();
+    engine
+        .recall(RecallRequest::new("which editor", 3))
+        .await
+        .unwrap();
     assert_eq!(engine.health().await, EngineHealth::Ok);
     engine
         .forget(ForgetTarget::Ids(
-            sample_items().iter().map(|i| i.fingerprint().into()).collect(),
+            sample_items()
+                .iter()
+                .map(|i| i.fingerprint().into())
+                .collect(),
         ))
         .await
         .unwrap();
@@ -62,7 +68,12 @@ async fn every_operation_maps_to_a_memory_path_and_never_a_v1_one() {
     .map(str::to_owned)
     .collect();
     assert_eq!(shapes, expected);
-    assert!(state.requests().iter().all(|r| !r.contains("/v1/") && !r.contains("wait=indexed")));
+    assert!(
+        state
+            .requests()
+            .iter()
+            .all(|r| !r.contains("/v1/") && !r.contains("wait=indexed"))
+    );
 }
 
 #[tokio::test]
@@ -70,7 +81,10 @@ async fn the_health_probe_lists_one_scope_under_an_accepted_prefix() {
     let (endpoint, state) = hosted_double().await;
     assert_eq!(hosted_engine(&endpoint).health().await, EngineHealth::Ok);
     let requests = state.requests();
-    assert_eq!(requests, vec!["GET /memory/scopes?prefix=tmh%3Aprobe&limit=1"]);
+    assert_eq!(
+        requests,
+        vec!["GET /memory/scopes?prefix=tmh%3Aprobe&limit=1"]
+    );
 }
 
 #[tokio::test]
@@ -83,10 +97,14 @@ async fn the_bearer_is_resolved_on_every_request() {
         }
     }
     let (endpoint, state) = hosted_double().await;
-    let engine = CortexEngine::tinyhumans(&endpoint, Arc::new(Rotating(AtomicUsize::new(0)))).unwrap();
+    let engine =
+        CortexEngine::tinyhumans(&endpoint, Arc::new(Rotating(AtomicUsize::new(0)))).unwrap();
     for _ in 0..3 {
         engine
-            .list(ListRequest::new(MetaFilter::kinds([tinymemory_api::ItemKind::Learning]), 1))
+            .list(ListRequest::new(
+                MetaFilter::kinds([tinymemory_api::ItemKind::Learning]),
+                1,
+            ))
             .await
             .unwrap();
     }
@@ -142,13 +160,19 @@ async fn a_402_is_insufficient_credits_and_codes_survive() {
     assert!(!error.to_string().contains(crate::testing::TEST_TOKEN));
 
     *state.fail_all.lock().unwrap() = Some((400, "VALIDATION_ERROR"));
-    let error = engine.list(ListRequest::new(MetaFilter::default(), 1)).await.unwrap_err();
+    let error = engine
+        .list(ListRequest::new(MetaFilter::default(), 1))
+        .await
+        .unwrap_err();
     assert!(matches!(error, Error::InvalidRequest(_)));
     assert_eq!(error_code(&error), Some("VALIDATION_ERROR"));
 
     *state.fail_all.lock().unwrap() = None;
     *state.accept_token.lock().unwrap() = Some("another".into());
-    let error = engine.list(ListRequest::new(MetaFilter::default(), 1)).await.unwrap_err();
+    let error = engine
+        .list(ListRequest::new(MetaFilter::default(), 1))
+        .await
+        .unwrap_err();
     assert!(matches!(error, Error::Unauthorized(_)));
     assert_eq!(error_code(&error), Some("UNAUTHORIZED"));
 }
@@ -158,21 +182,37 @@ async fn a_429_on_a_read_is_retried_and_a_persistent_one_is_unavailable() {
     let (endpoint, state) = hosted_double().await;
     let engine = hosted_engine(&endpoint);
     state.rate_limit_events.store(2, Ordering::SeqCst);
-    engine.list(ListRequest::new(MetaFilter::kinds([tinymemory_api::ItemKind::Document]), 1)).await.unwrap();
+    engine
+        .list(ListRequest::new(
+            MetaFilter::kinds([tinymemory_api::ItemKind::Document]),
+            1,
+        ))
+        .await
+        .unwrap();
 
     *state.fail_all.lock().unwrap() = Some((500, "INTERNAL"));
     let before = state.requests().len();
-    let error = engine.list(ListRequest::new(MetaFilter::default(), 1)).await.unwrap_err();
+    let error = engine
+        .list(ListRequest::new(MetaFilter::default(), 1))
+        .await
+        .unwrap_err();
     assert!(matches!(error, Error::Unavailable(_)));
     assert_eq!(error_code(&error), Some("INTERNAL"));
-    assert_eq!(state.requests().len() - before, 3, "a read is retried on 500");
+    assert_eq!(
+        state.requests().len() - before,
+        3,
+        "a read is retried on 500"
+    );
 }
 
 #[tokio::test]
 async fn a_body_without_the_envelope_or_data_is_an_engine_error() {
     use axum::routing::get;
     use axum::{Json, Router};
-    for body in [serde_json::json!({ "items": [] }), serde_json::json!({ "success": true })] {
+    for body in [
+        serde_json::json!({ "items": [] }),
+        serde_json::json!({ "success": true }),
+    ] {
         let app = Router::new().route(
             "/memory/events",
             get(move || {
@@ -211,13 +251,19 @@ async fn write_claims_are_random_per_call_and_never_the_content_key() {
 async fn a_write_applied_before_its_response_was_lost_is_recovered() {
     let (endpoint, state) = hosted_double().await;
     state.apply_then_fail.store(1, Ordering::SeqCst);
-    let receipt = hosted_engine(&endpoint).store(sample_items().remove(0)).await.unwrap();
+    let receipt = hosted_engine(&endpoint)
+        .store(sample_items().remove(0))
+        .await
+        .unwrap();
     assert!(!receipt.replayed);
     assert_eq!(state.event_count(), 1, "the retry was never forwarded");
     let seen = state.seen.lock().unwrap();
     let claims: Vec<_> = seen.idempotency.iter().map(|(_, c)| c.clone()).collect();
     assert_eq!(claims.len(), 2);
-    assert_eq!(claims[0], claims[1], "one write reuses its claim across retries");
+    assert_eq!(
+        claims[0], claims[1],
+        "one write reuses its claim across retries"
+    );
 }
 
 #[tokio::test]
@@ -255,7 +301,11 @@ async fn writes_and_forgets_ride_out_rate_limits() {
     state.rate_limit_experience.store(2, Ordering::SeqCst);
     let item = sample_items().remove(2);
     engine.store(item.clone()).await.unwrap();
-    assert_eq!(state.count("POST /memory/experience"), 3, "two refusals, then accepted");
+    assert_eq!(
+        state.count("POST /memory/experience"),
+        3,
+        "two refusals, then accepted"
+    );
     assert_eq!(state.event_count(), 1);
 
     state.rate_limit_forget.store(1, Ordering::SeqCst);
@@ -264,7 +314,11 @@ async fn writes_and_forgets_ride_out_rate_limits() {
         .await
         .unwrap();
     assert_eq!(report.forgotten, 1);
-    assert_eq!(state.count("POST /memory/forget"), 2, "the limited removal was resent");
+    assert_eq!(
+        state.count("POST /memory/forget"),
+        2,
+        "the limited removal was resent"
+    );
     assert_eq!(state.event_count(), 0);
 }
 
@@ -289,7 +343,11 @@ async fn a_write_polls_until_its_event_is_listed() {
         .store(sample_items().remove(0))
         .await
         .unwrap();
-    assert_eq!(state.count("GET /memory/events"), 5, "the lookup, three hidden polls, the hit");
+    assert_eq!(
+        state.count("GET /memory/events"),
+        5,
+        "the lookup, three hidden polls, the hit"
+    );
 }
 
 #[tokio::test]
