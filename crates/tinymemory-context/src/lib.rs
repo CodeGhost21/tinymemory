@@ -22,7 +22,7 @@
 //! use tinymemory_conformance::ReferenceEngine;
 //! use tinymemory_context::{ContextSpec, compile};
 //!
-//! # let runtime = tokio::runtime::Builder::new_current_thread().enable_time().build()?;
+//! # let runtime = tokio::runtime::Builder::new_current_thread().build()?;
 //! # runtime.block_on(async {
 //! let engine = ReferenceEngine::new();
 //! let empty = compile(&engine, &ContextSpec::default()).await?;
