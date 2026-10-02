@@ -7,7 +7,7 @@ use rusqlite::{Connection, params};
 use tempfile::TempDir;
 
 /// The current v1 `memory.db` schema, verbatim.
-pub const MEMORY_DDL: &str = "
+pub(crate) const MEMORY_DDL: &str = "
 CREATE TABLE memory_docs (
   document_id TEXT PRIMARY KEY, namespace TEXT NOT NULL, key TEXT NOT NULL, title TEXT NOT NULL,
   content TEXT NOT NULL, source_type TEXT NOT NULL, priority TEXT NOT NULL, tags_json TEXT NOT NULL,
@@ -27,7 +27,7 @@ CREATE TABLE user_profile (facet_id TEXT PRIMARY KEY, facet_type TEXT NOT NULL, 
 
 /// An early v1 `memory.db`: no `taint`/`logical_namespace`, no
 /// `tool_calls_json`, and no profile columns from `state` on.
-pub const OLD_MEMORY_DDL: &str = "
+pub(crate) const OLD_MEMORY_DDL: &str = "
 CREATE TABLE memory_docs (
   document_id TEXT PRIMARY KEY, namespace TEXT NOT NULL, key TEXT NOT NULL, title TEXT NOT NULL,
   content TEXT NOT NULL, source_type TEXT NOT NULL, priority TEXT NOT NULL, tags_json TEXT NOT NULL,
@@ -42,7 +42,7 @@ CREATE TABLE user_profile (facet_id TEXT PRIMARY KEY, facet_type TEXT NOT NULL, 
 
 /// The v1 `memory_tree/chunks.db` schema, verbatim, plus the migrated
 /// `content_path` column.
-pub const CHUNKS_DDL: &str = "
+pub(crate) const CHUNKS_DDL: &str = "
 CREATE TABLE mem_tree_chunks (id TEXT PRIMARY KEY, source_kind TEXT NOT NULL, source_id TEXT NOT NULL, path_scope TEXT,
   source_ref TEXT, owner TEXT NOT NULL, timestamp_ms INTEGER NOT NULL, time_range_start_ms INTEGER NOT NULL,
   time_range_end_ms INTEGER NOT NULL, tags_json TEXT NOT NULL DEFAULT '[]', content TEXT NOT NULL,
@@ -51,7 +51,7 @@ ALTER TABLE mem_tree_chunks ADD COLUMN content_path TEXT;
 ";
 
 /// A workspace directory with a `memory.db` built from `ddl`.
-pub fn workspace(ddl: &str) -> (TempDir, Connection) {
+pub(crate) fn workspace(ddl: &str) -> (TempDir, Connection) {
     let dir = tempfile::tempdir().expect("tempdir");
     std::fs::create_dir_all(dir.path().join("memory")).expect("memory dir");
     let conn = Connection::open(dir.path().join("memory/memory.db")).expect("memory.db");
@@ -61,7 +61,7 @@ pub fn workspace(ddl: &str) -> (TempDir, Connection) {
 
 /// Inserts a `memory_docs` row in the current schema.
 #[allow(clippy::too_many_arguments, reason = "mirrors the table's columns")]
-pub fn doc(
+pub(crate) fn doc(
     conn: &Connection,
     id: &str,
     namespace: &str,
@@ -83,7 +83,7 @@ pub fn doc(
 }
 
 /// Inserts an `episodic_log` turn in the current schema.
-pub fn turn(
+pub(crate) fn turn(
     conn: &Connection,
     session: &str,
     timestamp: f64,
@@ -101,7 +101,7 @@ pub fn turn(
 
 /// Inserts a `user_profile` facet in the current schema.
 #[allow(clippy::too_many_arguments, reason = "mirrors the table's columns")]
-pub fn facet(
+pub(crate) fn facet(
     conn: &Connection,
     id: &str,
     facet_type: &str,
@@ -133,7 +133,7 @@ pub fn facet(
 }
 
 /// Creates `memory_tree/chunks.db` under `root`.
-pub fn chunk_store(root: &Path) -> Connection {
+pub(crate) fn chunk_store(root: &Path) -> Connection {
     std::fs::create_dir_all(root.join("memory_tree/content")).expect("tree dir");
     let conn = Connection::open(root.join("memory_tree/chunks.db")).expect("chunks.db");
     conn.execute_batch(CHUNKS_DDL).expect("chunks ddl");
@@ -142,7 +142,7 @@ pub fn chunk_store(root: &Path) -> Connection {
 
 /// Inserts a chunk.
 #[allow(clippy::too_many_arguments, reason = "mirrors the table's columns")]
-pub fn chunk(
+pub(crate) fn chunk(
     conn: &Connection,
     id: &str,
     kind: &str,
