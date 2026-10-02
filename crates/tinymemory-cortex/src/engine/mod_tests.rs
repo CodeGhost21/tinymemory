@@ -1,47 +1,9 @@
 //! Round trips of every operation on both wires, through the doubles.
 
 use super::*;
-use crate::testing::{Shared, direct_double, direct_engine, hosted_double, hosted_engine};
+use crate::testing::{both, direct_engine, sample_items as items};
 use std::sync::atomic::Ordering;
-use tinymemory_api::{
-    FetchMode, ItemKind, LearningKind, MemoryMeta, MetaFilter, Role, SourceKind, Turn,
-};
-
-/// One engine per wire, each with its double.
-async fn both() -> Vec<(CortexEngine, Shared)> {
-    let (direct, direct_state) = direct_double().await;
-    let (hosted, hosted_state) = hosted_double().await;
-    vec![
-        (direct_engine(&direct), direct_state),
-        (hosted_engine(&hosted), hosted_state),
-    ]
-}
-
-fn meta(thread: &str) -> MemoryMeta {
-    let mut meta = MemoryMeta::from_source(SourceKind::Conversation, Some("chat".into()));
-    meta.thread_id = Some(thread.into());
-    meta
-}
-
-fn items() -> Vec<StoreItem> {
-    vec![
-        StoreItem::Document {
-            title: Some("Ownership".into()),
-            body: tinymemory_api::DocumentBody::Text("Rust ownership moves values.".into()),
-            mime: None,
-            meta: meta("t-doc"),
-        },
-        StoreItem::Conversation {
-            turns: vec![
-                Turn::new(Role::User, "which editor do I use"),
-                Turn::new(Role::Assistant, "you use helix"),
-                Turn::new(Role::User, "right, helix"),
-            ],
-            meta: meta("t-chat"),
-        },
-        StoreItem::learning("prefers helix", LearningKind::Preference, 0.8, meta("t-learn")),
-    ]
-}
+use tinymemory_api::{FetchMode, ItemKind, MemoryMeta, MetaFilter};
 
 #[tokio::test]
 async fn every_kind_round_trips_through_store_list_fetch_and_forget() {
@@ -263,15 +225,3 @@ async fn a_store_succeeds_when_ranked_recall_is_down() {
         assert_eq!(listed.items.len(), 1, "the settle probe is best-effort");
     }
 }
-
-#[cfg(test)]
-#[path = "mod_list_tests.rs"]
-mod list_tests;
-
-#[cfg(test)]
-#[path = "mod_direct_tests.rs"]
-mod direct_tests;
-
-#[cfg(test)]
-#[path = "mod_hosted_tests.rs"]
-mod hosted_tests;

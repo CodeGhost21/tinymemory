@@ -20,6 +20,8 @@ use axum::Router;
 
 pub(crate) use log::CortexLog;
 
+use tinymemory_api::{LearningKind, MemoryMeta, Role, SourceKind, StoreItem, Turn};
+
 use crate::{CortexCredential, CortexEngine, StaticBearer};
 
 /// The bearer the test engines send.
@@ -148,4 +150,48 @@ pub(crate) fn hosted_engine(endpoint: &str) -> CortexEngine {
     CortexEngine::tinyhumans(endpoint, Arc::new(StaticBearer::new(TEST_TOKEN)))
         .unwrap()
         .with_test_timing(TEST_VISIBILITY)
+}
+
+/// One engine per wire, each with its own double.
+pub(crate) async fn both() -> Vec<(CortexEngine, Shared)> {
+    let (direct, direct_state) = direct_double().await;
+    let (hosted, hosted_state) = hosted_double().await;
+    vec![
+        (direct_engine(&direct), direct_state),
+        (hosted_engine(&hosted), hosted_state),
+    ]
+}
+
+/// Metadata on thread `thread`.
+pub(crate) fn thread_meta(thread: &str) -> MemoryMeta {
+    let mut meta = MemoryMeta::from_source(SourceKind::Conversation, Some("chat".into()));
+    meta.thread_id = Some(thread.into());
+    meta
+}
+
+/// One item of each kind: a titled document, a three-turn conversation and
+/// a learning, on different threads.
+pub(crate) fn sample_items() -> Vec<StoreItem> {
+    vec![
+        StoreItem::Document {
+            title: Some("Ownership".into()),
+            body: tinymemory_api::DocumentBody::Text("Rust ownership moves values.".into()),
+            mime: None,
+            meta: thread_meta("t-doc"),
+        },
+        StoreItem::Conversation {
+            turns: vec![
+                Turn::new(Role::User, "which editor do I use"),
+                Turn::new(Role::Assistant, "you use helix"),
+                Turn::new(Role::User, "right, helix"),
+            ],
+            meta: thread_meta("t-chat"),
+        },
+        StoreItem::learning(
+            "prefers helix",
+            LearningKind::Preference,
+            0.8,
+            thread_meta("t-learn"),
+        ),
+    ]
 }

@@ -178,3 +178,19 @@ impl MemoryEngine for CortexEngine {
         self.list_page(req).await
     }
 }
+
+#[cfg(test)]
+#[path = "mod_tests.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "mod_list_tests.rs"]
+mod list_tests;
+
+#[cfg(test)]
+#[path = "mod_direct_tests.rs"]
+mod direct_tests;
+
+#[cfg(test)]
+#[path = "mod_hosted_tests.rs"]
+mod hosted_tests;
