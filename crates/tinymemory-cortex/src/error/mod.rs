@@ -12,7 +12,7 @@
 //! | HTTP | Variant |
 //! | --- | --- |
 //! | 401, 403 | [`Error::Unauthorized`] |
-//! | 402 | [`Error::Engine`], prefixed `[USER_INSUFFICIENT_CREDITS]` |
+//! | 402 | [`Error::Engine`] (hosted: prefixed `[USER_INSUFFICIENT_CREDITS]`) |
 //! | 404 | [`Error::NotFound`] |
 //! | 400, 413, 422 | [`Error::InvalidRequest`] |
 //! | 409 | [`Error::Conflict`] |
