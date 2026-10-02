@@ -1,7 +1,7 @@
 //! Item validation, rendering, fingerprints and serde shape.
 
 use super::*;
-use crate::meta::SourceKind;
+use crate::meta::{SourceKind, ToolCallRef};
 
 fn conversation(texts: &[&str]) -> StoreItem {
     StoreItem::Conversation {
@@ -144,15 +144,15 @@ fn a_turn_renders_its_tool_calls() {
     turn.tool_calls = vec![
         ToolCallRef {
             name: "shell".into(),
-            id: "call-1".into(),
+            id: Some("call-1".into()),
         },
         ToolCallRef {
             name: "grep".into(),
-            id: "call-2".into(),
+            id: None,
         },
     ];
     assert_eq!(
         turn.render(),
-        "assistant: done [tools: shell (call-1), grep (call-2)]"
+        "assistant: done [tools: shell (call-1), grep]"
     );
 }

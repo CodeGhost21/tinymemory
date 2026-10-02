@@ -320,8 +320,8 @@ impl Turn {
     }
 
     /// The turn as one `role: text` line, followed by the tool calls it made
-    /// as ` [tools: name (id), …]` so they stay visible and searchable in
-    /// fetch and list results.
+    /// as ` [tools: name (id), …]` (the id only when one was assigned) so they
+    /// stay visible and searchable in fetch and list results.
     #[must_use]
     pub fn render(&self) -> String {
         let line = format!("{}: {}", self.role.as_str(), self.text);
@@ -331,7 +331,10 @@ impl Turn {
         let calls = self
             .tool_calls
             .iter()
-            .map(|call| format!("{} ({})", call.name, call.id))
+            .map(|call| match &call.id {
+                Some(id) => format!("{} ({id})", call.name),
+                None => call.name.clone(),
+            })
             .collect::<Vec<_>>()
             .join(", ");
         format!("{line} [tools: {calls}]")
