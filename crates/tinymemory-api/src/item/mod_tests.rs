@@ -136,3 +136,23 @@ fn wire_strings_match_serde() {
         assert_eq!(serde_json::to_value(kind).expect("json"), kind.as_str());
     }
 }
+
+#[test]
+fn a_turn_renders_its_tool_calls() {
+    let mut turn = Turn::new(Role::Assistant, "done");
+    assert_eq!(turn.render(), "assistant: done");
+    turn.tool_calls = vec![
+        ToolCallRef {
+            name: "shell".into(),
+            id: "call-1".into(),
+        },
+        ToolCallRef {
+            name: "grep".into(),
+            id: "call-2".into(),
+        },
+    ];
+    assert_eq!(
+        turn.render(),
+        "assistant: done [tools: shell (call-1), grep (call-2)]"
+    );
+}
