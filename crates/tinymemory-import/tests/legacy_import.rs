@@ -479,7 +479,11 @@ fn resuming_from_any_checkpoint_yields_exactly_the_remainder() {
     let dir = rich();
     let ws = LegacyWorkspace::open(dir.path()).unwrap();
     let everything = all(&ws);
-    assert!(ws.items_from(&Checkpoint::default()).eq(ws.items()));
+    let from_start: Vec<ImportedItem> = ws
+        .items_from(&Checkpoint::default())
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(from_start, everything);
     for (index, imported) in everything.iter().enumerate() {
         let persisted = imported.checkpoint.to_json().unwrap();
         let restored = Checkpoint::from_json(&persisted).unwrap();
