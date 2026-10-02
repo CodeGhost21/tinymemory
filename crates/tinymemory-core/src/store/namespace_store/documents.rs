@@ -16,7 +16,7 @@ use crate::store::types::{NamespaceDocumentInput, StoredMemoryDocument, GLOBAL_N
 use super::UnifiedMemory;
 
 /// Token budget per vector chunk when a document is split for embedding.
-const DOCUMENT_CHUNK_MAX_TOKENS: usize = 225;
+pub(super) const DOCUMENT_CHUNK_MAX_TOKENS: usize = 225;
 
 /// Upper bound on chunk texts sent to the embedding provider in one request
 /// when a batch of documents is embedded together
@@ -147,13 +147,22 @@ impl UnifiedMemory {
     ///     for a position (`NoopEmbedding`, NaN recovery), leaves those
     ///     positions `None` by position.
     async fn embed_chunk_texts(&self, texts: &[&str]) -> Vec<Option<Vec<f32>>> {
+        Self::embed_texts_with(self.embedder.as_ref(), texts).await
+    }
+
+    /// [`Self::embed_chunk_texts`] over an embedder the caller holds, so a
+    /// background task can embed without borrowing the store.
+    pub(super) async fn embed_texts_with(
+        embedder: &dyn tinymemory_api::host::EmbeddingProvider,
+        texts: &[&str],
+    ) -> Vec<Option<Vec<f32>>> {
         let mut out: Vec<Option<Vec<f32>>> = Vec::with_capacity(texts.len());
         for request in texts.chunks(EMBED_REQUEST_MAX_TEXTS) {
             log::debug!(
                 "[memory] batch-embedding {} chunk text(s) in one request",
                 request.len()
             );
-            match self.embedder.embed(request).await {
+            match embedder.embed(request).await {
                 Ok(vectors) => {
                     let mut vectors = vectors
                         .into_iter()
@@ -179,7 +188,7 @@ impl UnifiedMemory {
     /// replacement and the new `vector_chunks` rows in a single transaction.
     /// `embeddings` is aligned to `chunks` by position; a missing or `None`
     /// slot stores that chunk without a vector.
-    async fn write_document_presanitized(
+    pub(super) async fn write_document_presanitized(
         &self,
         input: NamespaceDocumentInput,
         chunks: Vec<String>,

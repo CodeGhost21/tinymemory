@@ -535,7 +535,7 @@ impl Memory for UnifiedMemory {
         } else {
             namespace.to_string()
         };
-        self.upsert_document(NamespaceDocumentInput {
+        self.upsert_document_deferred(NamespaceDocumentInput {
             namespace: ns,
             key: key.to_string(),
             title: key.to_string(),
@@ -550,7 +550,14 @@ impl Memory for UnifiedMemory {
             taint,
         })
         .await
-        .map(|_| ())
+        .map(|written| {
+            // Detached on purpose: the vectors still land after `store` returns.
+            drop(written.vectors);
+            log::trace!(
+                "[memory] stored without waiting for vectors document_id={}",
+                written.document_id
+            );
+        })
         .map_err(anyhow::Error::msg)
     }
 

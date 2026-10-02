@@ -26,6 +26,8 @@ pub struct UnifiedMemory {
 }
 
 mod documents;
+mod documents_deferred;
+pub(crate) use documents_deferred::DeferredWrite;
 pub mod episodic_portability;
 pub mod events;
 pub mod fts5;
