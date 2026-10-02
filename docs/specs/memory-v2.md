@@ -102,7 +102,9 @@ pub enum LearningKind { Preference, Fact, Procedure, Correction, Other }
 ```
 
 `StoreReceipt { id: ItemId, replayed: bool }`. Engines derive idempotency from
-the full item, so an identical retry is a replay, not a duplicate.
+the full item except `meta.observed_at` (when it was seen, not what it is), so
+an identical retry, or an unchanged file re-synced, is a replay, not a
+duplicate.
 
 ### Recall
 
