@@ -20,7 +20,7 @@
 use std::collections::HashSet;
 
 use serde_json::{Value, json};
-use tinymemory_api::{FetchMode, FetchPage, FetchRequest, Hit, ItemKind, MetaFilter};
+use tinymemory_api::{FetchPage, FetchRequest, Hit, ItemKind, MetaFilter};
 
 use super::CortexEngine;
 use super::cursor::{self, FetchCursor};
