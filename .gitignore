@@ -1,7 +1,5 @@
-# Build output. NOT anchored with a leading slash: `crates/tinymemory-module` is
-# its own workspace root (see the `exclude` note in Cargo.toml) and so has its
-# own `target/`, which an anchored `/target/` does not match — 3064 build files
-# and a 33 MB cdylib were committed before this was widened.
+# Build output. Not anchored with a leading slash, so a nested workspace's
+# `target/` is ignored too.
 target/
 **/*.rs.bk
 *.pdb
