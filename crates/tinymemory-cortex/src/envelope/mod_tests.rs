@@ -1,0 +1,121 @@
+//! Tests for the v2 envelope: layout, round trip, and foreign events.
+
+use super::*;
+use tinymemory_api::SourceKind;
+
+fn meta() -> MemoryMeta {
+    let mut meta = MemoryMeta::from_source(SourceKind::Folder, Some("notes".into()));
+    meta.file_path = Some("/notes/a.md".into());
+    meta
+}
+
+fn conversation() -> StoreItem {
+    StoreItem::Conversation {
+        turns: vec![
+            Turn::new(Role::User, "hello"),
+            Turn {
+                role: Role::Assistant,
+                text: "hi there".into(),
+                at: None,
+                tool_calls: vec![ToolCallRef {
+                    name: "search".into(),
+                    id: Some("c1".into()),
+                }],
+            },
+        ],
+        meta: meta(),
+    }
+}
+
+#[test]
+fn every_kind_round_trips_through_its_events() {
+    let items = [
+        StoreItem::Document {
+            title: Some("Title".into()),
+            body: DocumentBody::Text("body".into()),
+            mime: Some("text/markdown".into()),
+            meta: meta(),
+        },
+        StoreItem::Learning {
+            text: "prefers tabs".into(),
+            kind: LearningKind::Preference,
+            confidence: 0.7,
+            evidence: Some("said so".into()),
+            meta: meta(),
+        },
+        conversation(),
+    ];
+    for item in items {
+        let id = item.fingerprint();
+        let envelopes = Envelope::for_item(&item, &id).unwrap();
+        let decoded: Vec<Envelope> = envelopes
+            .iter()
+            .map(|e| Envelope::decode(&e.encode().unwrap()).unwrap())
+            .collect();
+        let rebuilt = rebuild(&decoded).unwrap();
+        assert_eq!(rebuilt, item);
+        assert_eq!(rebuilt.fingerprint(), id, "identity survives the round trip");
+    }
+}
+
+#[test]
+fn a_conversation_is_one_event_per_turn_in_order() {
+    let item = conversation();
+    let envelopes = Envelope::for_item(&item, "id").unwrap();
+    assert_eq!(envelopes.len(), 2);
+    let turns: Vec<_> = envelopes
+        .iter()
+        .map(|e| e.turn.as_ref().map(|t| (t.index, t.count)))
+        .collect();
+    assert_eq!(turns, vec![Some((0, 2)), Some((1, 2))]);
+    let request = envelopes[1].request("x");
+    assert_eq!(request["content"]["role"], "assistant");
+    assert_eq!(request["scope"], "tm:memory/tm:conversations");
+    assert_eq!(request["modality"], "conversation");
+}
+
+#[test]
+fn a_recall_rendering_is_read_as_well_as_the_stored_text() {
+    let envelope = &Envelope::for_item(&conversation(), "id").unwrap()[0];
+    let stored = envelope.encode().unwrap();
+    assert_eq!(Envelope::decode(&format!("[user] {stored}")).as_ref(), Some(envelope));
+    assert_eq!(Envelope::decode(&stored).as_ref(), Some(envelope));
+}
+
+#[test]
+fn events_this_crate_did_not_write_are_ignored() {
+    assert!(Envelope::decode("just a sentence").is_none());
+    assert!(Envelope::decode(r#"{"k":"v1-key","c":"v1 content"}"#).is_none());
+    let mut old = Envelope::for_item(&conversation(), "id").unwrap().remove(0);
+    old.v = 1;
+    assert!(Envelope::decode(&old.encode().unwrap()).is_none());
+    assert!(decode_event(&json!({ "id": "e", "content": { "text": "plain" } })).is_none());
+}
+
+#[test]
+fn rebuilding_drops_repeated_turns_and_orders_by_index() {
+    let envelopes = Envelope::for_item(&conversation(), "id").unwrap();
+    let shuffled = vec![
+        envelopes[1].clone(),
+        envelopes[0].clone(),
+        envelopes[1].clone(),
+    ];
+    assert_eq!(rebuild(&shuffled), Some(conversation()));
+}
+
+#[test]
+fn observed_at_and_labels_reach_the_event_context() {
+    let mut meta = meta();
+    meta.observed_at = Some("2026-01-02T03:04:05Z".parse().unwrap());
+    let item = StoreItem::document("text", meta);
+    let envelope = &Envelope::for_item(&item, "id").unwrap()[0];
+    let request = envelope.request("payload");
+    assert_eq!(request["context"]["observed_at"], "2026-01-02T03:04:05+00:00");
+    assert_eq!(request["context"]["labels"][0], labels::item("id"));
+    assert_eq!(request["scope"], "tm:memory/tm:documents");
+    assert_ne!(
+        request["idempotency_key"],
+        envelope.request("payload")["idempotency_key"],
+        "every write mints a fresh key"
+    );
+}
