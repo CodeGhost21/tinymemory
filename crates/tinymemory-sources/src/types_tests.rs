@@ -83,7 +83,6 @@ fn validate_twitter_requires_query() {
         kind: SourceKind::TwitterQuery,
         label: "Tweets".into(),
         enabled: true,
-        query: None,
         ..default_entry()
     };
     assert!(entry.validate().is_err());
@@ -233,8 +232,6 @@ pub(super) fn default_entry() -> MemorySourceEntry {
         max_commits: None,
         max_issues: None,
         max_prs: None,
-        query: None,
-        since_days: None,
         max_items: None,
         selector: None,
         max_tokens_per_sync: None,
@@ -293,7 +290,6 @@ fn source_entry_wire_format_is_pinned() {
         max_issues: Some(20),
         max_prs: Some(30),
         query: Some("from:me".into()),
-        since_days: Some(7),
         max_items: Some(40),
         selector: Some("article".into()),
         max_tokens_per_sync: Some(50_000),
@@ -318,8 +314,6 @@ fn source_entry_wire_format_is_pinned() {
             "max_commits": 10,
             "max_issues": 20,
             "max_prs": 30,
-            "query": "from:me",
-            "since_days": 7,
             "max_items": 40,
             "selector": "article",
             "max_tokens_per_sync": 50000,

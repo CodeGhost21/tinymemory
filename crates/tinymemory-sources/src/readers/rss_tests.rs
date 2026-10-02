@@ -45,8 +45,6 @@ fn rss_source(url: Option<&str>, max_items: Option<u32>) -> MemorySourceEntry {
         max_commits: None,
         max_issues: None,
         max_prs: None,
-        query: None,
-        since_days: None,
         max_items,
         selector: None,
         max_tokens_per_sync: None,

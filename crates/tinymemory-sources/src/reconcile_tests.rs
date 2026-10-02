@@ -68,8 +68,6 @@ fn composio_entry(
         max_commits: None,
         max_issues: None,
         max_prs: None,
-        query: None,
-        since_days: None,
         max_items,
         selector: None,
         max_tokens_per_sync: None,

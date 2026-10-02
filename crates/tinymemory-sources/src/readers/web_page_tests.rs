@@ -16,8 +16,6 @@ fn web_source(url: Option<&str>, selector: Option<&str>) -> MemorySourceEntry {
         max_commits: None,
         max_issues: None,
         max_prs: None,
-        query: None,
-        since_days: None,
         max_items: None,
         selector: selector.map(str::to_string),
         max_tokens_per_sync: None,

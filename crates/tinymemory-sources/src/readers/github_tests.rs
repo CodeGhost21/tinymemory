@@ -18,8 +18,6 @@ fn github_source(url: Option<&str>) -> MemorySourceEntry {
         max_commits: Some(10),
         max_issues: Some(0),
         max_prs: Some(0),
-        query: None,
-        since_days: None,
         max_items: None,
         selector: None,
         max_tokens_per_sync: None,

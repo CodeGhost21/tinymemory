@@ -21,8 +21,6 @@ fn entry(kind: SourceKind) -> MemorySourceEntry {
         max_commits: None,
         max_issues: None,
         max_prs: None,
-        query: None,
-        since_days: None,
         max_items: None,
         selector: None,
         max_tokens_per_sync: None,

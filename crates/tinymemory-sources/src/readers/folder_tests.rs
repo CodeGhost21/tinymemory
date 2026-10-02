@@ -21,8 +21,6 @@ fn folder_source(path: &str) -> MemorySourceEntry {
         max_commits: None,
         max_issues: None,
         max_prs: None,
-        query: None,
-        since_days: None,
         max_items: None,
         selector: None,
         max_tokens_per_sync: None,
@@ -245,7 +243,7 @@ async fn symlinks_cannot_escape_the_configured_folder() {
         .read_item(&source, "escape.md", config())
         .await
         .unwrap_err();
-    assert!(matches!(error, MemoryError::PathEscape(_)), "got {error:?}");
+    assert!(matches!(error, crate::Error::PathEscape(_)), "got {error:?}");
 }
 
 // ── openhuman#5830: relative paths resolve against the workspace ─────────────
