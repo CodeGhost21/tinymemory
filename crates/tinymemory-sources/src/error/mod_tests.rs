@@ -12,7 +12,10 @@ fn a_reader_diagnostic_is_reported_verbatim() {
 fn every_variant_maps_onto_the_contract_error_a_host_can_act_on() {
     use tinymemory_api::Error as Api;
 
-    let cases: Vec<(Error, fn(&Api) -> bool)> = vec![
+    /// Whether a mapped contract error is the expected variant.
+    type Expect = fn(&Api) -> bool;
+
+    let cases: Vec<(Error, Expect)> = vec![
         (Error::Invalid("x".into()), |e| {
             matches!(e, Api::InvalidRequest(_))
         }),
