@@ -42,10 +42,7 @@ const IGNORED_DIRS: &[&str] = &[
     "target",
     "node_modules",
     "__pycache__",
-    ".venv",
     "venv",
-    "dist",
-    "build",
 ];
 
 /// Build the "folder does not exist" error so it always says **where the reader
@@ -146,7 +143,7 @@ impl FolderReader {
         let base = Self::root(source, workspace)?;
         let selection = Selection::for_source(source)?;
         let normalized_id = normalize_rel(Path::new(item_id));
-        if !selection.matches(&normalized_id) {
+        if !selection.matches(&normalized_id) || is_ignored_path(&normalized_id) {
             return Err(Error::Invalid(format!(
                 "item '{item_id}' is outside source glob '{}'",
                 selection.describe()
@@ -278,6 +275,21 @@ fn content_type_for(item_id: &str) -> ContentType {
 fn is_ignored(entry: &walkdir::DirEntry) -> bool {
     let name = entry.file_name().to_string_lossy();
     name.starts_with('.') || (entry.file_type().is_dir() && IGNORED_DIRS.contains(&name.as_ref()))
+}
+
+/// Whether a relative id passes through a component the walk would skip, so
+/// `read_item` refuses exactly what `list_items` never lists. `..` is left to
+/// the containment check, which reports it as a path escape.
+fn is_ignored_path(relative: &str) -> bool {
+    let mut components = relative.split('/').peekable();
+    while let Some(component) = components.next() {
+        let is_dir = components.peek().is_some();
+        let hidden = component.starts_with('.') && component != "..";
+        if hidden || (is_dir && IGNORED_DIRS.contains(&component)) {
+            return true;
+        }
+    }
+    false
 }
 
 /// Normalise a relative path to forward slashes for glob matching.
