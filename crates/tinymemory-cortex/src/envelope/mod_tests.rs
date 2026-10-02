@@ -1,7 +1,7 @@
 //! Tests for the v2 envelope: layout, round trip, and foreign events.
 
 use super::*;
-use tinymemory_api::SourceKind;
+use tinymemory_api::{SourceKind, Turn};
 
 fn meta() -> MemoryMeta {
     let mut meta = MemoryMeta::from_source(SourceKind::Folder, Some("notes".into()));

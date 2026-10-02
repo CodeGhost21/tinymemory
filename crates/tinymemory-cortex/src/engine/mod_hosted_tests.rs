@@ -7,6 +7,7 @@ use crate::error::{error_code, is_insufficient_credits};
 use crate::testing::{hosted_double, hosted_engine, sample_items, serve};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use crate::StaticBearer;
 use tinymemory_api::{FetchMode, MetaFilter};
 
 #[tokio::test]
