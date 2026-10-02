@@ -33,7 +33,7 @@ pub(crate) fn default_true() -> bool {
 #[serde(rename_all = "snake_case")]
 pub enum SourceKind {
     /// A Composio OAuth connector (Gmail, Slack, Notion, …). Network-backed;
-    /// the live fetch is owned by the host, not TinyCortex.
+    /// the live fetch is owned by the host, not this crate.
     Composio,
     /// Local agent conversation transcripts stored in the workspace.
     Conversation,
