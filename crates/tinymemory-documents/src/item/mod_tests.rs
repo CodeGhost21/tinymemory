@@ -51,7 +51,11 @@ async fn code_keeps_its_text_and_gains_its_language() {
 
     let (title, body, mime, meta) = parts(item);
     assert_eq!(body, source);
-    assert_eq!(title.as_deref(), Some("hello.py"), "a comment is not a title");
+    assert_eq!(
+        title.as_deref(),
+        Some("hello.py"),
+        "a comment is not a title"
+    );
     assert_eq!(mime.as_deref(), Some("text/x-source"));
     assert_eq!(meta.language.as_deref(), Some("python"));
 }

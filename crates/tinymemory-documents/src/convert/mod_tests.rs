@@ -125,10 +125,7 @@ async fn an_empty_document_is_rejected() {
 async fn a_document_over_the_cap_is_a_budget_error_not_a_validation_one() {
     let oversized = RawDocument::new(vec![b'a'; MAX_DOCUMENT_BYTES + 1]).with_mime("text/plain");
     let error = NativeConverter.convert(&oversized).await.unwrap_err();
-    assert!(
-        matches!(error, Error::TooLarge { .. }),
-        "got {error:?}"
-    );
+    assert!(matches!(error, Error::TooLarge { .. }), "got {error:?}");
 }
 
 #[tokio::test]
@@ -231,10 +228,7 @@ async fn a_chain_does_not_fall_through_when_its_chosen_converter_fails() {
         .convert(&RawDocument::new(b"%PDF-1.7\nx".to_vec()))
         .await
         .unwrap_err();
-    assert!(
-        matches!(error, Error::Converter { .. }),
-        "got {error:?}"
-    );
+    assert!(matches!(error, Error::Converter { .. }), "got {error:?}");
 }
 
 #[tokio::test]
@@ -363,7 +357,7 @@ fn markdown_from_text_converts_only_html() {
 
 #[test]
 fn a_blank_language_is_treated_as_no_language() {
-    let converted = ConvertedDocument::new("x", DocumentFormat::Code, 1)
-        .with_language(Some(" ".to_string()));
+    let converted =
+        ConvertedDocument::new("x", DocumentFormat::Code, 1).with_language(Some(" ".to_string()));
     assert_eq!(converted.language, None);
 }

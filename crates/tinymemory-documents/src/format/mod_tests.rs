@@ -204,7 +204,13 @@ fn invalid_utf8_without_magic_bytes_is_unknown_not_text() {
 
 #[test]
 fn source_files_are_detected_as_code_by_extension_and_name() {
-    for filename in ["src/main.rs", "app.py", "web/App.tsx", "Dockerfile", "Makefile"] {
+    for filename in [
+        "src/main.rs",
+        "app.py",
+        "web/App.tsx",
+        "Dockerfile",
+        "Makefile",
+    ] {
         assert_eq!(
             DocumentFormat::from_filename(filename),
             Some(DocumentFormat::Code),

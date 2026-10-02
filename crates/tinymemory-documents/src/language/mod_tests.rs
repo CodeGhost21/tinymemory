@@ -59,7 +59,10 @@ fn common_extensions_map_to_stable_lowercase_names() {
 #[test]
 fn well_known_file_names_are_recognised_without_an_extension() {
     assert_eq!(language_for_path("Dockerfile"), Some("dockerfile"));
-    assert_eq!(language_for_path("deploy/Dockerfile.dev"), Some("dockerfile"));
+    assert_eq!(
+        language_for_path("deploy/Dockerfile.dev"),
+        Some("dockerfile")
+    );
     assert_eq!(language_for_path("Makefile"), Some("makefile"));
     assert_eq!(language_for_path("GNUmakefile"), Some("makefile"));
     assert_eq!(language_for_path("CMakeLists.txt"), Some("cmake"));
@@ -80,14 +83,27 @@ fn extension_matching_ignores_case() {
 
 #[test]
 fn documents_are_not_code() {
-    for path in ["readme.md", "notes.txt", "index.html", "page.htm", "doc.pdf"] {
+    for path in [
+        "readme.md",
+        "notes.txt",
+        "index.html",
+        "page.htm",
+        "doc.pdf",
+    ] {
         assert_eq!(language_for_path(path), None, "{path}");
     }
 }
 
 #[test]
 fn names_without_a_known_extension_are_not_code() {
-    for path in ["", "README", ".bashrc", "archive.tar.gz", "photo.png", "dir/"] {
+    for path in [
+        "",
+        "README",
+        ".bashrc",
+        "archive.tar.gz",
+        "photo.png",
+        "dir/",
+    ] {
         assert_eq!(language_for_path(path), None, "{path:?}");
     }
 }
