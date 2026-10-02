@@ -36,7 +36,7 @@ const TAG: char = 'l';
 /// A hit, or a conversation whose turns are assembled before the page
 /// returns.
 enum Pending {
-    Ready(Hit),
+    Ready(Box<Hit>),
     Conversation(String),
 }
 
@@ -144,7 +144,7 @@ impl CortexEngine {
         }
         let id = envelope.id.clone();
         let item = rebuild(std::slice::from_ref::<Envelope>(&envelope))?;
-        Some(Pending::Ready(hit(&id, &item, 0.0)))
+        Some(Pending::Ready(Box::new(hit(&id, &item, 0.0))))
     }
 
     /// Assembles the page's conversations (one lookup for all of them) and
@@ -161,7 +161,7 @@ impl CortexEngine {
         Ok(pending
             .into_iter()
             .filter_map(|p| match p {
-                Pending::Ready(hit) => Some(hit),
+                Pending::Ready(hit) => Some(*hit),
                 Pending::Conversation(id) => conversations.get(&id).map(|item| hit(&id, item, 0.0)),
             })
             .collect())
