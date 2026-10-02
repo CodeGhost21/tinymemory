@@ -8,12 +8,12 @@
 //!
 //! | Feature | Module | What it adds |
 //! | --- | --- | --- |
-//! | `documents` | [`documents`] | format sniffing and conversion to markdown |
-//! | `sources` / `sources-network` | [`sources`] | source readers emitting `StoreItem`s |
-//! | `safety` | [`safety`] | secret and PII scrubbing before `store` |
-//! | `context` | [`context`] | the `context.md` compiler |
-//! | `import` / `legacy-import` | [`import`] | the legacy v1 workspace reader |
-//! | `conformance` | [`conformance`] | the behavioural suite and reference engine |
+//! | `documents` | `documents` | format sniffing and conversion to markdown |
+//! | `sources` / `sources-network` | `sources` | source readers emitting `StoreItem`s |
+//! | `safety` | `safety` | secret and PII scrubbing before `store` |
+//! | `context` | `context` | the `context.md` compiler |
+//! | `import` / `legacy-import` | `import` | the legacy v1 workspace reader |
+//! | `conformance` | `conformance` | the behavioural suite and reference engine |
 //! | `full` | | all of the above |
 //!
 //! With no feature the facade is the contract, the registry and the CortexDB
