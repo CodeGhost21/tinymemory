@@ -30,8 +30,6 @@ futures = "0.3"
 sha2 = "0.10"
 
 [dev-dependencies]
-# The behavioural suite every engine must pass, run over both wires' doubles.
-tinymemory-conformance = { path = "../tinymemory-conformance" }
 # The CortexDB and TinyHumans doubles are real HTTP servers on loopback.
 axum = "0.8"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time"] }

@@ -15,6 +15,8 @@ use tinymemory_api::{
 #[derive(Debug, Clone)]
 pub(crate) struct Run {
     pub(crate) workspace: String,
+    /// The probes' own workspace, so no other item can satisfy a probe filter.
+    pub(crate) probe_workspace: String,
     pub(crate) marker: String,
 }
 
@@ -28,8 +30,10 @@ impl Run {
             .map(|d| d.as_nanos())
             .unwrap_or_default();
         let nonce = format!("{nanos:x}{:x}", SEQ.fetch_add(1, Ordering::Relaxed));
+        let workspace = format!("tinymemory-conformance/{nonce}");
         Self {
-            workspace: format!("tinymemory-conformance/{nonce}"),
+            probe_workspace: format!("{workspace}/probes"),
+            workspace,
             marker: format!("tmconf{nonce}"),
         }
     }
@@ -46,6 +50,14 @@ impl Run {
     pub(crate) fn filter(&self) -> MetaFilter {
         MetaFilter {
             workspace: Some(self.workspace.clone()),
+            ..MetaFilter::default()
+        }
+    }
+
+    /// A filter naming only the probes' workspace.
+    pub(crate) fn probe_filter(&self) -> MetaFilter {
+        MetaFilter {
+            workspace: Some(self.probe_workspace.clone()),
             ..MetaFilter::default()
         }
     }
@@ -107,12 +119,16 @@ impl Run {
     pub(crate) fn probes(&self) -> Vec<Probe> {
         let m = &self.marker;
         let root = format!("/{m}");
+        let probe_meta = || MemoryMeta {
+            workspace: Some(self.probe_workspace.clone()),
+            ..MemoryMeta::default()
+        };
         let with = |edit: &dyn Fn(&mut MemoryMeta)| {
-            let mut meta = self.meta();
+            let mut meta = probe_meta();
             edit(&mut meta);
             meta
         };
-        let base = self.filter();
+        let base = self.probe_filter();
         let conversation = |label: &str, meta: MemoryMeta| StoreItem::Conversation {
             turns: vec![
                 Turn::new(Role::User, format!("{m} {label} question")),
@@ -208,7 +224,7 @@ impl Run {
             ),
             Probe::new(
                 "kinds",
-                StoreItem::learning(format!("{m} kinds learning"), LearningKind::Fact, 0.5, self.meta()),
+                StoreItem::learning(format!("{m} kinds learning"), LearningKind::Fact, 0.5, probe_meta()),
                 MetaFilter { kinds: vec![ItemKind::Learning], ..base.clone() },
             ),
             Probe::new(
