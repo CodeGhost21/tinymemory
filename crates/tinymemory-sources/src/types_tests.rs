@@ -8,8 +8,8 @@ fn source_kind_round_trips_via_serde() {
         SourceKind::Composio,
         SourceKind::Conversation,
         SourceKind::Folder,
+        SourceKind::File,
         SourceKind::GithubRepo,
-        SourceKind::TwitterQuery,
         SourceKind::RssFeed,
         SourceKind::WebPage,
     ] {
@@ -25,7 +25,7 @@ fn source_kind_as_str_matches_wire_strings() {
     assert_eq!(SourceKind::Conversation.as_str(), "conversation");
     assert_eq!(SourceKind::Folder.as_str(), "folder");
     assert_eq!(SourceKind::GithubRepo.as_str(), "github_repo");
-    assert_eq!(SourceKind::TwitterQuery.as_str(), "twitter_query");
+    assert_eq!(SourceKind::File.as_str(), "file");
     assert_eq!(SourceKind::RssFeed.as_str(), "rss_feed");
     assert_eq!(SourceKind::WebPage.as_str(), "web_page");
 }
@@ -77,15 +77,55 @@ fn validate_github_requires_url() {
 }
 
 #[test]
-fn validate_twitter_requires_query() {
-    let entry = MemorySourceEntry {
-        id: "src_tw".into(),
-        kind: SourceKind::TwitterQuery,
-        label: "Tweets".into(),
-        enabled: true,
-        ..default_entry()
-    };
+fn validate_file_requires_path() {
+    let entry = MemorySourceEntry::new("src_file", SourceKind::File, "One file");
     assert!(entry.validate().is_err());
+    let valid = MemorySourceEntry {
+        path: Some("notes/plan.md".into()),
+        ..entry
+    };
+    assert!(valid.validate().is_ok());
+}
+
+#[test]
+fn the_removed_twitter_query_kind_no_longer_decodes() {
+    let decoded = serde_json::from_str::<SourceKind>("\"twitter_query\"");
+    assert!(decoded.is_err());
+}
+
+#[test]
+fn every_config_kind_maps_onto_a_contract_source_kind() {
+    use tinymemory_api::SourceKind as Api;
+    let mapped: Vec<Api> = SourceKind::ALL.iter().map(SourceKind::api_kind).collect();
+    assert_eq!(
+        mapped,
+        vec![
+            Api::Composio,
+            Api::Conversation,
+            Api::Folder,
+            Api::File,
+            Api::Github,
+            Api::Rss,
+            Api::Link,
+        ]
+    );
+}
+
+#[test]
+fn path_applies_to_folders_and_files_but_glob_only_to_folders() {
+    let path = MemorySourcePatch {
+        path: Some(Some("a".into())),
+        ..Default::default()
+    };
+    assert!(path.validate_for_kind(SourceKind::Folder).is_ok());
+    assert!(path.validate_for_kind(SourceKind::File).is_ok());
+    assert!(path.validate_for_kind(SourceKind::RssFeed).is_err());
+    let glob = MemorySourcePatch {
+        glob: Some(Some("*.md".into())),
+        ..Default::default()
+    };
+    assert!(glob.validate_for_kind(SourceKind::Folder).is_ok());
+    assert!(glob.validate_for_kind(SourceKind::File).is_err());
 }
 
 #[test]
@@ -289,7 +329,6 @@ fn source_entry_wire_format_is_pinned() {
         max_commits: Some(10),
         max_issues: Some(20),
         max_prs: Some(30),
-        query: Some("from:me".into()),
         max_items: Some(40),
         selector: Some("article".into()),
         max_tokens_per_sync: Some(50_000),

@@ -466,17 +466,6 @@ fn an_rss_feed_gets_an_item_cap() {
 }
 
 #[test]
-fn a_twitter_query_gets_a_lookback_window() {
-    let mut entry = entry_of_kind(SourceKind::TwitterQuery);
-    apply_kind_defaults(&mut entry);
-    assert_eq!(entry.since_days, Some(7));
-
-    entry.since_days = Some(2);
-    apply_kind_defaults(&mut entry);
-    assert_eq!(entry.since_days, Some(2), "a user-set window must survive");
-}
-
-#[test]
 fn kinds_with_no_defaults_are_left_alone() {
     // Composio caps come from the toolkit slug at upsert time, which this
     // function does not have; folders and web pages have no caps at all.
@@ -484,12 +473,12 @@ fn kinds_with_no_defaults_are_left_alone() {
         SourceKind::Composio,
         SourceKind::Conversation,
         SourceKind::Folder,
+        SourceKind::File,
         SourceKind::WebPage,
     ] {
         let mut entry = entry_of_kind(kind.clone());
         apply_kind_defaults(&mut entry);
         assert!(entry.max_items.is_none(), "{kind:?} gained an item cap");
-        assert!(entry.since_days.is_none(), "{kind:?} gained a lookback");
         assert!(
             entry.max_prs.is_none(),
             "{kind:?} gained a pull-request cap"
