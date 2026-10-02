@@ -535,7 +535,7 @@ impl Memory for UnifiedMemory {
         } else {
             namespace.to_string()
         };
-        self.upsert_document(NamespaceDocumentInput {
+        self.upsert_document_deferred(NamespaceDocumentInput {
             namespace: ns,
             key: key.to_string(),
             title: key.to_string(),

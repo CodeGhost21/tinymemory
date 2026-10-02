@@ -145,6 +145,24 @@ impl UnifiedMemory {
         }
     }
 
+    /// [`Self::upsert_document`] that returns once the row is committed, without
+    /// waiting for the embedding provider; the vectors are attached by a
+    /// background task (see `documents_deferred`). The same gate runs first.
+    ///
+    /// # Errors
+    ///
+    /// Same failure modes as [`Self::upsert_document`], minus embedding
+    /// failures, which no longer reach the caller.
+    pub(crate) async fn upsert_document_deferred(
+        &self,
+        input: NamespaceDocumentInput,
+    ) -> Result<super::namespace_store::DeferredWrite, String> {
+        match gate(input, "document") {
+            GateOutcome::Reject(err) => Err(err),
+            GateOutcome::Admit(input) => self.upsert_document_deferred_presanitized(*input).await,
+        }
+    }
+
     /// Insert or update many documents, applying the host secret/PII write
     /// gate to each and embedding their chunks together — one provider request
     /// per bounded group of chunk texts across the batch rather than one per
