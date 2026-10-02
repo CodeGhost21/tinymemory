@@ -96,6 +96,7 @@ fn hit(item: &StoreItem, text: String, score: f32) -> Hit {
         text,
         meta: item.meta().clone(),
         score,
+        confidence: item.confidence(),
     }
 }
 

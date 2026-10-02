@@ -177,6 +177,9 @@ pub struct Hit {
     pub meta: MemoryMeta,
     /// Relevance; `0.0` in a listing.
     pub score: f32,
+    /// A learning's confidence; `None` for documents and conversations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f32>,
 }
 
 /// A query-free listing.

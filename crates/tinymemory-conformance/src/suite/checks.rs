@@ -71,6 +71,13 @@ async fn round_trip(ctx: &Ctx<'_>) -> Result<()> {
         ensure(CHECK, &hit.meta == item.meta(), || {
             format!("metadata changed: stored {:?}, listed {:?}", item.meta(), hit.meta)
         })?;
+        ensure(CHECK, hit.confidence == item.confidence(), || {
+            format!(
+                "confidence changed: stored {:?}, listed {:?}",
+                item.confidence(),
+                hit.confidence
+            )
+        })?;
         ensure(CHECK, hit.text == item.render_text(), || {
             format!("text changed: stored {:?}, listed {:?}", item.render_text(), hit.text)
         })?;

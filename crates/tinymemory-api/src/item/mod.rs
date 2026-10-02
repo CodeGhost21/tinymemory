@@ -160,6 +160,15 @@ impl StoreItem {
         }
     }
 
+    /// A learning's confidence; `None` for documents and conversations.
+    #[must_use]
+    pub fn confidence(&self) -> Option<f32> {
+        match self {
+            Self::Learning { confidence, .. } => Some(*confidence),
+            Self::Document { .. } | Self::Conversation { .. } => None,
+        }
+    }
+
     /// The item's metadata.
     #[must_use]
     pub fn meta(&self) -> &MemoryMeta {
