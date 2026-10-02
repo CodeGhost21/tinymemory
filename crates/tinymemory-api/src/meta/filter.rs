@@ -147,7 +147,7 @@ fn path_prefix(wanted: Option<&str>, held: Option<&str>) -> bool {
     }
     let base = wanted.trim_end_matches('/');
     held.strip_prefix(base)
-        .is_some_and(|rest| rest.starts_with('/') || wanted.ends_with('/') && !base.is_empty())
+        .is_some_and(|rest| rest.starts_with('/'))
 }
 
 #[cfg(test)]
