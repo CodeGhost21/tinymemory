@@ -125,7 +125,7 @@ fn compose(sections: &Sections, engine: &str, generated_at: DateTime<Utc>) -> Re
     let draft = frontmatter(engine, generated_at, 0, &refs) + "\n" + &body;
     let mut tokens = estimate_tokens(&draft);
     let mut markdown = draft;
-    for _ in 0..3 {
+    for _ in 0..8 {
         markdown = frontmatter(engine, generated_at, tokens, &refs) + "\n" + &body;
         let settled = estimate_tokens(&markdown);
         if settled == tokens {
