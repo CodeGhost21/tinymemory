@@ -36,12 +36,14 @@ const FEED_CACHE_TTL: Duration = Duration::from_secs(60);
 ///
 /// Holds a short-lived cache of the last fetched feed so that a `list_items`
 /// immediately followed by per-item `read_item` calls fetches the feed once.
+#[derive(Debug)]
 pub struct RssReader {
     cache: Mutex<Option<FeedCache>>,
 }
 
 impl RssReader {
     /// A reader with an empty feed cache.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }

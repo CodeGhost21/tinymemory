@@ -74,6 +74,7 @@ async fn gh_available() -> bool {
 
 /// Reader for a GitHub repository source: lists and fetches commits, issues
 /// and pull requests via the REST API, and file content via a shallow clone.
+#[derive(Debug, Clone, Copy, Default)]
 pub struct GithubReader;
 
 /// Parse `owner` and `repo` from a GitHub URL.
