@@ -16,3 +16,8 @@ doc-valid-idents = [
     # Toolkit names in `composio`'s prose, likewise.
     "ClickUp",
 ]
+# A panic in a test is the failure report; library code is still held to no
+# `unwrap`/`expect`/`panic` by each crate's `[lints]` table.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

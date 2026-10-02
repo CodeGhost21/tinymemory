@@ -1,105 +1,15 @@
 [workspace]
 resolver = "2"
 # Every crate in this repository lives under `crates/`, one directory per
-# package, each directory named for the package it holds. There is no
-# root package: the facade a host depends on is `crates/tinymemory`, the same
-# as any other member. Keeping the root virtual is what makes that uniform —
-# a root package would make one crate structurally different from the rest for
-# no reason other than history.
+# package, each directory named for the package it holds. There is no root
+# package: the facade a host depends on is `crates/tinymemory`, the same as any
+# other member. Every member is also a default member, so the four contract
+# commands build and test all of them.
 members = ["crates/*"]
-# `crates/tinymemory-testing-ui` is deliberately left out of `default-members`:
-# it is a manual testing harness, not part of the crate's build/release
-# surface, so the four contract commands (which omit `-p`/`--workspace`) never
-# touch it. Build or run it explicitly with `-p tinymemory-testing-ui`. Unlike
-# `crates/tinymemory-module` it is a normal member here, not its own workspace
-# root: it needs the root's `[patch.crates-io]` table to resolve `tinycortex`,
-# and it carries none of the tinybus-inheritance problem documented below.
-#
-# Spelled out rather than globbed, because that is the whole point: `members`
-# is a glob so a new crate joins the workspace by existing, and this list is
-# the one place a crate is deliberately held out of the default build.
-default-members = [
-    "crates/tinymemory",
-    "crates/tinymemory-api",
-    "crates/tinymemory-bus",
-    "crates/tinymemory-conformance",
-    "crates/tinymemory-conversations",
-    "crates/tinymemory-core",
-    "crates/tinymemory-gate",
-    "crates/tinymemory-guard",
-    "crates/tinymemory-import",
-    "crates/tinymemory-remote",
-    "crates/tinymemory-safety",
-    "crates/tinymemory-sources",
-    "crates/tinymemory-sync",
-    "crates/tinymemory-tinycortex",
-    "crates/tinymemory-tools",
-]
-# `vendor/` holds pinned source submodules (tinycortex, tinybus,
-# tinyinference), each of
-# which is its own workspace with its own lockfile. Same exclusion
-# `vendor/tinycortex` uses for its own nested vendor directory.
-#
-# `crates/tinymemory-module` is excluded for a harder reason than tidiness, and
-# it is worth writing down because the obvious arrangement does not work.
-#
-# That crate depends on `vendor/tinybus/crates/tinybus`, whose manifest inherits
-# `edition`/`version` from `vendor/tinybus`'s own `[workspace.package]`. If the
-# module is a member here, cargo resolves that inheritance against **this** root
-# instead of the nested one and fails with `workspace.package.edition was not
-# defined`. `exclude` does not prevent it: exclusion governs membership, not the
-# root cargo picks when resolving a dependency's inherited fields. Verified by
-# defining `[workspace.package]` here temporarily, which moved the error from
-# `edition` to `version` rather than fixing it.
-#
-# So the module is its own workspace root with its own `Cargo.lock` — which is
-# also what tinybus's module documentation prescribes ("integrations themselves
-# remain separate repositories and are never workspace members") and what a
-# separately released artifact wants anyway. Build it with
-# `--manifest-path crates/tinymemory-module/Cargo.toml`.
-#
 # `worktrees/` holds `git worktree` checkouts of this same repository. Each one
 # contains a full copy of this manifest and every crate under it, so without
 # this entry cargo walks into them and reports duplicate packages.
-exclude = ["vendor", "crates/tinymemory-module", "worktrees"]
-
-# The engine adapters name their engines by version requirement, not by path,
-# so a host that already pins its own engine checkout unifies onto one copy
-# through its own patch table. These entries are what make a *standalone* build
-# of this workspace resolve them to the nested `vendor/` submodules.
-# `tinycortex-api` takes this workspace's own contract crate by git, because
-# neither crate is published (tinymemory#18 §A1). Without this entry cargo
-# resolves the git copy *and* the path copy as two distinct crates, and
-# `tinymemory_api::MemoryCategory` from one is not the same type as from the
-# other — which is the exact duplication §A1 exists to delete, reintroduced by
-# the fix for it. The error is loud rather than silent, but only at the seam.
-#
-# Patch tables apply from the workspace root being built, so this covers builds
-# and tests here. A host that embeds this workspace needs the same entry, the
-# same way it already patches tinycortex.
-[patch."https://github.com/tinyhumansai/tinymemory"]
-tinymemory-api = { path = "crates/tinymemory-api" }
-# `tinycortex` takes the shared scrubber by git for the same reason, and for the
-# same reason it must resolve to this workspace's copy.
-tinymemory-safety = { path = "crates/tinymemory-safety" }
-
-# TinyCortex pins TinyInference by git until it is published. Collapse that git
-# source onto the same checkout `tinymemory-core` resolves through crates.io so
-# both crates share one trait identity.
-[patch."https://github.com/tinyhumansai/tinyinference"]
-tinyinference-core = { path = "vendor/tinyinference/crates/tinyinference-core" }
-tinyinference-embeddings = { path = "vendor/tinyinference/crates/tinyinference-embeddings" }
-tinyinference-llm = { path = "vendor/tinyinference/crates/tinyinference-llm" }
-
-[patch.crates-io]
-tinycortex = { path = "vendor/tinycortex" }
-tinycortex-api = { path = "vendor/tinycortex/api" }
-# `tinymemory-core` names the provider-neutral chat and embedding contracts
-# from TinyInference. It is not published, so standalone builds resolve the
-# version requirement to the pinned checkout here.
-tinyinference-core = { path = "vendor/tinyinference/crates/tinyinference-core" }
-tinyinference-embeddings = { path = "vendor/tinyinference/crates/tinyinference-embeddings" }
-tinyinference-llm = { path = "vendor/tinyinference/crates/tinyinference-llm" }
+exclude = ["vendor", "worktrees"]
 
 [profile.release]
 # Cross-crate optimization and smaller, faster binaries for release builds.
