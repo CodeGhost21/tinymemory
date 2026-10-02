@@ -2,7 +2,7 @@
 //!
 //! Sources are persisted as `[[memory_sources]]` entries in a TOML config file
 //! (typically `config.toml`). In OpenHuman this lived on a large shared `Config`
-//! struct loaded through an async RPC; TinyCortex does not own that global
+//! struct loaded through an async RPC; this crate does not own that global
 //! config, so the registry here is a small self-contained reader/writer over a
 //! single TOML file. Other top-level keys in the file are preserved across
 //! writes — only the `memory_sources` array is rewritten.
