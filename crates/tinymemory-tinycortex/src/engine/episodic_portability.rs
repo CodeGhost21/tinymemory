@@ -404,5 +404,5 @@ impl MemoryEpisodicPortability for TinycortexProvider {
 }
 
 #[cfg(test)]
-#[path = "episodic_portability_test.rs"]
+#[path = "episodic_portability_tests.rs"]
 mod test;

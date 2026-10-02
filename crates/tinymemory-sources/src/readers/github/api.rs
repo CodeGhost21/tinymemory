@@ -35,7 +35,7 @@ use super::{parse_iso_ts, GH_CLI_TIMEOUT};
 #[path = "api/transport_override.rs"]
 mod response_override;
 #[cfg(test)]
-#[path = "api/transport_test.rs"]
+#[path = "api/transport_tests.rs"]
 mod response_override;
 
 #[cfg(test)]

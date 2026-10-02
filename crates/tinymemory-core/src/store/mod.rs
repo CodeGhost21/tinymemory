@@ -41,6 +41,7 @@ pub mod types;
 mod client;
 pub mod factories;
 #[cfg(test)]
+#[path = "factories_provider_tests.rs"]
 mod factories_provider_test;
 /// Golden-workspace fixture seeding / read-back / schema-manifest capture.
 ///

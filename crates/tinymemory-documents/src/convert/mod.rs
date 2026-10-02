@@ -236,4 +236,5 @@ fn describe(formats: &[DocumentFormat]) -> String {
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

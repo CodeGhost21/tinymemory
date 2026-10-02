@@ -37,4 +37,5 @@ pub use types::{list_engines, EngineConfig, EngineCredential, EngineDescriptor};
 pub use tinymemory_remote::{BearerSource, StaticBearer};
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

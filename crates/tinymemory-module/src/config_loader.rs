@@ -191,5 +191,5 @@ impl ConfigLoader for ModuleConfigLoader {
 }
 
 #[cfg(test)]
-#[path = "config_loader_test.rs"]
+#[path = "config_loader_tests.rs"]
 mod test;

@@ -263,5 +263,5 @@ impl MemoryIngest for CortexProvider {
 }
 
 #[cfg(test)]
-#[path = "ingest_test.rs"]
+#[path = "ingest_tests.rs"]
 mod test;

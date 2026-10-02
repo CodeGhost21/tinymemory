@@ -616,5 +616,5 @@ pub(crate) fn install_seams(connection: Option<tinybus::Connection>) {
 }
 
 #[cfg(test)]
-#[path = "host_test.rs"]
+#[path = "host_tests.rs"]
 mod test;

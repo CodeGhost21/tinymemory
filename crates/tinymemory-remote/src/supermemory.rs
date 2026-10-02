@@ -554,5 +554,5 @@ impl Dialect for SupermemoryDialect {
 }
 
 #[cfg(test)]
-#[path = "supermemory_test.rs"]
+#[path = "supermemory_tests.rs"]
 mod test;

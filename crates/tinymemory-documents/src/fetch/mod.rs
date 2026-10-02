@@ -117,4 +117,5 @@ fn read_error(url: &str, error: &str) -> MemoryError {
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

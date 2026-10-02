@@ -326,4 +326,5 @@ fn validate_path_segment(value: &str, name: &str) -> anyhow::Result<()> {
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

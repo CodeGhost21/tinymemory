@@ -318,5 +318,5 @@ impl Dialect for AgentMemoryDialect {
 }
 
 #[cfg(test)]
-#[path = "agentmemory_test.rs"]
+#[path = "agentmemory_tests.rs"]
 mod test;

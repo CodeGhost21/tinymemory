@@ -537,5 +537,5 @@ impl MemoryDocuments for CortexProvider {
 }
 
 #[cfg(test)]
-#[path = "documents_test.rs"]
+#[path = "documents_tests.rs"]
 mod test;

@@ -8,6 +8,7 @@ mod types;
 pub use operations::CortexProvider;
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;
 
 #[cfg(test)]

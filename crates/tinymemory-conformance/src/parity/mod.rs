@@ -217,4 +217,5 @@ async fn run(
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

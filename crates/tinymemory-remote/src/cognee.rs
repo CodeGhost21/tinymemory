@@ -582,5 +582,5 @@ impl Dialect for CogneeDialect {
 }
 
 #[cfg(test)]
-#[path = "cognee_test.rs"]
+#[path = "cognee_tests.rs"]
 mod test;

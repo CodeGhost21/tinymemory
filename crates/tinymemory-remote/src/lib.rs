@@ -152,12 +152,15 @@ pub fn mem0_graph_provider(memory: Mem0Memory) -> GraphMemoryProvider {
 }
 
 #[cfg(test)]
+#[path = "failure_tests.rs"]
 mod failure_test;
 #[cfg(test)]
+#[path = "hosted_tests.rs"]
 mod hosted_test;
 #[cfg(test)]
 mod hosted_test_support;
 
 pub mod agentmemory;
 #[cfg(test)]
+#[path = "conformance_tests.rs"]
 mod conformance_test;

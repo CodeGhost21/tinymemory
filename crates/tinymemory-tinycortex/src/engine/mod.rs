@@ -4829,4 +4829,5 @@ fn segment_to_contract(
 mod episodic_portability;
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;
