@@ -79,7 +79,7 @@ impl ItemKind {
 
 /// One item to store.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum StoreItem {
     /// A document.
     Document {
@@ -262,10 +262,13 @@ impl StoreItem {
         // number, enum or timestamp. The fallback keeps the function total.
         let bytes = serde_json::to_vec(self).unwrap_or_else(|_| format!("{self:?}").into_bytes());
         let digest = Sha256::digest(&bytes);
-        digest.iter().take(20).fold(String::with_capacity(40), |mut out, byte| {
-            out.push_str(&format!("{byte:02x}"));
-            out
-        })
+        digest
+            .iter()
+            .take(20)
+            .fold(String::with_capacity(40), |mut out, byte| {
+                out.push_str(&format!("{byte:02x}"));
+                out
+            })
     }
 }
 

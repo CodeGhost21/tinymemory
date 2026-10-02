@@ -44,9 +44,7 @@ pub mod query;
 
 pub use engine::{EngineDescriptor, EngineHealth, MemoryEngine};
 pub use error::{Error, Result};
-pub use item::{
-    DocumentBody, ItemId, ItemKind, LearningKind, Role, StoreItem, StoreReceipt, Turn,
-};
+pub use item::{DocumentBody, ItemId, ItemKind, LearningKind, Role, StoreItem, StoreReceipt, Turn};
 pub use meta::{MemoryMeta, MetaFilter, SourceKind, SourceRef, ToolCallRef, TurnRange};
 pub use query::{
     Citation, FetchMode, FetchPage, FetchRequest, ForgetReport, ForgetTarget, Hit, ListPage,

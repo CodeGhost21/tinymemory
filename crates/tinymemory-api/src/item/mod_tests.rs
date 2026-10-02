@@ -8,7 +8,16 @@ fn conversation(texts: &[&str]) -> StoreItem {
         turns: texts
             .iter()
             .enumerate()
-            .map(|(i, t)| Turn::new(if i % 2 == 0 { Role::User } else { Role::Assistant }, *t))
+            .map(|(i, t)| {
+                Turn::new(
+                    if i % 2 == 0 {
+                        Role::User
+                    } else {
+                        Role::Assistant
+                    },
+                    *t,
+                )
+            })
             .collect(),
         meta: MemoryMeta::default(),
     }
@@ -61,7 +70,10 @@ fn rendering_reads_like_the_item() {
         meta: MemoryMeta::default(),
     };
     assert_eq!(doc.render_text(), "# Notes\n\nbody");
-    assert_eq!(conversation(&["hi", "yo"]).render_text(), "user: hi\nassistant: yo");
+    assert_eq!(
+        conversation(&["hi", "yo"]).render_text(),
+        "user: hi\nassistant: yo"
+    );
 }
 
 #[test]
@@ -78,11 +90,11 @@ fn fingerprints_cover_metadata_and_are_stable() {
 }
 
 #[test]
-fn items_serialise_with_a_kind_tag_and_round_trip() {
+fn items_serialise_with_a_type_tag_and_round_trip() {
     let item = StoreItem::learning("tea", LearningKind::Preference, 0.9, MemoryMeta::default());
     let json = serde_json::to_value(&item).expect("serialise");
-    assert_eq!(json["kind"], "learning");
-    assert_eq!(json["kind"], ItemKind::Learning.as_str());
+    assert_eq!(json["type"], "learning");
+    assert_eq!(json["type"], ItemKind::Learning.as_str());
     let back: StoreItem = serde_json::from_value(json).expect("deserialise");
     assert_eq!(back, item);
 }
@@ -100,7 +112,10 @@ fn ids_display_and_convert() {
     assert_eq!(id.to_string(), "abc");
     assert_eq!(id.as_str(), "abc");
     assert_eq!(ItemId::new(String::from("abc")), id);
-    assert_eq!(serde_json::to_value(&id).expect("json"), serde_json::json!("abc"));
+    assert_eq!(
+        serde_json::to_value(&id).expect("json"),
+        serde_json::json!("abc")
+    );
 }
 
 #[test]

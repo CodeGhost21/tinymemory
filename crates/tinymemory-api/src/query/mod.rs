@@ -227,6 +227,10 @@ pub struct ListPage {
 /// What [`crate::MemoryEngine::forget`] removes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "the contract names the filter by value; a target is built once per call"
+)]
 pub enum ForgetTarget {
     /// These items.
     Ids(Vec<ItemId>),
