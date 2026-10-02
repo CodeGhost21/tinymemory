@@ -46,10 +46,12 @@ fn every_turn_is_scrubbed() {
 
 #[test]
 fn learning_text_evidence_and_meta_url_are_scrubbed_but_ids_are_not() {
-    let mut meta = MemoryMeta::default();
-    meta.url = Some(format!("https://x.test/?token={SECRET}"));
-    meta.file_path = Some("/repo/src/main.rs".into());
-    meta.thread_id = Some("thread-1".into());
+    let meta = MemoryMeta {
+        url: Some(format!("https://x.test/?token={SECRET}")),
+        file_path: Some("/repo/src/main.rs".into()),
+        thread_id: Some("thread-1".into()),
+        ..MemoryMeta::default()
+    };
     let mut item = StoreItem::learning(format!("key {SECRET}"), LearningKind::Fact, 0.5, meta);
     if let StoreItem::Learning { evidence, .. } = &mut item {
         *evidence = Some(format!("seen {SECRET}"));
