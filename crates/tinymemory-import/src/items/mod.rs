@@ -35,7 +35,7 @@ pub struct Items<'w> {
     checkpoint: Checkpoint,
     buffer: VecDeque<Scanned>,
     page_size: usize,
-    failed: bool,
+    finished: bool,
 }
 
 impl<'w> Items<'w> {
@@ -47,7 +47,7 @@ impl<'w> Items<'w> {
             checkpoint,
             buffer: VecDeque::new(),
             page_size: DEFAULT_PAGE_SIZE,
-            failed: false,
+            finished: false,
         }
     }
 
@@ -86,12 +86,12 @@ impl Iterator for Items<'_> {
     type Item = Result<ImportedItem>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.failed {
+        if self.finished {
             return None;
         }
         let next = self.step();
         if matches!(next, Some(Err(_)) | None) {
-            self.failed = true;
+            self.finished = true;
             self.buffer.clear();
         }
         next
