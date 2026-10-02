@@ -1,74 +1,50 @@
 [package]
 name = "tinymemory-api"
-# Not published: `tinymemory-core` depends on `tinycortex-api`, which is
-# consumed by path and is not on crates.io, so `cargo package` cannot resolve
-# the graph. Every consumer takes this repo by path or git.
 publish = false
-version = "0.1.1"
-edition = "2021"
+version = "2.0.0"
+edition = "2024"
 rust-version = "1.96"
 license = "GPL-3.0-only"
 repository = "https://github.com/tinyhumansai/tinymemory"
-description = "Stable public contracts for the TinyMemory memory system"
+description = "The TinyMemory v2 contract: recall, fetch and store over typed memory items"
 
-# Deliberately dependency-light: this crate is the driver contract an engine
-# compiles against, so it must stay free of native, async-runtime, and storage
-# dependencies. Anything heavier belongs in the `tinycortex` engine crate, never
-# here.
-#
-# The set shrank when the payload vocabulary moved to `tinymemory-bus`:
-# `chrono`, `sha2` and `uuid` went with the types that needed them
-# (`chunks::Metadata`, `chunks::chunk_id`, `ToolMemoryRule::generate_id`), and
-# `thiserror` went with `MemoryError`. What is left is what the *traits* and the
-# host seam need:
-#
-# - `async-trait` — every capability-family trait is `async fn` on an
-#                   object-safe trait.
-# - `anyhow`      — `traits::Memory` and the mandatory composition are
-#                   anyhow-typed.
-# - `schemars`    — the `host::` config sections are still fields of the host's
-#                   root `Config`, which derives `JsonSchema` to generate the
-#                   settings schema the UI renders. Dropping the derive on the
-#                   way down here would silently shrink that schema. `schemars`
-#                   is pure Rust (serde + serde_json + dyn-clone + ref-cast).
-# - `log`         — the `host::cloud_providers` legacy-field migration logs what
-#                   it rewrote. The zero-dependency facade, not an
-#                   implementation.
-#
-# Nothing here may pull in `rusqlite`, `git2`, `reqwest`, `regex`, or an async
-# runtime. Guard with the FORWARD form, which is scoped to this package:
-#
-#   cargo tree -p tinymemory-api -e normal,build --prefix none \
-#     | grep -Ei 'rusqlite|libsqlite|git2|reqwest|regex|tokio'   # expect no match
-#
-# Do NOT use `cargo tree -i <crate> -p tinymemory-api`: `-i` discards the `-p`
-# scope and prints the whole-workspace inverse tree, so it exits 0 and looks
-# clean even when this crate is the one pulling the dependency in.
+# The contract an engine compiles against. It performs no I/O and links no
+# runtime, storage engine or HTTP stack; anything heavier belongs in an engine
+# crate.
 [dependencies]
-# The wire vocabulary. Every payload type this crate exposes is defined there
-# and re-exported here, so a host that only makes calls into the loadable module
-# can depend on that crate alone and compile none of the traits, the null
-# driver, or the `host::` config surface. See `src/lib.rs`.
-tinymemory-bus = { path = "../tinymemory-bus" }
-anyhow = "1"
+# `MemoryEngine` is an object-safe trait of `async fn`s.
 async-trait = "0.1"
-log = "0.4"
+# `MemoryMeta::observed_at`, `Turn::at` and the filter window are UTC instants.
+chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
+# Every request, response and item crosses a host boundary as JSON.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-schemars = "1.2"
+# `StoreItem::fingerprint`: the content-derived identity engines use to turn an
+# identical retry into a replay rather than a duplicate.
+sha2 = "0.10"
+# The crate-wide `Error`.
+thiserror = "2"
 
 [dev-dependencies]
-# The moved `host::` config sections are parsed from TOML in their own tests,
-# exactly as the host parses them from `config.toml`.
-toml = "1.1"
-# The mandatory-composition tests are async — they drive a `MemoryProvider`.
-# Dev-only, so it does not touch the forbidden-dependency rule this crate's
-# manifest enforces for its normal graph (#18 §D4).
 tokio = { version = "1", features = ["macros", "rt"] }
 
-[features]
-default = []
-# `host::test_support::TestHostConfig` — a concrete, `Default`-able
-# `MemoryHostConfig`. `tinymemory-core` enables this from its dev-dependencies;
-# nothing enables it in a shipped build.
-test-support = []
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+
+[lints.rustdoc]
+broken_intra_doc_links = "warn"
+private_intra_doc_links = "warn"
