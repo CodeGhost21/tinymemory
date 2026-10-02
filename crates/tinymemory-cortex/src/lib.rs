@@ -58,6 +58,10 @@ mod transport;
 #[cfg(test)]
 mod testing;
 
+#[cfg(test)]
+#[path = "conformance_tests.rs"]
+mod conformance_tests;
+
 pub use credential::{BearerSource, CortexCredential, StaticBearer};
 pub use descriptor::{
     CORTEX_API_ENDPOINT, CORTEXDB_ENGINE_ID, CortexWire, TINYHUMANS_API_ENDPOINT,

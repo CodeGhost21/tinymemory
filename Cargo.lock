@@ -1342,6 +1342,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tinymemory-api",
+ "tinymemory-conformance",
  "tokio",
 ]
 
