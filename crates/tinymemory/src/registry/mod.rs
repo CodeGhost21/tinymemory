@@ -87,12 +87,20 @@ pub fn build_engine(
         .filter(|endpoint| !endpoint.is_empty())
         .or(descriptor.default_endpoint)
         .ok_or_else(|| Error::Config(format!("memory engine `{id}` needs an endpoint")))?;
-    if descriptor.needs_endpoint && settings.endpoint.as_deref().is_none_or(|e| e.trim().is_empty())
+    if descriptor.needs_endpoint
+        && settings
+            .endpoint
+            .as_deref()
+            .is_none_or(|e| e.trim().is_empty())
     {
-        return Err(Error::Config(format!("memory engine `{id}` needs an endpoint")));
+        return Err(Error::Config(format!(
+            "memory engine `{id}` needs an endpoint"
+        )));
     }
     if descriptor.needs_key && !credential.is_present() {
-        return Err(Error::Config(format!("memory engine `{id}` needs a credential")));
+        return Err(Error::Config(format!(
+            "memory engine `{id}` needs a credential"
+        )));
     }
     if credential.is_present() {
         ensure_secure_endpoint(endpoint)?;
@@ -111,7 +119,9 @@ pub fn build_engine(
             CortexEngine::tinyhumans(endpoint, source)?
         }
         (_, EngineCredential::None) => {
-            return Err(Error::Config(format!("memory engine `{id}` needs a credential")));
+            return Err(Error::Config(format!(
+                "memory engine `{id}` needs a credential"
+            )));
         }
         _ => return Err(Error::Config(format!("unknown memory engine `{id}`"))),
     };

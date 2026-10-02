@@ -1275,6 +1275,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "tinymemory"
+version = "1.22.4"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "tinymemory-api",
+ "tinymemory-conformance",
+ "tinymemory-context",
+ "tinymemory-cortex",
+ "tinymemory-documents",
+ "tinymemory-import",
+ "tinymemory-safety",
+ "tinymemory-sources",
+ "tokio",
+ "toml",
+]
+
+[[package]]
 name = "tinymemory-api"
 version = "2.0.0"
 dependencies = [

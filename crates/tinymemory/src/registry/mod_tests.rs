@@ -41,13 +41,20 @@ fn both_cortex_engines_are_listed_with_hybrid_fetch_only() {
 
 #[test]
 fn an_unknown_id_is_refused() {
-    let message = config_error(build_engine("mem0", &settings(None), EngineCredential::None));
+    let message = config_error(build_engine(
+        "mem0",
+        &settings(None),
+        EngineCredential::None,
+    ));
     assert!(message.contains("unknown memory engine `mem0`"));
 }
 
 #[test]
 fn a_missing_credential_is_refused() {
-    for credential in [EngineCredential::None, EngineCredential::Static("  ".into())] {
+    for credential in [
+        EngineCredential::None,
+        EngineCredential::Static("  ".into()),
+    ] {
         let message = config_error(build_engine("cortexdb", &settings(None), credential));
         assert!(message.contains("needs a credential"), "{message}");
     }
@@ -62,7 +69,11 @@ fn credentialed_cleartext_is_refused_off_loopback_only() {
     ));
     assert!(message.contains("https"));
     assert!(!message.contains("secret-key"));
-    for loopback in ["http://127.0.0.1:7000", "http://localhost/", "http://[::1]:8080"] {
+    for loopback in [
+        "http://127.0.0.1:7000",
+        "http://localhost/",
+        "http://[::1]:8080",
+    ] {
         assert!(
             build_engine(
                 "cortexdb",
@@ -77,7 +88,11 @@ fn credentialed_cleartext_is_refused_off_loopback_only() {
 
 #[test]
 fn a_non_http_endpoint_is_refused() {
-    for endpoint in ["ftp://cortex.example.test", "cortex.example.test", "https://"] {
+    for endpoint in [
+        "ftp://cortex.example.test",
+        "cortex.example.test",
+        "https://",
+    ] {
         config_error(build_engine(
             "tinyhumans",
             &settings(Some(endpoint)),
@@ -122,5 +137,8 @@ fn engines_build_with_default_endpoints_and_either_credential() {
 fn credential_debug_never_shows_the_token() {
     let rendered = format!("{:?}", EngineCredential::Static("hunter2".into()));
     assert!(!rendered.contains("hunter2"));
-    assert_eq!(format!("{:?}", EngineCredential::default()), "EngineCredential::None");
+    assert_eq!(
+        format!("{:?}", EngineCredential::default()),
+        "EngineCredential::None"
+    );
 }
