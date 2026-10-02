@@ -30,7 +30,17 @@ fn rich() -> tempfile::TempDir {
         r#"{"url": "https://x.test/plan", "mime": "text/markdown"}"#,
         T0 + 0.5,
     );
-    doc(&conn, "d02", "source_gh", Some("source:gh"), "README", "readme", "[]", "{}", T0);
+    doc(
+        &conn,
+        "d02",
+        "source_gh",
+        Some("source:gh"),
+        "README",
+        "readme",
+        "[]",
+        "{}",
+        T0,
+    );
     doc(
         &conn,
         "d03",
@@ -55,7 +65,17 @@ fn rich() -> tempfile::TempDir {
         "{}",
         T0,
     );
-    doc(&conn, "d05", "global", Some("global"), "home", "User lives in Lisbon.", "[]", "{}", T0);
+    doc(
+        &conn,
+        "d05",
+        "global",
+        Some("global"),
+        "home",
+        "User lives in Lisbon.",
+        "[]",
+        "{}",
+        T0,
+    );
     doc(
         &conn,
         "d06",
@@ -67,7 +87,17 @@ fn rich() -> tempfile::TempDir {
         "{}",
         T0 + 6.0,
     );
-    doc(&conn, "d07", "user_notes", None, "user_notes", "remember milk", "not json", "", T0);
+    doc(
+        &conn,
+        "d07",
+        "user_notes",
+        None,
+        "user_notes",
+        "remember milk",
+        "not json",
+        "",
+        T0,
+    );
     doc(
         &conn,
         "d08",
@@ -79,7 +109,17 @@ fn rich() -> tempfile::TempDir {
         "{}",
         T0 + 8.0,
     );
-    doc(&conn, "d09", "document_blank", None, "blank", "   ", "[]", "{}", T0);
+    doc(
+        &conn,
+        "d09",
+        "document_blank",
+        None,
+        "blank",
+        "   ",
+        "[]",
+        "{}",
+        T0,
+    );
     doc(
         &conn,
         "d10",
@@ -103,22 +143,99 @@ fn rich() -> tempfile::TempDir {
         "b: searching",
         Some(r#"[{"name":"search","id":"c1"}]"#),
     );
-    turn(&conn, "t-a", 103.0, "assistant", "a: hello back", Some("{oops"));
+    turn(
+        &conn,
+        "t-a",
+        103.0,
+        "assistant",
+        "a: hello back",
+        Some("{oops"),
+    );
     turn(&conn, "t-a", 103.0, "Tool", "a: tool output", None);
     turn(&conn, "t-a", 104.0, "narrator", "a: aside", None);
     turn(&conn, "t-a", 105.0, "user", "  ", None);
 
-    facet(&conn, "f1", "preference", "tone", "terse", 0.9, T0, "active", "pinned", Some("style"));
-    facet(&conn, "f2", "skill", "rust", "expert", 1.2, T0, "provisional", "auto", None);
-    facet(&conn, "f3", "preference", "font", "serif", 0.4, T0, "dropped", "auto", None);
-    facet(&conn, "f4", "role", "job", "pilot", 0.7, T0, "active", "forgotten", None);
+    facet(
+        &conn,
+        "f1",
+        "preference",
+        "tone",
+        "terse",
+        0.9,
+        T0,
+        "active",
+        "pinned",
+        Some("style"),
+    );
+    facet(
+        &conn,
+        "f2",
+        "skill",
+        "rust",
+        "expert",
+        1.2,
+        T0,
+        "provisional",
+        "auto",
+        None,
+    );
+    facet(
+        &conn,
+        "f3",
+        "preference",
+        "font",
+        "serif",
+        0.4,
+        T0,
+        "dropped",
+        "auto",
+        None,
+    );
+    facet(
+        &conn,
+        "f4",
+        "role",
+        "job",
+        "pilot",
+        0.7,
+        T0,
+        "active",
+        "forgotten",
+        None,
+    );
 
     let chunks = chunk_store(dir.path());
-    std::fs::write(dir.path().join("memory_tree/content/e1-1.md"), "full second part").unwrap();
-    chunk(&chunks, "k3", "email", "e1", 1, 2_000, "second…", "[\"inbox\"]", Some("e1-1.md"));
-    chunk(&chunks, "k2", "email", "e1", 0, 1_000, "first part", "[\"inbox\"]", Some("gone.md"));
+    std::fs::write(
+        dir.path().join("memory_tree/content/e1-1.md"),
+        "full second part",
+    )
+    .unwrap();
+    chunk(
+        &chunks,
+        "k3",
+        "email",
+        "e1",
+        1,
+        2_000,
+        "second…",
+        "[\"inbox\"]",
+        Some("e1-1.md"),
+    );
+    chunk(
+        &chunks,
+        "k2",
+        "email",
+        "e1",
+        0,
+        1_000,
+        "first part",
+        "[\"inbox\"]",
+        Some("gone.md"),
+    );
     chunk(&chunks, "k1", "chat", "c1", 0, 3_000, "c: one", "[]", None);
-    chunk(&chunks, "k4", "chat", "c1", 1, 4_000, "c: two", "[\"dm\"]", None);
+    chunk(
+        &chunks, "k4", "chat", "c1", 1, 4_000, "c: two", "[\"dm\"]", None,
+    );
     dir
 }
 
@@ -134,7 +251,7 @@ fn find<'a>(items: &'a [ImportedItem], id: &str) -> &'a StoreItem {
     &items
         .iter()
         .find(|imported| source_id(&imported.item) == id)
-        .unwrap_or_else(|| panic!("{id} not imported"))
+        .expect("legacy id was imported")
         .item
 }
 
@@ -281,7 +398,10 @@ fn maps_document_rows() {
     assert_eq!(mime, &None);
     assert_eq!(meta.url, None);
     assert_eq!(meta.tags, ["ns:user_notes"]);
-    assert_eq!(find(&items, "memory_docs:d02").meta().tags, ["ns:source:gh"]);
+    assert_eq!(
+        find(&items, "memory_docs:d02").meta().tags,
+        ["ns:source:gh"]
+    );
 }
 
 #[test]
@@ -313,7 +433,10 @@ fn maps_learning_candidates() {
     assert_eq!(*kind, LearningKind::Preference);
     assert_eq!(*confidence, 0.8);
     let evidence: serde_json::Value = serde_json::from_str(evidence.as_deref().unwrap()).unwrap();
-    assert_eq!(evidence, serde_json::json!({"type": "episodic", "episodic_id": 42}));
+    assert_eq!(
+        evidence,
+        serde_json::json!({"type": "episodic", "episodic_id": 42})
+    );
     assert_eq!(meta.tags, ["style"]);
     assert_eq!(meta.observed_at.unwrap().timestamp(), 1_600_000_000);
 
@@ -331,7 +454,11 @@ fn maps_learning_candidates() {
     assert_eq!(*kind, LearningKind::Procedure);
     assert_eq!(*confidence, 1.0, "clamped");
     assert_eq!(evidence, &None);
-    assert_eq!(meta.observed_at.unwrap().timestamp(), 1_700_000_008, "falls back to updated_at");
+    assert_eq!(
+        meta.observed_at.unwrap().timestamp(),
+        1_700_000_008,
+        "falls back to updated_at"
+    );
 
     let StoreItem::Learning { kind, .. } = find(&items, "memory_docs:d10") else {
         panic!("d10 is a learning");
@@ -393,7 +520,10 @@ fn maps_episodic_threads_to_conversations() {
             (Role::User, "a: aside"),
         ]
     );
-    assert!(turns[1].tool_calls.is_empty(), "unparseable tool calls are dropped");
+    assert!(
+        turns[1].tool_calls.is_empty(),
+        "unparseable tool calls are dropped"
+    );
     assert_eq!(turns[0].at.unwrap().timestamp(), 101);
     assert_eq!(meta.thread_id.as_deref(), Some("t-a"));
     assert_eq!(meta.turns, Some(TurnRange { first: 0, last: 3 }));
@@ -458,7 +588,10 @@ fn maps_chunk_sources() {
         panic!("email is a document");
     };
     // seq 0 has a missing content file (preview kept); seq 1 reads its file.
-    assert_eq!(body, &DocumentBody::Text("first part\n\nfull second part".into()));
+    assert_eq!(
+        body,
+        &DocumentBody::Text("first part\n\nfull second part".into())
+    );
     assert_eq!(meta.tags, ["inbox", "source_kind:email"]);
     assert_eq!(meta.observed_at.unwrap().timestamp_millis(), 2_000);
     assert_eq!(meta.thread_id, None);
@@ -530,7 +663,10 @@ fn imports_an_early_v1_store_without_optional_columns() {
     let ws = LegacyWorkspace::open(dir.path()).unwrap();
     let items = all(&ws);
     assert_eq!(items.len(), 4);
-    assert_eq!(find(&items, "memory_docs:a").meta().tags, ["ns:document:old"]);
+    assert_eq!(
+        find(&items, "memory_docs:a").meta().tags,
+        ["ns:document:old"]
+    );
     let StoreItem::Learning {
         text,
         kind,
@@ -575,7 +711,17 @@ fn an_unreadable_chunk_body_fails_once_then_stops() {
     let (dir, _conn) = workspace(support::MEMORY_DDL);
     let chunks = chunk_store(dir.path());
     std::fs::create_dir_all(dir.path().join("memory_tree/content/dir.md")).unwrap();
-    chunk(&chunks, "k", "document", "x", 0, 1, "preview", "[]", Some("dir.md"));
+    chunk(
+        &chunks,
+        "k",
+        "document",
+        "x",
+        0,
+        1,
+        "preview",
+        "[]",
+        Some("dir.md"),
+    );
     let ws = LegacyWorkspace::open(dir.path()).unwrap();
     let mut items = ws.items();
     assert!(matches!(items.next(), Some(Err(Error::Io { .. }))));

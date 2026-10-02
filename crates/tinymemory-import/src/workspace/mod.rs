@@ -76,7 +76,10 @@ impl LegacyWorkspace {
             Ok(Ok(schema)) => schema,
             Ok(Err(reason)) => return Err(not_legacy(&root, &reason)),
             Err(err) if is_not_a_database(&err) => {
-                return Err(not_legacy(&root, "memory/memory.db is not a sqlite database"));
+                return Err(not_legacy(
+                    &root,
+                    "memory/memory.db is not a sqlite database",
+                ));
             }
             Err(err) => return Err(err.into()),
         };

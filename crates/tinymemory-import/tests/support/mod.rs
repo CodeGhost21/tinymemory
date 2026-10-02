@@ -77,7 +77,9 @@ pub(crate) fn doc(
            priority, tags_json, metadata_json, category, created_at, updated_at,
            markdown_rel_path, logical_namespace)
          VALUES (?1, ?2, ?1, ?3, ?4, 'chat', 'normal', ?5, ?6, 'core', ?7, ?7, '', ?8)",
-        params![id, namespace, title, content, tags, metadata, updated_at, logical],
+        params![
+            id, namespace, title, content, tags, metadata, updated_at, logical
+        ],
     )
     .expect("insert doc");
 }
@@ -158,7 +160,16 @@ pub(crate) fn chunk(
            time_range_start_ms, time_range_end_ms, tags_json, content, token_count,
            seq_in_source, created_at_ms, content_path)
          VALUES (?1, ?2, ?3, 'me', ?4, ?4, ?4, ?5, ?6, 1, ?7, ?4, ?8)",
-        params![id, kind, source, timestamp_ms, tags, preview, seq, content_path],
+        params![
+            id,
+            kind,
+            source,
+            timestamp_ms,
+            tags,
+            preview,
+            seq,
+            content_path
+        ],
     )
     .expect("insert chunk");
 }

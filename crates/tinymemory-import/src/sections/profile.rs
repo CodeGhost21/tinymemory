@@ -33,7 +33,11 @@ pub(super) fn page(
     limit: usize,
 ) -> Result<Vec<Scanned>> {
     let schema = ws.schema;
-    let class = if schema.profile_class { "class" } else { "NULL" };
+    let class = if schema.profile_class {
+        "class"
+    } else {
+        "NULL"
+    };
     let evidence = if schema.profile_evidence {
         "evidence_refs_json"
     } else {

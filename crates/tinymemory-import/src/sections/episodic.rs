@@ -25,7 +25,9 @@ pub(super) fn page(
          ORDER BY session_id LIMIT ?2",
     )?;
     let sessions = stmt
-        .query_map(params![after, sql_limit(limit)], |row| row.get::<_, String>(0))?
+        .query_map(params![after, sql_limit(limit)], |row| {
+            row.get::<_, String>(0)
+        })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     sessions
         .into_iter()
@@ -67,7 +69,10 @@ fn conversation(ws: &LegacyWorkspace, session: &str) -> Result<Option<StoreItem>
             role: convert::role(&role),
             text,
             at: timestamp.and_then(convert::from_unix_seconds),
-            tool_calls: calls.as_deref().map(convert::tool_calls).unwrap_or_default(),
+            tool_calls: calls
+                .as_deref()
+                .map(convert::tool_calls)
+                .unwrap_or_default(),
         });
     }
     let Some(last) = turns.len().checked_sub(1) else {
