@@ -36,6 +36,7 @@ pub mod file;
 pub mod folder;
 #[cfg(feature = "network")]
 pub mod github;
+pub mod local_file;
 #[cfg(feature = "network")]
 pub mod rss;
 #[cfg(feature = "network")]
