@@ -213,7 +213,9 @@ pub fn content_item(
 fn github_meta(meta: &mut MemoryMeta, item_id: &str, metadata: &serde_json::Value) {
     let owner = string_field(metadata, "owner");
     let repo = string_field(metadata, "repo");
-    let slug = owner.zip(repo).map(|(owner, repo)| format!("{owner}/{repo}"));
+    let slug = owner
+        .zip(repo)
+        .map(|(owner, repo)| format!("{owner}/{repo}"));
     meta.repo = slug.clone();
     let number = metadata
         .get("number")

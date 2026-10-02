@@ -28,9 +28,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 
+use crate::error::{Error, Result};
 use crate::raw_kind::RawKind;
 use crate::types::{MemorySourceEntry, SourceContent, SourceItem, SourceKind};
-use crate::error::{Error, Result};
 
 use super::SourceReader;
 

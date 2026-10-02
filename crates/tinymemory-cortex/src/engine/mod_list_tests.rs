@@ -98,12 +98,10 @@ async fn a_labelled_filter_narrows_server_side_and_is_rechecked() {
         let page = engine.list(ListRequest::new(filter.clone(), 10)).await.unwrap();
         assert_eq!(page.items.len(), 1);
         assert_eq!(page.items[0].kind, ItemKind::Learning);
-        let label = crate::envelope::labels::item("x").replace("tm:i:", "");
         let thread_label = format!(
             "labels=tm%3At%3A{}",
             crate::envelope::labels::digest("t-learn")
         );
-        assert_ne!(label, thread_label);
         assert!(
             state.requests().iter().any(|r| r.contains(&thread_label)),
             "the thread label narrows the listing"

@@ -58,10 +58,7 @@ async fn a_non_http_scheme_is_refused() {
         "gopher://example.com/",
     ] {
         let error = fetch_url(url).await.unwrap_err();
-        assert!(
-            matches!(error, Error::Invalid(_)),
-            "{url} gave {error:?}"
-        );
+        assert!(matches!(error, Error::Invalid(_)), "{url} gave {error:?}");
     }
 }
 
@@ -71,10 +68,7 @@ fn a_size_limit_failure_is_reported_as_budget_exceeded() {
         "https://example.com/",
         "response body exceeds 8-byte limit (Content-Length=9)",
     );
-    assert!(
-        matches!(error, Error::TooLarge(_)),
-        "got {error:?}"
-    );
+    assert!(matches!(error, Error::TooLarge(_)), "got {error:?}");
 }
 
 #[test]
@@ -83,10 +77,7 @@ fn an_interrupted_read_is_reported_as_unreachable_not_budget_exceeded() {
         "https://example.com/",
         "failed to read response body: connection reset",
     );
-    assert!(
-        matches!(error, Error::Unreachable(_)),
-        "got {error:?}"
-    );
+    assert!(matches!(error, Error::Unreachable(_)), "got {error:?}");
 }
 
 #[tokio::test]

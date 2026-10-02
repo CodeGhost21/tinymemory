@@ -18,8 +18,8 @@ use crate::error::{Error, Result};
 use crate::items;
 use crate::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
 
+use super::local_file::{modified_at, read_capped, resolve_base, LocalFile};
 use super::SourceReader;
-use super::local_file::{LocalFile, modified_at, read_capped, resolve_base};
 
 /// A reader over one local file.
 #[derive(Debug, Clone, Copy, Default)]

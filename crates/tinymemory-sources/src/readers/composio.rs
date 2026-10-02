@@ -10,8 +10,8 @@ use std::path::Path;
 use async_trait::async_trait;
 
 use super::SourceReader;
-use crate::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
 use crate::error::Result;
+use crate::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
 
 /// Lists a Composio connection as a single sync target.
 ///

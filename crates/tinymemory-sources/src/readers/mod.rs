@@ -76,8 +76,11 @@ pub trait SourceReader: Send + Sync + std::fmt::Debug {
     ///
     /// The reader's failure: missing configuration ([`crate::Error::Invalid`]),
     /// a missing root ([`crate::Error::NotFound`]), or a network failure.
-    async fn list_items(&self, source: &MemorySourceEntry, workspace: &Path)
-    -> Result<Vec<SourceItem>>;
+    async fn list_items(
+        &self,
+        source: &MemorySourceEntry,
+        workspace: &Path,
+    ) -> Result<Vec<SourceItem>>;
 
     /// Read the content of a single item by its reader-scoped `item_id`.
     ///

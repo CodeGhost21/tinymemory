@@ -19,7 +19,12 @@ fn entry(kind: SourceKind) -> MemorySourceEntry {
     MemorySourceEntry::new("src_test", kind, "Test")
 }
 
-fn content(id: &str, body: &str, content_type: ContentType, metadata: serde_json::Value) -> SourceContent {
+fn content(
+    id: &str,
+    body: &str,
+    content_type: ContentType,
+    metadata: serde_json::Value,
+) -> SourceContent {
     SourceContent {
         id: id.to_string(),
         title: format!("title of {id}"),
@@ -168,7 +173,12 @@ fn reader_content_for_local_kinds_and_composio_fills_what_it_can() {
     folder.path = Some("/notes".into());
     let item = content_item(
         &folder,
-        content("src/lib.rs", "pub fn f() {}", ContentType::Plaintext, serde_json::json!({})),
+        content(
+            "src/lib.rs",
+            "pub fn f() {}",
+            ContentType::Plaintext,
+            serde_json::json!({}),
+        ),
         None,
     )
     .unwrap();
@@ -178,7 +188,12 @@ fn reader_content_for_local_kinds_and_composio_fills_what_it_can() {
 
     let file = content_item(
         &entry(SourceKind::File),
-        content("a.py", "x = 1", ContentType::Plaintext, serde_json::json!({ "path": "/w/a.py" })),
+        content(
+            "a.py",
+            "x = 1",
+            ContentType::Plaintext,
+            serde_json::json!({ "path": "/w/a.py" }),
+        ),
         None,
     )
     .unwrap();
@@ -187,7 +202,12 @@ fn reader_content_for_local_kinds_and_composio_fills_what_it_can() {
 
     let conversation = content_item(
         &entry(SourceKind::Conversation),
-        content("t1", "**user**: hi", ContentType::Markdown, serde_json::json!({})),
+        content(
+            "t1",
+            "**user**: hi",
+            ContentType::Markdown,
+            serde_json::json!({}),
+        ),
         None,
     )
     .unwrap();
@@ -197,7 +217,12 @@ fn reader_content_for_local_kinds_and_composio_fills_what_it_can() {
     composio.toolkit = Some("slack".into());
     let item = content_item(
         &composio,
-        content("c1", "sync data", ContentType::Plaintext, serde_json::json!({})),
+        content(
+            "c1",
+            "sync data",
+            ContentType::Plaintext,
+            serde_json::json!({}),
+        ),
         None,
     )
     .unwrap();
@@ -208,7 +233,12 @@ fn reader_content_for_local_kinds_and_composio_fills_what_it_can() {
 fn content_that_converts_to_nothing_is_refused() {
     let error = content_item(
         &entry(SourceKind::WebPage),
-        content("u", "<script>x()</script>", ContentType::Html, serde_json::json!({})),
+        content(
+            "u",
+            "<script>x()</script>",
+            ContentType::Html,
+            serde_json::json!({}),
+        ),
         None,
     )
     .unwrap_err();
@@ -297,7 +327,13 @@ async fn folder_items_carry_workspace_folder_path_language_mtime_and_mime() {
     );
     assert_eq!(
         meta.file_path.as_deref(),
-        Some(canonical_root.join("src/main.rs").display().to_string().as_str())
+        Some(
+            canonical_root
+                .join("src/main.rs")
+                .display()
+                .to_string()
+                .as_str()
+        )
     );
     assert_eq!(
         meta.folder.as_deref(),
@@ -428,10 +464,7 @@ async fn conversation_sources_yield_conversation_items_with_roles_and_times() {
     assert_eq!(turns.len(), 2);
     assert_eq!(turns[0].role, Role::User);
     assert_eq!(turns[1].role, Role::Assistant);
-    assert_eq!(
-        turns[0].at.map(|at| at.timestamp()),
-        Some(1_716_292_800)
-    );
+    assert_eq!(turns[0].at.map(|at| at.timestamp()), Some(1_716_292_800));
     assert_eq!(meta.source.kind, Api::Conversation);
     assert_eq!(meta.thread_id.as_deref(), Some("t_1"));
     assert_eq!(meta.turns, Some(TurnRange { first: 0, last: 1 }));
@@ -511,5 +544,8 @@ async fn the_default_read_store_item_maps_reader_content() {
     .unwrap();
     let meta = collected.items[0].meta();
     assert_eq!(meta.url.as_deref(), Some("https://example.com"));
-    assert_eq!(meta.observed_at.map(|at| at.timestamp_millis()), Some(1_000));
+    assert_eq!(
+        meta.observed_at.map(|at| at.timestamp_millis()),
+        Some(1_000)
+    );
 }

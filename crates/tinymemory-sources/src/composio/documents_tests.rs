@@ -34,7 +34,10 @@ fn a_github_search_becomes_items_with_url_repo_time_and_toolkit_tag() {
     item.validate().unwrap();
 
     let (title, body, meta) = text_of(item);
-    assert_eq!(title.as_deref(), Some("GitHub: acme/widgets#7: Fix the build"));
+    assert_eq!(
+        title.as_deref(),
+        Some("GitHub: acme/widgets#7: Fix the build")
+    );
     assert_eq!(body, "The build is **red**.");
     assert_eq!(meta.source.kind, SourceKind::Composio);
     assert_eq!(meta.source.id.as_deref(), Some("conn_gh"));
@@ -121,7 +124,10 @@ fn linear_notion_and_clickup_records_are_normalised() {
     }]});
     let documents = normalise_payload("notion", &notion);
     assert_eq!(documents[0].title.as_deref(), Some("Roadmap"));
-    assert_eq!(documents[0].body, "Roadmap", "a page without body keeps its title");
+    assert_eq!(
+        documents[0].body, "Roadmap",
+        "a page without body keeps its title"
+    );
     assert_eq!(documents[0].url.as_deref(), Some("https://notion.so/p1"));
 
     let page_markdown = json!({ "data": { "markdown": "# Plan\n\nDo it." }, "id": "p2" });

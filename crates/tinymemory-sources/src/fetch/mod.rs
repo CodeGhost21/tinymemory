@@ -12,7 +12,7 @@
 //! URL, once, when asked. Conversion to markdown is `tinymemory-documents`'.
 
 use tinymemory_api::{MemoryMeta, SourceKind, StoreItem};
-use tinymemory_documents::{DocumentConverter, MAX_DOCUMENT_BYTES, RawDocument, document_item};
+use tinymemory_documents::{document_item, DocumentConverter, RawDocument, MAX_DOCUMENT_BYTES};
 
 use crate::error::{Error, Result};
 use crate::readers::ssrf::{build_client, is_url_allowed, read_body_capped};

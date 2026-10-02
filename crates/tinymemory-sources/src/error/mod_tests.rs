@@ -22,7 +22,9 @@ fn every_variant_maps_onto_the_contract_error_a_host_can_act_on() {
         (Error::TooLarge("x".into()), |e| {
             matches!(e, Api::InvalidRequest(_))
         }),
-        (Error::NotFound("x".into()), |e| matches!(e, Api::NotFound(_))),
+        (Error::NotFound("x".into()), |e| {
+            matches!(e, Api::NotFound(_))
+        }),
         (Error::Unreachable("x".into()), |e| {
             matches!(e, Api::Unavailable(_))
         }),

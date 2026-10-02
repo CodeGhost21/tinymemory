@@ -22,17 +22,17 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 use regex::Regex;
 use tinymemory_api::StoreItem;
-use tinymemory_documents::{DocumentConverter, DocumentFormat, language_for_path};
+use tinymemory_documents::{language_for_path, DocumentConverter, DocumentFormat};
 use walkdir::WalkDir;
 
-use crate::FOLDER_FILE_SIZE_CAP_BYTES;
 use crate::error::{Error, Result};
 use crate::items;
 use crate::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
 use crate::validation::ensure_within_base;
+use crate::FOLDER_FILE_SIZE_CAP_BYTES;
 
+use super::local_file::{modified_at, read_capped, resolve_base, LocalFile};
 use super::SourceReader;
-use super::local_file::{LocalFile, modified_at, read_capped, resolve_base};
 
 /// Directory names never descended into, wherever they appear.
 const IGNORED_DIRS: &[&str] = &[

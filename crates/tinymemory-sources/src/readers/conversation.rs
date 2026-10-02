@@ -21,8 +21,8 @@ use crate::items;
 use crate::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
 use crate::validation::ensure_within_base;
 
-use super::SourceReader;
 use super::local_file::modified_at;
+use super::SourceReader;
 
 /// One thread read from disk, parsed into turns.
 #[derive(Debug, Clone, PartialEq)]
@@ -219,7 +219,9 @@ fn thread_turns(thread: &serde_json::Value) -> Vec<Turn> {
             }
             let role_text = message.get("role").and_then(|v| v.as_str()).unwrap_or("");
             let Some(role) = parse_role(role_text) else {
-                log::debug!("[memory_sources:conversation] skipping message with role={role_text:?}");
+                log::debug!(
+                    "[memory_sources:conversation] skipping message with role={role_text:?}"
+                );
                 return None;
             };
             let at = ["created_at", "timestamp", "at"]

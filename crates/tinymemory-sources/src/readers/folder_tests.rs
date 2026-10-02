@@ -109,7 +109,10 @@ async fn list_items_skips_hidden_and_build_directories() {
             .read_item(&source, hidden, config())
             .await
             .unwrap_err();
-        assert!(matches!(error, crate::Error::Invalid(_)), "{hidden}: {error:?}");
+        assert!(
+            matches!(error, crate::Error::Invalid(_)),
+            "{hidden}: {error:?}"
+        );
     }
 }
 

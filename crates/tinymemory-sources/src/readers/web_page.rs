@@ -17,8 +17,8 @@ use async_trait::async_trait;
 use super::ssrf::{build_client, is_url_allowed, read_body_capped};
 use types::SelectorSpec;
 
-use crate::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
 use crate::error::{Error, Result};
+use crate::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
 
 use super::SourceReader;
 
