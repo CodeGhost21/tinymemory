@@ -5,9 +5,9 @@
 
 use async_trait::async_trait;
 use tinymemory_api::{
-    EngineDescriptor, EngineHealth, FetchMode, FetchPage, FetchRequest, ForgetReport,
-    ForgetTarget, ListPage, ListRequest, MemoryEngine, MetaFilter, RecallAnswer, RecallRequest,
-    Result, StoreItem, StoreReceipt,
+    EngineDescriptor, EngineHealth, FetchMode, FetchPage, FetchRequest, ForgetReport, ForgetTarget,
+    ListPage, ListRequest, MemoryEngine, MetaFilter, RecallAnswer, RecallRequest, Result,
+    StoreItem, StoreReceipt,
 };
 use tinymemory_conformance::{Error, ReferenceEngine, run};
 
@@ -22,7 +22,10 @@ async fn the_reference_engine_passes_and_cleans_up() {
 async fn the_suite_leaves_foreign_items_alone() {
     let engine = ReferenceEngine::new();
     engine
-        .store(StoreItem::document("someone else's note", Default::default()))
+        .store(StoreItem::document(
+            "someone else's note",
+            Default::default(),
+        ))
         .await
         .expect("store");
     run(&engine).await.expect("conforms");

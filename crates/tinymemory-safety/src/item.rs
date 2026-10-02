@@ -10,7 +10,7 @@
 
 use tinymemory_api::{DocumentBody, StoreItem};
 
-use crate::{Policy, SanitizationReport, Sanitized, sanitize_text_with};
+use crate::{sanitize_text_with, Policy, SanitizationReport, Sanitized};
 
 /// Scrubs every text `item` carries under the default (strictest) [`Policy`].
 #[must_use]

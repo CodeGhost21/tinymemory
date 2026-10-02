@@ -27,8 +27,11 @@ pub(super) async fn all(ctx: &Ctx<'_>) -> Result<()> {
 pub(super) async fn cleanup(ctx: &Ctx<'_>) -> Result<()> {
     const CHECK: &str = "cleanup";
     for filter in [ctx.run.filter(), ctx.run.probe_filter()] {
-        ctx.call(CHECK, ctx.engine.forget(ForgetTarget::Filter(filter.clone())))
-            .await?;
+        ctx.call(
+            CHECK,
+            ctx.engine.forget(ForgetTarget::Filter(filter.clone())),
+        )
+        .await?;
         let left = ctx.list_all(CHECK, &filter).await?;
         ensure(CHECK, left.is_empty(), || {
             format!("{} items survived a forget by workspace filter", left.len())
@@ -69,7 +72,11 @@ async fn round_trip(ctx: &Ctx<'_>) -> Result<()> {
             format!("stored a {:?}, listed a {:?}", item.kind(), hit.kind)
         })?;
         ensure(CHECK, &hit.meta == item.meta(), || {
-            format!("metadata changed: stored {:?}, listed {:?}", item.meta(), hit.meta)
+            format!(
+                "metadata changed: stored {:?}, listed {:?}",
+                item.meta(),
+                hit.meta
+            )
         })?;
         ensure(CHECK, hit.confidence == item.confidence(), || {
             format!(
@@ -79,11 +86,17 @@ async fn round_trip(ctx: &Ctx<'_>) -> Result<()> {
             )
         })?;
         ensure(CHECK, hit.text == item.render_text(), || {
-            format!("text changed: stored {:?}, listed {:?}", item.render_text(), hit.text)
+            format!(
+                "text changed: stored {:?}, listed {:?}",
+                item.render_text(),
+                hit.text
+            )
         })?;
-        ensure(CHECK, listed.iter().all(|hit| hit.kind == item.kind()), || {
-            "a kind-filtered listing returned another kind".to_string()
-        })?;
+        ensure(
+            CHECK,
+            listed.iter().all(|hit| hit.kind == item.kind()),
+            || "a kind-filtered listing returned another kind".to_string(),
+        )?;
     }
     Ok(())
 }
@@ -115,7 +128,11 @@ async fn fetch_filters(ctx: &Ctx<'_>) -> Result<()> {
     let probes = ctx.run.probes();
     let mut ids = Vec::with_capacity(probes.len());
     for probe in &probes {
-        ids.push(ctx.call(CHECK, ctx.engine.store(probe.item.clone())).await?.id);
+        ids.push(
+            ctx.call(CHECK, ctx.engine.store(probe.item.clone()))
+                .await?
+                .id,
+        );
     }
     let modes = ctx.engine.descriptor().fetch_modes.clone();
     for (probe, id) in probes.iter().zip(&ids) {
@@ -166,9 +183,11 @@ async fn unsupported_modes(ctx: &Ctx<'_>) -> Result<()> {
             .engine
             .fetch(FetchRequest::new(ctx.run.marker.clone(), mode, 5))
             .await;
-        ensure(CHECK, matches!(result, Err(ApiError::Unsupported(_))), || {
-            format!("an undeclared {} fetch answered {result:?}", mode.as_str())
-        })?;
+        ensure(
+            CHECK,
+            matches!(result, Err(ApiError::Unsupported(_))),
+            || format!("an undeclared {} fetch answered {result:?}", mode.as_str()),
+        )?;
     }
     Ok(())
 }
@@ -181,9 +200,11 @@ async fn empty_forget(ctx: &Ctx<'_>) -> Result<()> {
         ForgetTarget::Filter(MetaFilter::default()),
     ] {
         let result = ctx.engine.forget(target.clone()).await;
-        ensure(CHECK, matches!(result, Err(ApiError::InvalidRequest(_))), || {
-            format!("forget({target:?}) answered {result:?}, not an invalid request")
-        })?;
+        ensure(
+            CHECK,
+            matches!(result, Err(ApiError::InvalidRequest(_))),
+            || format!("forget({target:?}) answered {result:?}, not an invalid request"),
+        )?;
     }
     let after = ctx.list_all(CHECK, &ctx.run.filter()).await?.len();
     ensure(CHECK, before == after, || {
@@ -197,7 +218,10 @@ async fn forget_by_id(ctx: &Ctx<'_>) -> Result<()> {
     let item = ctx.run.document("forget by id", ctx.run.meta());
     let id = ctx.call(CHECK, ctx.engine.store(item)).await?.id;
     let report = ctx
-        .call(CHECK, ctx.engine.forget(ForgetTarget::Ids(vec![id.clone()])))
+        .call(
+            CHECK,
+            ctx.engine.forget(ForgetTarget::Ids(vec![id.clone()])),
+        )
         .await?;
     ensure(CHECK, report.forgotten == 1, || {
         format!("forgetting one id reported {} forgotten", report.forgotten)
@@ -207,13 +231,19 @@ async fn forget_by_id(ctx: &Ctx<'_>) -> Result<()> {
         format!("item {id} still lists after it was forgotten")
     })?;
     ensure(CHECK, listed.len() == keep, || {
-        format!("forgetting one id changed the other items: {keep} became {}", listed.len())
+        format!(
+            "forgetting one id changed the other items: {keep} became {}",
+            listed.len()
+        )
     })?;
     let again = ctx
         .call(CHECK, ctx.engine.forget(ForgetTarget::Ids(vec![id])))
         .await?;
     ensure(CHECK, again.forgotten == 0, || {
-        format!("forgetting a gone id reported {} forgotten", again.forgotten)
+        format!(
+            "forgetting a gone id reported {} forgotten",
+            again.forgotten
+        )
     })
 }
 
@@ -234,7 +264,10 @@ async fn forget_by_filter(ctx: &Ctx<'_>) -> Result<()> {
         ..ctx.run.filter()
     };
     let report = ctx
-        .call(CHECK, ctx.engine.forget(ForgetTarget::Filter(filter.clone())))
+        .call(
+            CHECK,
+            ctx.engine.forget(ForgetTarget::Filter(filter.clone())),
+        )
         .await?;
     ensure(CHECK, report.forgotten == 2, || {
         format!("forgetting two tagged items reported {}", report.forgotten)
@@ -266,12 +299,16 @@ async fn recall(ctx: &Ctx<'_>) -> Result<()> {
     let listed = ctx.list_all(CHECK, &ctx.run.filter()).await?;
     for citation in &answer.citations {
         let resolved = listed.iter().find(|hit| hit.id == citation.id);
-        ensure(CHECK, resolved.is_some_and(|hit| hit.kind == citation.kind), || {
-            format!(
-                "citation {} ({:?}) does not resolve through list",
-                citation.id, citation.kind
-            )
-        })?;
+        ensure(
+            CHECK,
+            resolved.is_some_and(|hit| hit.kind == citation.kind),
+            || {
+                format!(
+                    "citation {} ({:?}) does not resolve through list",
+                    citation.id, citation.kind
+                )
+            },
+        )?;
     }
     Ok(())
 }

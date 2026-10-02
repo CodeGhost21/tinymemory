@@ -43,7 +43,9 @@ impl ContextSpec {
     /// heading or question.
     pub fn validate(&self) -> Result<()> {
         if self.budget_tokens == 0 {
-            return Err(Error::InvalidSpec("budget_tokens must be positive".to_string()));
+            return Err(Error::InvalidSpec(
+                "budget_tokens must be positive".to_string(),
+            ));
         }
         for brief in &self.briefs {
             if brief.heading.trim().is_empty() || brief.question.trim().is_empty() {

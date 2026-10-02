@@ -26,8 +26,16 @@ fn learning(id: &str, text: &str) -> LearningLine {
 fn sections() -> Sections {
     Sections {
         briefs: vec![
-            brief("About the user", &"Steven builds memory systems. ".repeat(4), &["a", "b"]),
-            brief("Active work", &"Working on memory v2 in Rust. ".repeat(4), &["b", "c"]),
+            brief(
+                "About the user",
+                &"Steven builds memory systems. ".repeat(4),
+                &["a", "b"],
+            ),
+            brief(
+                "Active work",
+                &"Working on memory v2 in Rust. ".repeat(4),
+                &["b", "c"],
+            ),
         ],
         learnings: (0..10)
             .map(|i| learning(&format!("l{i}"), &format!("learning number {i}\nwrapped")))
@@ -65,8 +73,22 @@ fn learnings_are_trimmed_before_any_brief() {
     let budget = full.tokens - 20;
     let rendered = render(sections(), budget, "reference", at());
     assert!(rendered.tokens <= budget);
-    assert!(rendered.markdown.contains(&"Steven builds memory systems. ".repeat(4).trim().to_string()));
-    assert!(rendered.markdown.contains(&"Working on memory v2 in Rust. ".repeat(4).trim().to_string()));
+    assert!(
+        rendered.markdown.contains(
+            &"Steven builds memory systems. "
+                .repeat(4)
+                .trim()
+                .to_string()
+        )
+    );
+    assert!(
+        rendered.markdown.contains(
+            &"Working on memory v2 in Rust. "
+                .repeat(4)
+                .trim()
+                .to_string()
+        )
+    );
     assert!(!rendered.markdown.contains("learning number 9"));
     assert!(rendered.markdown.contains("learning number 0"));
     assert!(!rendered.refs.contains(&ItemId::from("l9")));
@@ -79,11 +101,23 @@ fn once_learnings_are_gone_the_last_brief_shrinks_then_drops() {
         ..sections()
     };
     let full = render(without_learnings.clone(), 10_000, "reference", at());
-    let shrunk = render(without_learnings.clone(), full.tokens - 10, "reference", at());
+    let shrunk = render(
+        without_learnings.clone(),
+        full.tokens - 10,
+        "reference",
+        at(),
+    );
     assert!(shrunk.tokens <= full.tokens - 10);
     assert!(shrunk.markdown.contains("## Active work"));
     assert!(shrunk.markdown.contains('…'));
-    assert!(shrunk.markdown.contains(&"Steven builds memory systems. ".repeat(4).trim().to_string()));
+    assert!(
+        shrunk.markdown.contains(
+            &"Steven builds memory systems. "
+                .repeat(4)
+                .trim()
+                .to_string()
+        )
+    );
 
     let tight = render(without_learnings, full.tokens - 45, "reference", at());
     assert!(tight.tokens <= full.tokens - 45);

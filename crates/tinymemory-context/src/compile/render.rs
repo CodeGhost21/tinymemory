@@ -110,7 +110,11 @@ fn compose(sections: &Sections, engine: &str, generated_at: DateTime<Utc>) -> Re
     let mut refs: Vec<ItemId> = Vec::new();
     let mut body = String::from("# Context\n");
     for brief in &sections.briefs {
-        body.push_str(&format!("\n## {}\n\n{}\n", brief.heading, brief.body.trim()));
+        body.push_str(&format!(
+            "\n## {}\n\n{}\n",
+            brief.heading,
+            brief.body.trim()
+        ));
         push_unique(&mut refs, &brief.refs);
     }
     if !sections.learnings.is_empty() {
@@ -141,7 +145,12 @@ fn compose(sections: &Sections, engine: &str, generated_at: DateTime<Utc>) -> Re
     }
 }
 
-fn frontmatter(engine: &str, generated_at: DateTime<Utc>, tokens: usize, refs: &[ItemId]) -> String {
+fn frontmatter(
+    engine: &str,
+    generated_at: DateTime<Utc>,
+    tokens: usize,
+    refs: &[ItemId],
+) -> String {
     let refs: Vec<&str> = refs.iter().map(ItemId::as_str).collect();
     format!(
         "---\ngenerated_at: {}\nengine: {engine}\ntokens: {tokens}\nrefs: [{}]\n---\n",

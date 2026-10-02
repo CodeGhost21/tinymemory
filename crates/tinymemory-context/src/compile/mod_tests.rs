@@ -41,25 +41,48 @@ async fn an_empty_engine_yields_an_empty_document() {
 async fn briefs_and_learnings_fill_the_document_in_order() {
     let engine = ReferenceEngine::new();
     engine
-        .store(StoreItem::document("The user is Steven, a builder of memory systems.", MemoryMeta::default()))
+        .store(StoreItem::document(
+            "The user is Steven, a builder of memory systems.",
+            MemoryMeta::default(),
+        ))
         .await
         .unwrap();
-    engine.store(learning("prefers terse answers", 0.9, Some(3))).await.unwrap();
-    engine.store(learning("likes Rust", 0.4, Some(5))).await.unwrap();
-    engine.store(learning("uses vim", 0.8, Some(5))).await.unwrap();
-    engine.store(learning("undated habit", 1.0, None)).await.unwrap();
+    engine
+        .store(learning("prefers terse answers", 0.9, Some(3)))
+        .await
+        .unwrap();
+    engine
+        .store(learning("likes Rust", 0.4, Some(5)))
+        .await
+        .unwrap();
+    engine
+        .store(learning("uses vim", 0.8, Some(5)))
+        .await
+        .unwrap();
+    engine
+        .store(learning("undated habit", 1.0, None))
+        .await
+        .unwrap();
     let spec = ContextSpec {
         briefs: vec![Brief::new("About the user", "who is the user")],
         ..ContextSpec::default()
     };
-    let doc = ContextCompiler::at(at()).compile(&engine, &spec).await.unwrap();
+    let doc = ContextCompiler::at(at())
+        .compile(&engine, &spec)
+        .await
+        .unwrap();
     let md = &doc.markdown;
     assert!(md.starts_with("---\n"));
     assert!(md.contains("## About the user"));
-    let order: Vec<usize> = ["uses vim", "likes Rust", "prefers terse answers", "undated habit"]
-        .iter()
-        .map(|text| md.find(&format!("- {text}")).unwrap())
-        .collect();
+    let order: Vec<usize> = [
+        "uses vim",
+        "likes Rust",
+        "prefers terse answers",
+        "undated habit",
+    ]
+    .iter()
+    .map(|text| md.find(&format!("- {text}")).unwrap())
+    .collect();
     assert!(order.windows(2).all(|pair| pair[0] < pair[1]), "{md}");
     assert!(!doc.refs.is_empty());
     assert_eq!(doc.tokens, crate::estimate_tokens(md));
@@ -79,7 +102,10 @@ async fn the_learnings_limit_caps_the_list() {
         learnings_limit: 2,
         ..ContextSpec::default()
     };
-    let doc = ContextCompiler::at(at()).compile(&engine, &spec).await.unwrap();
+    let doc = ContextCompiler::at(at())
+        .compile(&engine, &spec)
+        .await
+        .unwrap();
     assert_eq!(doc.markdown.matches("\n- habit").count(), 2);
     assert!(doc.markdown.contains("- habit 4"));
     assert!(doc.markdown.contains("- habit 3"));

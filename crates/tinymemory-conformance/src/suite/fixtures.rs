@@ -140,8 +140,14 @@ impl Run {
         vec![
             Probe::new(
                 "folder",
-                self.document("folder", with(&|meta| meta.folder = Some(format!("{root}/src/app")))),
-                MetaFilter { folder: Some(format!("{root}/src")), ..base.clone() },
+                self.document(
+                    "folder",
+                    with(&|meta| meta.folder = Some(format!("{root}/src/app"))),
+                ),
+                MetaFilter {
+                    folder: Some(format!("{root}/src")),
+                    ..base.clone()
+                },
             ),
             Probe::new(
                 "file_path",
@@ -149,32 +155,62 @@ impl Run {
                     "file",
                     with(&|meta| meta.file_path = Some(format!("{root}/docs/guide.md"))),
                 ),
-                MetaFilter { file_path: Some(format!("{root}/docs")), ..base.clone() },
+                MetaFilter {
+                    file_path: Some(format!("{root}/docs")),
+                    ..base.clone()
+                },
             ),
             Probe::new(
                 "language",
-                self.document("language", with(&|meta| meta.language = Some(format!("{m}-lang")))),
-                MetaFilter { language: Some(format!("{m}-lang")), ..base.clone() },
+                self.document(
+                    "language",
+                    with(&|meta| meta.language = Some(format!("{m}-lang"))),
+                ),
+                MetaFilter {
+                    language: Some(format!("{m}-lang")),
+                    ..base.clone()
+                },
             ),
             Probe::new(
                 "repo",
                 self.document("repo", with(&|meta| meta.repo = Some(format!("owner/{m}")))),
-                MetaFilter { repo: Some(format!("owner/{m}")), ..base.clone() },
+                MetaFilter {
+                    repo: Some(format!("owner/{m}")),
+                    ..base.clone()
+                },
             ),
             Probe::new(
                 "commit",
-                self.document("commit", with(&|meta| meta.commit = Some(format!("{m}c0ffee")))),
-                MetaFilter { commit: Some(format!("{m}c0ffee")), ..base.clone() },
+                self.document(
+                    "commit",
+                    with(&|meta| meta.commit = Some(format!("{m}c0ffee"))),
+                ),
+                MetaFilter {
+                    commit: Some(format!("{m}c0ffee")),
+                    ..base.clone()
+                },
             ),
             Probe::new(
                 "url",
-                self.document("url", with(&|meta| meta.url = Some(format!("https://{m}.test/a")))),
-                MetaFilter { url: Some(format!("https://{m}.test/a")), ..base.clone() },
+                self.document(
+                    "url",
+                    with(&|meta| meta.url = Some(format!("https://{m}.test/a"))),
+                ),
+                MetaFilter {
+                    url: Some(format!("https://{m}.test/a")),
+                    ..base.clone()
+                },
             ),
             Probe::new(
                 "thread_id",
-                conversation("thread", with(&|meta| meta.thread_id = Some(format!("{m}-t1")))),
-                MetaFilter { thread_id: Some(format!("{m}-t1")), ..base.clone() },
+                conversation(
+                    "thread",
+                    with(&|meta| meta.thread_id = Some(format!("{m}-t1"))),
+                ),
+                MetaFilter {
+                    thread_id: Some(format!("{m}-t1")),
+                    ..base.clone()
+                },
             ),
             Probe::new(
                 "turns",
@@ -182,50 +218,90 @@ impl Run {
                     "turns",
                     with(&|meta| meta.turns = Some(TurnRange { first: 4, last: 5 })),
                 ),
-                MetaFilter { turns: Some(TurnRange { first: 4, last: 5 }), ..base.clone() },
+                MetaFilter {
+                    turns: Some(TurnRange { first: 4, last: 5 }),
+                    ..base.clone()
+                },
             ),
             Probe::new(
                 "agent_id",
-                self.document("agent", with(&|meta| meta.agent_id = Some(format!("{m}-agent")))),
-                MetaFilter { agent_id: Some(format!("{m}-agent")), ..base.clone() },
+                self.document(
+                    "agent",
+                    with(&|meta| meta.agent_id = Some(format!("{m}-agent"))),
+                ),
+                MetaFilter {
+                    agent_id: Some(format!("{m}-agent")),
+                    ..base.clone()
+                },
             ),
             Probe::new(
                 "tool_call",
                 self.document(
                     "tool",
                     with(&|meta| {
-                        meta.tool_call = Some(ToolCallRef { name: format!("{m}_tool"), id: None });
+                        meta.tool_call = Some(ToolCallRef {
+                            name: format!("{m}_tool"),
+                            id: None,
+                        });
                     }),
                 ),
-                MetaFilter { tool_call: Some(format!("{m}_tool")), ..base.clone() },
+                MetaFilter {
+                    tool_call: Some(format!("{m}_tool")),
+                    ..base.clone()
+                },
             ),
             Probe::new(
                 "source_id",
                 self.document(
                     "source",
                     with(&|meta| {
-                        meta.source = SourceRef { kind: SourceKind::File, id: Some(format!("{m}-src")) };
+                        meta.source = SourceRef {
+                            kind: SourceKind::File,
+                            id: Some(format!("{m}-src")),
+                        };
                     }),
                 ),
-                MetaFilter { source_id: Some(format!("{m}-src")), ..base.clone() },
+                MetaFilter {
+                    source_id: Some(format!("{m}-src")),
+                    ..base.clone()
+                },
             ),
             Probe::new(
                 "sources",
                 self.document(
                     "feed",
-                    with(&|meta| meta.source = SourceRef { kind: SourceKind::Rss, id: None }),
+                    with(&|meta| {
+                        meta.source = SourceRef {
+                            kind: SourceKind::Rss,
+                            id: None,
+                        }
+                    }),
                 ),
-                MetaFilter { sources: vec![SourceKind::Rss], ..base.clone() },
+                MetaFilter {
+                    sources: vec![SourceKind::Rss],
+                    ..base.clone()
+                },
             ),
             Probe::new(
                 "tags_any",
                 self.document("tagged", with(&|meta| meta.tags = vec![format!("{m}-tag")])),
-                MetaFilter { tags_any: vec![format!("{m}-none"), format!("{m}-tag")], ..base.clone() },
+                MetaFilter {
+                    tags_any: vec![format!("{m}-none"), format!("{m}-tag")],
+                    ..base.clone()
+                },
             ),
             Probe::new(
                 "kinds",
-                StoreItem::learning(format!("{m} kinds learning"), LearningKind::Fact, 0.5, probe_meta()),
-                MetaFilter { kinds: vec![ItemKind::Learning], ..base.clone() },
+                StoreItem::learning(
+                    format!("{m} kinds learning"),
+                    LearningKind::Fact,
+                    0.5,
+                    probe_meta(),
+                ),
+                MetaFilter {
+                    kinds: vec![ItemKind::Learning],
+                    ..base.clone()
+                },
             ),
             Probe::new(
                 "observed_at",
@@ -250,6 +326,10 @@ pub(crate) struct Probe {
 
 impl Probe {
     fn new(field: &'static str, item: StoreItem, filter: MetaFilter) -> Self {
-        Self { field, item, filter }
+        Self {
+            field,
+            item,
+            filter,
+        }
     }
 }

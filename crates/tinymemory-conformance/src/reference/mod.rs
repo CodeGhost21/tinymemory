@@ -145,7 +145,11 @@ impl MemoryEngine for ReferenceEngine {
             "Nothing stored answers this question.".to_string()
         } else {
             let quoted: Vec<&str> = citations.iter().map(|c| c.snippet.as_str()).collect();
-            format!("From {} stored items: {}", citations.len(), quoted.join(" | "))
+            format!(
+                "From {} stored items: {}",
+                citations.len(),
+                quoted.join(" | ")
+            )
         };
         Ok(RecallAnswer {
             answer,

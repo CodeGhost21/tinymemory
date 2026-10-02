@@ -67,7 +67,11 @@ impl Ctx<'_> {
 
     /// Every item matching `filter`, following cursors two at a time so paging
     /// is exercised on every listing.
-    pub(crate) async fn list_all(&self, check: &'static str, filter: &MetaFilter) -> Result<Vec<Hit>> {
+    pub(crate) async fn list_all(
+        &self,
+        check: &'static str,
+        filter: &MetaFilter,
+    ) -> Result<Vec<Hit>> {
         let mut all = Vec::new();
         let mut cursor: Option<String> = None;
         let mut seen_cursors = HashSet::new();
@@ -75,11 +79,9 @@ impl Ctx<'_> {
             let mut request = ListRequest::new(filter.clone(), 2);
             request.cursor = cursor.clone();
             let page = self.call(check, self.engine.list(request)).await?;
-            ensure(
-                check,
-                page.items.iter().all(|hit| hit.score == 0.0),
-                || "a listing returned a hit with a non-zero score".to_string(),
-            )?;
+            ensure(check, page.items.iter().all(|hit| hit.score == 0.0), || {
+                "a listing returned a hit with a non-zero score".to_string()
+            })?;
             all.extend(page.items);
             match page.next_cursor {
                 Some(next) => {
@@ -99,7 +101,11 @@ impl Ctx<'_> {
 }
 
 /// Fails `check` with `detail` unless `holds`.
-pub(crate) fn ensure(check: &'static str, holds: bool, detail: impl FnOnce() -> String) -> Result<()> {
+pub(crate) fn ensure(
+    check: &'static str,
+    holds: bool,
+    detail: impl FnOnce() -> String,
+) -> Result<()> {
     if holds {
         Ok(())
     } else {

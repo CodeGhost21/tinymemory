@@ -10,9 +10,7 @@ mod render;
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use tinymemory_api::{
-    Hit, ItemId, ItemKind, ListRequest, MemoryEngine, MetaFilter, RecallRequest,
-};
+use tinymemory_api::{Hit, ItemId, ItemKind, ListRequest, MemoryEngine, MetaFilter, RecallRequest};
 
 use crate::error::Result;
 use crate::spec::ContextSpec;
@@ -76,7 +74,11 @@ impl ContextCompiler {
     ///
     /// [`crate::Error::InvalidSpec`] when the spec cannot produce a document.
     /// Engine failures are not errors: see the module docs.
-    pub async fn compile(&self, engine: &dyn MemoryEngine, spec: &ContextSpec) -> Result<ContextDoc> {
+    pub async fn compile(
+        &self,
+        engine: &dyn MemoryEngine,
+        spec: &ContextSpec,
+    ) -> Result<ContextDoc> {
         spec.validate()?;
         let generated_at = self.at.unwrap_or_else(Utc::now);
         let engine_id = engine.descriptor().id;
@@ -120,7 +122,10 @@ async fn gather_briefs(engine: &dyn MemoryEngine, spec: &ContextSpec) -> Vec<Bri
         };
         match engine.recall(request).await {
             Ok(answer) if answer.citations.is_empty() || answer.answer.trim().is_empty() => {
-                log::debug!("[context] brief skipped heading={:?} reason=nothing_cited", brief.heading);
+                log::debug!(
+                    "[context] brief skipped heading={:?} reason=nothing_cited",
+                    brief.heading
+                );
             }
             Ok(answer) => sections.push(BriefSection {
                 heading: brief.heading.clone(),
@@ -128,7 +133,10 @@ async fn gather_briefs(engine: &dyn MemoryEngine, spec: &ContextSpec) -> Vec<Bri
                 refs: answer.citations.into_iter().map(|c| c.id).collect(),
             }),
             Err(error) => {
-                log::warn!("[context] brief skipped heading={:?} error={error}", brief.heading);
+                log::warn!(
+                    "[context] brief skipped heading={:?} error={error}",
+                    brief.heading
+                );
             }
         }
     }
@@ -146,7 +154,11 @@ async fn gather_learnings(engine: &dyn MemoryEngine, limit: usize) -> Vec<Learni
         request.cursor = cursor.take();
         match engine.list(request).await {
             Ok(page) => {
-                all.extend(page.items.into_iter().filter(|hit| hit.kind == ItemKind::Learning));
+                all.extend(
+                    page.items
+                        .into_iter()
+                        .filter(|hit| hit.kind == ItemKind::Learning),
+                );
                 match page.next_cursor {
                     Some(next) => cursor = Some(next),
                     None => break,
@@ -172,14 +184,11 @@ async fn gather_learnings(engine: &dyn MemoryEngine, limit: usize) -> Vec<Learni
 /// and ties keep the engine's listing order.
 fn rank_learnings(mut hits: Vec<Hit>) -> Vec<Hit> {
     hits.sort_by(|a, b| {
-        b.meta
-            .observed_at
-            .cmp(&a.meta.observed_at)
-            .then_with(|| {
-                b.confidence
-                    .unwrap_or(0.0)
-                    .total_cmp(&a.confidence.unwrap_or(0.0))
-            })
+        b.meta.observed_at.cmp(&a.meta.observed_at).then_with(|| {
+            b.confidence
+                .unwrap_or(0.0)
+                .total_cmp(&a.confidence.unwrap_or(0.0))
+        })
     });
     hits
 }
