@@ -727,3 +727,17 @@ fn an_unreadable_chunk_body_fails_once_then_stops() {
     assert!(matches!(items.next(), Some(Err(Error::Io { .. }))));
     assert!(items.next().is_none());
 }
+
+#[test]
+fn a_row_sqlite_cannot_decode_is_a_sqlite_error() {
+    let (dir, conn) = workspace(support::MEMORY_DDL);
+    conn.execute_batch(
+        "INSERT INTO user_profile (facet_id, facet_type, key, value, first_seen_at, last_seen_at)
+           VALUES (X'00FF', 'context', 'k', 'v', 1, 1);",
+    )
+    .unwrap();
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let mut items = ws.items();
+    assert!(matches!(items.next(), Some(Err(Error::Sqlite(_)))));
+    assert!(items.next().is_none());
+}
