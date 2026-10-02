@@ -180,7 +180,7 @@ fn write_uses_atomic_temp_file_without_leaving_stale_temp() {
 
     let stale_temp_files: Vec<_> = std::fs::read_dir(tmp.path())
         .unwrap()
-        .filter_map(Result::ok)
+        .filter_map(std::result::Result::ok)
         .filter(|entry| {
             entry
                 .file_name()

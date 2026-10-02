@@ -95,10 +95,8 @@ pub fn apply_kind_defaults(entry: &mut MemorySourceEntry) {
                 entry.max_commits = Some(50);
             }
         }
-        SourceKind::RssFeed => {
-            if entry.max_items.is_none() {
-                entry.max_items = Some(20);
-            }
+        SourceKind::RssFeed if entry.max_items.is_none() => {
+            entry.max_items = Some(20);
         }
         _ => {}
     }
