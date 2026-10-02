@@ -25,9 +25,14 @@
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
-use anyhow::{anyhow, bail, Context, Result};
+use crate::error::{Error, Result};
 
 use super::types::{MemorySourceEntry, MemorySourcePatch, SourceKind};
+
+/// Wrap a registry I/O or codec failure, naming what was being done.
+fn registry_error(action: impl std::fmt::Display, error: impl std::fmt::Display) -> Error {
+    Error::Registry(format!("{action}: {error}"))
+}
 
 /// Serializes each registry load-modify-save transaction in this process.
 ///
@@ -51,6 +56,7 @@ fn mutation_guard() -> std::sync::MutexGuard<'static, ()> {
 /// Single source of truth for the cheap out-of-the-box sync volume. Applied to a
 /// source entry when it is first registered. Never overwrites a user-customised
 /// cap. Returns `(max_items, sync_depth_days)`.
+#[must_use]
 pub fn memory_sync_defaults_for_toolkit(toolkit: &str) -> (Option<u32>, Option<u32>) {
     match toolkit {
         "gmail" => (Some(100), Some(30)),
@@ -93,9 +99,6 @@ pub fn apply_kind_defaults(entry: &mut MemorySourceEntry) {
             if entry.max_items.is_none() {
                 entry.max_items = Some(20);
             }
-        }
-        SourceKind::TwitterQuery if entry.since_days.is_none() => {
-            entry.since_days = Some(7);
         }
         _ => {}
     }
@@ -142,6 +145,7 @@ fn create_owner_only(path: &Path) -> std::io::Result<std::fs::File> {
 
 impl SourceRegistry {
     /// Create a registry persisted at `config_path`.
+    #[must_use]
     pub fn new(config_path: impl Into<PathBuf>) -> Self {
         Self {
             path: config_path.into(),
@@ -149,6 +153,7 @@ impl SourceRegistry {
     }
 
     /// The config file path this registry reads and writes.
+    #[must_use]
     pub fn path(&self) -> &Path {
         &self.path
     }
@@ -159,25 +164,33 @@ impl SourceRegistry {
             return Ok(toml::Table::new());
         }
         let text = std::fs::read_to_string(&self.path)
-            .with_context(|| format!("failed to read {}", self.path.display()))?;
+            .map_err(|e| registry_error(format!("failed to read {}", self.path.display()), e))?;
         let table: toml::Table = toml::from_str(&text)
-            .with_context(|| format!("failed to parse {}", self.path.display()))?;
+            .map_err(|e| registry_error(format!("failed to parse {}", self.path.display()), e))?;
         Ok(table)
     }
 
     /// List all configured sources.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Registry`] when the file cannot be read or decoded.
     pub fn list(&self) -> Result<Vec<MemorySourceEntry>> {
         let table = self.read_table()?;
         match table.get("memory_sources") {
             Some(value) => value
                 .clone()
                 .try_into()
-                .context("failed to decode [[memory_sources]]"),
+                .map_err(|e| registry_error("failed to decode [[memory_sources]]", e)),
             None => Ok(Vec::new()),
         }
     }
 
     /// List enabled sources of a given [`SourceKind`].
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Registry`] when the file cannot be read or decoded.
     pub fn list_enabled_by_kind(&self, kind: SourceKind) -> Result<Vec<MemorySourceEntry>> {
         Ok(self
             .list()?
@@ -187,6 +200,10 @@ impl SourceRegistry {
     }
 
     /// Get a single source by id, if present.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Registry`] when the file cannot be read or decoded.
     pub fn get(&self, id: &str) -> Result<Option<MemorySourceEntry>> {
         Ok(self.list()?.into_iter().find(|s| s.id == id))
     }
@@ -205,13 +222,15 @@ impl SourceRegistry {
     /// respect to every other in-process writer.
     fn write_all(&self, entries: &[MemorySourceEntry]) -> Result<()> {
         let mut table = self.read_table()?;
-        let value = toml::Value::try_from(entries).context("failed to encode memory_sources")?;
+        let value = toml::Value::try_from(entries)
+            .map_err(|e| registry_error("failed to encode memory_sources", e))?;
         table.insert("memory_sources".to_string(), value);
-        let text = toml::to_string_pretty(&table).context("failed to serialize config")?;
+        let text = toml::to_string_pretty(&table)
+            .map_err(|e| registry_error("failed to serialize config", e))?;
         if let Some(parent) = self.path.parent() {
             if !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(parent)
-                    .with_context(|| format!("failed to create {}", parent.display()))?;
+                    .map_err(|e| registry_error(format!("failed to create {}", parent.display()), e))?;
             }
         }
         self.atomic_write(text.as_bytes())?;
@@ -228,7 +247,12 @@ impl SourceRegistry {
             .path
             .file_name()
             .and_then(|n| n.to_str())
-            .ok_or_else(|| anyhow!("config path has no file name: {}", self.path.display()))?;
+            .ok_or_else(|| {
+                Error::Registry(format!(
+                    "config path has no file name: {}",
+                    self.path.display()
+                ))
+            })?;
         let tmp_path = parent.join(format!(
             ".{filename}.tmp-{}",
             uuid::Uuid::new_v4().as_simple()
@@ -236,19 +260,25 @@ impl SourceRegistry {
 
         let write_result = (|| -> Result<()> {
             {
-                let mut file = create_owner_only(&tmp_path)
-                    .with_context(|| format!("failed to create {}", tmp_path.display()))?;
+                let mut file = create_owner_only(&tmp_path).map_err(|e| {
+                    registry_error(format!("failed to create {}", tmp_path.display()), e)
+                })?;
                 use std::io::Write;
-                file.write_all(bytes)
-                    .with_context(|| format!("failed to write {}", tmp_path.display()))?;
-                file.sync_all()
-                    .with_context(|| format!("failed to sync {}", tmp_path.display()))?;
+                file.write_all(bytes).map_err(|e| {
+                    registry_error(format!("failed to write {}", tmp_path.display()), e)
+                })?;
+                file.sync_all().map_err(|e| {
+                    registry_error(format!("failed to sync {}", tmp_path.display()), e)
+                })?;
             }
-            std::fs::rename(&tmp_path, &self.path).with_context(|| {
-                format!(
-                    "failed to atomically replace {} with {}",
-                    self.path.display(),
-                    tmp_path.display()
+            std::fs::rename(&tmp_path, &self.path).map_err(|e| {
+                registry_error(
+                    format!(
+                        "failed to atomically replace {} with {}",
+                        self.path.display(),
+                        tmp_path.display()
+                    ),
+                    e,
                 )
             })?;
             Ok(())
@@ -261,12 +291,20 @@ impl SourceRegistry {
     }
 
     /// Validate and add a new source. Fails if the id already exists.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Invalid`] for an entry that fails validation or reuses an id,
+    /// [`Error::Registry`] when the file cannot be read or written.
     pub fn add(&self, entry: MemorySourceEntry) -> Result<MemorySourceEntry> {
         let _guard = mutation_guard();
-        entry.validate().map_err(|e| anyhow!(e))?;
+        entry.validate()?;
         let mut sources = self.list()?;
         if sources.iter().any(|s| s.id == entry.id) {
-            bail!("source with id '{}' already exists", entry.id);
+            return Err(Error::Invalid(format!(
+                "source with id '{}' already exists",
+                entry.id
+            )));
         }
         sources.push(entry.clone());
         self.write_all(&sources)?;
@@ -275,23 +313,33 @@ impl SourceRegistry {
 
     /// Apply a [`MemorySourcePatch`] to an existing source, then re-validate and
     /// save. Fails if no source has the given id.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotFound`] for an unknown id, [`Error::Invalid`] for a patch
+    /// field the kind does not use or a result that fails validation,
+    /// [`Error::Registry`] when the file cannot be read or written.
     pub fn update(&self, id: &str, patch: MemorySourcePatch) -> Result<MemorySourceEntry> {
         let _guard = mutation_guard();
         let mut sources = self.list()?;
         let entry = sources
             .iter_mut()
             .find(|s| s.id == id)
-            .ok_or_else(|| anyhow!("source '{id}' not found"))?;
+            .ok_or_else(|| Error::NotFound(format!("source '{id}' not found")))?;
 
         patch.validate_for_kind(entry.kind.clone())?;
         patch.apply_to(entry);
-        entry.validate().map_err(|e| anyhow!(e))?;
+        entry.validate()?;
         let updated = entry.clone();
         self.write_all(&sources)?;
         Ok(updated)
     }
 
     /// Remove a source by id. Returns `true` if an entry was removed.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Registry`] when the file cannot be read or written.
     pub fn remove(&self, id: &str) -> Result<bool> {
         let _guard = mutation_guard();
         let mut sources = self.list()?;
@@ -307,6 +355,10 @@ impl SourceRegistry {
     /// Remove every composio source bound to `connection_id`. Returns the count
     /// removed. Mirrors [`SourceRegistry::upsert_composio_source`], which keys
     /// composio sources on `connection_id` rather than the `src_*` id.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Registry`] when the file cannot be read or written.
     pub fn remove_composio_source_by_connection_id(&self, connection_id: &str) -> Result<usize> {
         let _guard = mutation_guard();
         let mut sources = self.list()?;
@@ -326,6 +378,10 @@ impl SourceRegistry {
     /// If a source with the same `connection_id` exists, its label is updated;
     /// otherwise a new entry is inserted with conservative per-toolkit caps. The
     /// update path never clobbers user-customised caps.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Registry`] when the file cannot be read or written.
     pub fn upsert_composio_source(
         &self,
         toolkit: &str,
@@ -341,6 +397,10 @@ impl SourceRegistry {
     }
 
     /// Batch-upsert Composio sources with one load and one atomic save.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Registry`] when the file cannot be read or written.
     pub fn upsert_composio_sources_batch(&self, targets: &[ComposioUpsertTarget]) -> Result<u32> {
         if targets.is_empty() {
             return Ok(0);
@@ -364,26 +424,29 @@ impl SourceRegistry {
     ///
     /// # Errors
     ///
-    /// Returns an error when an entry fails validation, or when the file
-    /// cannot be read, parsed, serialized or atomically replaced.
+    /// [`Error::Invalid`] when an entry fails validation, [`Error::Registry`]
+    /// when the file cannot be read, parsed, serialized or atomically replaced.
     pub fn replace_all(&self, entries: &[MemorySourceEntry]) -> Result<()> {
         let _guard = mutation_guard();
         for entry in entries {
-            entry
-                .validate()
-                .map_err(|reason| anyhow!("invalid memory source `{}`: {reason}", entry.id))?;
+            entry.validate().map_err(|reason| {
+                Error::Invalid(format!("invalid memory source `{}`: {reason}", entry.id))
+            })?;
         }
         self.write_all(entries)
     }
 
     /// Enable every source and clear all per-source caps ("All In" mode).
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Registry`] when the file cannot be read or written.
     pub fn apply_all_in(&self) -> Result<Vec<MemorySourceEntry>> {
         let _guard = mutation_guard();
         let mut sources = self.list()?;
         for source in &mut sources {
             source.enabled = true;
             source.max_items = None;
-            source.since_days = None;
             source.sync_depth_days = None;
             source.max_commits = None;
             source.max_issues = None;
@@ -419,27 +482,15 @@ pub(crate) fn upsert_composio_entry_in_place(
 
     let (default_max_items, default_sync_depth_days) = memory_sync_defaults_for_toolkit(toolkit);
     let entry = MemorySourceEntry {
-        id: format!("src_{}", uuid::Uuid::new_v4().as_simple()),
-        kind: SourceKind::Composio,
-        label: label.to_string(),
-        enabled: true,
         toolkit: Some(toolkit.to_string()),
         connection_id: Some(connection_id.to_string()),
-        path: None,
-        glob: None,
-        url: None,
-        branch: None,
-        paths: Vec::new(),
-        max_commits: None,
-        max_issues: None,
-        max_prs: None,
-        query: None,
-        since_days: None,
         max_items: default_max_items,
-        selector: None,
-        max_tokens_per_sync: None,
-        max_cost_per_sync_usd: None,
         sync_depth_days: default_sync_depth_days,
+        ..MemorySourceEntry::new(
+            format!("src_{}", uuid::Uuid::new_v4().as_simple()),
+            SourceKind::Composio,
+            label,
+        )
     };
     sources.push(entry.clone());
     (entry, true)
