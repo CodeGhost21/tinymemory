@@ -38,8 +38,11 @@ Deleted: `tinymemory-bus`, `tinymemory-core`, `tinymemory-tinycortex`,
 cognee, agentmemory, livingbrain are dropped), `tinymemory-tools`,
 `tinymemory-conversations`, `tinymemory-guard`, `tinymemory-gate`,
 `tinymemory-sync` (normalisers move into `tinymemory-sources`),
-`tinymemory-module`, `tinymemory-testing-ui`, and `vendor/tinycortex` (kept only
-as an optional dependency of `tinymemory-import` behind `legacy-import`).
+`tinymemory-module`, `tinymemory-testing-ui`, and the `vendor/tinycortex`,
+`vendor/tinybus` and `vendor/tinyinference` submodules (`tinymemory-import`
+reads the v1 on-disk layout directly, so it needs no engine dependency).
+`tinymemory-conversations` (the chat thread store) moves to
+`tinyagents-session::threads` in tinyagents.
 
 ## Contract (`tinymemory-api`)
 
@@ -118,7 +121,7 @@ calls its answer route once with that pack (`/v1/answer`, `/memory/answer`).
 pub enum FetchMode { Keyword, Vector, Hybrid }
 pub struct FetchRequest { pub query: String, pub mode: FetchMode, pub filter: MetaFilter, pub limit: usize, pub cursor: Option<String> }
 pub struct FetchPage { pub hits: Vec<Hit>, pub next_cursor: Option<String> }
-pub struct Hit { pub id: ItemId, pub kind: ItemKind, pub text: String, pub meta: MemoryMeta, pub score: f32 }
+pub struct Hit { pub id: ItemId, pub kind: ItemKind, pub text: String, pub meta: MemoryMeta, pub score: f32, pub confidence: Option<f32> }
 pub struct ListRequest { pub filter: MetaFilter, pub limit: usize, pub cursor: Option<String> }
 pub struct ListPage { pub items: Vec<Hit>, pub next_cursor: Option<String> } // score = 0
 pub enum ForgetTarget { Ids(Vec<ItemId>), Filter(MetaFilter) } // Filter must not be empty
@@ -126,6 +129,10 @@ pub enum ForgetTarget { Ids(Vec<ItemId>), Filter(MetaFilter) } // Filter must no
 
 A mode the engine does not list in `EngineDescriptor::fetch_modes` fails with
 `Error::Unsupported`. Hosts read the descriptor and never offer it.
+
+`Hit::text` is the item's `StoreItem::render_text()` form, and
+`Hit::confidence` carries a learning's confidence (`None` for other kinds), so a
+listing can be ordered by it. An item's id is its `StoreItem::fingerprint()`.
 
 ### Descriptor and health
 
@@ -164,11 +171,11 @@ credentialed cleartext non-loopback endpoint.
   - Each item becomes one experience: a conversation becomes a bulk append of its turns.
   - The envelope carries `{v:2, kind, meta, title?, learning_kind?, confidence?}`, and `meta` maps to scope labels where CortexDB can filter.
   - Writes wait for the indexed barrier, keeping the v1 `await_readable` behaviour.
-- **Scope.** One scope per item kind under the tenant root: `tm:documents`, `tm:conversations`, `tm:learnings`. A `MetaFilter.kinds` restricts the scopes searched.
+- **Scope.** One scope per item kind under the TinyMemory root `tm:memory` (which the hosted backend further roots under the tenant): `tm:memory/tm:documents`, `tm:memory/tm:conversations`, `tm:memory/tm:learnings`. A `MetaFilter.kinds` restricts the scopes searched.
 - **Fetch.**
-  - `Hybrid` maps to `recall` layers. `Keyword` and `Vector` are declared only if the wire exposes a mode switch; otherwise `fetch_modes = [Hybrid]`.
+  - `Hybrid` maps to `recall` layers. `Keyword` and `Vector` are declared only if the wire exposes a mode switch; otherwise `fetch_modes = [Hybrid]`. The recall body accepts only `scope`, `query`, `budgets`, `view`, `include`, `temporal` and `filters`, with no mode switch, so both wires declare `[Hybrid]`.
   - Metadata filters CortexDB cannot apply server-side are applied client-side on the page, and the cursor is still the engine's.
-- **Recall.** Pack, then answer, as in v1. Citations come from the pack's `layers.events`, decoded back to `Hit`s.
+- **Recall.** Pack, then answer, as in v1. The pack is recalled from the one admitted kind's scope, or from `tm:memory` with `view: "descend"` when several kinds are admitted, so the answer route is called once. Citations come from the pack's `layers.events`, decoded back to `Hit`s.
 - **List / forget.** These use `v1/events` paging and `v1/forget` by `memory_ids`. `ForgetTarget::Filter` lists first, then forgets ids, and never sends an empty selector.
 
 ## Context (`tinymemory-context`)

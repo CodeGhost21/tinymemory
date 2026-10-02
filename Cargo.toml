@@ -9,7 +9,7 @@ members = ["crates/*"]
 # `worktrees/` holds `git worktree` checkouts of this same repository. Each one
 # contains a full copy of this manifest and every crate under it, so without
 # this entry cargo walks into them and reports duplicate packages.
-exclude = ["vendor", "worktrees"]
+exclude = ["worktrees"]
 
 [profile.release]
 # Cross-crate optimization and smaller, faster binaries for release builds.
