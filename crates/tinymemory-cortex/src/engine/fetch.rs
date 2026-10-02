@@ -70,7 +70,6 @@ impl CortexEngine {
     /// See the module docs.
     pub(super) async fn fetch_page(&self, req: FetchRequest) -> Result<FetchPage> {
         self.descriptor.ensure_mode(req.mode)?;
-        debug_assert_eq!(req.mode, FetchMode::Hybrid);
         req.validate()?;
         let offset = match &req.cursor {
             Some(raw) => cursor::decode::<FetchCursor>(TAG, raw)?.offset,
