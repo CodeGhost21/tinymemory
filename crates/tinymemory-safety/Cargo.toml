@@ -9,10 +9,12 @@ description = "Secret and PII scrubbing for memory writes: credential patterns, 
 repository = "https://github.com/tinyhumansai/tinymemory"
 
 # Deliberately tiny: a scrubber is regexes over text and JSON. No engine, no
-# runtime, no storage, no contract crate — so the TinyCortex engine, the
-# `tinymemory-core` store and a host can all depend on it without pulling
-# anything else in, and without a cycle.
+# runtime, no storage, so an engine and a host can both depend on it without
+# pulling anything else in.
 [dependencies]
+# `scrub_item` cleans a `StoreItem` before it is stored. The contract performs
+# no I/O, so this adds no runtime or storage dependency.
+tinymemory-api = { path = "../tinymemory-api" }
 regex = "1"
 serde_json = "1"
 log = "0.4"

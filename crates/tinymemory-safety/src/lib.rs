@@ -3,8 +3,11 @@
 //!
 //! Conservative by design — it prefers false positives over leaking
 //! credentials into long-lived stores. One copy of this policy is shared by the
-//! TinyCortex engine (`tinycortex::memory::store::safety`), `tinymemory-core`
-//! (through TinyCortex) and the OpenHuman host; it used to exist three times.
+//! memory engines and the OpenHuman host; it used to exist three times.
+//!
+//! [`scrub_item`] applies the policy to every text a
+//! [`tinymemory_api::StoreItem`] carries, and is what a host runs on each item
+//! before `MemoryEngine::store`.
 //!
 //! The exhaustive multilingual national-ID PII module ([`pii`], ~1k lines of
 //! checksum logic) runs as part of [`sanitize_text`]. The write-rejection
@@ -35,6 +38,11 @@ use serde_json::Value;
 pub mod pii;
 
 pub use pii::{has_likely_email, has_likely_pii};
+
+/// Scrubbing a whole [`tinymemory_api::StoreItem`] before it is stored.
+mod item;
+
+pub use item::{scrub_item, scrub_item_with};
 
 pub(crate) const REDACTED_SECRET: &str = "[REDACTED_SECRET]";
 pub(crate) const REDACTED_PRIVATE_KEY: &str = "[REDACTED_PRIVATE_KEY]";
