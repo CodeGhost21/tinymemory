@@ -136,12 +136,6 @@ impl HttpClient {
         Ok(())
     }
 
-    /// Shortens the read-retry backoff (tests).
-    #[cfg(test)]
-    pub(crate) fn set_read_backoff(&mut self, backoff: Duration) {
-        self.read_backoff = backoff;
-    }
-
     /// The wire this client speaks.
     pub(crate) fn wire(&self) -> CortexWire {
         self.wire
@@ -359,3 +353,7 @@ pub(crate) fn urlencode(value: &str) -> String {
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "transport_test_support.rs"]
+mod test_support;

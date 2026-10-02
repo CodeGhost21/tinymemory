@@ -116,18 +116,6 @@ impl CortexEngine {
     pub fn wire(&self) -> CortexWire {
         self.log.client.wire()
     }
-
-    /// Shortens every wait and backoff, so a test reaches timeouts fast.
-    #[cfg(test)]
-    pub(crate) fn with_test_timing(mut self, visibility: Duration) -> Self {
-        self.log.timing = crate::log::Timing {
-            visibility,
-            settle: visibility,
-            poll: Duration::from_millis(5),
-        };
-        self.log.client.set_read_backoff(Duration::from_millis(5));
-        self
-    }
 }
 
 #[async_trait]
@@ -194,3 +182,7 @@ mod direct_tests;
 #[cfg(test)]
 #[path = "mod_hosted_tests.rs"]
 mod hosted_tests;
+
+#[cfg(test)]
+#[path = "engine_test_support.rs"]
+mod test_support;
