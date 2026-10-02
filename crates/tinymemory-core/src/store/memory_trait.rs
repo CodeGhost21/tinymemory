@@ -550,7 +550,12 @@ impl Memory for UnifiedMemory {
             taint,
         })
         .await
-        .map(|_| ())
+        .map(|written| {
+            log::trace!(
+                "[memory] stored without waiting for vectors document_id={}",
+                written.document_id
+            );
+        })
         .map_err(anyhow::Error::msg)
     }
 
