@@ -2,7 +2,7 @@
 //!
 //! A reader knows how to *list* the items available in a source, *read* the
 //! content of one item, and turn one item into a
-//! [`StoreItem`](tinymemory_api::StoreItem) ([`SourceReader::read_store_item`]).
+//! [`StoreItem`] ([`SourceReader::read_store_item`]).
 //! The trait is intentionally narrow so the host can drive ingestion uniformly
 //! across every source kind.
 //!
