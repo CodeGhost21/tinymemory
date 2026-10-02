@@ -1,9 +1,8 @@
-//! Tests for URL intake.
+//! Tests for URL fetching.
 //!
-//! Only the guard and the argument handling are exercised here. Anything that
-//! would actually reach the network is out of scope by the repository's testing
-//! rules — the fetch itself is covered by `tinymemory-sources`' own reader
-//! tests, which own the client this module borrows.
+//! The guard and argument handling are exercised directly; response handling
+//! runs against a loopback server the test controls. Nothing reaches the real
+//! network.
 
 use super::*;
 
@@ -31,7 +30,7 @@ async fn local_response(response: impl Into<Vec<u8>>) -> reqwest::Response {
 #[tokio::test]
 async fn a_malformed_url_is_rejected_before_anything_is_fetched() {
     let error = fetch_url("not a url").await.unwrap_err();
-    assert!(matches!(error, MemoryError::Invalid(_)), "got {error:?}");
+    assert!(matches!(error, Error::Invalid(_)), "got {error:?}");
     assert!(error.to_string().contains("invalid url"), "got {error}");
 }
 
@@ -60,7 +59,7 @@ async fn a_non_http_scheme_is_refused() {
     ] {
         let error = fetch_url(url).await.unwrap_err();
         assert!(
-            matches!(error, MemoryError::Invalid(_)),
+            matches!(error, Error::Invalid(_)),
             "{url} gave {error:?}"
         );
     }
@@ -73,7 +72,7 @@ fn a_size_limit_failure_is_reported_as_budget_exceeded() {
         "response body exceeds 8-byte limit (Content-Length=9)",
     );
     assert!(
-        matches!(error, MemoryError::BudgetExceeded(_)),
+        matches!(error, Error::TooLarge(_)),
         "got {error:?}"
     );
 }
@@ -85,7 +84,7 @@ fn an_interrupted_read_is_reported_as_unreachable_not_budget_exceeded() {
         "failed to read response body: connection reset",
     );
     assert!(
-        matches!(error, MemoryError::Unreachable(_)),
+        matches!(error, Error::Unreachable(_)),
         "got {error:?}"
     );
 }
@@ -117,13 +116,13 @@ async fn completed_response_handles_status_empty_body_and_filename_absence() {
     let error = response_to_document(url.as_str(), url.clone(), response)
         .await
         .unwrap_err();
-    assert!(matches!(error, MemoryError::Backend(_)));
+    assert!(matches!(error, Error::Upstream(_)));
 
     let response = local_response(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n").await;
     let error = response_to_document(url.as_str(), url.clone(), response)
         .await
         .unwrap_err();
-    assert!(matches!(error, MemoryError::Invalid(_)));
+    assert!(matches!(error, Error::Invalid(_)));
 
     let response = local_response(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\ntext").await;
     let document = response_to_document(url.as_str(), url.clone(), response)
@@ -149,5 +148,14 @@ async fn completed_response_maps_declared_oversize_to_budget_exceeded() {
     let error = response_to_document(url.as_str(), url.clone(), response)
         .await
         .unwrap_err();
-    assert!(matches!(error, MemoryError::BudgetExceeded(_)));
+    assert!(matches!(error, Error::TooLarge(_)));
+}
+
+#[tokio::test]
+async fn a_link_item_refuses_a_private_target_before_fetching() {
+    let chain = tinymemory_documents::ConverterChain::default();
+    let error = link_item("http://127.0.0.1/", Some("src_link".into()), &chain)
+        .await
+        .unwrap_err();
+    assert!(matches!(error, Error::Invalid(_)), "got {error:?}");
 }
