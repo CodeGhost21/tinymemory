@@ -1,57 +1,60 @@
-//! Document and URL intake for TinyMemory.
+//! Document intake for TinyMemory: format sniffing, conversion to markdown,
+//! and the [`StoreItem::Document`](tinymemory_api::StoreItem::Document) an
+//! engine stores.
 //!
-//! Getting a PDF, a `.docx`, an HTML export, or a web page into memory is three
-//! problems, and only the middle one is interesting:
+//! Getting a PDF, a `.docx`, an HTML export, a source file or a note into
+//! memory is three steps:
 //!
-//! 1. **Work out what it is.** [`format::DocumentFormat::sniff`] reads magic
-//!    bytes, the declared MIME type and the filename, in that order.
-//! 2. **Turn it into markdown.** [`convert::DocumentConverter`] is the seam;
-//!    [`convert::NativeConverter`] covers text, markdown and HTML with no
+//! 1. **Work out what it is.** [`DocumentFormat::sniff`] reads magic bytes,
+//!    the declared MIME type and the filename, in that order. Source code is
+//!    recognised by its name ([`language_for_path`]).
+//! 2. **Turn it into markdown.** [`DocumentConverter`] is the seam;
+//!    [`NativeConverter`] covers markdown, plain text, HTML and code with no
 //!    dependencies, and a host binds its own for PDF and DOCX.
-//! 3. **Put it in whichever engine is bound.** [`ingest::DocumentIntake`]
-//!    picks the best family the driver actually implements — chunked ingest,
-//!    the document tier, or the mandatory core — and reports which it used.
+//! 3. **Wrap it as an item.** [`document_item`] produces a
+//!    `StoreItem::Document` with the caller's
+//!    [`MemoryMeta`](tinymemory_api::MemoryMeta), filling `language` from the
+//!    file extension when the caller left it unset.
 //!
-//! Markdown is the intermediate form throughout: it is the one representation
-//! that survives chunking, embedding, and being read back by a human.
+//! This crate does no I/O. Reading files and fetching URLs belongs to
+//! `tinymemory-sources`, which depends on this crate for conversion.
 //!
 //! # Example
 //!
 //! ```
-//! use tinymemory_documents::convert::{ConverterChain, DocumentConverter, RawDocument};
+//! use tinymemory_api::{DocumentBody, MemoryMeta, SourceKind, StoreItem};
+//! use tinymemory_documents::{ConverterChain, RawDocument, document_item};
 //!
 //! # let runtime = tokio::runtime::Builder::new_current_thread().build()?;
 //! # runtime.block_on(async {
 //! let chain = ConverterChain::default();
-//! let html = RawDocument::new("<h1>Notes</h1><p>A <b>point</b>.</p>")
-//!     .with_mime("text/html")
-//!     .with_filename("notes.html");
+//! let file = RawDocument::new("fn main() {}\n").with_filename("src/main.rs");
+//! let meta = MemoryMeta::from_source(SourceKind::File, None);
 //!
-//! let converted = chain.convert(&html).await?;
-//! assert_eq!(converted.markdown, "# Notes\n\nA **point**.");
-//! assert_eq!(converted.title, None);
-//! # Ok::<(), tinymemory_api::error::MemoryError>(())
+//! let item = document_item(&chain, &file, meta).await?;
+//! let StoreItem::Document { title, body, meta, .. } = item else {
+//!     unreachable!("document_item always builds a document");
+//! };
+//! assert_eq!(title.as_deref(), Some("main.rs"));
+//! assert_eq!(body, DocumentBody::Text("fn main() {}\n".into()));
+//! assert_eq!(meta.language.as_deref(), Some("rust"));
+//! # Ok::<(), tinymemory_documents::Error>(())
 //! # })?;
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
-//!
-//! # Feature flags
-//!
-//! - `network` — [`fetch::fetch_url`], the URL intake path. Off by default, so
-//!   a host that only accepts uploads links no HTTP stack.
 
 pub mod convert;
 pub mod error;
-#[cfg(feature = "network")]
-pub mod fetch;
 pub mod format;
 pub mod html;
-pub mod ingest;
+pub mod item;
+pub mod language;
 
 pub use convert::{
-    check_size, ConvertedDocument, ConverterChain, DocumentConverter, NativeConverter, RawDocument,
-    MAX_DOCUMENT_BYTES,
+    ConvertedDocument, ConverterChain, DocumentConverter, MAX_DOCUMENT_BYTES, NativeConverter,
+    RawDocument, check_size, markdown_from_text,
 };
-pub use error::Result;
+pub use error::{Error, Result};
 pub use format::DocumentFormat;
-pub use ingest::{DocumentIntake, IntakeReceipt, IntakeRequest, IntakeRoute};
+pub use item::{converted_item, document_item};
+pub use language::language_for_path;
