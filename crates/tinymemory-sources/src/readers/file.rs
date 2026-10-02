@@ -150,7 +150,7 @@ impl SourceReader for FileReader {
         let file = self.read_listed(source, &item.id, workspace)?;
         let mut meta = items::base_meta(source);
         meta.workspace = Some(workspace.display().to_string());
-        items::local_file_item(file, None, meta, converter).await
+        items::local_file_item(file, meta, converter).await
     }
 }
 

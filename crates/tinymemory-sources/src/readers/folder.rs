@@ -250,11 +250,9 @@ impl SourceReader for FolderReader {
         converter: &dyn DocumentConverter,
     ) -> Result<StoreItem> {
         let file = self.read_raw(source, &item.id, workspace)?;
-        let folder = Self::root(source, workspace)?;
-        let folder = std::fs::canonicalize(&folder).unwrap_or(folder);
         let mut meta = items::base_meta(source);
         meta.workspace = Some(workspace.display().to_string());
-        items::local_file_item(file, Some(&folder), meta, converter).await
+        items::local_file_item(file, meta, converter).await
     }
 }
 
