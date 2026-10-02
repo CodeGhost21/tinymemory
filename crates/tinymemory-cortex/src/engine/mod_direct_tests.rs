@@ -166,11 +166,14 @@ async fn a_failed_write_is_sent_once_and_reads_retry() {
     assert!(listed.items.is_empty());
 }
 
+/// Whether an error is the expected variant.
+type ErrorCheck = fn(&Error) -> bool;
+
 #[tokio::test]
 async fn statuses_map_onto_the_contract() {
     let (endpoint, state) = direct_double().await;
     let engine = direct_engine(&endpoint);
-    let cases: [(u16, fn(&Error) -> bool); 6] = [
+    let cases: [(u16, ErrorCheck); 6] = [
         (401, |e| matches!(e, Error::Unauthorized(_))),
         (404, |e| matches!(e, Error::NotFound(_))),
         (422, |e| matches!(e, Error::InvalidRequest(_))),

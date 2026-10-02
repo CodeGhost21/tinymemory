@@ -208,7 +208,7 @@ impl CortexLog {
                 (words.is_empty() || score > 0).then(|| (score, e.clone()))
             })
             .collect();
-        scored.sort_by(|a, b| b.0.cmp(&a.0));
+        scored.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
         let events: Vec<Value> = scored
             .into_iter()
             .take(budget)
