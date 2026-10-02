@@ -28,7 +28,7 @@ use crate::error::{Error, Result};
 const SETTLE_QUERY_CHARS: usize = 256;
 
 /// Whether `items` (a listing page or a pack's events) holds `event_id`.
-pub(super) fn carries(items: Option<&Value>, event_id: &str) -> bool {
+fn carries(items: Option<&Value>, event_id: &str) -> bool {
     items.and_then(Value::as_array).is_some_and(|items| {
         items
             .iter()

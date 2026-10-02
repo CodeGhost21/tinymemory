@@ -41,8 +41,6 @@ use std::time::Duration;
 
 use crate::transport::HttpClient;
 
-pub(crate) use read::Page;
-
 /// Events one listing page asks for. `limit` counts the engine's duplicate
 /// copies, so a page holds about half as many distinct events.
 pub(crate) const PAGE_SIZE: usize = 200;
