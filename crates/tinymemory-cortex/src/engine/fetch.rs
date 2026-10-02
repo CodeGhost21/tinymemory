@@ -1,6 +1,6 @@
 //! Fetch: hybrid retrieval through CortexDB recall packs.
 //!
-//! Only [`FetchMode::Hybrid`] is served: the recall body has no field that
+//! Only [`tinymemory_api::FetchMode::Hybrid`] is served: the recall body has no field that
 //! chooses lexical or embedding retrieval (see `descriptor`).
 //!
 //! For each admitted kind scope the engine asks recall for a pack of
