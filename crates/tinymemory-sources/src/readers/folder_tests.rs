@@ -49,17 +49,89 @@ fn glob_to_regex_single_star_excludes_separators() {
 }
 
 #[tokio::test]
-async fn list_items_finds_md_files() {
+async fn list_items_without_a_glob_takes_markdown_text_and_code() {
     let tmp = TempDir::new().unwrap();
     fs::write(tmp.path().join("note.md"), "# Hello").unwrap();
-    fs::write(tmp.path().join("data.txt"), "ignored").unwrap();
+    fs::write(tmp.path().join("data.txt"), "text").unwrap();
+    fs::write(tmp.path().join("main.rs"), "fn main() {}").unwrap();
+    fs::write(tmp.path().join("Dockerfile"), "FROM scratch").unwrap();
+    fs::write(tmp.path().join("photo.png"), [0x89, b'P', b'N', b'G']).unwrap();
+    fs::write(tmp.path().join("page.html"), "<p>x</p>").unwrap();
 
     let source = folder_source(&tmp.path().to_string_lossy());
     let reader = FolderReader;
-    let items = reader.list_items(&source, config()).await.unwrap();
+    let mut ids: Vec<String> = reader
+        .list_items(&source, config())
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|item| item.id)
+        .collect();
+    ids.sort();
+    assert_eq!(ids, ["Dockerfile", "data.txt", "main.rs", "note.md"]);
+}
 
+#[tokio::test]
+async fn list_items_skips_hidden_and_build_directories() {
+    let tmp = TempDir::new().unwrap();
+    for dir in [".git", "target/debug", "node_modules/pkg", ".hidden", "src"] {
+        fs::create_dir_all(tmp.path().join(dir)).unwrap();
+    }
+    fs::write(tmp.path().join(".git/config.toml"), "x").unwrap();
+    fs::write(tmp.path().join("target/debug/build.rs"), "x").unwrap();
+    fs::write(tmp.path().join("node_modules/pkg/index.js"), "x").unwrap();
+    fs::write(tmp.path().join(".hidden/notes.md"), "x").unwrap();
+    fs::write(tmp.path().join(".env.md"), "SECRET=1").unwrap();
+    fs::write(tmp.path().join("src/lib.rs"), "x").unwrap();
+
+    let mut source = folder_source(&tmp.path().to_string_lossy());
+    let ids: Vec<String> = FolderReader
+        .list_items(&source, config())
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|item| item.id)
+        .collect();
+    assert_eq!(ids, ["src/lib.rs"]);
+
+    // A glob does not reopen them, and neither does reading by id.
+    source.glob = Some("**/*".into());
+    let ids: Vec<String> = FolderReader
+        .list_items(&source, config())
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|item| item.id)
+        .collect();
+    assert_eq!(ids, ["src/lib.rs"]);
+    for hidden in [".git/config.toml", "node_modules/pkg/index.js", ".env.md"] {
+        let error = FolderReader
+            .read_item(&source, hidden, config())
+            .await
+            .unwrap_err();
+        assert!(matches!(error, crate::Error::Invalid(_)), "{hidden}: {error:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_hidden_folder_root_is_still_read() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().join(".notes");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("a.md"), "a").unwrap();
+    let source = folder_source(&root.to_string_lossy());
+    let items = FolderReader.list_items(&source, config()).await.unwrap();
     assert_eq!(items.len(), 1);
-    assert_eq!(items[0].id, "note.md");
+}
+
+#[test]
+fn default_candidates_are_markdown_text_and_code() {
+    for id in ["a.md", "b.txt", "src/c.py", "Makefile", "x.yaml"] {
+        assert!(is_default_candidate(id), "{id}");
+    }
+    for id in ["a.html", "b.pdf", "c.png", "README", "d.docx"] {
+        assert!(!is_default_candidate(id), "{id}");
+    }
 }
 
 #[tokio::test]
@@ -243,7 +315,10 @@ async fn symlinks_cannot_escape_the_configured_folder() {
         .read_item(&source, "escape.md", config())
         .await
         .unwrap_err();
-    assert!(matches!(error, crate::Error::PathEscape(_)), "got {error:?}");
+    assert!(
+        matches!(error, crate::Error::PathEscape(_)),
+        "got {error:?}"
+    );
 }
 
 // ── openhuman#5830: relative paths resolve against the workspace ─────────────
