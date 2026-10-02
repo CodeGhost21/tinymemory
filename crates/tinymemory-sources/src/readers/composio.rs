@@ -11,7 +11,7 @@ use async_trait::async_trait;
 
 use super::SourceReader;
 use crate::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
-use crate::error::{Error, Result};
+use crate::error::Result;
 
 /// Lists a Composio connection as a single sync target.
 ///

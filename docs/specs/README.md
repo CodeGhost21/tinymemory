@@ -1,19 +1,8 @@
 # Specifications
 
-- [CortexDB full integration](cortexdb-full-integration.md) — native granular
-  ingestion, grounded answers, and the Docker/Ladder simulation contract.
-
-- [CortexDB via the TinyHumans backend](tinyhumans-hosted-cortex.md) — the
-  hosted `/memory/*` dialect, its bearer source, and the engine factory.
-- [Optional families on the TinyHumans hosted wire](tinyhumans-hosted-families.md)
-  — goals, tool rules, documents, the source sink, maintenance, retrieval,
-  ingest, profile, episodic, scoring and the derived-understanding tree over
-  `/memory/*`.
-- [Copying a store between drivers](store-migration.md) — `migrate::copy_all`
-  and the `EpisodicPortability` family: document details, goals, the profile,
-  the episodic record, and ingested content re-sent raw.
-- [Granular ingestion and retrieval API](ingestion-retrieval-api.md)
-- [LivingBrain remote Brain API](livingbrain-remote-api.md)
+- [Memory v2: Recall, Fetch, Store](memory-v2.md) — the contract, the CortexDB
+  engine, `context.md`, legacy import and the conformance suite. Accepted; it
+  supersedes every earlier specification.
 
 Specifications define what the system must do before implementation details
 take over. Create one for behavior that changes a public API, crosses module
@@ -34,5 +23,3 @@ should contain:
 After the specification is accepted, create a linked implementation plan in
 [`../plans/`](../plans/README.md). Keep code snippets small enough to clarify
 the contract; production code still belongs under `src/`.
-
-See [`example-retry-policy.md`](example-retry-policy.md) for a complete sample.
