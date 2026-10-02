@@ -26,6 +26,9 @@ pub enum DocumentFormat {
     PlainText,
     /// HTML. Converted structurally — headings, lists, links, code.
     Html,
+    /// Source code. Stored as written, never reflowed or HTML-converted; the
+    /// language comes from [`crate::language_for_path`].
+    Code,
     /// PDF. Needs a real extractor; see [`crate::convert::DocumentConverter`].
     Pdf,
     /// Office Open XML word processing (`.docx`). Needs a real extractor.
@@ -36,11 +39,13 @@ pub enum DocumentFormat {
 
 impl DocumentFormat {
     /// The canonical MIME type for this format.
+    #[must_use]
     pub fn mime(self) -> &'static str {
         match self {
             Self::Markdown => "text/markdown",
             Self::PlainText => "text/plain",
             Self::Html => "text/html",
+            Self::Code => "text/x-source",
             Self::Pdf => "application/pdf",
             Self::Docx => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             Self::Unknown => "application/octet-stream",
@@ -48,11 +53,15 @@ impl DocumentFormat {
     }
 
     /// The usual file extension, without a dot.
+    #[must_use]
     pub fn extension(self) -> &'static str {
         match self {
             Self::Markdown => "md",
             Self::PlainText => "txt",
             Self::Html => "html",
+            // Code has no single extension; a plain-text one keeps generated
+            // names readable and is never mistaken for a binary.
+            Self::Code => "txt",
             Self::Pdf => "pdf",
             Self::Docx => "docx",
             Self::Unknown => "bin",
@@ -63,8 +72,12 @@ impl DocumentFormat {
     ///
     /// The line that decides whether intake can decode a buffer itself or has
     /// to hand it to an extractor.
+    #[must_use]
     pub fn is_textual(self) -> bool {
-        matches!(self, Self::Markdown | Self::PlainText | Self::Html)
+        matches!(
+            self,
+            Self::Markdown | Self::PlainText | Self::Html | Self::Code
+        )
     }
 
     /// Detect the format from every signal available.
@@ -72,6 +85,7 @@ impl DocumentFormat {
     /// Magic bytes win when present, because they are the one signal a caller
     /// cannot get wrong. A declared MIME type comes next, then the filename,
     /// and a textual buffer with no other evidence is plain text.
+    #[must_use]
     pub fn sniff(bytes: &[u8], filename: Option<&str>, mime: Option<&str>) -> Self {
         if let Some(format) = Self::from_magic(bytes) {
             return format;
@@ -99,6 +113,7 @@ impl DocumentFormat {
     /// Returns `None` rather than [`DocumentFormat::Unknown`]: "no magic bytes"
     /// and "magic bytes that match nothing" both mean *keep looking*, and a
     /// caller that got `Unknown` here would stop.
+    #[must_use]
     pub fn from_magic(bytes: &[u8]) -> Option<Self> {
         if bytes.starts_with(b"%PDF-") {
             return Some(Self::Pdf);
@@ -117,6 +132,7 @@ impl DocumentFormat {
     /// Parameters (`; charset=utf-8`) are stripped, and the type is compared
     /// case-insensitively, because both vary by client and neither carries
     /// meaning here.
+    #[must_use]
     pub fn from_mime(mime: &str) -> Option<Self> {
         let essence = mime
             .split(';')
@@ -128,6 +144,7 @@ impl DocumentFormat {
             "text/markdown" | "text/x-markdown" => Some(Self::Markdown),
             "text/plain" => Some(Self::PlainText),
             "text/html" | "application/xhtml+xml" => Some(Self::Html),
+            "text/x-source" => Some(Self::Code),
             "application/pdf" => Some(Self::Pdf),
             // Deliberately excludes `application/msword`: that MIME type
             // names the legacy binary `.doc` format, not the Open XML `.docx`
@@ -141,7 +158,15 @@ impl DocumentFormat {
     }
 
     /// Map a filename or path onto a format by its extension.
+    ///
+    /// A name [`crate::language_for_path`] recognises as code is
+    /// [`DocumentFormat::Code`]; that check runs first so `CMakeLists.txt` is
+    /// code rather than plain text. HTML stays [`DocumentFormat::Html`].
+    #[must_use]
     pub fn from_filename(filename: &str) -> Option<Self> {
+        if crate::language::language_for_path(filename).is_some() {
+            return Some(Self::Code);
+        }
         let extension = filename.rsplit_once('.')?.1.to_ascii_lowercase();
         match extension.as_str() {
             "md" | "markdown" | "mdown" => Some(Self::Markdown),
@@ -162,6 +187,7 @@ impl fmt::Display for DocumentFormat {
             Self::Markdown => "markdown",
             Self::PlainText => "plain_text",
             Self::Html => "html",
+            Self::Code => "code",
             Self::Pdf => "pdf",
             Self::Docx => "docx",
             Self::Unknown => "unknown",
@@ -194,4 +220,4 @@ fn is_probably_text(bytes: &[u8]) -> bool {
 
 #[cfg(test)]
 #[path = "mod_tests.rs"]
-mod test;
+mod tests;
