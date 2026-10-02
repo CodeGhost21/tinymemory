@@ -17,10 +17,10 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 
 use crate::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
-use crate::SourceResult;
+use crate::error::{Error, Result};
 
 use super::ssrf::{build_client, is_url_allowed, read_body_capped};
-use super::{into_engine_error, SourceReader};
+use super::SourceReader;
 use types::{FeedCache, FeedEntry};
 
 const DEFAULT_MAX_ITEMS: u32 = 50;
@@ -53,7 +53,7 @@ impl RssReader {
     /// that is N+1 downloads of the same feed per sync (and a rate-limit
     /// risk against the feed host); the cache turns it into one fetch whose
     /// results are reused for the read phase.
-    async fn fetch_entries(&self, url: &str) -> Result<Vec<FeedEntry>, String> {
+    async fn fetch_entries(&self, url: &str) -> std::result::Result<Vec<FeedEntry>, String> {
         // Read the cache in a nested scope so the mutex guard is dropped before
         // the await below — the guard is not `Send`, and holding it across an
         // await would make the reader's async methods non-`Send`.
@@ -95,10 +95,10 @@ impl SourceReader for RssReader {
         &self,
         source: &MemorySourceEntry,
         workspace: &std::path::Path,
-    ) -> SourceResult<Vec<SourceItem>> {
+    ) -> Result<Vec<SourceItem>> {
         self.list_items_inner(source, workspace)
             .await
-            .map_err(into_engine_error)
+            .map_err(Error::Reader)
     }
 
     async fn read_item(
@@ -106,10 +106,10 @@ impl SourceReader for RssReader {
         source: &MemorySourceEntry,
         item_id: &str,
         workspace: &std::path::Path,
-    ) -> SourceResult<SourceContent> {
+    ) -> Result<SourceContent> {
         self.read_item_inner(source, item_id, workspace)
             .await
-            .map_err(into_engine_error)
+            .map_err(Error::Reader)
     }
 }
 
@@ -118,7 +118,7 @@ impl RssReader {
         &self,
         source: &MemorySourceEntry,
         _workspace: &std::path::Path,
-    ) -> Result<Vec<SourceItem>, String> {
+    ) -> std::result::Result<Vec<SourceItem>, String> {
         let url = source.url.as_deref().ok_or("rss source requires a url")?;
         let max_items = source.max_items.unwrap_or(DEFAULT_MAX_ITEMS) as usize;
 
@@ -148,7 +148,7 @@ impl RssReader {
         source: &MemorySourceEntry,
         item_id: &str,
         _workspace: &std::path::Path,
-    ) -> Result<SourceContent, String> {
+    ) -> std::result::Result<SourceContent, String> {
         let url = source.url.as_deref().ok_or("rss source requires a url")?;
 
         tracing::debug!(
@@ -209,7 +209,7 @@ fn url_host(url: &str) -> String {
         })
 }
 
-async fn fetch_url(url: &str) -> Result<String, String> {
+async fn fetch_url(url: &str) -> std::result::Result<String, String> {
     // SSRF guard: validate scheme and host, reject private/internal targets,
     // and refuse redirects that would escape that policy.
     let parsed = reqwest::Url::parse(url).map_err(|e| format!("invalid URL: {e}"))?;
@@ -238,7 +238,7 @@ async fn fetch_url(url: &str) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|e| format!("feed body is not valid UTF-8: {e}"))
 }
 
-fn parse_feed_full(xml: &str) -> Result<Vec<FeedEntry>, String> {
+fn parse_feed_full(xml: &str) -> std::result::Result<Vec<FeedEntry>, String> {
     // Detect RSS vs Atom by looking for <rss or <feed
     if xml.contains("<rss") || xml.contains("<channel") {
         parse_rss(xml)
@@ -249,7 +249,7 @@ fn parse_feed_full(xml: &str) -> Result<Vec<FeedEntry>, String> {
     }
 }
 
-fn parse_rss(xml: &str) -> Result<Vec<FeedEntry>, String> {
+fn parse_rss(xml: &str) -> std::result::Result<Vec<FeedEntry>, String> {
     let mut entries = Vec::new();
     let mut offset = 0;
 
@@ -293,7 +293,7 @@ fn parse_rss(xml: &str) -> Result<Vec<FeedEntry>, String> {
     Ok(entries)
 }
 
-fn parse_atom(xml: &str) -> Result<Vec<FeedEntry>, String> {
+fn parse_atom(xml: &str) -> std::result::Result<Vec<FeedEntry>, String> {
     let mut entries = Vec::new();
     let mut offset = 0;
 

@@ -16,9 +16,9 @@ use super::ssrf::{build_client, is_url_allowed, read_body_capped};
 use types::SelectorSpec;
 
 use crate::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
-use crate::SourceResult;
+use crate::error::{Error, Result};
 
-use super::{into_engine_error, SourceReader};
+use super::SourceReader;
 
 /// Reader for a single-page web source: fetches one URL and extracts its
 /// readable text.
@@ -34,10 +34,10 @@ impl SourceReader for WebPageReader {
         &self,
         source: &MemorySourceEntry,
         workspace: &std::path::Path,
-    ) -> SourceResult<Vec<SourceItem>> {
+    ) -> Result<Vec<SourceItem>> {
         self.list_items_inner(source, workspace)
             .await
-            .map_err(into_engine_error)
+            .map_err(Error::Reader)
     }
 
     async fn read_item(
@@ -45,10 +45,10 @@ impl SourceReader for WebPageReader {
         source: &MemorySourceEntry,
         item_id: &str,
         workspace: &std::path::Path,
-    ) -> SourceResult<SourceContent> {
+    ) -> Result<SourceContent> {
         self.read_item_inner(source, item_id, workspace)
             .await
-            .map_err(into_engine_error)
+            .map_err(Error::Reader)
     }
 }
 
@@ -57,7 +57,7 @@ impl WebPageReader {
         &self,
         source: &MemorySourceEntry,
         _workspace: &std::path::Path,
-    ) -> Result<Vec<SourceItem>, String> {
+    ) -> std::result::Result<Vec<SourceItem>, String> {
         let url = source
             .url
             .as_deref()
@@ -75,7 +75,7 @@ impl WebPageReader {
         source: &MemorySourceEntry,
         item_id: &str,
         _workspace: &std::path::Path,
-    ) -> Result<SourceContent, String> {
+    ) -> std::result::Result<SourceContent, String> {
         let url = if item_id.starts_with("http") {
             item_id.to_string()
         } else {

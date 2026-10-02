@@ -11,7 +11,7 @@ use async_trait::async_trait;
 
 use super::SourceReader;
 use crate::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
-use crate::SourceResult;
+use crate::error::{Error, Result};
 
 /// Lists a Composio connection as a single sync target.
 ///
@@ -32,7 +32,7 @@ impl SourceReader for ComposioReader {
         &self,
         source: &MemorySourceEntry,
         _workspace: &Path,
-    ) -> SourceResult<Vec<SourceItem>> {
+    ) -> Result<Vec<SourceItem>> {
         let toolkit = source.toolkit.as_deref().unwrap_or("unknown");
         let connection_id = source.connection_id.as_deref().unwrap_or("unknown");
 
@@ -52,7 +52,7 @@ impl SourceReader for ComposioReader {
         source: &MemorySourceEntry,
         item_id: &str,
         _workspace: &Path,
-    ) -> SourceResult<SourceContent> {
+    ) -> Result<SourceContent> {
         let toolkit = source.toolkit.as_deref().unwrap_or("unknown");
         Ok(SourceContent {
             id: item_id.to_string(),
