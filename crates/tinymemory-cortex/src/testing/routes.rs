@@ -142,6 +142,10 @@ fn write_one(state: &Shared, headers: &HeaderMap, body: &Value) -> Reply {
         return fail(state, 400, "VALIDATION_ERROR");
     }
     let applied = state.log.lock().unwrap().append(body);
+    if let Some((limited, hidden)) = state.arm_after_write.lock().unwrap().take() {
+        state.rate_limit_events.store(limited, Ordering::SeqCst);
+        state.hide_listing_for.store(hidden, Ordering::SeqCst);
+    }
     if take_one(&state.apply_then_fail) {
         return fail(state, 503, "UNAVAILABLE");
     }

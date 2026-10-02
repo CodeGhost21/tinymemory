@@ -1,9 +1,11 @@
-//! Composio source reader — delegates to the existing composio sync layer.
+//! Composio source reader — a placeholder over the provider pipeline.
 //!
-//! For Composio sources, `list_items` returns the sync targets and
-//! `read_item` is not meaningful (sync is provider-driven, not
-//! item-by-item). The reader exists so the registry can uniformly
-//! query all source kinds.
+//! Composio data does not arrive item by item: the host runs toolkit actions
+//! with its credentials and hands the responses to [`crate::composio`], which
+//! normalises them and maps them to `StoreItem`s. For a Composio source,
+//! `list_items` returns the connection as one sync target and `read_item`
+//! describes that pipeline. The reader exists so the registry can query every
+//! source kind uniformly.
 
 use std::path::Path;
 

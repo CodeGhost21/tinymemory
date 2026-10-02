@@ -75,6 +75,11 @@ pub(crate) struct Double {
     pub(crate) rate_limit_forget: AtomicUsize,
     /// Recall answers 500.
     pub(crate) recall_down: AtomicBool,
+    /// Once the next write is applied, rate limit this many listings and
+    /// hide the listing this many more times: (429s, hidden). Lets a test
+    /// aim at the reads a write makes after it is sent, not the replay
+    /// lookup before it.
+    pub(crate) arm_after_write: Mutex<Option<(usize, usize)>>,
 }
 
 /// The shared handle the routes and tests hold.

@@ -234,21 +234,16 @@ async fn a_claimed_write_that_never_landed_is_outcome_unknown() {
 }
 
 #[tokio::test]
-async fn recovery_waits_out_a_slow_listing_and_a_rate_limit() {
+async fn recovery_waits_out_a_rate_limit_and_a_slow_listing() {
     let (endpoint, state) = hosted_double().await;
-    let engine = hosted_engine(&endpoint);
     state.apply_then_fail.store(1, Ordering::SeqCst);
-    // The replay lookup reads first; then the recovery listing is rate limited
-    // past the transport's three attempts and hidden twice more.
-    let item = sample_items().remove(0);
-    engine.store(item.clone()).await.unwrap();
-    assert_eq!(state.event_count(), 1);
-    engine.forget(ForgetTarget::Ids(vec![item.fingerprint().into()])).await.unwrap();
-    state.apply_then_fail.store(1, Ordering::SeqCst);
-    let lookups = AtomicUsize::new(0);
-    let _ = &lookups;
-    state.rate_limit_events.store(0, Ordering::SeqCst);
-    engine.store(item).await.unwrap();
+    // The recovery's first listing is rate limited past the transport's three
+    // attempts, and the next two polls do not show the event yet.
+    *state.arm_after_write.lock().unwrap() = Some((3, 2));
+    hosted_engine(&endpoint)
+        .store(sample_items().remove(0))
+        .await
+        .unwrap();
     assert_eq!(state.event_count(), 1);
 }
 
@@ -275,26 +270,25 @@ async fn writes_and_forgets_ride_out_rate_limits() {
 #[tokio::test]
 async fn a_429_while_waiting_for_visibility_does_not_fail_the_write() {
     let (endpoint, state) = hosted_double().await;
-    let engine = hosted_engine(&endpoint);
-    // The replay lookup takes the first listing; the wait's first poll then
-    // meets three 429s (its own retries) and a fourth on the next poll.
-    state.hide_listing_for.store(1, Ordering::SeqCst);
-    let item = sample_items().remove(0);
-    let lookup_then_limit = async {
-        engine.store(item).await
-    };
-    state.rate_limit_events.store(0, Ordering::SeqCst);
-    lookup_then_limit.await.unwrap();
-
-    let item = sample_items().remove(2);
-    state.rate_limit_events.store(4, Ordering::SeqCst);
-    let error = engine.store(item.clone()).await;
-    // Four 429s exhaust the replay lookup's three attempts first, which is a
-    // read failure, not a write failure; the write itself was never sent.
-    assert!(matches!(error, Err(Error::Unavailable(_))), "{error:?}");
+    // Four 429s exhaust the first visibility poll's three attempts and leak
+    // into the second: the write was accepted, so the wait keeps going.
+    *state.arm_after_write.lock().unwrap() = Some((4, 0));
+    hosted_engine(&endpoint)
+        .store(sample_items().remove(0))
+        .await
+        .unwrap();
     assert_eq!(state.count("POST /memory/experience"), 1);
-    state.rate_limit_events.store(0, Ordering::SeqCst);
-    engine.store(item).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_write_polls_until_its_event_is_listed() {
+    let (endpoint, state) = hosted_double().await;
+    *state.arm_after_write.lock().unwrap() = Some((0, 3));
+    hosted_engine(&endpoint)
+        .store(sample_items().remove(0))
+        .await
+        .unwrap();
+    assert_eq!(state.count("GET /memory/events"), 5, "the lookup, three hidden polls, the hit");
 }
 
 #[tokio::test]
