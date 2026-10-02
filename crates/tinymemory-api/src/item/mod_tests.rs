@@ -90,6 +90,22 @@ fn fingerprints_cover_metadata_and_are_stable() {
 }
 
 #[test]
+fn fingerprints_ignore_when_an_item_was_observed() {
+    let mut first =
+        StoreItem::learning("tea", LearningKind::Preference, 0.9, MemoryMeta::default());
+    let mut retry = first.clone();
+    first.meta_mut().observed_at = Some(chrono::DateTime::UNIX_EPOCH);
+    retry.meta_mut().observed_at = Some(chrono::Utc::now());
+    assert_eq!(first.fingerprint(), retry.fingerprint());
+    retry.meta_mut().thread_id = Some("t".into());
+    assert_ne!(
+        first.fingerprint(),
+        retry.fingerprint(),
+        "other meta still counts"
+    );
+}
+
+#[test]
 fn items_serialise_with_a_type_tag_and_round_trip() {
     let item = StoreItem::learning("tea", LearningKind::Preference, 0.9, MemoryMeta::default());
     let json = serde_json::to_value(&item).expect("serialise");

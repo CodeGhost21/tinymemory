@@ -261,15 +261,22 @@ impl StoreItem {
         }
     }
 
-    /// A stable hex digest of the whole item, metadata included.
+    /// A stable hex digest of the whole item, metadata included, except
+    /// `meta.observed_at`.
     ///
     /// Two items with the same fingerprint are the same item: an engine
     /// derives its idempotency from this, so an identical retry is a replay.
+    /// `observed_at` records *when* the item was seen, not *what* it is: a
+    /// host stamps it on every store, so hashing it would make a retried
+    /// learning, or an unchanged file re-synced, a new item each time.
     #[must_use]
     pub fn fingerprint(&self) -> String {
+        let mut identity = self.clone();
+        identity.meta_mut().observed_at = None;
         // Serialising a struct cannot fail: every field is a plain string,
         // number, enum or timestamp. The fallback keeps the function total.
-        let bytes = serde_json::to_vec(self).unwrap_or_else(|_| format!("{self:?}").into_bytes());
+        let bytes =
+            serde_json::to_vec(&identity).unwrap_or_else(|_| format!("{identity:?}").into_bytes());
         let digest = Sha256::digest(&bytes);
         digest
             .iter()
