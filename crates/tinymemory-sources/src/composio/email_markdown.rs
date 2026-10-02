@@ -11,7 +11,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::email_clean;
+use super::email_clean;
 
 /// One message of a thread, in the canonicaliser's input shape.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -176,6 +176,5 @@ where
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 #[path = "email_markdown_tests.rs"]
 mod tests;

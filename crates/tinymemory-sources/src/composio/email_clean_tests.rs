@@ -1,3 +1,5 @@
+//! Tests for the email body cleaning helpers.
+
 use super::*;
 use serde_json::json;
 

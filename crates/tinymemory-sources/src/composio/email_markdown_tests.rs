@@ -1,4 +1,4 @@
-//! Tests for the surrounding module.
+//! Tests for email thread markdown rendering.
 
 use super::*;
 

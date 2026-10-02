@@ -1,6 +1,6 @@
 //! Shared email rendering + cleaning helpers.
 //!
-//! Used by [`crate::email_markdown`] when rendering canonical email markdown. The module
+//! Used by [`super::email_markdown`] when rendering canonical email markdown. The module
 //! is intentionally pure-string-oriented plus a single `serde_json::Value`
 //! helper (`parse_message_date`) for callers that work directly off slim
 //! envelope JSON. Nothing here depends on the chunk-store types, which keeps the

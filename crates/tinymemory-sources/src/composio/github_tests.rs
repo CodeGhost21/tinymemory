@@ -1,7 +1,4 @@
-#![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
-//
-// A failing assertion in a test *is* a panic. The crate-wide lints exist to
-// keep the library from panicking, not the tests.
+//! Tests for the GitHub normaliser.
 
 use super::*;
 use serde_json::json;

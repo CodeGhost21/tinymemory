@@ -70,8 +70,9 @@ fn reshape_fetch_history(data: &mut Value) {
         0,
     );
     let slim: Vec<Value> = arr.into_iter().filter_map(slim_history_message).collect();
-    let obj = ensure_object(data);
-    obj.insert("messages".to_string(), Value::Array(slim));
+    with_object(data, |obj| {
+        obj.insert("messages".to_string(), Value::Array(slim));
+    });
     log::debug!("[composio:slack][post-process] SLACK_FETCH_CONVERSATION_HISTORY reshaped");
 }
 
@@ -197,8 +198,9 @@ fn reshape_list_conversations(data: &mut Value) {
     );
 
     let slim: Vec<Value> = arr.into_iter().filter_map(slim_channel).collect();
-    let obj = ensure_object(data);
-    obj.insert("channels".to_string(), Value::Array(slim));
+    with_object(data, |obj| {
+        obj.insert("channels".to_string(), Value::Array(slim));
+    });
     log::debug!("[composio:slack][post-process] SLACK_LIST_CONVERSATIONS reshaped");
 }
 
@@ -259,9 +261,10 @@ fn reshape_search_messages(data: &mut Value) {
     );
 
     let slim: Vec<Value> = arr.into_iter().filter_map(slim_search_match).collect();
-    let obj = ensure_object(data);
-    obj.insert("messages".to_string(), Value::Array(slim));
-    obj.insert("pages".to_string(), Value::Number(pages.into()));
+    with_object(data, |obj| {
+        obj.insert("messages".to_string(), Value::Array(slim));
+        obj.insert("pages".to_string(), Value::Number(pages.into()));
+    });
     log::debug!("[composio:slack][post-process] SLACK_SEARCH_MESSAGES reshaped");
 }
 
@@ -301,21 +304,18 @@ fn slim_search_match(raw: Value) -> Option<Value> {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-/// Ensure `data` is a JSON object, replacing it with an empty object if
-/// not. Returns a mutable ref to the inner map.
-// Scoped rather than blanket, for the case `AGENTS.md` names: "genuinely
-// unreachable states — where `expect` must carry a message explaining the
-// invariant." The line below assigns `Value::Object` whenever `data` is not
-// one, so the read-back cannot fail; the compiler cannot see that across the
-// assignment. The two `unwrap`s this crate inherited elsewhere were removed
-// rather than allowed.
-#[allow(clippy::expect_used)]
-fn ensure_object(data: &mut Value) -> &mut Map<String, Value> {
-    if !data.is_object() {
-        *data = Value::Object(Map::new());
-    }
-    data.as_object_mut()
-        .expect("assigned Value::Object immediately above when data was not one")
+/// Edit `data` as a JSON object, replacing it with an empty object first if
+/// it is not one.
+///
+/// Takes the value out, edits the map, and puts it back, so there is no
+/// "re-borrow as an object" step that would need an `expect`.
+fn with_object(data: &mut Value, edit: impl FnOnce(&mut Map<String, Value>)) {
+    let mut map = match std::mem::take(data) {
+        Value::Object(map) => map,
+        _ => Map::new(),
+    };
+    edit(&mut map);
+    *data = Value::Object(map);
 }
 
 #[cfg(test)]
