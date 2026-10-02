@@ -8,7 +8,7 @@
 //!   Composio reconciliation ([`reconcile`]).
 //! - **Readers** — [`readers::SourceReader`] lists a source's items and reads
 //!   one. Local readers (folder, file, conversation) are always compiled; the
-//!   network readers (GitHub, RSS, web page) and [`fetch`] sit behind the
+//!   network readers (GitHub, RSS, web page) and `fetch` sit behind the
 //!   `network` feature, behind one SSRF guard (`readers::ssrf`).
 //! - **Items** — [`items`] maps reader output to `StoreItem`s with
 //!   [`MemoryMeta`](tinymemory_api::MemoryMeta) filled per kind; every text
@@ -57,7 +57,7 @@
 //!
 //! # Feature flags
 //!
-//! - `network` — the GitHub, RSS and web-page readers, [`fetch`], and the
+//! - `network` — the GitHub, RSS and web-page readers, `fetch`, and the
 //!   SSRF guard. Off by default, so a host that only reads local sources
 //!   links no HTTP stack.
 
