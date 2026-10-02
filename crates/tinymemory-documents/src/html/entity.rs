@@ -76,4 +76,4 @@ fn decode_one(body: &str) -> Option<String> {
 
 #[cfg(test)]
 #[path = "entity_tests.rs"]
-mod test;
+mod tests;

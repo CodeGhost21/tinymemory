@@ -133,6 +133,7 @@ fn textual_formats_are_the_ones_intake_can_decode_itself() {
     assert!(DocumentFormat::Markdown.is_textual());
     assert!(DocumentFormat::PlainText.is_textual());
     assert!(DocumentFormat::Html.is_textual());
+    assert!(DocumentFormat::Code.is_textual());
     assert!(!DocumentFormat::Pdf.is_textual());
     assert!(!DocumentFormat::Docx.is_textual());
     assert!(!DocumentFormat::Unknown.is_textual());
@@ -144,6 +145,7 @@ fn a_canonical_mime_round_trips_back_to_its_format() {
         DocumentFormat::Markdown,
         DocumentFormat::PlainText,
         DocumentFormat::Html,
+        DocumentFormat::Code,
         DocumentFormat::Pdf,
         DocumentFormat::Docx,
     ] {
@@ -173,6 +175,7 @@ fn a_format_round_trips_through_json() {
         DocumentFormat::Markdown,
         DocumentFormat::PlainText,
         DocumentFormat::Html,
+        DocumentFormat::Code,
         DocumentFormat::Pdf,
         DocumentFormat::Docx,
         DocumentFormat::Unknown,
@@ -197,4 +200,49 @@ fn invalid_utf8_without_magic_bytes_is_unknown_not_text() {
         DocumentFormat::sniff(&[0xFF, 0xFE, 0xFD], None, None),
         DocumentFormat::Unknown
     );
+}
+
+#[test]
+fn source_files_are_detected_as_code_by_extension_and_name() {
+    for filename in ["src/main.rs", "app.py", "web/App.tsx", "Dockerfile", "Makefile"] {
+        assert_eq!(
+            DocumentFormat::from_filename(filename),
+            Some(DocumentFormat::Code),
+            "{filename}"
+        );
+    }
+}
+
+#[test]
+fn html_stays_html_and_cmake_lists_is_code_not_text() {
+    assert_eq!(
+        DocumentFormat::from_filename("index.html"),
+        Some(DocumentFormat::Html)
+    );
+    assert_eq!(
+        DocumentFormat::from_filename("CMakeLists.txt"),
+        Some(DocumentFormat::Code)
+    );
+}
+
+#[test]
+fn an_unlabelled_upload_named_like_code_sniffs_as_code() {
+    assert_eq!(
+        DocumentFormat::sniff(b"fn main() {}", Some("main.rs"), None),
+        DocumentFormat::Code
+    );
+    assert_eq!(
+        DocumentFormat::sniff(
+            b"fn main() {}",
+            Some("main.rs"),
+            Some("application/octet-stream")
+        ),
+        DocumentFormat::Code
+    );
+}
+
+#[test]
+fn code_displays_as_code() {
+    assert_eq!(DocumentFormat::Code.to_string(), "code");
+    assert_eq!(DocumentFormat::Code.mime(), "text/x-source");
 }
