@@ -173,7 +173,7 @@ credentialed cleartext non-loopback endpoint.
   - Each item becomes one experience: a conversation becomes a bulk append of its turns.
   - The envelope carries `{v:2, kind, meta, title?, learning_kind?, confidence?}`, and `meta` maps to scope labels where CortexDB can filter.
   - Writes wait for the indexed barrier, keeping the v1 `await_readable` behaviour.
-- **Scope.** One scope per item kind under the TinyMemory root `app:tinymemory` (which the hosted backend further roots under the tenant): `app:tinymemory/app:documents`, `app:tinymemory/app:conversations`, `app:tinymemory/app:learnings`. A `MetaFilter.kinds` restricts the scopes searched.
+- **Scope.** One scope per item kind under the TinyMemory root `app:tinymemory` (which the hosted backend further roots under the tenant): `app:tinymemory/app:documents`, `app:tinymemory/app:conversations`, `app:tinymemory/app:learnings`. A `MetaFilter.kinds` restricts the scopes searched. The segments use CortexDB's built-in `app` scope type because CortexDB v0.10+ refuses scope types outside the deployment's `allowed_scope_types` (`422 UNREGISTERED_SCOPE_TYPE`).
 - **Fetch.**
   - `Hybrid` maps to `recall` layers. `Keyword` and `Vector` are declared only if the wire exposes a mode switch; otherwise `fetch_modes = [Hybrid]`. The recall body accepts only `scope`, `query`, `budgets`, `view`, `include`, `temporal` and `filters`, with no mode switch, so both wires declare `[Hybrid]`.
   - Metadata filters CortexDB cannot apply server-side are applied client-side on the page, and the cursor is still the engine's.

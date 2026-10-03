@@ -31,6 +31,15 @@ accepts only `scope`, `query`, `budgets`, `view`, `include`, `temporal` and
 `app:tinymemory/app:learnings`. The hosted backend also re-roots every scope under
 the caller's tenant. `MetaFilter.kinds` picks the scopes read.
 
+Every segment uses CortexDB's built-in `app` scope type. From v0.10 a
+deployment admits only the scope types in its policy's `allowed_scope_types`
+(`org, dept, team, app, user, agent, service, ws, project, global, system,
+source` in every shipped preset) and refuses any other with `422
+UNREGISTERED_SCOPE_TYPE`, so a private type such as `tm:` would need every
+operator to register it first. `integration/cortexdb/` runs the engine against
+a real server; `CORTEXDB_VERSION=v0.10.4 ./scripts/cortexdb-live.sh` checks a
+newer release.
+
 **Events.** A document or learning is one event; a conversation is one event
 per turn, appended in order. Each event's `content.text` is a JSON envelope:
 
