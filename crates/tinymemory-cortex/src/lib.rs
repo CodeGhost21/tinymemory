@@ -15,8 +15,8 @@
 //! # Storage layout
 //!
 //! Items live in one scope per kind under the TinyMemory root:
-//! `tm:memory/tm:documents`, `tm:memory/tm:conversations`,
-//! `tm:memory/tm:learnings`. A document or learning is one event; a
+//! `app:tinymemory/app:documents`, `app:tinymemory/app:conversations`,
+//! `app:tinymemory/app:learnings`. A document or learning is one event; a
 //! conversation is one event per turn. Each event's text is a JSON envelope
 //! (`"v": 2`) carrying the item id ([`tinymemory_api::StoreItem::fingerprint`]),
 //! kind, text and full metadata, and each event carries lookup labels (digests

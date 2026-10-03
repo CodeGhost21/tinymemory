@@ -173,11 +173,11 @@ credentialed cleartext non-loopback endpoint.
   - Each item becomes one experience: a conversation becomes a bulk append of its turns.
   - The envelope carries `{v:2, kind, meta, title?, learning_kind?, confidence?}`, and `meta` maps to scope labels where CortexDB can filter.
   - Writes wait for the indexed barrier, keeping the v1 `await_readable` behaviour.
-- **Scope.** One scope per item kind under the TinyMemory root `tm:memory` (which the hosted backend further roots under the tenant): `tm:memory/tm:documents`, `tm:memory/tm:conversations`, `tm:memory/tm:learnings`. A `MetaFilter.kinds` restricts the scopes searched.
+- **Scope.** One scope per item kind under the TinyMemory root `app:tinymemory` (which the hosted backend further roots under the tenant): `app:tinymemory/app:documents`, `app:tinymemory/app:conversations`, `app:tinymemory/app:learnings`. A `MetaFilter.kinds` restricts the scopes searched.
 - **Fetch.**
   - `Hybrid` maps to `recall` layers. `Keyword` and `Vector` are declared only if the wire exposes a mode switch; otherwise `fetch_modes = [Hybrid]`. The recall body accepts only `scope`, `query`, `budgets`, `view`, `include`, `temporal` and `filters`, with no mode switch, so both wires declare `[Hybrid]`.
   - Metadata filters CortexDB cannot apply server-side are applied client-side on the page, and the cursor is still the engine's.
-- **Recall.** Pack, then answer, as in v1. The pack is recalled from the one admitted kind's scope, or from `tm:memory` with `view: "descend"` when several kinds are admitted, so the answer route is called once. Citations come from the pack's `layers.events`, decoded back to `Hit`s.
+- **Recall.** Pack, then answer, as in v1. The pack is recalled from the one admitted kind's scope, or from `app:tinymemory` with `view: "descend"` when several kinds are admitted, so the answer route is called once. Citations come from the pack's `layers.events`, decoded back to `Hit`s.
 - **List / forget.** These use `v1/events` paging and `v1/forget` by `memory_ids`. `ForgetTarget::Filter` lists first, then forgets ids, and never sends an empty selector.
 
 ## Context (`tinymemory-context`)

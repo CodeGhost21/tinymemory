@@ -3,8 +3,8 @@
 //! # Scopes
 //!
 //! Every item lives in one scope per kind under the TinyMemory root
-//! [`ROOT_SCOPE`]: `tm:memory/tm:documents`, `tm:memory/tm:conversations`
-//! and `tm:memory/tm:learnings` ([`scope_of`]). The hosted backend
+//! [`ROOT_SCOPE`]: `app:tinymemory/app:documents`, `app:tinymemory/app:conversations`
+//! and `app:tinymemory/app:learnings` ([`scope_of`]). The hosted backend
 //! additionally re-roots every scope under the caller's tenant, which is
 //! invisible here. A [`tinymemory_api::MetaFilter`]'s `kinds` picks which of
 //! the three are read.

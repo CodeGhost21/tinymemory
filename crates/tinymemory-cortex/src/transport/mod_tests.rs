@@ -107,7 +107,7 @@ fn every_write_key_is_fresh_and_names_its_process() {
 #[test]
 fn urlencoding_escapes_everything_a_cursor_could_reshape() {
     assert_eq!(
-        urlencode("tm:memory/tm:documents"),
+        urlencode("app:tinymemory/app:documents"),
         "tm%3Amemory%2Ftm%3Adocuments"
     );
     assert_eq!(urlencode("a+b&c=d#e?f"), "a%2Bb%26c%3Dd%23e%3Ff");

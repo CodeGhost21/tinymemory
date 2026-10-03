@@ -27,8 +27,8 @@ accepts only `scope`, `query`, `budgets`, `view`, `include`, `temporal` and
 ## Storage layout
 
 **Scopes.** One per item kind under the TinyMemory root:
-`tm:memory/tm:documents`, `tm:memory/tm:conversations`,
-`tm:memory/tm:learnings`. The hosted backend also re-roots every scope under
+`app:tinymemory/app:documents`, `app:tinymemory/app:conversations`,
+`app:tinymemory/app:learnings`. The hosted backend also re-roots every scope under
 the caller's tenant. `MetaFilter.kinds` picks the scopes read.
 
 **Events.** A document or learning is one event; a conversation is one event
@@ -81,7 +81,7 @@ as prefixes, so they cannot be labelled and are filtered only client-side.
   an offset into the merged ranking; the next page asks again with a larger
   budget, capped at 1000 events.
 - **Recall.** If exactly one kind is admitted, one pack is built over that
-  kind's scope. Otherwise the pack is built over `tm:memory` with
+  kind's scope. Otherwise the pack is built over `app:tinymemory` with
   `view: "descend"`. The answer route is then called **once** with
   `use_pack_id`. Hosted omits a null `answer_instructions`, because its schema
   is strict; Direct sends `null`. Citations come from the pack's

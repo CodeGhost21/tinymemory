@@ -60,7 +60,7 @@ fn a_labelled_filter_narrows_the_recall_body() {
         thread_id: Some("t".into()),
         ..MetaFilter::default()
     };
-    let body = recall_body("tm:memory/tm:documents", "q", 9, &filter);
+    let body = recall_body("app:tinymemory/app:documents", "q", 9, &filter);
     assert_eq!(body["budgets"]["per_layer_limits"]["events"], 9);
     assert_eq!(
         body["filters"]["metadata"]["labels"][0],

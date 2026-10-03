@@ -35,7 +35,7 @@ async fn a_document_waits_indexed_and_a_conversation_is_one_strict_bulk() {
     let events = state.log.lock().unwrap().events.clone();
     let turns: Vec<_> = events
         .iter()
-        .filter(|e| e["scope"] == "tm:memory/tm:conversations")
+        .filter(|e| e["scope"] == "app:tinymemory/app:conversations")
         .map(|e| e["content"]["role"].as_str().unwrap().to_string())
         .collect();
     assert_eq!(turns, vec!["user", "assistant", "user"], "in order");

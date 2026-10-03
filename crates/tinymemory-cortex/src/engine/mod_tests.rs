@@ -189,7 +189,7 @@ async fn recall_answers_once_from_one_pack_with_filtered_citations() {
         );
         let seen = state.seen.lock().unwrap();
         assert_eq!(seen.recalls.len(), 1, "one pack");
-        assert_eq!(seen.recalls[0]["scope"], "tm:memory");
+        assert_eq!(seen.recalls[0]["scope"], "app:tinymemory");
         assert_eq!(seen.recalls[0]["view"], "descend");
         assert_eq!(seen.answers.len(), 1, "one answer");
         assert_eq!(seen.answers[0]["use_pack_id"], "pack_test");
@@ -208,7 +208,7 @@ async fn recall_over_one_kind_uses_that_kind_scope() {
         );
         assert!(!answer.answer.is_empty());
         let seen = state.seen.lock().unwrap();
-        assert_eq!(seen.recalls[0]["scope"], "tm:memory/tm:documents");
+        assert_eq!(seen.recalls[0]["scope"], "app:tinymemory/app:documents");
         assert!(seen.recalls[0].get("view").is_none());
     }
 }

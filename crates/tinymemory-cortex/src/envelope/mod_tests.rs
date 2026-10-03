@@ -74,7 +74,7 @@ fn a_conversation_is_one_event_per_turn_in_order() {
     assert_eq!(turns, vec![Some((0, 2)), Some((1, 2))]);
     let request = envelopes[1].request("x");
     assert_eq!(request["content"]["role"], "assistant");
-    assert_eq!(request["scope"], "tm:memory/tm:conversations");
+    assert_eq!(request["scope"], "app:tinymemory/app:conversations");
     assert_eq!(request["modality"], "conversation");
 }
 
@@ -122,7 +122,7 @@ fn observed_at_and_labels_reach_the_event_context() {
         "2026-01-02T03:04:05+00:00"
     );
     assert_eq!(request["context"]["labels"][0], labels::item("id"));
-    assert_eq!(request["scope"], "tm:memory/tm:documents");
+    assert_eq!(request["scope"], "app:tinymemory/app:documents");
     assert_ne!(
         request["idempotency_key"],
         envelope.request("payload")["idempotency_key"],
