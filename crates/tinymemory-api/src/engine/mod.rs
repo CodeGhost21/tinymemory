@@ -48,6 +48,32 @@ pub trait MemoryEngine: Send + Sync {
     /// Invalid items, and the engine's own failures.
     async fn store(&self, item: StoreItem) -> Result<StoreReceipt>;
 
+    /// Stores several items, in order: bulk ingestion (imports, backfills,
+    /// source syncs).
+    ///
+    /// As with [`MemoryEngine::store`], every item is readable through
+    /// [`MemoryEngine::list`], [`MemoryEngine::get`] and
+    /// [`MemoryEngine::forget`] when the call returns; ranked
+    /// [`MemoryEngine::fetch`] and [`MemoryEngine::recall`] may lag a moment
+    /// behind for all but the last, which is what lets an engine skip a
+    /// per-item wait. Receipts come back in item order. On an error the items
+    /// before the failing one are stored; storing them again is a replay.
+    ///
+    /// The default stores one item at a time.
+    ///
+    /// # Errors
+    ///
+    /// No items or more than [`MAX_STORE_MANY`], an invalid item, and the
+    /// engine's own failures.
+    async fn store_many(&self, items: Vec<StoreItem>) -> Result<Vec<StoreReceipt>> {
+        validate_many(&items)?;
+        let mut receipts = Vec::with_capacity(items.len());
+        for item in items {
+            receipts.push(self.store(item).await?);
+        }
+        Ok(receipts)
+    }
+
     /// Removes items by id or by a non-empty filter.
     ///
     /// # Errors
@@ -89,6 +115,25 @@ pub trait MemoryEngine: Send + Sync {
     async fn get(&self, req: GetRequest) -> Result<Vec<Hit>> {
         get_by_listing(self, req).await
     }
+}
+
+/// Most items one [`MemoryEngine::store_many`] call may take.
+pub const MAX_STORE_MANY: usize = 100;
+
+/// Checks a [`MemoryEngine::store_many`] batch: `1..=`[`MAX_STORE_MANY`]
+/// items, each valid. Engines overriding `store_many` call it first.
+///
+/// # Errors
+///
+/// [`Error::InvalidRequest`] for an empty or oversized batch, and the first
+/// invalid item's error.
+pub fn validate_many(items: &[StoreItem]) -> Result<()> {
+    if items.is_empty() || items.len() > MAX_STORE_MANY {
+        return Err(Error::InvalidRequest(format!(
+            "store_many takes between 1 and {MAX_STORE_MANY} items"
+        )));
+    }
+    items.iter().try_for_each(StoreItem::validate)
 }
 
 /// What an engine is and offers.

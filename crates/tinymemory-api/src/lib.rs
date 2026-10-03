@@ -46,7 +46,7 @@ pub mod item;
 pub mod meta;
 pub mod query;
 
-pub use engine::{EngineDescriptor, EngineHealth, MemoryEngine};
+pub use engine::{EngineDescriptor, EngineHealth, MAX_STORE_MANY, MemoryEngine, validate_many};
 pub use error::{Error, Result};
 pub use explore::{ExplorePage, ExploreRequest, Facet, FacetBucket, GetRequest};
 pub use item::{DocumentBody, ItemId, ItemKind, LearningKind, Role, StoreItem, StoreReceipt, Turn};
