@@ -10,7 +10,9 @@
 //!   typed [`MemoryMeta`] ([`MemoryEngine::store`]).
 //!
 //! plus [`MemoryEngine::list`] and [`MemoryEngine::forget`] to page through
-//! and remove what was stored. An engine advertises what it offers through its
+//! and remove what was stored, and [`MemoryEngine::explore`] and
+//! [`MemoryEngine::get`] for explorers: counts of stored items per metadata
+//! [`Facet`], and items read whole by id ([`explore`]). An engine advertises what it offers through its
 //! [`EngineDescriptor`]; a fetch mode it does not list fails with
 //! [`Error::Unsupported`].
 //!
@@ -38,12 +40,14 @@
 
 pub mod engine;
 pub mod error;
+pub mod explore;
 pub mod item;
 pub mod meta;
 pub mod query;
 
 pub use engine::{EngineDescriptor, EngineHealth, MemoryEngine};
 pub use error::{Error, Result};
+pub use explore::{ExplorePage, ExploreRequest, Facet, FacetBucket, GetRequest};
 pub use item::{DocumentBody, ItemId, ItemKind, LearningKind, Role, StoreItem, StoreReceipt, Turn};
 pub use meta::{MemoryMeta, MetaFilter, SourceKind, SourceRef, ToolCallRef, TurnRange};
 pub use query::{

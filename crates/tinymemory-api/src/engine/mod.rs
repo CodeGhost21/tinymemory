@@ -5,9 +5,10 @@ use async_trait::async_trait;
 use serde::Serialize;
 
 use crate::error::{Error, Result};
+use crate::explore::{ExplorePage, ExploreRequest, GetRequest, explore_by_listing, get_by_listing};
 use crate::item::{StoreItem, StoreReceipt};
 use crate::query::{
-    FetchMode, FetchPage, FetchRequest, ForgetReport, ForgetTarget, ListPage, ListRequest,
+    FetchMode, FetchPage, FetchRequest, ForgetReport, ForgetTarget, Hit, ListPage, ListRequest,
     RecallAnswer, RecallRequest,
 };
 
@@ -60,6 +61,34 @@ pub trait MemoryEngine: Send + Sync {
     ///
     /// Invalid requests, and the engine's own failures.
     async fn list(&self, req: ListRequest) -> Result<ListPage>;
+
+    /// Groups the items a filter admits by one [`crate::Facet`] and counts
+    /// each value, for explorers (see [`crate::explore`]).
+    ///
+    /// The default pages through [`MemoryEngine::list`]
+    /// ([`explore_by_listing`]); an engine that can aggregate server-side
+    /// overrides it.
+    ///
+    /// # Errors
+    ///
+    /// Invalid requests, and the engine's own failures.
+    async fn explore(&self, req: ExploreRequest) -> Result<ExplorePage> {
+        explore_by_listing(self, req).await
+    }
+
+    /// Reads items whole by id, in the order named; an id that names nothing
+    /// is left out.
+    ///
+    /// The default pages through [`MemoryEngine::list`]
+    /// ([`get_by_listing`]); an engine that can look an id up directly
+    /// overrides it.
+    ///
+    /// # Errors
+    ///
+    /// Invalid requests, and the engine's own failures.
+    async fn get(&self, req: GetRequest) -> Result<Vec<Hit>> {
+        get_by_listing(self, req).await
+    }
 }
 
 /// What an engine is and offers.
