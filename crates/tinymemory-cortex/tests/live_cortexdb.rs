@@ -215,6 +215,6 @@ async fn documents_conversations_and_learnings_round_trip_into_context() {
         }))
         .await
         .expect("forget");
-    assert_eq!(report.removed, 3, "all three items are forgotten");
+    assert_eq!(report.forgotten, 3, "all three items are forgotten");
     let _ = (conversation, learning);
 }
