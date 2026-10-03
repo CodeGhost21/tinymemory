@@ -17,10 +17,16 @@ pub use filter::MetaFilter;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::namespace::Namespace;
+
 /// Where an item came from and what it is about.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MemoryMeta {
+    /// The memory node the item belongs to; the root (shared by every
+    /// agent) by default. See [`crate::namespace`].
+    #[serde(skip_serializing_if = "Namespace::is_root")]
+    pub namespace: Namespace,
     /// Absolute path or logical workspace id.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace: Option<String>,

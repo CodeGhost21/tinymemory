@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{MemoryMeta, SourceKind, TurnRange};
 use crate::item::ItemKind;
+use crate::namespace::{Namespace, Reach};
 
 /// Which items an operation applies to.
 ///
@@ -16,10 +17,14 @@ use crate::item::ItemKind;
 /// value is in the list (`kinds`, `sources`) or shares one tag (`tags_any`); an
 /// empty list does not constrain. The window is `observed_after <= observed_at
 /// < observed_before`, and an item with no `observed_at` never matches a
-/// window.
+/// window. `reach` admits only items whose namespace is in reach; unset, it
+/// admits every namespace.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MetaFilter {
+    /// The namespaces read; `None` reads every namespace.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reach: Option<Reach>,
     /// Exact workspace.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace: Option<String>,
@@ -95,10 +100,18 @@ impl MetaFilter {
         self.kinds.is_empty() || self.kinds.contains(&kind)
     }
 
+    /// Whether the filter's reach admits `namespace` (ignoring every other
+    /// field).
+    #[must_use]
+    pub fn admits_namespace(&self, namespace: &Namespace) -> bool {
+        self.reach.as_ref().is_none_or(|reach| reach.admits(namespace))
+    }
+
     /// Whether an item of `kind` carrying `meta` matches every set field.
     #[must_use]
     pub fn matches(&self, kind: ItemKind, meta: &MemoryMeta) -> bool {
         self.admits_kind(kind)
+            && self.admits_namespace(&meta.namespace)
             && exact(self.workspace.as_deref(), meta.workspace.as_deref())
             && path_prefix(self.folder.as_deref(), meta.folder.as_deref())
             && path_prefix(self.file_path.as_deref(), meta.file_path.as_deref())

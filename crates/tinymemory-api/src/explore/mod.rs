@@ -23,6 +23,7 @@ use crate::engine::MemoryEngine;
 use crate::error::{Error, Result};
 use crate::item::{ItemId, ItemKind};
 use crate::meta::{MemoryMeta, MetaFilter, SourceKind};
+use crate::namespace::{Namespace, ROOT_LABEL, Reach};
 use crate::query::{Hit, ListRequest};
 
 /// Most buckets one [`ExplorePage`] may return.
@@ -70,11 +71,14 @@ pub enum Facet {
     ToolCall,
     /// One of `meta.tags`; an item with several tags counts in each.
     Tag,
+    /// `meta.namespace`: the memory node, [`ROOT_LABEL`] for the root.
+    /// Narrowing reads exactly that node.
+    Namespace,
 }
 
 impl Facet {
     /// Every facet, in declaration order.
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 14] = [
         Self::Kind,
         Self::Source,
         Self::SourceId,
@@ -88,6 +92,7 @@ impl Facet {
         Self::Agent,
         Self::ToolCall,
         Self::Tag,
+        Self::Namespace,
     ];
 
     /// The stable snake_case wire string.
@@ -107,6 +112,7 @@ impl Facet {
             Self::Agent => "agent",
             Self::ToolCall => "tool_call",
             Self::Tag => "tag",
+            Self::Namespace => "namespace",
         }
     }
 
@@ -129,6 +135,7 @@ impl Facet {
             Self::Agent => one(meta.agent_id.as_ref()),
             Self::ToolCall => one(meta.tool_call.as_ref().map(|call| &call.name)),
             Self::Tag => meta.tags.clone(),
+            Self::Namespace => vec![meta.namespace.to_string()],
         }
     }
 
@@ -140,7 +147,8 @@ impl Facet {
     /// # Errors
     ///
     /// [`Error::InvalidRequest`] for a blank value, or for a [`Facet::Kind`]
-    /// or [`Facet::Source`] value that names no kind.
+    /// or [`Facet::Source`] value that names no kind, or a
+    /// [`Facet::Namespace`] value that is not a namespace.
     pub fn narrow(self, filter: &mut MetaFilter, value: &str) -> Result<()> {
         if value.trim().is_empty() {
             return Err(Error::InvalidRequest(format!(
@@ -163,6 +171,7 @@ impl Facet {
             Self::Agent => filter.agent_id = owned,
             Self::ToolCall => filter.tool_call = owned,
             Self::Tag => filter.tags_any = vec![value.to_string()],
+            Self::Namespace => filter.reach = Some(Reach::exact(value.parse::<Namespace>()?)),
         }
         Ok(())
     }
@@ -268,6 +277,10 @@ pub struct ExplorePage {
 pub struct GetRequest {
     /// The ids; `1..=`[`MAX_GET_IDS`].
     pub ids: Vec<ItemId>,
+    /// Only items in this reach are returned; `None` reads every namespace.
+    /// An id outside the reach is left out as if it named nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reach: Option<Reach>,
 }
 
 impl GetRequest {
@@ -381,7 +394,10 @@ pub async fn get_by_listing<E: MemoryEngine + ?Sized>(
     loop {
         let page = engine
             .list(ListRequest {
-                filter: MetaFilter::default(),
+                filter: MetaFilter {
+                    reach: req.reach.clone(),
+                    ..MetaFilter::default()
+                },
                 limit: SCAN_PAGE,
                 cursor: cursor.take(),
             })
