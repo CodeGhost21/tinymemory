@@ -110,7 +110,10 @@ pub(super) async fn namespaces(ctx: &Ctx<'_>) -> Result<()> {
         ensure(
             CHECK,
             page.hits.iter().all(|hit| [&root, &a].contains(&&hit.id)),
-            || format!("a {mode:?} fetch in agent a's reach found {:?}", page.hits),
+            || {
+                let found: Vec<&ItemId> = page.hits.iter().map(|hit| &hit.id).collect();
+                format!("a {mode:?} fetch in agent a's reach found {found:?}")
+            },
         )?;
     }
 
