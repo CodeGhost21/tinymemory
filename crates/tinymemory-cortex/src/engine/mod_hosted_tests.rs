@@ -99,12 +99,14 @@ async fn the_bearer_is_resolved_on_every_request() {
     let (endpoint, state) = hosted_double().await;
     let engine =
         CortexEngine::tinyhumans(&endpoint, Arc::new(Rotating(AtomicUsize::new(0)))).unwrap();
+    // An exact reach names its one scope, so each listing is one request.
+    let filter = MetaFilter {
+        reach: Some(tinymemory_api::Reach::exact(tinymemory_api::Namespace::ROOT)),
+        ..MetaFilter::kinds([tinymemory_api::ItemKind::Learning])
+    };
     for _ in 0..3 {
         engine
-            .list(ListRequest::new(
-                MetaFilter::kinds([tinymemory_api::ItemKind::Learning]),
-                1,
-            ))
+            .list(ListRequest::new(filter.clone(), 1))
             .await
             .unwrap();
     }
