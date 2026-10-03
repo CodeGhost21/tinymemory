@@ -33,6 +33,15 @@ use crate::descriptor::{CortexWire, Route};
 use crate::error::{Error, Result};
 use crate::transport::{Attempts, fresh_idempotency_key};
 
+/// The last event of a write: what a wait for it needs.
+#[derive(Debug, Clone)]
+pub(crate) struct Written {
+    pub(crate) scope: String,
+    pub(crate) label: String,
+    pub(crate) text: String,
+    pub(crate) event_id: String,
+}
+
 /// How many times a hosted write is sent before a transient fault surfaces.
 const HOSTED_WRITE_ATTEMPTS: u32 = 3;
 
@@ -67,8 +76,18 @@ impl Log {
     /// `settle`: a bulk store settles its last item and lets the rest catch
     /// up behind it.
     pub(crate) async fn append_with(&self, requests: &[Value], settle: bool) -> Result<()> {
+        match self.write(requests).await? {
+            Some(written) => self.await_written(&written, settle).await,
+            None => Ok(()),
+        }
+    }
+
+    /// Writes `requests` (one item's events, in order) without waiting, and
+    /// names the last event so a caller can wait for it, or for a later one
+    /// in the same scope, which implies it.
+    pub(crate) async fn write(&self, requests: &[Value]) -> Result<Option<Written>> {
         let Some(last) = requests.last() else {
-            return Ok(());
+            return Ok(None);
         };
         let event_id = match self.client.wire() {
             CortexWire::Direct => self.append_direct(requests).await?,
@@ -81,10 +100,22 @@ impl Log {
             }
         };
         let (scope, text, label) = parts(last)?;
+        Ok(Some(Written {
+            scope: scope.to_string(),
+            label: label.to_string(),
+            text: text.to_string(),
+            event_id,
+        }))
+    }
+
+    /// Waits for `written` to be listed and, when `settle`, ranked.
+    pub(crate) async fn await_written(&self, written: &Written, settle: bool) -> Result<()> {
         if settle {
-            self.await_readable(scope, label, &event_id, text).await
+            self.await_readable(&written.scope, &written.label, &written.event_id, &written.text)
+                .await
         } else {
-            self.await_listed(scope, label, &event_id).await
+            self.await_listed(&written.scope, &written.label, &written.event_id)
+                .await
         }
     }
 

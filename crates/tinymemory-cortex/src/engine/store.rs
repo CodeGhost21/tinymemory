@@ -14,12 +14,13 @@
 //! forget, so a content key would make re-storing a forgotten item a silent
 //! no-op.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use tinymemory_api::{ItemId, StoreItem, StoreReceipt, validate_many};
+use tinymemory_api::{ItemId, ItemKind, StoreItem, StoreReceipt, validate_many};
 
 use super::CortexEngine;
 use crate::envelope::Envelope;
+use crate::log::Written;
 use crate::error::Result;
 
 impl CortexEngine {
@@ -28,15 +29,68 @@ impl CortexEngine {
         self.store_one(item, true).await
     }
 
-    /// `store_many`: each item listed before the next is written (so list,
-    /// get and forget see the whole batch on return), ranked recall awaited
-    /// for the last item only.
+    /// `store_many`, paying per batch rather than per item:
+    ///
+    /// - one id lookup per kind finds what the batch already holds;
+    /// - every missing event is written, in item order, without waiting;
+    /// - then one listing wait per scope, for the last event written there
+    ///   (the scope's log is ordered, so it being listed implies the earlier
+    ///   ones are), and ranked recall for the batch's final event only.
+    ///
+    /// An item repeated inside the batch is a replay of its first copy.
     pub(super) async fn store_items(&self, items: Vec<StoreItem>) -> Result<Vec<StoreReceipt>> {
         validate_many(&items)?;
-        let last = items.len() - 1;
+        let ids: Vec<String> = items.iter().map(StoreItem::fingerprint).collect();
+        let mut held: HashMap<String, HashSet<Option<u32>>> = HashMap::new();
+        for kind in ItemKind::ALL {
+            let of_kind: Vec<String> = items
+                .iter()
+                .zip(&ids)
+                .filter(|(item, _)| item.kind() == kind)
+                .map(|(_, id)| id.clone())
+                .collect();
+            if of_kind.is_empty() {
+                continue;
+            }
+            for (id, events) in self.item_events(kind, &of_kind).await? {
+                held.entry(id).or_default().extend(
+                    events
+                        .iter()
+                        .map(|decoded| decoded.envelope.turn.as_ref().map(|turn| turn.index)),
+                );
+            }
+        }
         let mut receipts = Vec::with_capacity(items.len());
-        for (index, item) in items.into_iter().enumerate() {
-            receipts.push(self.store_one(item, index == last).await?);
+        let mut written_here: HashSet<String> = HashSet::new();
+        let mut last_per_scope: Vec<Written> = Vec::new();
+        for (item, id) in items.iter().zip(ids) {
+            let present = held.get(&id);
+            let mut requests = Vec::new();
+            if !written_here.contains(&id) {
+                for envelope in Envelope::for_item(item, &id)? {
+                    let turn = envelope.turn.as_ref().map(|turn| turn.index);
+                    if present.is_some_and(|present| present.contains(&turn)) {
+                        continue;
+                    }
+                    requests.push(envelope.request(&envelope.encode()?));
+                }
+            }
+            let replayed = requests.is_empty();
+            if let Some(written) = self.log.write(&requests).await? {
+                last_per_scope.retain(|w| w.scope != written.scope);
+                last_per_scope.push(written);
+            }
+            written_here.insert(id.clone());
+            receipts.push(StoreReceipt {
+                id: ItemId::new(id),
+                replayed,
+            });
+        }
+        let final_index = last_per_scope.len().saturating_sub(1);
+        for (index, written) in last_per_scope.iter().enumerate() {
+            self.log
+                .await_written(written, index == final_index)
+                .await?;
         }
         Ok(receipts)
     }
