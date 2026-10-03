@@ -2,12 +2,23 @@
 //!
 //! # Scopes
 //!
-//! Every item lives in one scope per kind under the TinyMemory root
-//! [`ROOT_SCOPE`]: `app:tinymemory/app:documents`, `app:tinymemory/app:conversations`
-//! and `app:tinymemory/app:learnings` ([`scope_of`]). The hosted backend
-//! additionally re-roots every scope under the caller's tenant, which is
-//! invisible here. A [`tinymemory_api::MetaFilter`]'s `kinds` picks which of
-//! the three are read.
+//! Every item lives in one scope per kind under its namespace node, below the
+//! TinyMemory root [`ROOT_SCOPE`] ([`scope_path`]):
+//!
+//! ```text
+//! app:tinymemory/app:{documents,conversations,learnings}                 the root node
+//! app:tinymemory/agent:researcher/app:{documents,conversations,learnings} an agent
+//! app:tinymemory/team:acme/agent:writer/app:learnings                    a team member
+//! ```
+//!
+//! So within every node, learnings, documents and conversations are separate
+//! scopes, and CortexDB can recall, retain and erase each on its own. The
+//! namespace segments map onto CortexDB's built-in scope types (`agent`,
+//! `team`, `user`, `ws`, `project`), which every shipped deployment preset
+//! allows. The hosted backend additionally re-roots every scope under the
+//! caller's tenant, which is invisible here. A
+//! [`tinymemory_api::MetaFilter`]'s `kinds` and `reach` pick which scopes are
+//! read (see `engine::scopes`).
 //!
 //! # Events
 //!
@@ -36,7 +47,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tinymemory_api::chrono::{DateTime, Utc};
 use tinymemory_api::{
-    DocumentBody, ItemKind, LearningKind, MemoryMeta, Role, StoreItem, ToolCallRef,
+    DocumentBody, ItemKind, LearningKind, MemoryMeta, Namespace, Role, StoreItem, ToolCallRef,
 };
 
 use crate::error::{Error, Result};
@@ -49,13 +60,40 @@ pub(crate) const ROOT_SCOPE: &str = "app:tinymemory";
 /// The envelope version this crate writes and reads.
 const VERSION: u8 = 2;
 
-/// The scope items of `kind` live in.
-pub(crate) fn scope_of(kind: ItemKind) -> &'static str {
+/// The leaf segment of `kind`'s scope inside a namespace node.
+pub(crate) fn kind_leaf(kind: ItemKind) -> &'static str {
     match kind {
-        ItemKind::Document => "app:tinymemory/app:documents",
-        ItemKind::Conversation => "app:tinymemory/app:conversations",
-        ItemKind::Learning => "app:tinymemory/app:learnings",
+        ItemKind::Document => "app:documents",
+        ItemKind::Conversation => "app:conversations",
+        ItemKind::Learning => "app:learnings",
     }
+}
+
+/// The scope items of `kind` at `namespace` live in.
+pub(crate) fn scope_path(namespace: &Namespace, kind: ItemKind) -> String {
+    let mut path = String::from(ROOT_SCOPE);
+    for segment in namespace.segments() {
+        path.push('/');
+        path.push_str(&segment.to_string());
+    }
+    path.push('/');
+    path.push_str(kind_leaf(kind));
+    path
+}
+
+/// The namespace and kind of a TinyMemory scope path, wherever it is rooted
+/// (the hosted backend prefixes the caller's tenant); `None` for any other
+/// scope.
+pub(crate) fn parse_scope(path: &str) -> Option<(Namespace, ItemKind)> {
+    let mut parts = path.split('/');
+    parts.by_ref().find(|part| *part == ROOT_SCOPE)?;
+    let rest: Vec<&str> = parts.collect();
+    let (leaf, nodes) = rest.split_last()?;
+    let kind = ItemKind::ALL
+        .into_iter()
+        .find(|kind| kind_leaf(*kind) == *leaf)?;
+    let namespace = nodes.join("/").parse().ok()?;
+    Some((namespace, kind))
 }
 
 /// One event's payload: the item it belongs to and the event's share of it.
@@ -234,7 +272,7 @@ impl Envelope {
             context.insert("observed_at".to_string(), json!(at.to_rfc3339()));
         }
         json!({
-            "scope": scope_of(self.kind),
+            "scope": scope_path(&self.meta.namespace, self.kind),
             "modality": modality,
             "idempotency_key": crate::transport::fresh_idempotency_key(),
             "content": { "kind": "message", "role": role, "text": text },
