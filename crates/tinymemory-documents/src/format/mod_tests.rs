@@ -1,5 +1,7 @@
 //! Tests for document format detection.
 
+#![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
+
 use super::*;
 
 #[test]

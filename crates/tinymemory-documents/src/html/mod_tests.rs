@@ -1,5 +1,7 @@
 //! Tests for the HTML to markdown converter.
 
+#![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
+
 use super::*;
 
 #[test]
