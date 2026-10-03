@@ -36,6 +36,7 @@ fn every_hosted_route_is_under_memory_and_every_direct_one_under_v1() {
         Route::Forget,
         Route::Answer,
         Route::Health,
+        Route::Scopes,
     ];
     for route in routes {
         assert!(CortexWire::Direct.path(route).starts_with("v1/"));
