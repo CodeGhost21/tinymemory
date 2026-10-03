@@ -26,7 +26,7 @@ use crate::error::Result;
 impl CortexEngine {
     /// See the module docs.
     pub(super) async fn store_item(&self, item: StoreItem) -> Result<StoreReceipt> {
-        self.store_one(item, true).await
+        self.store_one(item).await
     }
 
     /// `store_many`, paying per batch rather than per item:
@@ -95,7 +95,7 @@ impl CortexEngine {
         Ok(receipts)
     }
 
-    async fn store_one(&self, item: StoreItem, settle: bool) -> Result<StoreReceipt> {
+    async fn store_one(&self, item: StoreItem) -> Result<StoreReceipt> {
         item.validate()?;
         let id = item.fingerprint();
         let envelopes = Envelope::for_item(&item, &id)?;
@@ -117,7 +117,7 @@ impl CortexEngine {
         }
         let replayed = requests.is_empty();
         if !replayed {
-            self.log.append_with(&requests, settle).await?;
+            self.log.append(&requests).await?;
         }
         Ok(StoreReceipt {
             id: ItemId::new(id),

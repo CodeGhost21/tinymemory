@@ -75,9 +75,9 @@ impl Log {
     /// The wait is for the listing always, and for ranked recall only when
     /// `settle`: a bulk store settles its last item and lets the rest catch
     /// up behind it.
-    pub(crate) async fn append_with(&self, requests: &[Value], settle: bool) -> Result<()> {
+    pub(crate) async fn append(&self, requests: &[Value]) -> Result<()> {
         match self.write(requests).await? {
-            Some(written) => self.await_written(&written, settle).await,
+            Some(written) => self.await_written(&written, true).await,
             None => Ok(()),
         }
     }

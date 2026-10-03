@@ -37,6 +37,8 @@ mod read;
 mod visibility;
 mod write;
 
+pub(crate) use write::Written;
+
 use std::time::Duration;
 
 use crate::transport::HttpClient;
