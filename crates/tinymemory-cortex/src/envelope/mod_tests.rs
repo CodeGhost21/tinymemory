@@ -129,3 +129,53 @@ fn observed_at_and_labels_reach_the_event_context() {
         "every write mints a fresh key"
     );
 }
+
+#[test]
+fn scopes_nest_kinds_under_their_namespace_node() {
+    let writer: Namespace = "team:acme/agent:writer".parse().unwrap();
+    assert_eq!(
+        scope_path(&Namespace::ROOT, ItemKind::Learning),
+        "app:tinymemory/app:learnings",
+        "the root keeps the original layout"
+    );
+    let path = scope_path(&writer, ItemKind::Conversation);
+    assert_eq!(
+        path,
+        "app:tinymemory/team:acme/agent:writer/app:conversations"
+    );
+    assert_eq!(
+        parse_scope(&path),
+        Some((writer.clone(), ItemKind::Conversation))
+    );
+    assert_eq!(
+        parse_scope(&format!("org:t1/{path}")),
+        Some((writer, ItemKind::Conversation)),
+        "a tenant prefix is skipped"
+    );
+    assert_eq!(
+        parse_scope("app:tinymemory/app:documents"),
+        Some((Namespace::ROOT, ItemKind::Document))
+    );
+    for other in [
+        "app:other/app:documents",
+        "app:tinymemory",
+        "app:tinymemory/agent:x",
+        "app:tinymemory/robot:x/app:documents",
+    ] {
+        assert_eq!(parse_scope(other), None, "{other}");
+    }
+}
+
+#[test]
+fn an_item_is_written_to_its_namespace_scope() {
+    let mut meta = MemoryMeta::default();
+    meta.namespace = Namespace::agent("researcher");
+    let item = StoreItem::document("notes", meta);
+    let id = item.fingerprint();
+    let envelope = Envelope::for_item(&item, &id).unwrap().remove(0);
+    let request = envelope.request(&envelope.encode().unwrap());
+    assert_eq!(
+        request["scope"],
+        "app:tinymemory/agent:researcher/app:documents"
+    );
+}
