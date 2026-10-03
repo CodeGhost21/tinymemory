@@ -32,6 +32,8 @@ sha2 = "0.10"
 [dev-dependencies]
 # The behavioural suite every engine must pass, run over both wires' doubles.
 tinymemory-conformance = { path = "../tinymemory-conformance" }
+# `tests/live_cortexdb.rs` compiles `context.md` from a live server.
+tinymemory-context = { path = "../tinymemory-context" }
 # The CortexDB and TinyHumans doubles are real HTTP servers on loopback.
 axum = "0.8"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time"] }

@@ -1343,6 +1343,7 @@ dependencies = [
  "sha2",
  "tinymemory-api",
  "tinymemory-conformance",
+ "tinymemory-context",
  "tokio",
 ]
 
