@@ -104,7 +104,8 @@ pub(super) async fn namespaces(ctx: &Ctx<'_>) -> Result<()> {
 
     if let Some(mode) = ctx.engine.descriptor().fetch_modes.first().copied() {
         let mut req = FetchRequest::new(format!("{} shared fact", ctx.run.marker), mode, 20);
-        req.filter = scoped(Reach::of(nodes.a.clone()));
+        req.filter = tagged(ctx);
+        req.filter.reach = Some(Reach::of(nodes.a.clone()));
         let page = ctx.call(CHECK, ctx.engine.fetch(req)).await?;
         ensure(
             CHECK,
@@ -151,14 +152,6 @@ fn tagged(ctx: &Ctx<'_>) -> MetaFilter {
     MetaFilter {
         tags_any: vec![TAG.to_string()],
         ..ctx.run.filter()
-    }
-}
-
-fn scoped(reach: Reach) -> MetaFilter {
-    MetaFilter {
-        reach: Some(reach),
-        tags_any: vec![TAG.to_string()],
-        ..MetaFilter::default()
     }
 }
 

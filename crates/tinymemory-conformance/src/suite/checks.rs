@@ -18,6 +18,7 @@ pub(super) async fn all(ctx: &Ctx<'_>) -> Result<()> {
     super::explore::explore(ctx).await?;
     super::explore::get(ctx).await?;
     super::bulk::store_many(ctx).await?;
+    super::namespaces::namespaces(ctx).await?;
     fetch_filters(ctx).await?;
     unsupported_modes(ctx).await?;
     empty_forget(ctx).await?;
