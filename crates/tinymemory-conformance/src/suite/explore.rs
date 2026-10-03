@@ -114,20 +114,18 @@ pub(super) async fn get(ctx: &Ctx<'_>) -> Result<()> {
         format!("asked for {wanted:?} (and one unknown id), got {got:?}")
     })?;
     for hit in &hits {
-        let listing = listed
-            .iter()
-            .find(|l| l.id == hit.id)
-            .expect("every returned id was listed");
-        ensure(
-            CHECK,
-            hit.kind == listing.kind && hit.meta == listing.meta && hit.text == listing.text,
-            || {
-                format!(
-                    "`{}` reads back differently from its listing",
-                    hit.id.as_str()
-                )
-            },
-        )?;
+        let same = listed.iter().any(|listing| {
+            listing.id == hit.id
+                && hit.kind == listing.kind
+                && hit.meta == listing.meta
+                && hit.text == listing.text
+        });
+        ensure(CHECK, same, || {
+            format!(
+                "`{}` reads back differently from its listing",
+                hit.id.as_str()
+            )
+        })?;
     }
     let refused = ctx.engine.get(GetRequest { ids: Vec::new() }).await;
     ensure(

@@ -8,18 +8,18 @@
 //! 2. `round_trip` — one item of each kind stores and lists back with the same
 //!    kind, metadata and rendered text, and paging terminates.
 //! 3. `replay` — storing an identical item again is a replay with the same id.
-//! 3a. `explore` — per-kind and per-workspace counts agree with `list`, buckets
+//! 4. `explore` — per-kind and per-workspace counts agree with `list`, buckets
 //!    are largest first, and each bucket narrows to exactly its count.
-//! 3b. `get` — the run's items read back by id in the order asked, equal to
+//! 5. `get` — the run's items read back by id in the order asked, equal to
 //!    their listing, with an unknown id left out.
-//! 4. `fetch_filters` — for every declared fetch mode, a filter on each
+//! 6. `fetch_filters` — for every declared fetch mode, a filter on each
 //!    metadata field selects exactly the item carrying it (and `list` agrees).
-//! 5. `unsupported_modes` — every undeclared fetch mode fails `Unsupported`.
-//! 6. `empty_forget` — a forget with no ids or an empty filter is refused and
+//! 7. `unsupported_modes` — every undeclared fetch mode fails `Unsupported`.
+//! 8. `empty_forget` — a forget with no ids or an empty filter is refused and
 //!    removes nothing.
-//! 7. `forget_by_id` and `forget_by_filter` — forgotten items stop listing and
+//! 9. `forget_by_id` and `forget_by_filter` — forgotten items stop listing and
 //!    are counted; others stay.
-//! 8. `recall` — an answer cites items that resolve through `list`.
+//! 10. `recall` — an answer cites items that resolve through `list`.
 //!
 //! Finally the run's items are forgotten by filter and must be gone.
 
