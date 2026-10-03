@@ -96,12 +96,13 @@ impl CortexEngine {
             _ => {
                 // Most specific node first, so its citations lead.
                 let mut ordered: Vec<&KindScope> = scopes.iter().collect();
-                let req = &req;
                 ordered.sort_by_key(|scope| std::cmp::Reverse(scope.namespace.depth()));
-                stream::iter(ordered)
-                    .map(|scope| async move {
-                        let pack = self.pack(&req, &scope.path, false).await?;
-                        Ok::<_, Error>((scope.path.clone(), pack))
+                let paths: Vec<String> = ordered.into_iter().map(|s| s.path.clone()).collect();
+                let req = &req;
+                stream::iter(paths)
+                    .map(|path| async move {
+                        let pack = self.pack(req, &path, false).await?;
+                        Ok::<_, Error>((path, pack))
                     })
                     .buffered(PACKS_AT_ONCE)
                     .try_collect()
