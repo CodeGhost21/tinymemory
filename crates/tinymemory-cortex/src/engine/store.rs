@@ -20,8 +20,8 @@ use tinymemory_api::{ItemId, ItemKind, StoreItem, StoreReceipt, validate_many};
 
 use super::CortexEngine;
 use crate::envelope::Envelope;
-use crate::log::Written;
 use crate::error::Result;
+use crate::log::Written;
 
 impl CortexEngine {
     /// See the module docs.

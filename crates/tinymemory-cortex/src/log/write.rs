@@ -70,11 +70,9 @@ fn receipt(answer: &Value) -> Result<String> {
 impl Log {
     /// Appends `requests` (one item's events, in order) and waits until the
     /// last is readable. The log is ordered, so the last event being listed
-    /// implies the earlier ones are: one wait, not one per event.
-    ///
-    /// The wait is for the listing always, and for ranked recall only when
-    /// `settle`: a bulk store settles its last item and lets the rest catch
-    /// up behind it.
+    /// implies the earlier ones are: one wait, not one per event. A bulk
+    /// store uses [`Log::write`] and [`Log::await_written`] instead, to wait
+    /// once per scope for a whole batch.
     pub(crate) async fn append(&self, requests: &[Value]) -> Result<()> {
         match self.write(requests).await? {
             Some(written) => self.await_written(&written, true).await,
@@ -111,8 +109,13 @@ impl Log {
     /// Waits for `written` to be listed and, when `settle`, ranked.
     pub(crate) async fn await_written(&self, written: &Written, settle: bool) -> Result<()> {
         if settle {
-            self.await_readable(&written.scope, &written.label, &written.event_id, &written.text)
-                .await
+            self.await_readable(
+                &written.scope,
+                &written.label,
+                &written.event_id,
+                &written.text,
+            )
+            .await
         } else {
             self.await_listed(&written.scope, &written.label, &written.event_id)
                 .await
