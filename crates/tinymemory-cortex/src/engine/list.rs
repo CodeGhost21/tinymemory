@@ -1,8 +1,10 @@
-//! List: a cursor over the admitted kind scopes' event listings.
+//! List: a cursor over the event listings of the scopes the filter reads.
 //!
-//! The scopes are read in [`ItemKind::ALL`] order, each newest first. Every
-//! raw event is decoded and kept when it is one of this crate's envelopes of
-//! the scope's kind and the full [`tinymemory_api::MetaFilter`] matches. When
+//! The scopes (each admitted kind at each namespace node in reach, see
+//! `scopes`) are read in [`ItemKind::ALL`] order and then by namespace, each
+//! newest first. Every raw event is decoded and kept when it is one of this
+//! crate's envelopes of the scope's kind and the full
+//! [`tinymemory_api::MetaFilter`] matches. When
 //! the filter has a labelled field, the listing is narrowed server-side by
 //! that one label first (see `envelope::labels`); the client-side check runs
 //! regardless, and the cursor stays the engine's.
@@ -21,12 +23,13 @@
 use std::collections::HashSet;
 
 use serde_json::Value;
-use tinymemory_api::{Hit, ItemKind, ListPage, ListRequest};
+use tinymemory_api::{Hit, ItemKind, ListPage, ListRequest, Namespace};
 
 use super::CortexEngine;
 use super::cursor::{self, ListCursor};
-use super::items::{admitted, hit, keeps};
-use crate::envelope::{Envelope, decode_event, labels, rebuild, scope_of};
+use super::items::{hit, keeps};
+use super::scopes::KindScope;
+use crate::envelope::{Envelope, decode_event, labels, parse_scope, rebuild};
 use crate::error::{Error, Result};
 use crate::log::{MAX_PAGES, PAGE_SIZE};
 
@@ -37,32 +40,31 @@ const TAG: char = 'l';
 /// returns.
 enum Pending {
     Ready(Box<Hit>),
-    Conversation(String),
+    Conversation(String, Namespace),
 }
 
 impl CortexEngine {
     /// See the module docs.
     pub(super) async fn list_page(&self, req: ListRequest) -> Result<ListPage> {
         req.validate()?;
-        let kinds = admitted(&req.filter);
-        let Some(first) = kinds.first() else {
+        let scopes = self.scopes_for(&req.filter).await?;
+        if scopes.is_empty() {
             return Ok(ListPage::default());
-        };
+        }
         let mut at = match &req.cursor {
             Some(raw) => cursor::decode::<ListCursor>(TAG, raw)?,
-            None => ListCursor::at(*first),
+            None => ListCursor::at(&scopes[0].path),
         };
+        let start = resume_at(&scopes, &mut at);
         let narrowing = labels::narrowing(&req.filter);
         let mut pending = Vec::new();
         let mut seen = HashSet::new();
         let mut pages = 0;
         let mut next = None;
-        'scopes: for (index, kind) in ItemKind::ALL.into_iter().enumerate() {
-            if index < at.scope || !kinds.contains(&kind) {
-                continue;
-            }
-            if index > at.scope {
-                at = ListCursor::at(kind);
+        'scopes: for (index, scope) in scopes.iter().enumerate().skip(start) {
+            let kind = scope.kind;
+            if index > start {
+                at = ListCursor::at(&scope.path);
             }
             loop {
                 pages += 1;
@@ -75,7 +77,7 @@ impl CortexEngine {
                 let page = self
                     .log
                     .page(
-                        scope_of(kind),
+                        &scope.path,
                         narrowing.as_deref(),
                         at.engine.as_deref(),
                         PAGE_SIZE,
@@ -94,7 +96,7 @@ impl CortexEngine {
                         if pending.len() == req.limit {
                             let exhausted = at.offset == len
                                 && page.next.is_none()
-                                && kinds.last() == Some(&kind);
+                                && index + 1 == scopes.len();
                             if !exhausted {
                                 if at.offset == len
                                     && let Some(engine) = &page.next
@@ -140,7 +142,7 @@ impl CortexEngine {
             return None;
         }
         if kind == ItemKind::Conversation {
-            return Some(Pending::Conversation(envelope.id));
+            return Some(Pending::Conversation(envelope.id, envelope.meta.namespace));
         }
         let id = envelope.id.clone();
         let item = rebuild(std::slice::from_ref::<Envelope>(&envelope))?;
@@ -150,10 +152,10 @@ impl CortexEngine {
     /// Assembles the page's conversations (one lookup for all of them) and
     /// returns the hits in listing order.
     async fn resolve(&self, pending: Vec<Pending>) -> Result<Vec<Hit>> {
-        let ids: Vec<String> = pending
+        let ids: Vec<(String, Namespace)> = pending
             .iter()
             .filter_map(|p| match p {
-                Pending::Conversation(id) => Some(id.clone()),
+                Pending::Conversation(id, namespace) => Some((id.clone(), namespace.clone())),
                 Pending::Ready(_) => None,
             })
             .collect();
@@ -162,8 +164,29 @@ impl CortexEngine {
             .into_iter()
             .filter_map(|p| match p {
                 Pending::Ready(hit) => Some(*hit),
-                Pending::Conversation(id) => conversations.get(&id).map(|item| hit(&id, item, 0.0)),
+                Pending::Conversation(id, _) => conversations.get(&id).map(|item| hit(&id, item, 0.0)),
             })
             .collect())
     }
+}
+
+/// Where in `scopes` a listing at `at` resumes. The cursor's scope is found
+/// by path; one that no longer exists resumes at the next scope in order,
+/// from its first page.
+fn resume_at(scopes: &[KindScope], at: &mut ListCursor) -> usize {
+    let Some(path) = at.scope.clone() else {
+        return 0;
+    };
+    if let Some(index) = scopes.iter().position(|scope| scope.path == path) {
+        return index;
+    }
+    *at = ListCursor::default();
+    let Some((namespace, kind)) = parse_scope(&path) else {
+        return scopes.len();
+    };
+    let gone = KindScope::new(namespace, kind);
+    scopes
+        .iter()
+        .position(|scope| *scope > gone)
+        .unwrap_or(scopes.len())
 }

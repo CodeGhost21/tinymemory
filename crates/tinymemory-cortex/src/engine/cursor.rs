@@ -6,15 +6,17 @@
 //! other.
 
 use serde::{Deserialize, Serialize};
-use tinymemory_api::ItemKind;
 
 use crate::error::{Error, Result};
 
 /// Where a listing stopped.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) struct ListCursor {
-    /// Index into [`ItemKind::ALL`] of the scope being listed.
-    pub(super) scope: usize,
+    /// The path of the scope being listed; `None` before the first. A path
+    /// rather than a position, so a scope created between two pages cannot
+    /// shift the listing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) scope: Option<String>,
     /// The engine cursor of the page being read; `None` for the first page.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) engine: Option<String>,
@@ -28,10 +30,10 @@ pub(super) struct ListCursor {
 }
 
 impl ListCursor {
-    /// The cursor at the start of `kind`'s scope.
-    pub(super) fn at(kind: ItemKind) -> Self {
+    /// The cursor at the start of the scope at `path`.
+    pub(super) fn at(path: &str) -> Self {
         Self {
-            scope: ItemKind::ALL.iter().position(|k| *k == kind).unwrap_or(0),
+            scope: Some(path.to_string()),
             ..Self::default()
         }
     }
