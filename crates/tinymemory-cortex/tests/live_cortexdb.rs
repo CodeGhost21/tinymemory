@@ -10,6 +10,9 @@
 //! through `list`, `fetch` and `recall`, compiled into `context.md`, and
 //! forgotten.
 
+// The helpers outside `#[test]` fns fail the test by panicking, like the tests.
+#![allow(clippy::expect_used)]
+
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tinymemory_api::{
