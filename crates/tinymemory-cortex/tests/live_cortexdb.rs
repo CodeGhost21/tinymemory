@@ -201,7 +201,9 @@ async fn documents_conversations_and_learnings_round_trip_into_context() {
         .expect("compile context");
     assert_eq!(context.engine, "cortexdb");
     assert!(
-        context.markdown.contains("The user prefers launch events in Lisbon."),
+        context
+            .markdown
+            .contains("The user prefers launch events in Lisbon."),
         "context.md carries the learning:\n{}",
         context.markdown
     );

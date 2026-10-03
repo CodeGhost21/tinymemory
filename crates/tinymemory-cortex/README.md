@@ -37,8 +37,8 @@ deployment admits only the scope types in its policy's `allowed_scope_types`
 source` in every shipped preset) and refuses any other with `422
 UNREGISTERED_SCOPE_TYPE`, so a private type such as `tm:` would need every
 operator to register it first. `integration/cortexdb/` runs the engine against
-a real server; `CORTEXDB_VERSION=v0.10.4 ./scripts/cortexdb-live.sh` checks a
-newer release.
+a real server (v0.10.4 by default; `CORTEXDB_VERSION=v0.9.9` checks the older
+release).
 
 **Events.** A document or learning is one event; a conversation is one event
 per turn, appended in order. Each event's `content.text` is a JSON envelope:
