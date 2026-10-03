@@ -12,7 +12,8 @@
 //! plus [`MemoryEngine::list`] and [`MemoryEngine::forget`] to page through
 //! and remove what was stored, and [`MemoryEngine::explore`] and
 //! [`MemoryEngine::get`] for explorers: counts of stored items per metadata
-//! [`Facet`], and items read whole by id ([`explore`]). An engine advertises what it offers through its
+//! [`Facet`], and items read whole by id ([`explore`]).
+//! An engine advertises what it offers through its
 //! [`EngineDescriptor`]; a fetch mode it does not list fails with
 //! [`Error::Unsupported`].
 //!
