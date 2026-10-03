@@ -7,7 +7,7 @@ against the server and not only against the HTTP doubles in
 
 ```sh
 ./scripts/cortexdb-live.sh                          # boot, test, tear down
-KEEP=1 ./scripts/cortexdb-live.sh                   # leave it running on :3141
+KEEP=1 ./scripts/cortexdb-live.sh                   # leave it running on :3142
 CORTEXDB_VERSION=v0.9.9 ./scripts/cortexdb-live.sh  # an older server release
 ```
 
@@ -22,6 +22,12 @@ docker compose -f integration/cortexdb/docker-compose.yml down --volumes
 
 Without `TINYMEMORY_LIVE_CORTEXDB_URL` the live tests skip, so a plain
 `cargo test` never needs Docker.
+
+The script runs its own Compose project (`tinymemory-cortexdb-test`) on port
+3142 by default and removes it, volumes included, when it ends. It refuses to
+start when something already answers on its port, so it never replaces a
+server you started by hand (which uses the compose file's own project on
+3141).
 
 ## What runs
 
