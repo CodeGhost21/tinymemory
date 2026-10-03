@@ -96,6 +96,7 @@ impl CortexEngine {
             _ => {
                 // Most specific node first, so its citations lead.
                 let mut ordered: Vec<&KindScope> = scopes.iter().collect();
+                let req = &req;
                 ordered.sort_by_key(|scope| std::cmp::Reverse(scope.namespace.depth()));
                 stream::iter(ordered)
                     .map(|scope| async move {
