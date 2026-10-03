@@ -49,6 +49,8 @@ pub mod format;
 pub mod html;
 pub mod item;
 pub mod language;
+#[cfg(feature = "office")]
+pub mod office;
 
 pub use convert::{
     ConvertedDocument, ConverterChain, DocumentConverter, MAX_DOCUMENT_BYTES, NativeConverter,
@@ -58,3 +60,5 @@ pub use error::{Error, Result};
 pub use format::DocumentFormat;
 pub use item::{converted_item, document_item};
 pub use language::language_for_path;
+#[cfg(feature = "office")]
+pub use office::OfficeConverter;

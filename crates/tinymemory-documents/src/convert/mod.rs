@@ -221,6 +221,8 @@ impl ConverterChain {
             DocumentFormat::Code,
             DocumentFormat::Pdf,
             DocumentFormat::Docx,
+            DocumentFormat::Xlsx,
+            DocumentFormat::Pptx,
         ]
         .into_iter()
         .filter(|format| self.supports(*format))
