@@ -168,8 +168,10 @@ fn scopes_nest_kinds_under_their_namespace_node() {
 
 #[test]
 fn an_item_is_written_to_its_namespace_scope() {
-    let mut meta = MemoryMeta::default();
-    meta.namespace = Namespace::agent("researcher");
+    let meta = MemoryMeta {
+        namespace: Namespace::agent("researcher"),
+        ..MemoryMeta::default()
+    };
     let item = StoreItem::document("notes", meta);
     let id = item.fingerprint();
     let envelope = Envelope::for_item(&item, &id).unwrap().remove(0);
