@@ -46,6 +46,10 @@ enum Fault {
     GetUnordered,
     /// Returns bulk receipts in reverse order.
     StoreManyUnordered,
+    /// Lists every namespace whatever the reach.
+    ListIgnoresReach,
+    /// Reads ids by `get` whatever the reach.
+    GetIgnoresReach,
 }
 
 struct Faulty {
@@ -117,7 +121,10 @@ impl MemoryEngine for Faulty {
         self.inner.forget(target).await
     }
 
-    async fn list(&self, req: ListRequest) -> Result<ListPage> {
+    async fn list(&self, mut req: ListRequest) -> Result<ListPage> {
+        if matches!(self.fault, Fault::ListIgnoresReach) {
+            req.filter.reach = None;
+        }
         self.inner.list(req).await
     }
 
@@ -139,7 +146,10 @@ impl MemoryEngine for Faulty {
         Ok(receipts)
     }
 
-    async fn get(&self, req: GetRequest) -> Result<Vec<Hit>> {
+    async fn get(&self, mut req: GetRequest) -> Result<Vec<Hit>> {
+        if matches!(self.fault, Fault::GetIgnoresReach) {
+            req.reach = None;
+        }
         let mut hits = self.inner.get(req).await?;
         if matches!(self.fault, Fault::GetUnordered) {
             hits.sort_by(|a, b| a.id.cmp(&b.id));
@@ -163,6 +173,8 @@ async fn each_fault_is_caught_by_its_check() {
         (Fault::UndercountExplore, "explore"),
         (Fault::GetUnordered, "get"),
         (Fault::StoreManyUnordered, "store_many"),
+        (Fault::ListIgnoresReach, "namespaces"),
+        (Fault::GetIgnoresReach, "namespaces"),
     ];
     for (fault, expected) in cases {
         let error = run(&Faulty::new(fault))
