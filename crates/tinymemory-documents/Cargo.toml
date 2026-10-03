@@ -30,10 +30,11 @@ thiserror = "2"
 # `.docx` and `.pptx`, which are zip archives of XML: walking them directly is
 # smaller than a document library. `.xlsx` is not — shared-string tables and
 # cell typing make hand-parsing it a liability — so `calamine` reads that one.
-# `zip` is the major `calamine` already links, so the graph carries one copy.
+# `zip` and `quick-xml` are the versions `calamine` already links, so the
+# graph carries one copy of each.
 pdf-extract = { version = "0.12", optional = true }
 calamine = { version = "0.36", optional = true }
-quick-xml = { version = "0.38", optional = true }
+quick-xml = { version = "0.41", optional = true }
 zip = { version = "8", default-features = false, features = ["deflate"], optional = true }
 
 [dev-dependencies]
