@@ -44,7 +44,7 @@ use crate::error::{Error, Result};
 pub(crate) use rebuild::{Decoded, decode_event, rebuild};
 
 /// The TinyMemory root every kind scope sits under.
-pub(crate) const ROOT_SCOPE: &str = "tm:memory";
+pub(crate) const ROOT_SCOPE: &str = "app:tinymemory";
 
 /// The envelope version this crate writes and reads.
 const VERSION: u8 = 2;
@@ -52,9 +52,9 @@ const VERSION: u8 = 2;
 /// The scope items of `kind` live in.
 pub(crate) fn scope_of(kind: ItemKind) -> &'static str {
     match kind {
-        ItemKind::Document => "tm:memory/tm:documents",
-        ItemKind::Conversation => "tm:memory/tm:conversations",
-        ItemKind::Learning => "tm:memory/tm:learnings",
+        ItemKind::Document => "app:tinymemory/app:documents",
+        ItemKind::Conversation => "app:tinymemory/app:conversations",
+        ItemKind::Learning => "app:tinymemory/app:learnings",
     }
 }
 
