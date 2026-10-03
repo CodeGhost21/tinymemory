@@ -71,3 +71,7 @@ impl CortexEngine {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "store_tests.rs"]
+mod tests;

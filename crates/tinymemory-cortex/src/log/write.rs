@@ -62,12 +62,10 @@ impl Log {
     /// Appends `requests` (one item's events, in order) and waits until the
     /// last is readable. The log is ordered, so the last event being listed
     /// implies the earlier ones are: one wait, not one per event.
-    pub(crate) async fn append(&self, requests: &[Value]) -> Result<()> {
-        self.append_with(requests, true).await
-    }
-
-    /// [`Log::append`], waiting for ranked recall only when `settle`: a bulk
-    /// store settles its last item and lets the rest catch up behind it.
+    ///
+    /// The wait is for the listing always, and for ranked recall only when
+    /// `settle`: a bulk store settles its last item and lets the rest catch
+    /// up behind it.
     pub(crate) async fn append_with(&self, requests: &[Value], settle: bool) -> Result<()> {
         let Some(last) = requests.last() else {
             return Ok(());
