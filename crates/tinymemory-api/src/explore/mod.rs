@@ -330,7 +330,9 @@ pub async fn explore_by_listing<E: MemoryEngine + ?Sized>(
             Some(next) => cursor = Some(next),
         }
     };
-    Ok(page_of(req.facet, counts, req.limit, total, missing, truncated))
+    Ok(page_of(
+        req.facet, counts, req.limit, total, missing, truncated,
+    ))
 }
 
 /// Builds an [`ExplorePage`] from per-value counts: largest first, ties by

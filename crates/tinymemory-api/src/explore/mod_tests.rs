@@ -222,7 +222,9 @@ fn get_ids_are_checked() {
     };
     let none = GetRequest { ids: Vec::new() };
     let many = GetRequest {
-        ids: (0..=MAX_GET_IDS).map(|i| ItemId::new(i.to_string())).collect(),
+        ids: (0..=MAX_GET_IDS)
+            .map(|i| ItemId::new(i.to_string()))
+            .collect(),
     };
     for req in [blank, none, many] {
         assert!(matches!(req.validate(), Err(Error::InvalidRequest(_))));
@@ -256,7 +258,11 @@ async fn explore_counts_every_page_largest_first() {
     );
     assert_eq!((page.total, page.missing, page.more_buckets), (5, 0, 0));
     assert!(!page.truncated);
-    assert_eq!(engine.pages.load(Ordering::SeqCst), 3, "five items, two a page");
+    assert_eq!(
+        engine.pages.load(Ordering::SeqCst),
+        3,
+        "five items, two a page"
+    );
 }
 
 #[tokio::test]
