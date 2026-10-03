@@ -1,9 +1,10 @@
 //! Helpers every operation shares: which kinds a filter admits, finding an
 //! item's events by its label, and turning a rebuilt item into a `Hit`.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
-use tinymemory_api::{Hit, ItemId, ItemKind, MetaFilter, StoreItem};
+use tinymemory_api::explore::in_request_order;
+use tinymemory_api::{GetRequest, Hit, ItemId, ItemKind, MetaFilter, StoreItem};
 
 use super::CortexEngine;
 use crate::envelope::{Decoded, Envelope, decode_event, labels, rebuild, scope_of};
@@ -61,6 +62,23 @@ impl CortexEngine {
             }
         }
         Ok(grouped)
+    }
+
+    /// `get`: every named item, rebuilt from its events in each kind's scope
+    /// (an id names one item, so at most one kind holds it).
+    pub(super) async fn get_items(&self, req: GetRequest) -> Result<Vec<Hit>> {
+        req.validate()?;
+        let ids: Vec<String> = req.ids.iter().map(|id| id.as_str().to_string()).collect();
+        let mut found = BTreeMap::new();
+        for kind in ItemKind::ALL {
+            for (id, events) in self.item_events(kind, &ids).await? {
+                let envelopes: Vec<Envelope> = events.into_iter().map(|d| d.envelope).collect();
+                if let Some(item) = rebuild(&envelopes) {
+                    found.insert(ItemId::new(id.clone()), hit(&id, &item, 0.0));
+                }
+            }
+        }
+        Ok(in_request_order(&req.ids, found))
     }
 
     /// The whole conversations named by `ids`, rebuilt from all their turns.

@@ -165,6 +165,11 @@ impl MemoryEngine for CortexEngine {
     async fn list(&self, req: ListRequest) -> Result<ListPage> {
         self.list_page(req).await
     }
+
+    /// By the items' id labels, one lookup per kind, rather than a scan.
+    async fn get(&self, req: GetRequest) -> Result<Vec<Hit>> {
+        self.get_items(req).await
+    }
 }
 
 #[cfg(test)]
