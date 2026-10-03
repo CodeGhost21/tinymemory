@@ -40,6 +40,13 @@ operator to register it first. `integration/cortexdb/` runs the engine against
 a real server (v0.10.4 by default; `CORTEXDB_VERSION=v0.9.9` checks the older
 release).
 
+**Actor.** On the direct wire every request also carries `X-Cortex-Actor`,
+the caller `GET v1/auth/whoami` reports for the key (learned once per client,
+re-learned after a rejected credential). The CortexDB cloud mints per-account
+tokens and refuses a request without it (`401 ACTOR_MISMATCH`); a static
+operator key is served as `user:local`; a server with no `whoami` route gets
+no header. The hosted (TinyHumans) wire names the actor itself.
+
 **Events.** A document or learning is one event; a conversation is one event
 per turn, appended in order. Each event's `content.text` is a JSON envelope:
 
