@@ -1,7 +1,8 @@
 //! Store: replay detection, then the item's missing events, then the wait.
 //!
 //! The item id is the item's fingerprint, so the engine first looks up the
-//! events already carrying that id's label in the kind's scope:
+//! events already carrying that id's label in the item's scope (its kind at
+//! its namespace node):
 //!
 //! - every event present (the whole document, learning, or every turn) —
 //!   a replay: nothing is written and the receipt says so;
@@ -14,11 +15,12 @@
 //! forget, so a content key would make re-storing a forgotten item a silent
 //! no-op.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
-use tinymemory_api::{ItemId, ItemKind, StoreItem, StoreReceipt, validate_many};
+use tinymemory_api::{ItemId, StoreItem, StoreReceipt, validate_many};
 
 use super::CortexEngine;
+use super::scopes::KindScope;
 use crate::envelope::Envelope;
 use crate::error::Result;
 use crate::log::Written;
@@ -31,7 +33,8 @@ impl CortexEngine {
 
     /// `store_many`, paying per batch rather than per item:
     ///
-    /// - one id lookup per kind finds what the batch already holds;
+    /// - one id lookup per scope (kind and namespace) finds what the batch
+    ///   already holds;
     /// - every missing event is written, in item order, without waiting;
     /// - then one listing wait per scope, for the last event written there
     ///   (the scope's log is ordered, so it being listed implies the earlier
@@ -42,17 +45,15 @@ impl CortexEngine {
         validate_many(&items)?;
         let ids: Vec<String> = items.iter().map(StoreItem::fingerprint).collect();
         let mut held: HashMap<String, HashSet<Option<u32>>> = HashMap::new();
-        for kind in ItemKind::ALL {
-            let of_kind: Vec<String> = items
-                .iter()
-                .zip(&ids)
-                .filter(|(item, _)| item.kind() == kind)
-                .map(|(_, id)| id.clone())
-                .collect();
-            if of_kind.is_empty() {
-                continue;
-            }
-            for (id, events) in self.item_events(kind, &of_kind).await? {
+        let mut by_scope: BTreeMap<KindScope, Vec<String>> = BTreeMap::new();
+        for (item, id) in items.iter().zip(&ids) {
+            by_scope
+                .entry(KindScope::new(item.meta().namespace.clone(), item.kind()))
+                .or_default()
+                .push(id.clone());
+        }
+        for (scope, of_scope) in &by_scope {
+            for (id, events) in self.item_events(scope, of_scope).await? {
                 held.entry(id).or_default().extend(
                     events
                         .iter()
@@ -99,8 +100,9 @@ impl CortexEngine {
         item.validate()?;
         let id = item.fingerprint();
         let envelopes = Envelope::for_item(&item, &id)?;
+        let scope = KindScope::new(item.meta().namespace.clone(), item.kind());
         let held = self
-            .item_events(item.kind(), std::slice::from_ref(&id))
+            .item_events(&scope, std::slice::from_ref(&id))
             .await?
             .remove(&id)
             .unwrap_or_default();

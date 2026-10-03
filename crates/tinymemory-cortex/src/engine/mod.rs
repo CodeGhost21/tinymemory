@@ -16,6 +16,7 @@ mod forget;
 mod items;
 mod list;
 mod recall;
+mod scopes;
 mod store;
 
 use std::sync::Arc;
