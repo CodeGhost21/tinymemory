@@ -95,7 +95,8 @@ fn fingerprints_ignore_when_an_item_was_observed() {
         StoreItem::learning("tea", LearningKind::Preference, 0.9, MemoryMeta::default());
     let mut retry = first.clone();
     first.meta_mut().observed_at = Some(chrono::DateTime::UNIX_EPOCH);
-    retry.meta_mut().observed_at = Some(chrono::Utc::now());
+    retry.meta_mut().observed_at =
+        Some(chrono::DateTime::UNIX_EPOCH + chrono::Duration::seconds(1));
     assert_eq!(first.fingerprint(), retry.fingerprint());
     retry.meta_mut().thread_id = Some("t".into());
     assert_ne!(
