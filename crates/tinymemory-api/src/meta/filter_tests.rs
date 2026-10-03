@@ -6,6 +6,7 @@ use super::*;
 
 fn meta() -> MemoryMeta {
     MemoryMeta {
+        namespace: "team:t/agent:a1".parse().unwrap(),
         workspace: Some("/ws".into()),
         folder: Some("/ws/src".into()),
         file_path: Some("/ws/src/lib.rs".into()),
@@ -222,4 +223,23 @@ fn the_window_is_half_open_and_excludes_undated_items() {
     };
     assert!(!exclusive.matches(ItemKind::Document, &meta()));
     assert!(!inclusive.matches(ItemKind::Document, &MemoryMeta::default()));
+}
+
+#[test]
+fn reach_admits_own_node_and_ancestors_never_a_sibling() {
+    let reach = |at: &str| MetaFilter {
+        reach: Some(crate::Reach::of(at.parse().unwrap())),
+        ..MetaFilter::default()
+    };
+    assert!(reach("team:t/agent:a1").matches(ItemKind::Learning, &meta()));
+    assert!(
+        !reach("team:t").matches(ItemKind::Learning, &meta()),
+        "a team does not read its members"
+    );
+    assert!(!reach("team:t/agent:a2").matches(ItemKind::Learning, &meta()));
+    assert!(
+        reach("team:t/agent:a2").matches(ItemKind::Learning, &MemoryMeta::default()),
+        "root memory is shared"
+    );
+    assert!(!reach("team:t").is_empty(), "a reach constrains a forget");
 }
