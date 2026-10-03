@@ -59,6 +59,8 @@ pub trait MemoryEngine: Send + Sync {
     // Explorers; both have listing-based defaults (see "Explore and get").
     async fn explore(&self, req: ExploreRequest) -> Result<ExplorePage>;
     async fn get(&self, req: GetRequest) -> Result<Vec<Hit>>;
+    // Bulk ingestion; default stores one at a time (see "Bulk store").
+    async fn store_many(&self, items: Vec<StoreItem>) -> Result<Vec<StoreReceipt>>;
 }
 ```
 
@@ -167,6 +169,22 @@ pub struct GetRequest { pub ids: Vec<ItemId> /* 1..=200 */ }
   bound. `get_by_listing` pages until every id is found. An engine overrides
   either when it can do better: CortexDB looks ids up by their labels.
 
+### Bulk store
+
+`store_many(items)` (1 to `MAX_STORE_MANY` = 100 items) is for imports,
+backfills and syncs. Receipts come back in item order; an item repeated in the
+batch is a replay of its first copy. Every item is readable through `list`,
+`get` and `forget` on return, as with `store`; ranked `fetch`/`recall` may lag
+for all but the last. On an error the earlier items are stored, and storing
+them again is a replay.
+
+CortexDB pays per batch, not per item: one id lookup per kind for replay
+detection, all missing events written without waiting, then one listing wait
+per scope for the last event written there (a scope's log is indexed in
+order), and the ranked-recall wait for the final event only. Its event
+listing slows as a scope grows, so per-item waits made a 5,000-item import
+take hours.
+
 ### Descriptor and health
 
 ```rust
@@ -253,6 +271,8 @@ section, persisted by the host) makes import resumable. Behind `legacy-import`.
 - `explore` counts agreeing with `list` per kind and per workspace, and each
   bucket narrowing to exactly its count;
 - `get` returning listed items by id, in request order, unknown ids left out;
+- `store_many` storing in order, listing every item on return, replaying a
+  repeated batch, and refusing an empty one;
 - fetch filtering by every meta field;
 - forget by id and by filter;
 - refusing an empty filter;
