@@ -1,3 +1,6 @@
+//! Namespace paths, sanitizing and reach.
+
+
 use super::*;
 
 fn ns(value: &str) -> Namespace {

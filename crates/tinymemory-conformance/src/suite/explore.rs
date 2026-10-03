@@ -103,7 +103,7 @@ pub(super) async fn get(ctx: &Ctx<'_>) -> Result<()> {
         ItemId::new(format!("{}-missing", ctx.run.marker)),
     );
     let hits = ctx
-        .call(CHECK, ctx.engine.get(GetRequest { ids: ids.clone() }))
+        .call(CHECK, ctx.engine.get(GetRequest { ids: ids.clone(), reach: None }))
         .await?;
     let wanted: Vec<&ItemId> = ids
         .iter()
@@ -127,7 +127,7 @@ pub(super) async fn get(ctx: &Ctx<'_>) -> Result<()> {
             )
         })?;
     }
-    let refused = ctx.engine.get(GetRequest { ids: Vec::new() }).await;
+    let refused = ctx.engine.get(GetRequest { ids: Vec::new(), reach: None }).await;
     ensure(
         CHECK,
         matches!(refused, Err(ApiError::InvalidRequest(_))),

@@ -220,7 +220,7 @@ fn get_ids_are_checked() {
     let blank = GetRequest {
         ids: vec![ItemId::new(" ")],
     };
-    let none = GetRequest { ids: Vec::new() };
+    let none = GetRequest { ids: Vec::new(), reach: None };
     let many = GetRequest {
         ids: (0..=MAX_GET_IDS)
             .map(|i| ItemId::new(i.to_string()))

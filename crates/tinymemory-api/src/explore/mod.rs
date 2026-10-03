@@ -23,7 +23,7 @@ use crate::engine::MemoryEngine;
 use crate::error::{Error, Result};
 use crate::item::{ItemId, ItemKind};
 use crate::meta::{MemoryMeta, MetaFilter, SourceKind};
-use crate::namespace::{Namespace, ROOT_LABEL, Reach};
+use crate::namespace::{Namespace, Reach};
 use crate::query::{Hit, ListRequest};
 
 /// Most buckets one [`ExplorePage`] may return.
@@ -71,7 +71,8 @@ pub enum Facet {
     ToolCall,
     /// One of `meta.tags`; an item with several tags counts in each.
     Tag,
-    /// `meta.namespace`: the memory node, [`ROOT_LABEL`] for the root.
+    /// `meta.namespace`: the memory node, [`crate::namespace::ROOT_LABEL`] for
+    /// the root.
     /// Narrowing reads exactly that node.
     Namespace,
 }
