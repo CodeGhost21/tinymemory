@@ -23,8 +23,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use tinymemory_api::{
-    EngineDescriptor, EngineHealth, FetchPage, FetchRequest, ForgetReport, ForgetTarget, ListPage,
-    ListRequest, MemoryEngine, RecallAnswer, RecallRequest, StoreItem, StoreReceipt,
+    EngineDescriptor, EngineHealth, FetchPage, FetchRequest, ForgetReport, ForgetTarget,
+    GetRequest, Hit, ListPage, ListRequest, MemoryEngine, RecallAnswer, RecallRequest, StoreItem,
+    StoreReceipt,
 };
 
 use crate::credential::{BearerSource, CortexCredential};
