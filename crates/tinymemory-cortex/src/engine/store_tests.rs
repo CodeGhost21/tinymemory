@@ -61,3 +61,33 @@ async fn an_empty_or_invalid_batch_is_refused() {
         assert!(engine.store_many(vec![doc("   ")]).await.is_err());
     }
 }
+
+#[tokio::test]
+async fn a_repeat_inside_a_batch_and_mixed_kinds_are_handled() {
+    use tinymemory_api::LearningKind;
+    for (engine, _state) in both().await {
+        let wire = engine.wire();
+        let learning = StoreItem::learning(
+            "prefers tea",
+            LearningKind::Preference,
+            0.9,
+            MemoryMeta::default(),
+        );
+        let receipts = engine
+            .store_many(vec![doc("bulk doc"), learning, doc("bulk doc")])
+            .await
+            .unwrap();
+        let replayed: Vec<bool> = receipts.iter().map(|r| r.replayed).collect();
+        assert_eq!(replayed, [false, false, true], "{wire:?}");
+        assert_eq!(receipts[0].id, receipts[2].id);
+        let listed = engine
+            .list(ListRequest::new(MetaFilter::default(), 10))
+            .await
+            .unwrap();
+        assert_eq!(
+            listed.items.len(),
+            2,
+            "{wire:?}: the repeat was not written twice"
+        );
+    }
+}
