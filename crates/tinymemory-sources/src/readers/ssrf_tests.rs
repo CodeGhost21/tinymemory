@@ -209,3 +209,17 @@ async fn capped_body_reader_accepts_small_streams_and_enforces_both_size_paths()
 fn client_builder_installs_the_hardened_policy() {
     build_client().expect("hardened HTTP client builds");
 }
+
+#[test]
+fn ipv4_compatible_ipv6_addresses_are_judged_by_their_ipv4_part() {
+    // `::127.0.0.1` is loopback written the deprecated long way, and
+    // `::169.254.169.254` is the metadata service; neither is `to_ipv4_mapped`.
+    for blocked in ["::127.0.0.1", "::169.254.169.254", "::10.0.0.1", "::192.168.1.1"] {
+        let ip: std::net::IpAddr = blocked.parse().unwrap();
+        assert!(!is_public_ip(ip), "{blocked} must not read as public");
+        let url = reqwest::Url::parse(&format!("http://[{blocked}]/")).unwrap();
+        assert!(!is_url_allowed(&url), "{blocked} must be refused as a fetch target");
+    }
+    let public: std::net::IpAddr = "::93.184.216.34".parse().unwrap();
+    assert!(is_public_ip(public));
+}

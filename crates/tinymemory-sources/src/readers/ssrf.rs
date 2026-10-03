@@ -164,6 +164,13 @@ fn is_public_ipv6(ip: Ipv6Addr) -> bool {
     if let Some(v4) = ip.to_ipv4_mapped() {
         return is_public_ipv4(v4);
     }
+    // The deprecated IPv4-compatible form (`::a.b.c.d`) carries an IPv4
+    // address too, and `to_ipv4_mapped` answers `None` for it — so without
+    // this, `::127.0.0.1` and `::169.254.169.254` read as public. `::` and
+    // `::1` are judged as themselves above, before this reading applies.
+    if o[..12].iter().all(|byte| *byte == 0) {
+        return is_public_ipv4(Ipv4Addr::new(o[12], o[13], o[14], o[15]));
+    }
     true
 }
 
