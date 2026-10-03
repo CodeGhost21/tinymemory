@@ -26,6 +26,9 @@ thiserror = "2"
 [dev-dependencies]
 # The converter and item paths are async.
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
+# The format and office tests build their OOXML fixtures in code, so each test
+# says what it is asserting about instead of pointing at an opaque binary.
+zip = { version = "8", default-features = false, features = ["deflate"] }
 
 [lints.rust]
 unsafe_code = "forbid"
