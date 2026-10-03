@@ -126,7 +126,10 @@ fn pdf(content: &str) -> Vec<u8> {
         out.push_str(&format!("{} 0 obj\n{object}\nendobj\n", index + 1));
     }
     let xref = out.len();
-    out.push_str(&format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1));
+    out.push_str(&format!(
+        "xref\n0 {}\n0000000000 65535 f \n",
+        objects.len() + 1
+    ));
     for offset in offsets {
         out.push_str(&format!("{offset:010} 00000 n \n"));
     }
@@ -217,10 +220,7 @@ async fn a_small_spreadsheet_yields_one_line_per_row() {
            <row r="2"><c r="A2"><v>2</v></c><c r="B2"><v>beta</v></c></row>"#,
     );
     let converted = convert("ledger.xlsx", bytes).await.unwrap();
-    assert_eq!(
-        converted.markdown,
-        "Sheet1 | 1 | alpha\nSheet1 | 2 | beta"
-    );
+    assert_eq!(converted.markdown, "Sheet1 | 1 | alpha\nSheet1 | 2 | beta");
     assert_eq!(converted.format, DocumentFormat::Xlsx);
 }
 
@@ -244,7 +244,10 @@ async fn an_overexpanding_document_is_refused_not_allocated() {
     // the limit — exactly the shape of a crafted bomb.
     let zeroes = "\0".repeat(MAX_DECOMPRESSED_BYTES as usize + 1);
     let bytes = package(&[("word/document.xml", &zeroes)]);
-    assert!(bytes.len() < MAX_DOCUMENT_BYTES, "the fixture must pass intake's own cap");
+    assert!(
+        bytes.len() < MAX_DOCUMENT_BYTES,
+        "the fixture must pass intake's own cap"
+    );
     let reason = refusal("bomb.docx", bytes).await;
     assert!(reason.contains("expands"), "{reason}");
 }
@@ -287,10 +290,7 @@ async fn a_malformed_pdf_is_an_error_not_a_crash() {
 #[tokio::test]
 async fn a_docx_that_is_not_an_archive_is_an_error() {
     let error = OfficeConverter
-        .convert(
-            &RawDocument::new(b"plain words".to_vec())
-                .with_mime(DocumentFormat::Docx.mime()),
-        )
+        .convert(&RawDocument::new(b"plain words".to_vec()).with_mime(DocumentFormat::Docx.mime()))
         .await
         .unwrap_err();
     assert!(matches!(error, MemoryError::Invalid(_)), "{error:?}");

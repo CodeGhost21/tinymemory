@@ -9,8 +9,8 @@ fn archive(entries: &[&str], comment: &str) -> Vec<u8> {
 
     let mut buffer = std::io::Cursor::new(Vec::new());
     let mut writer = zip::ZipWriter::new(&mut buffer);
-    let options = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Stored);
+    let options =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
     for entry in entries {
         writer.start_file(*entry, options).unwrap();
         writer.write_all(b"<x/>").unwrap();
@@ -25,7 +25,10 @@ fn every_entry_name_is_read_in_directory_order() {
     let bytes = archive(&["[Content_Types].xml", "xl/workbook.xml"], "");
     assert_eq!(
         entry_names(&bytes).unwrap(),
-        vec![b"[Content_Types].xml".as_slice(), b"xl/workbook.xml".as_slice()]
+        vec![
+            b"[Content_Types].xml".as_slice(),
+            b"xl/workbook.xml".as_slice()
+        ]
     );
 }
 

@@ -309,7 +309,10 @@ fn legacy_binary_office_formats_are_not_claimed_as_open_xml() {
     assert_eq!(DocumentFormat::from_filename("budget.xls"), None);
     assert_eq!(DocumentFormat::from_filename("deck.ppt"), None);
     assert_eq!(DocumentFormat::from_mime("application/vnd.ms-excel"), None);
-    assert_eq!(DocumentFormat::from_mime("application/vnd.ms-powerpoint"), None);
+    assert_eq!(
+        DocumentFormat::from_mime("application/vnd.ms-powerpoint"),
+        None
+    );
 }
 
 #[test]
@@ -317,7 +320,11 @@ fn an_unlabelled_workbook_is_told_apart_by_its_parts() {
     // A browser that cannot place the file sends octet-stream and, from a
     // folder drop, sometimes no usable name: the archive's own part names are
     // the only evidence left, and they cannot be wrong.
-    let workbook = archive(&["[Content_Types].xml", "xl/workbook.xml", "xl/worksheets/sheet1.xml"]);
+    let workbook = archive(&[
+        "[Content_Types].xml",
+        "xl/workbook.xml",
+        "xl/worksheets/sheet1.xml",
+    ]);
     assert_eq!(
         DocumentFormat::sniff(&workbook, None, Some("application/octet-stream")),
         DocumentFormat::Xlsx
@@ -326,14 +333,24 @@ fn an_unlabelled_workbook_is_told_apart_by_its_parts() {
 
 #[test]
 fn an_unlabelled_deck_is_told_apart_by_its_parts() {
-    let deck = archive(&["[Content_Types].xml", "ppt/presentation.xml", "ppt/slides/slide1.xml"]);
-    assert_eq!(DocumentFormat::sniff(&deck, None, None), DocumentFormat::Pptx);
+    let deck = archive(&[
+        "[Content_Types].xml",
+        "ppt/presentation.xml",
+        "ppt/slides/slide1.xml",
+    ]);
+    assert_eq!(
+        DocumentFormat::sniff(&deck, None, None),
+        DocumentFormat::Pptx
+    );
 }
 
 #[test]
 fn an_unlabelled_word_document_is_told_apart_by_its_parts() {
     let document = archive(&["[Content_Types].xml", "word/document.xml"]);
-    assert_eq!(DocumentFormat::sniff(&document, None, None), DocumentFormat::Docx);
+    assert_eq!(
+        DocumentFormat::sniff(&document, None, None),
+        DocumentFormat::Docx
+    );
 }
 
 #[test]

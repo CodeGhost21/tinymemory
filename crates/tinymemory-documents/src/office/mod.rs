@@ -57,9 +57,9 @@ mod xlsx;
 use async_trait::async_trait;
 use tinymemory_api::error::MemoryError;
 
-use crate::convert::{check_size, ConvertedDocument, DocumentConverter, RawDocument};
 #[cfg(test)]
 use crate::convert::MAX_DOCUMENT_BYTES;
+use crate::convert::{check_size, ConvertedDocument, DocumentConverter, RawDocument};
 use crate::error::Result;
 use crate::format::DocumentFormat;
 
@@ -125,7 +125,10 @@ impl DocumentConverter for OfficeConverter {
     fn supports(&self, format: DocumentFormat) -> bool {
         matches!(
             format,
-            DocumentFormat::Pdf | DocumentFormat::Docx | DocumentFormat::Xlsx | DocumentFormat::Pptx
+            DocumentFormat::Pdf
+                | DocumentFormat::Docx
+                | DocumentFormat::Xlsx
+                | DocumentFormat::Pptx
         )
     }
 

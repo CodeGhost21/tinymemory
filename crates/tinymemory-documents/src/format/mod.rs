@@ -56,7 +56,9 @@ impl DocumentFormat {
             Self::Pdf => "application/pdf",
             Self::Docx => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             Self::Xlsx => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            Self::Pptx => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            Self::Pptx => {
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            }
             Self::Unknown => "application/octet-stream",
         }
     }
@@ -115,7 +117,11 @@ impl DocumentFormat {
             // container, and a label naming anything else is simply wrong.
             return ooxml::kind(bytes)
                 .or_else(|| mime.and_then(Self::from_mime).filter(|f| f.is_ooxml()))
-                .or_else(|| filename.and_then(Self::from_filename).filter(|f| f.is_ooxml()))
+                .or_else(|| {
+                    filename
+                        .and_then(Self::from_filename)
+                        .filter(|f| f.is_ooxml())
+                })
                 .unwrap_or(Self::Docx);
         }
         if let Some(format) = Self::from_magic(bytes) {

@@ -81,7 +81,11 @@ fn read_parts<R: Read + Seek>(
         // Capped as well as pre-checked: an archive that declares small sizes
         // but streams more cannot force an unbounded allocation either.
         let mut xml = String::new();
-        if file.take(MAX_DECOMPRESSED_BYTES).read_to_string(&mut xml).is_err() {
+        if file
+            .take(MAX_DECOMPRESSED_BYTES)
+            .read_to_string(&mut xml)
+            .is_err()
+        {
             continue;
         }
         out.push_str(&xml_text(&xml, paragraph_tag, text_tag));
