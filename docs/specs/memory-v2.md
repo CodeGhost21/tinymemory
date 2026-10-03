@@ -56,6 +56,9 @@ pub trait MemoryEngine: Send + Sync {
     async fn store(&self, item: StoreItem) -> Result<StoreReceipt>;
     async fn forget(&self, target: ForgetTarget) -> Result<ForgetReport>;
     async fn list(&self, req: ListRequest) -> Result<ListPage>;
+    // Explorers; both have listing-based defaults (see "Explore and get").
+    async fn explore(&self, req: ExploreRequest) -> Result<ExplorePage>;
+    async fn get(&self, req: GetRequest) -> Result<Vec<Hit>>;
 }
 ```
 
@@ -135,6 +138,34 @@ A mode the engine does not list in `EngineDescriptor::fetch_modes` fails with
 `Hit::text` is the item's `StoreItem::render_text()` form, and
 `Hit::confidence` carries a learning's confidence (`None` for other kinds), so a
 listing can be ordered by it. An item's id is its `StoreItem::fingerprint()`.
+
+### Explore and get
+
+An explorer walks stored items by **facet**, a metadata dimension fixed by the
+contract rather than by an engine's storage layout, so one explorer works on
+every engine:
+
+```rust
+pub enum Facet { Kind, Source, SourceId, Workspace, Folder, FilePath, Language, Repo, Url, Thread, Agent, ToolCall, Tag }
+pub struct ExploreRequest { pub facet: Facet, pub filter: MetaFilter, pub limit: usize /* 1..=500 buckets */, pub scan_limit: usize /* 1..=50_000, default 5_000 */ }
+pub struct FacetBucket { pub value: String, pub count: u64 }
+pub struct ExplorePage { pub facet: Facet, pub buckets: Vec<FacetBucket>, pub total: u64, pub missing: u64, pub more_buckets: u64, pub truncated: bool }
+pub struct GetRequest { pub ids: Vec<ItemId> /* 1..=200 */ }
+```
+
+- `explore` groups the items `filter` admits by one facet: buckets largest
+  first (ties by value), `missing` counts items with no value, `more_buckets`
+  the values cut by `limit`. `Tag` is multi-valued; an item counts once per
+  tag.
+- `Facet::narrow(&mut filter, value)` turns a bucket back into the filter
+  field, so drilling down is `explore`, pick a bucket, `narrow`, then
+  `explore` or `list` again. `Folder` and `FilePath` narrow by prefix, as
+  their filter fields do.
+- `get` reads items whole, in the order named; unknown ids are left out.
+- **Defaults.** `explore_by_listing` pages through `list` up to `scan_limit`
+  items and sets `truncated` when it stops early, so counts are then a lower
+  bound. `get_by_listing` pages until every id is found. An engine overrides
+  either when it can do better: CortexDB looks ids up by their labels.
 
 ### Descriptor and health
 
@@ -219,6 +250,9 @@ section, persisted by the host) makes import resumable. Behind `legacy-import`.
 `tinymemory-conformance::run(engine)` covers:
 - store/list round-trip for each kind;
 - replay idempotency;
+- `explore` counts agreeing with `list` per kind and per workspace, and each
+  bucket narrowing to exactly its count;
+- `get` returning listed items by id, in request order, unknown ids left out;
 - fetch filtering by every meta field;
 - forget by id and by filter;
 - refusing an empty filter;
