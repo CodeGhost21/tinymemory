@@ -110,11 +110,6 @@ impl CortexEngine {
                 found.insert(KindScope::new(namespace, kind));
             }
         }
-        tracing::debug!(
-            prefix = %prefix,
-            scopes = found.len(),
-            "[tinymemory-cortex] discovered namespace scopes"
-        );
         Ok(found.into_iter().collect())
     }
 }

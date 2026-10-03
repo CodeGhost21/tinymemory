@@ -4,10 +4,11 @@
 use std::collections::{BTreeMap, HashMap};
 
 use tinymemory_api::explore::in_request_order;
-use tinymemory_api::{GetRequest, Hit, ItemId, ItemKind, MetaFilter, StoreItem};
+use tinymemory_api::{GetRequest, Hit, ItemId, ItemKind, MetaFilter, Namespace, StoreItem};
 
 use super::CortexEngine;
-use crate::envelope::{Decoded, Envelope, decode_event, labels, rebuild, scope_of};
+use super::scopes::KindScope;
+use crate::envelope::{Decoded, Envelope, decode_event, labels, rebuild};
 use crate::error::Result;
 
 /// The kinds `filter` admits, in the fixed order
@@ -37,20 +38,21 @@ pub(super) fn hit(id: &str, item: &StoreItem, score: f32) -> Hit {
 }
 
 impl CortexEngine {
-    /// Every event of each item in `ids` held in `kind`'s scope, grouped by
-    /// item id. Found by the items' labels (one listing per batch of ids),
-    /// then re-checked against the envelope, because a label is a digest.
+    /// Every event of each item in `ids` held in `scope`, grouped by item id.
+    /// Found by the items' labels (one listing per batch of ids), then
+    /// re-checked against the envelope, because a label is a digest.
     pub(super) async fn item_events(
         &self,
-        kind: ItemKind,
+        scope: &KindScope,
         ids: &[String],
     ) -> Result<HashMap<String, Vec<Decoded>>> {
+        let kind = scope.kind;
         let mut grouped: HashMap<String, Vec<Decoded>> = HashMap::new();
         if ids.is_empty() {
             return Ok(grouped);
         }
         let wanted: Vec<String> = ids.iter().map(|id| labels::item(id)).collect();
-        for event in self.log.walk_labels(scope_of(kind), &wanted).await? {
+        for event in self.log.walk_labels(&scope.path, &wanted).await? {
             let Some(decoded) = decode_event(&event) else {
                 continue;
             };
@@ -64,14 +66,21 @@ impl CortexEngine {
         Ok(grouped)
     }
 
-    /// `get`: every named item, rebuilt from its events in each kind's scope
-    /// (an id names one item, so at most one kind holds it).
+    /// `get`: every named item, rebuilt from its events in each scope the
+    /// request's reach reads (an id names one item, so one scope holds it).
     pub(super) async fn get_items(&self, req: GetRequest) -> Result<Vec<Hit>> {
         req.validate()?;
         let ids: Vec<String> = req.ids.iter().map(|id| id.as_str().to_string()).collect();
+        let filter = MetaFilter {
+            reach: req.reach.clone(),
+            ..MetaFilter::default()
+        };
         let mut found = BTreeMap::new();
-        for kind in ItemKind::ALL {
-            for (id, events) in self.item_events(kind, &ids).await? {
+        for scope in self.scopes_for(&filter).await? {
+            if found.len() == ids.len() {
+                break;
+            }
+            for (id, events) in self.item_events(&scope, &ids).await? {
                 let envelopes: Vec<Envelope> = events.into_iter().map(|d| d.envelope).collect();
                 if let Some(item) = rebuild(&envelopes) {
                     found.insert(ItemId::new(id.clone()), hit(&id, &item, 0.0));
@@ -81,13 +90,24 @@ impl CortexEngine {
         Ok(in_request_order(&req.ids, found))
     }
 
-    /// The whole conversations named by `ids`, rebuilt from all their turns.
-    pub(super) async fn conversations(&self, ids: &[String]) -> Result<HashMap<String, StoreItem>> {
+    /// The whole conversations named by `ids`, each at its namespace,
+    /// rebuilt from all their turns (one lookup per namespace).
+    pub(super) async fn conversations(
+        &self,
+        ids: &[(String, Namespace)],
+    ) -> Result<HashMap<String, StoreItem>> {
+        let mut by_node: BTreeMap<&Namespace, Vec<String>> = BTreeMap::new();
+        for (id, namespace) in ids {
+            by_node.entry(namespace).or_default().push(id.clone());
+        }
         let mut out = HashMap::new();
-        for (id, events) in self.item_events(ItemKind::Conversation, ids).await? {
-            let envelopes: Vec<Envelope> = events.into_iter().map(|d| d.envelope).collect();
-            if let Some(item) = rebuild(&envelopes) {
-                out.insert(id, item);
+        for (namespace, ids) in by_node {
+            let scope = KindScope::new(namespace.clone(), ItemKind::Conversation);
+            for (id, events) in self.item_events(&scope, &ids).await? {
+                let envelopes: Vec<Envelope> = events.into_iter().map(|d| d.envelope).collect();
+                if let Some(item) = rebuild(&envelopes) {
+                    out.insert(id, item);
+                }
             }
         }
         Ok(out)
