@@ -31,7 +31,7 @@ fn refuses_malformed_paths() {
     ] {
         assert!(bad.parse::<Namespace>().is_err(), "{bad}");
     }
-    let deep = vec!["agent:a"; MAX_DEPTH + 1].join("/");
+    let deep = ["agent:a"; MAX_DEPTH + 1].join("/");
     assert!(deep.parse::<Namespace>().is_err());
     assert!(Segment::new(SegmentKind::Agent, "x".repeat(MAX_SEGMENT_ID + 1)).is_err());
 }
