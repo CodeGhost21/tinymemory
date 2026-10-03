@@ -219,12 +219,14 @@ fn explore_limits_are_checked() {
 fn get_ids_are_checked() {
     let blank = GetRequest {
         ids: vec![ItemId::new(" ")],
+        reach: None,
     };
     let none = GetRequest { ids: Vec::new(), reach: None };
     let many = GetRequest {
         ids: (0..=MAX_GET_IDS)
             .map(|i| ItemId::new(i.to_string()))
             .collect(),
+        reach: None,
     };
     for req in [blank, none, many] {
         assert!(matches!(req.validate(), Err(Error::InvalidRequest(_))));
@@ -326,6 +328,7 @@ async fn get_returns_named_items_in_request_order_and_stops_early() {
     let hits = engine
         .get(GetRequest {
             ids: vec![ItemId::new("b"), ItemId::new("missing"), ItemId::new("a")],
+            reach: None,
         })
         .await
         .unwrap();
@@ -336,6 +339,7 @@ async fn get_returns_named_items_in_request_order_and_stops_early() {
     engine
         .get(GetRequest {
             ids: vec![ItemId::new("a")],
+            reach: None,
         })
         .await
         .unwrap();
@@ -344,4 +348,39 @@ async fn get_returns_named_items_in_request_order_and_stops_early() {
         1,
         "found on the first page, so no more are read"
     );
+}
+
+#[test]
+fn namespace_facet_groups_by_node_and_narrows_to_exactly_it() {
+    let mut meta = MemoryMeta::default();
+    assert_eq!(
+        Facet::Namespace.values(ItemKind::Learning, &meta),
+        ["root"]
+    );
+    meta.namespace = "team:acme/agent:writer".parse().unwrap();
+    assert_eq!(
+        Facet::Namespace.values(ItemKind::Learning, &meta),
+        ["team:acme/agent:writer"]
+    );
+    let mut filter = MetaFilter::default();
+    Facet::Namespace
+        .narrow(&mut filter, "team:acme/agent:writer")
+        .unwrap();
+    assert!(filter.matches(ItemKind::Learning, &meta));
+    meta.namespace = "team:acme".parse().unwrap();
+    assert!(!filter.matches(ItemKind::Learning, &meta), "exactly that node");
+    assert!(Facet::Namespace.narrow(&mut filter, "nope").is_err());
+}
+
+#[tokio::test]
+async fn get_leaves_out_ids_beyond_the_reach() {
+    let engine = Paging::new(fixture());
+    let hits = engine
+        .get(GetRequest {
+            ids: vec![ItemId::new("a")],
+            reach: Some(Reach::exact("agent:other".parse().unwrap())),
+        })
+        .await
+        .unwrap();
+    assert!(hits.is_empty());
 }
