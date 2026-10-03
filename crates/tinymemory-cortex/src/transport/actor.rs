@@ -81,7 +81,6 @@ impl ActorCache {
             // itself will say so, and the next one asks again.
             return None;
         };
-        log_learned(&learned);
         let header = match &learned {
             Learned::Known(value) => Some(value.clone()),
             _ => None,
@@ -105,15 +104,6 @@ fn caller_header(body: &[u8]) -> Option<HeaderValue> {
         return None;
     }
     HeaderValue::from_str(caller).ok()
-}
-
-fn log_learned(learned: &Learned) {
-    match learned {
-        // The actor is an account id, not a secret, but keep it out of logs.
-        Learned::Known(_) => log::debug!("[tinymemory-cortex] actor learned from whoami"),
-        Learned::Absent => log::debug!("[tinymemory-cortex] server reports no actor; none sent"),
-        Learned::Unknown => {}
-    }
 }
 
 #[cfg(test)]
