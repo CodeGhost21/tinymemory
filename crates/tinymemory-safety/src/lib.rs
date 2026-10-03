@@ -15,6 +15,12 @@
 //! formatted national IDs are rejected, while phone/email-like text is
 //! scrubbed from content without rejecting every write that mentions them.
 //!
+//! Before the shape regexes, [`sanitize_text`] redacts the value after a
+//! credential *marker* — a one-time-secret URL's `/secret/<key>` and a `Bearer`
+//! value too short for the regexes — keeping the marker and the prose around
+//! it. [`redact_credential_markers`] runs just those rules, for a host that
+//! scrubs plain text without the PII pass.
+//!
 //! # The one policy knob
 //!
 //! The previous copies differed in exactly one behaviour: how a *bare*
