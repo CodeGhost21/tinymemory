@@ -104,7 +104,9 @@ impl MetaFilter {
     /// field).
     #[must_use]
     pub fn admits_namespace(&self, namespace: &Namespace) -> bool {
-        self.reach.as_ref().is_none_or(|reach| reach.admits(namespace))
+        self.reach
+            .as_ref()
+            .is_none_or(|reach| reach.admits(namespace))
     }
 
     /// Whether an item of `kind` carrying `meta` matches every set field.

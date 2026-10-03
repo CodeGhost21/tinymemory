@@ -59,7 +59,11 @@ pub(crate) fn known(reach: &Reach, kinds: &[ItemKind]) -> Vec<KindScope> {
     let mut scopes: Vec<KindScope> = reach
         .nodes()
         .into_iter()
-        .flat_map(|node| kinds.iter().map(move |kind| KindScope::new(node.clone(), *kind)))
+        .flat_map(|node| {
+            kinds
+                .iter()
+                .map(move |kind| KindScope::new(node.clone(), *kind))
+        })
         .collect();
     scopes.sort();
     scopes
@@ -86,7 +90,11 @@ impl CortexEngine {
     }
 
     /// Every scope of `kinds` the engine holds, in reach.
-    async fn discovered(&self, reach: Option<&Reach>, kinds: &[ItemKind]) -> Result<Vec<KindScope>> {
+    async fn discovered(
+        &self,
+        reach: Option<&Reach>,
+        kinds: &[ItemKind],
+    ) -> Result<Vec<KindScope>> {
         let mut found: BTreeSet<KindScope> = match reach {
             Some(reach) => known(reach, kinds).into_iter().collect(),
             None => known(&Reach::exact(Namespace::ROOT), kinds)

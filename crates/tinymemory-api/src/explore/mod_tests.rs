@@ -221,7 +221,10 @@ fn get_ids_are_checked() {
         ids: vec![ItemId::new(" ")],
         reach: None,
     };
-    let none = GetRequest { ids: Vec::new(), reach: None };
+    let none = GetRequest {
+        ids: Vec::new(),
+        reach: None,
+    };
     let many = GetRequest {
         ids: (0..=MAX_GET_IDS)
             .map(|i| ItemId::new(i.to_string()))
@@ -353,10 +356,7 @@ async fn get_returns_named_items_in_request_order_and_stops_early() {
 #[test]
 fn namespace_facet_groups_by_node_and_narrows_to_exactly_it() {
     let mut meta = MemoryMeta::default();
-    assert_eq!(
-        Facet::Namespace.values(ItemKind::Learning, &meta),
-        ["root"]
-    );
+    assert_eq!(Facet::Namespace.values(ItemKind::Learning, &meta), ["root"]);
     meta.namespace = "team:acme/agent:writer".parse().unwrap();
     assert_eq!(
         Facet::Namespace.values(ItemKind::Learning, &meta),
@@ -368,7 +368,10 @@ fn namespace_facet_groups_by_node_and_narrows_to_exactly_it() {
         .unwrap();
     assert!(filter.matches(ItemKind::Learning, &meta));
     meta.namespace = "team:acme".parse().unwrap();
-    assert!(!filter.matches(ItemKind::Learning, &meta), "exactly that node");
+    assert!(
+        !filter.matches(ItemKind::Learning, &meta),
+        "exactly that node"
+    );
     assert!(Facet::Namespace.narrow(&mut filter, "nope").is_err());
 }
 

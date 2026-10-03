@@ -1,6 +1,5 @@
 //! Namespace paths, sanitizing and reach.
 
-
 use super::*;
 
 fn ns(value: &str) -> Namespace {
@@ -39,7 +38,10 @@ fn refuses_malformed_paths() {
 
 #[test]
 fn sanitizes_host_ids_without_collisions() {
-    assert_eq!(Namespace::agent("researcher").to_string(), "agent:researcher");
+    assert_eq!(
+        Namespace::agent("researcher").to_string(),
+        "agent:researcher"
+    );
     let dotted = Namespace::agent("a.b");
     let underscored = Namespace::agent("a_b");
     assert_ne!(dotted, underscored);

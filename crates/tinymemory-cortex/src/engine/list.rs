@@ -164,7 +164,9 @@ impl CortexEngine {
             .into_iter()
             .filter_map(|p| match p {
                 Pending::Ready(hit) => Some(*hit),
-                Pending::Conversation(id, _) => conversations.get(&id).map(|item| hit(&id, item, 0.0)),
+                Pending::Conversation(id, _) => {
+                    conversations.get(&id).map(|item| hit(&id, item, 0.0))
+                }
             })
             .collect())
     }

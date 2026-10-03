@@ -101,7 +101,9 @@ async fn the_bearer_is_resolved_on_every_request() {
         CortexEngine::tinyhumans(&endpoint, Arc::new(Rotating(AtomicUsize::new(0)))).unwrap();
     // An exact reach names its one scope, so each listing is one request.
     let filter = MetaFilter {
-        reach: Some(tinymemory_api::Reach::exact(tinymemory_api::Namespace::ROOT)),
+        reach: Some(tinymemory_api::Reach::exact(
+            tinymemory_api::Namespace::ROOT,
+        )),
         ..MetaFilter::kinds([tinymemory_api::ItemKind::Learning])
     };
     for _ in 0..3 {

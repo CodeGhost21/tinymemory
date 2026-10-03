@@ -88,7 +88,10 @@ impl CortexEngine {
         req.validate()?;
         let scopes = self.scopes_for(&req.filter).await?;
         let packs: Vec<(String, Value)> = match scopes.as_slice() {
-            [single] => vec![(single.path.clone(), self.pack(&req, &single.path, false).await?)],
+            [single] => vec![(
+                single.path.clone(),
+                self.pack(&req, &single.path, false).await?,
+            )],
             _ if req.filter.reach.is_none() || scopes.is_empty() => vec![(
                 ROOT_SCOPE.to_string(),
                 self.pack(&req, ROOT_SCOPE, true).await?,

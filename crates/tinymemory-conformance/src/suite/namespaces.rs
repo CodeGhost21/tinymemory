@@ -27,12 +27,10 @@ struct Nodes {
 impl Nodes {
     fn for_run(ctx: &Ctx<'_>) -> Result<Self> {
         let parse = |value: String| {
-            value
-                .parse::<Namespace>()
-                .map_err(|source| Error::Engine {
-                    check: CHECK,
-                    source,
-                })
+            value.parse::<Namespace>().map_err(|source| Error::Engine {
+                check: CHECK,
+                source,
+            })
         };
         let marker = &ctx.run.marker;
         Ok(Self {
