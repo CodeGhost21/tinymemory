@@ -32,7 +32,10 @@ pub(super) async fn store_many(ctx: &Ctx<'_>) -> Result<()> {
     let listed = ctx.list_all(CHECK, &ctx.run.filter()).await?;
     for receipt in &receipts {
         ensure(CHECK, listed.iter().any(|hit| hit.id == receipt.id), || {
-            format!("`{}` was not listed when store_many returned", receipt.id.as_str())
+            format!(
+                "`{}` was not listed when store_many returned",
+                receipt.id.as_str()
+            )
         })?;
     }
     let again = ctx.call(CHECK, ctx.engine.store_many(items)).await?;

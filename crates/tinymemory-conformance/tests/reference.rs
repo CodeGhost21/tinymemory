@@ -44,6 +44,8 @@ enum Fault {
     UndercountExplore,
     /// Returns what it found in its own order rather than the order asked.
     GetUnordered,
+    /// Returns bulk receipts in reverse order.
+    StoreManyUnordered,
 }
 
 struct Faulty {
@@ -129,6 +131,14 @@ impl MemoryEngine for Faulty {
         Ok(page)
     }
 
+    async fn store_many(&self, items: Vec<StoreItem>) -> Result<Vec<StoreReceipt>> {
+        let mut receipts = self.inner.store_many(items).await?;
+        if matches!(self.fault, Fault::StoreManyUnordered) {
+            receipts.reverse();
+        }
+        Ok(receipts)
+    }
+
     async fn get(&self, req: GetRequest) -> Result<Vec<Hit>> {
         let mut hits = self.inner.get(req).await?;
         if matches!(self.fault, Fault::GetUnordered) {
@@ -152,6 +162,7 @@ async fn each_fault_is_caught_by_its_check() {
         (Fault::Down, "health"),
         (Fault::UndercountExplore, "explore"),
         (Fault::GetUnordered, "get"),
+        (Fault::StoreManyUnordered, "store_many"),
     ];
     for (fault, expected) in cases {
         let error = run(&Faulty::new(fault))
