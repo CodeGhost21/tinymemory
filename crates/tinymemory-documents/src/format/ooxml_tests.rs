@@ -1,7 +1,5 @@
 //! Tests for reading Office part names out of a zip's central directory.
 
-#![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
-
 use super::*;
 
 /// A stored (uncompressed) zip holding `entries`, with an optional archive

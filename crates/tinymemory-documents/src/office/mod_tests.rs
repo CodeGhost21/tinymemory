@@ -3,8 +3,6 @@
 //! Every fixture is built here rather than checked in, so each test says what
 //! it is asserting about instead of pointing at an opaque binary.
 
-#![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
-
 use super::*;
 
 use crate::convert::ConverterChain;
