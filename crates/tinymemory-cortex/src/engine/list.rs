@@ -63,7 +63,7 @@ impl CortexEngine {
         let mut next = None;
         'scopes: for (index, scope) in scopes.iter().enumerate().skip(start) {
             let kind = scope.kind;
-            if index > start {
+            if index > start || at.scope.as_deref() != Some(scope.path.as_str()) {
                 at = ListCursor::at(&scope.path);
             }
             loop {

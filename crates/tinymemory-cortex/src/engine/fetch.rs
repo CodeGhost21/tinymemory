@@ -3,11 +3,11 @@
 //! Only [`tinymemory_api::FetchMode::Hybrid`] is served: the recall body has no field that
 //! chooses lexical or embedding retrieval (see `descriptor`).
 //!
-//! For each admitted kind scope the engine asks recall for a pack of
-//! events (`budgets.per_layer_limits.events`), narrowed by one label filter
+//! For each scope the filter reads (each admitted kind at each namespace
+//! node in reach, see `scopes`) the engine asks recall for a pack of events (`budgets.per_layer_limits.events`), narrowed by one label filter
 //! when the [`tinymemory_api::MetaFilter`] has a labelled field. The events
 //! are decoded back to items, the full filter is applied, repeats of an item
-//! are dropped keeping its best rank, and the kinds are interleaved rank by
+//! are dropped keeping its best rank, and the scopes are interleaved rank by
 //! rank. CortexDB reports no per-hit score, so the score is the rank's,
 //! `1 / (1 + rank)`. A conversation hit carries the whole conversation's
 //! text, assembled from all its turns.
@@ -24,8 +24,8 @@ use tinymemory_api::{FetchPage, FetchRequest, Hit, ItemKind, MetaFilter};
 
 use super::CortexEngine;
 use super::cursor::{self, FetchCursor};
-use super::items::{admitted, hit, keeps};
-use crate::envelope::{Envelope, decode_event, labels, rebuild, scope_of};
+use super::items::{hit, keeps};
+use crate::envelope::{Envelope, decode_event, labels, rebuild};
 use crate::error::Result;
 
 /// The cursor tag of a fetch.
@@ -80,13 +80,13 @@ impl CortexEngine {
             .saturating_add(1)
             .saturating_mul(EVENTS_PER_HIT)
             .min(MAX_PACK_EVENTS);
-        let mut per_kind = Vec::new();
-        for kind in admitted(&req.filter) {
-            let body = recall_body(scope_of(kind), &req.query, events, &req.filter);
+        let mut per_scope = Vec::new();
+        for scope in self.scopes_for(&req.filter).await? {
+            let body = recall_body(&scope.path, &req.query, events, &req.filter);
             let pack = self.log.recall(&body).await?;
-            per_kind.push(ranked(&pack, Some(kind), &req.filter));
+            per_scope.push(ranked(&pack, Some(scope.kind), &req.filter));
         }
-        let merged = interleave(per_kind);
+        let merged = interleave(per_scope);
         let more = merged.len() > end;
         let page: Vec<(usize, Envelope)> = merged
             .into_iter()
@@ -99,7 +99,7 @@ impl CortexEngine {
                 &page
                     .iter()
                     .filter(|(_, e)| e.kind == ItemKind::Conversation)
-                    .map(|(_, e)| e.id.clone())
+                    .map(|(_, e)| (e.id.clone(), e.meta.namespace.clone()))
                     .collect::<Vec<_>>(),
             )
             .await?;
@@ -123,8 +123,8 @@ impl CortexEngine {
     }
 }
 
-/// Merges per-kind rankings rank by rank: every kind's best, then every
-/// kind's second, and so on.
+/// Merges per-scope rankings rank by rank: every scope's best, then every
+/// scope's second, and so on.
 fn interleave(mut lists: Vec<Vec<Envelope>>) -> Vec<Envelope> {
     let longest = lists.iter().map(Vec::len).max().unwrap_or(0);
     let mut iters: Vec<_> = lists.iter_mut().map(|list| list.drain(..)).collect();
