@@ -295,7 +295,7 @@ async fn a_docx_that_is_not_an_archive_is_an_error() {
         .convert(&RawDocument::new(b"plain words".to_vec()).with_mime(DocumentFormat::Docx.mime()))
         .await
         .unwrap_err();
-    assert!(matches!(error, MemoryError::Invalid(_)), "{error:?}");
+    assert!(matches!(error, Error::Invalid(_)), "{error:?}");
 }
 
 #[tokio::test]
@@ -319,7 +319,7 @@ async fn the_size_cap_applies_before_any_parsing() {
         .convert(&RawDocument::new(Vec::new()).with_filename("empty.pdf"))
         .await
         .unwrap_err();
-    assert!(matches!(error, MemoryError::Invalid(_)), "{error:?}");
+    assert!(matches!(error, Error::Invalid(_)), "{error:?}");
 }
 
 #[tokio::test]
@@ -346,6 +346,7 @@ async fn prepended_to_the_default_chain_it_covers_every_format() {
             DocumentFormat::Markdown,
             DocumentFormat::PlainText,
             DocumentFormat::Html,
+            DocumentFormat::Code,
             DocumentFormat::Pdf,
             DocumentFormat::Docx,
             DocumentFormat::Xlsx,

@@ -55,12 +55,11 @@ mod pdf;
 mod xlsx;
 
 use async_trait::async_trait;
-use tinymemory_api::error::MemoryError;
 
 #[cfg(test)]
 use crate::convert::MAX_DOCUMENT_BYTES;
-use crate::convert::{check_size, ConvertedDocument, DocumentConverter, RawDocument};
-use crate::error::Result;
+use crate::convert::{ConvertedDocument, DocumentConverter, RawDocument, check_size};
+use crate::error::{Error, Result};
 use crate::format::DocumentFormat;
 
 /// The largest uncompressed size an Office archive may declare, in bytes,
@@ -77,8 +76,8 @@ pub const MAX_SPREADSHEET_DENSE_CELLS: usize = 1_000_000;
 /// Claims exactly those four formats, so it composes with
 /// [`crate::convert::NativeConverter`] in a [`crate::convert::ConverterChain`]
 /// without shadowing it. A document whose text cannot be read — malformed,
-/// over a cap, or a scanned PDF with no text layer — is
-/// [`MemoryError::Invalid`] saying which, never an empty document.
+/// over a cap, or a scanned PDF with no text layer — is [`Error::Invalid`]
+/// saying which, never an empty document.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct OfficeConverter;
 
@@ -88,10 +87,11 @@ impl OfficeConverter {
     ///
     /// # Errors
     ///
-    /// [`MemoryError::Invalid`] for an empty body, a format this converter
-    /// does not claim, a document that cannot be read or exceeds a decoding
-    /// cap, or one with no extractable text; [`MemoryError::BudgetExceeded`]
-    /// for a body over [`crate::convert::MAX_DOCUMENT_BYTES`].
+    /// [`Error::UnsupportedFormat`] for a format this converter does not
+    /// claim; [`Error::Invalid`] for an empty body, a document that cannot be
+    /// read or exceeds a decoding cap, or one with no extractable text;
+    /// [`Error::TooLarge`] for a body over
+    /// [`crate::convert::MAX_DOCUMENT_BYTES`].
     pub fn convert_blocking(&self, document: &RawDocument) -> Result<ConvertedDocument> {
         check_size(document)?;
         let format = document.format();
@@ -102,9 +102,9 @@ impl OfficeConverter {
             DocumentFormat::Pptx => ooxml::pptx(bytes)?,
             DocumentFormat::Xlsx => xlsx::extract(bytes)?,
             other => {
-                return Err(unreadable(format!(
+                return Err(Error::UnsupportedFormat(format!(
                     "the office converter does not handle {other}"
-                )))
+                )));
             }
         };
         let markdown = normalize::normalize(&text);
@@ -140,9 +140,11 @@ impl DocumentConverter for OfficeConverter {
 /// The error for a document this converter could not turn into text.
 ///
 /// One constructor for every refusal in this module, so the readers say *why*
-/// in their own words and agree on the variant.
-fn unreadable(reason: String) -> MemoryError {
-    MemoryError::Invalid(reason)
+/// in their own words and agree on the variant. [`Error::Invalid`] rather than
+/// [`Error::Converter`]: a malformed or hostile document is a problem with the
+/// input, not a fault in the converter.
+fn unreadable(reason: String) -> Error {
+    Error::Invalid(reason)
 }
 
 #[cfg(test)]

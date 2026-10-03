@@ -5,7 +5,7 @@ use std::io::{Cursor, Read, Seek};
 use quick_xml::events::Event;
 use zip::ZipArchive;
 
-use super::{unreadable, MAX_DECOMPRESSED_BYTES};
+use super::{MAX_DECOMPRESSED_BYTES, unreadable};
 use crate::error::Result;
 
 /// The body text of a Word document.

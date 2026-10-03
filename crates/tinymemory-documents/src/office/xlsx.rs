@@ -4,7 +4,7 @@ use std::io::Cursor;
 
 use calamine::{Data, Reader, Xlsx};
 
-use super::{ooxml, unreadable, MAX_SPREADSHEET_DENSE_CELLS};
+use super::{MAX_SPREADSHEET_DENSE_CELLS, ooxml, unreadable};
 use crate::error::Result;
 
 /// Extracts every non-empty row of every sheet, in sheet order.
