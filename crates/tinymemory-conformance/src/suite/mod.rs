@@ -12,17 +12,20 @@
 //!    are largest first, and each bucket narrows to exactly its count.
 //! 5. `get` — the run's items read back by id in the order asked, equal to
 //!    their listing, with an unknown id left out.
-//! 6. `fetch_filters` — for every declared fetch mode, a filter on each
+//! 6. `store_many` — a batch stores in order, every item is listed on
+//!    return, a repeat is all replays, and an empty batch is refused.
+//! 7. `fetch_filters` — for every declared fetch mode, a filter on each
 //!    metadata field selects exactly the item carrying it (and `list` agrees).
-//! 7. `unsupported_modes` — every undeclared fetch mode fails `Unsupported`.
-//! 8. `empty_forget` — a forget with no ids or an empty filter is refused and
+//! 8. `unsupported_modes` — every undeclared fetch mode fails `Unsupported`.
+//! 9. `empty_forget` — a forget with no ids or an empty filter is refused and
 //!    removes nothing.
-//! 9. `forget_by_id` and `forget_by_filter` — forgotten items stop listing and
+//! 10. `forget_by_id` and `forget_by_filter` — forgotten items stop listing and
 //!    are counted; others stay.
-//! 10. `recall` — an answer cites items that resolve through `list`.
+//! 11. `recall` — an answer cites items that resolve through `list`.
 //!
 //! Finally the run's items are forgotten by filter and must be gone.
 
+mod bulk;
 mod checks;
 mod explore;
 mod fixtures;
