@@ -5,9 +5,9 @@
 
 use async_trait::async_trait;
 use tinymemory_api::{
-    EngineDescriptor, EngineHealth, FetchMode, FetchPage, FetchRequest, ForgetReport, ForgetTarget,
-    ListPage, ListRequest, MemoryEngine, MetaFilter, RecallAnswer, RecallRequest, Result,
-    StoreItem, StoreReceipt,
+    EngineDescriptor, EngineHealth, ExplorePage, ExploreRequest, FetchMode, FetchPage,
+    FetchRequest, ForgetReport, ForgetTarget, GetRequest, Hit, ListPage, ListRequest, MemoryEngine,
+    MetaFilter, RecallAnswer, RecallRequest, Result, StoreItem, StoreReceipt,
 };
 use tinymemory_conformance::{Error, ReferenceEngine, run};
 
@@ -40,6 +40,10 @@ enum Fault {
     ClaimEveryMode,
     CiteUnknownIds,
     Down,
+    /// Counts every bucket one short.
+    UndercountExplore,
+    /// Returns what it found in its own order rather than the order asked.
+    GetUnordered,
 }
 
 struct Faulty {
@@ -114,6 +118,27 @@ impl MemoryEngine for Faulty {
     async fn list(&self, req: ListRequest) -> Result<ListPage> {
         self.inner.list(req).await
     }
+
+    async fn explore(&self, req: ExploreRequest) -> Result<ExplorePage> {
+        let mut page = self.inner.explore(req).await?;
+        if matches!(self.fault, Fault::UndercountExplore) {
+            for bucket in &mut page.buckets {
+                bucket.count = bucket.count.saturating_sub(1);
+            }
+        }
+        Ok(page)
+    }
+
+    async fn get(&self, req: GetRequest) -> Result<Vec<Hit>> {
+        let mut hits = self.inner.get(req).await?;
+        if matches!(self.fault, Fault::GetUnordered) {
+            hits.sort_by(|a, b| a.id.cmp(&b.id));
+            if hits.windows(2).all(|pair| pair[0].id <= pair[1].id) {
+                hits.reverse();
+            }
+        }
+        Ok(hits)
+    }
 }
 
 #[tokio::test]
@@ -125,6 +150,8 @@ async fn each_fault_is_caught_by_its_check() {
         (Fault::ClaimEveryMode, "unsupported_modes"),
         (Fault::CiteUnknownIds, "recall"),
         (Fault::Down, "health"),
+        (Fault::UndercountExplore, "explore"),
+        (Fault::GetUnordered, "get"),
     ];
     for (fault, expected) in cases {
         let error = run(&Faulty::new(fault))
