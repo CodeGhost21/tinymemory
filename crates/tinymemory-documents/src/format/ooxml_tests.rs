@@ -15,7 +15,7 @@ fn archive(entries: &[&str], comment: &str) -> Vec<u8> {
         writer.start_file(*entry, options).unwrap();
         writer.write_all(b"<x/>").unwrap();
     }
-    writer.set_comment(comment.to_string());
+    writer.set_comment(comment.to_string()).unwrap();
     writer.finish().unwrap();
     buffer.into_inner()
 }
