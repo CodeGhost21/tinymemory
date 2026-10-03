@@ -42,6 +42,11 @@ pub use pii::{has_likely_email, has_likely_pii};
 /// Scrubbing a whole [`tinymemory_api::StoreItem`] before it is stored.
 mod item;
 
+/// One-time-secret URLs and `Bearer` values, including short ones.
+mod markers;
+
+pub use markers::redact_credential_markers;
+
 pub use item::{scrub_item, scrub_item_with};
 
 pub(crate) const REDACTED_SECRET: &str = "[REDACTED_SECRET]";
@@ -258,6 +263,17 @@ pub fn sanitize_text_with(value: &str, policy: Policy) -> Sanitized<String> {
             report.blocked_secret_hits += hits;
             out = pattern.replace_all(&out, REDACTED_PRIVATE_KEY).into_owned();
         }
+    }
+
+    // Values after a credential marker (`/secret/<key>`, `Bearer <value>`),
+    // before the shape regexes: it catches what they cannot — a one-time key,
+    // a short bearer value — and its `[REDACTED]` is not token-shaped, so no
+    // regex below fires on it again. Only ever replaces, so the pass makes the
+    // scrubber strictly stricter.
+    let (marked, hits) = markers::redact_counted(&out);
+    if hits > 0 {
+        report.text_redactions += hits;
+        out = marked.into_owned();
     }
 
     for (pattern, replacement) in REDACTION_PATTERNS.iter() {
