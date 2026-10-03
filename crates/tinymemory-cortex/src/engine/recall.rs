@@ -21,14 +21,19 @@
 
 use std::collections::HashSet;
 
+use futures::{StreamExt, TryStreamExt, stream};
 use serde_json::{Value, json};
 use tinymemory_api::{Citation, ItemId, RecallAnswer, RecallRequest};
 
 use super::CortexEngine;
 use super::fetch::{ranked, recall_body};
+use super::scopes::KindScope;
 use crate::descriptor::CortexWire;
 use crate::envelope::{Envelope, ROOT_SCOPE};
 use crate::error::{Error, Result};
+
+/// Recall packs built at once when a reach spans several scopes.
+const PACKS_AT_ONCE: usize = 4;
 
 /// The derived layers a pack also draws on, besides events.
 const DERIVED_LAYERS: [&str; 4] = ["facts", "beliefs", "episodes", "understanding"];
@@ -90,18 +95,16 @@ impl CortexEngine {
             )],
             _ => {
                 // Most specific node first, so its citations lead.
-                let ordered: Vec<_> = scopes
-                    .iter()
-                    .rev()
-                    .map(|scope| scope.path.clone())
-                    .collect::<Vec<_>>();
-                let mut ordered = ordered;
-                ordered.sort_by_key(|path| std::cmp::Reverse(path.matches('/').count()));
-                let built = futures::future::try_join_all(
-                    ordered.iter().map(|path| self.pack(&req, path, false)),
-                )
-                .await?;
-                ordered.into_iter().zip(built).collect()
+                let mut ordered: Vec<&KindScope> = scopes.iter().collect();
+                ordered.sort_by_key(|scope| std::cmp::Reverse(scope.namespace.depth()));
+                stream::iter(ordered)
+                    .map(|scope| async move {
+                        let pack = self.pack(&req, &scope.path, false).await?;
+                        Ok::<_, Error>((scope.path.clone(), pack))
+                    })
+                    .buffered(PACKS_AT_ONCE)
+                    .try_collect()
+                    .await?
             }
         };
         let per_pack: Vec<Vec<Envelope>> = packs
