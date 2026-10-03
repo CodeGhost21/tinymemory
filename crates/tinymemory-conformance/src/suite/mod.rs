@@ -20,7 +20,7 @@
 //! 9. `empty_forget` — a forget with no ids or an empty filter is refused and
 //!    removes nothing.
 //! 10. `forget_by_id` and `forget_by_filter` — forgotten items stop listing and
-//!    are counted; others stay.
+//!     are counted; others stay.
 //! 11. `recall` — an answer cites items that resolve through `list`.
 //!
 //! Finally the run's items are forgotten by filter and must be gone.
