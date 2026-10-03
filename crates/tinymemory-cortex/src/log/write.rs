@@ -63,6 +63,12 @@ impl Log {
     /// last is readable. The log is ordered, so the last event being listed
     /// implies the earlier ones are: one wait, not one per event.
     pub(crate) async fn append(&self, requests: &[Value]) -> Result<()> {
+        self.append_with(requests, true).await
+    }
+
+    /// [`Log::append`], waiting for ranked recall only when `settle`: a bulk
+    /// store settles its last item and lets the rest catch up behind it.
+    pub(crate) async fn append_with(&self, requests: &[Value], settle: bool) -> Result<()> {
         let Some(last) = requests.last() else {
             return Ok(());
         };
@@ -77,7 +83,11 @@ impl Log {
             }
         };
         let (scope, text, label) = parts(last)?;
-        self.await_readable(scope, label, &event_id, text).await
+        if settle {
+            self.await_readable(scope, label, &event_id, text).await
+        } else {
+            self.await_listed(scope, label, &event_id).await
+        }
     }
 
     /// One Direct write of one event or one ordered batch; the last event's

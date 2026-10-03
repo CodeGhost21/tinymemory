@@ -159,6 +159,11 @@ impl MemoryEngine for CortexEngine {
         self.store_item(item).await
     }
 
+    /// Ranked recall is awaited for the last item only (see `store`).
+    async fn store_many(&self, items: Vec<StoreItem>) -> Result<Vec<StoreReceipt>> {
+        self.store_items(items).await
+    }
+
     async fn forget(&self, target: ForgetTarget) -> Result<ForgetReport> {
         self.forget_items(target).await
     }

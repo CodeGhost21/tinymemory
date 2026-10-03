@@ -16,7 +16,7 @@
 
 use std::collections::HashSet;
 
-use tinymemory_api::{ItemId, StoreItem, StoreReceipt};
+use tinymemory_api::{ItemId, StoreItem, StoreReceipt, validate_many};
 
 use super::CortexEngine;
 use crate::envelope::Envelope;
@@ -25,6 +25,23 @@ use crate::error::Result;
 impl CortexEngine {
     /// See the module docs.
     pub(super) async fn store_item(&self, item: StoreItem) -> Result<StoreReceipt> {
+        self.store_one(item, true).await
+    }
+
+    /// `store_many`: each item listed before the next is written (so list,
+    /// get and forget see the whole batch on return), ranked recall awaited
+    /// for the last item only.
+    pub(super) async fn store_items(&self, items: Vec<StoreItem>) -> Result<Vec<StoreReceipt>> {
+        validate_many(&items)?;
+        let last = items.len() - 1;
+        let mut receipts = Vec::with_capacity(items.len());
+        for (index, item) in items.into_iter().enumerate() {
+            receipts.push(self.store_one(item, index == last).await?);
+        }
+        Ok(receipts)
+    }
+
+    async fn store_one(&self, item: StoreItem, settle: bool) -> Result<StoreReceipt> {
         item.validate()?;
         let id = item.fingerprint();
         let envelopes = Envelope::for_item(&item, &id)?;
@@ -46,7 +63,7 @@ impl CortexEngine {
         }
         let replayed = requests.is_empty();
         if !replayed {
-            self.log.append(&requests).await?;
+            self.log.append_with(&requests, settle).await?;
         }
         Ok(StoreReceipt {
             id: ItemId::new(id),
