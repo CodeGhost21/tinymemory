@@ -5,7 +5,7 @@ use super::*;
 #[test]
 fn a_list_cursor_round_trips() {
     let state = ListCursor {
-        scope: 1,
+        scope: Some("app:tinymemory/agent:a/app:learnings".into()),
         engine: Some("a+b&c".into()),
         offset: 7,
         last: Some("evt_3".into()),
@@ -30,7 +30,8 @@ fn a_cursor_from_the_other_operation_or_garbage_is_invalid() {
 }
 
 #[test]
-fn a_cursor_at_a_kind_names_its_scope_index() {
-    assert_eq!(ListCursor::at(ItemKind::Learning).scope, 2);
-    assert_eq!(ListCursor::at(ItemKind::Document).scope, 0);
+fn a_cursor_at_a_scope_names_its_path() {
+    let at = ListCursor::at("app:tinymemory/app:learnings");
+    assert_eq!(at.scope.as_deref(), Some("app:tinymemory/app:learnings"));
+    assert_eq!((at.engine, at.offset, at.last), (None, 0, None));
 }
