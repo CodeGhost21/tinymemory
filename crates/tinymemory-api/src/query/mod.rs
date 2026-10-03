@@ -235,7 +235,10 @@ pub struct ListPage {
     reason = "the contract names the filter by value; a target is built once per call"
 )]
 pub enum ForgetTarget {
-    /// These items.
+    /// These items, wherever they live: ids are not scoped by namespace. A
+    /// caller confined to a [`crate::Reach`] reads the ids with
+    /// [`crate::MemoryEngine::get`] and that reach first, and forgets only
+    /// what came back.
     Ids(Vec<ItemId>),
     /// Every item matching the filter, which must not be empty.
     Filter(MetaFilter),
