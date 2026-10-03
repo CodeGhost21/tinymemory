@@ -1,7 +1,5 @@
 //! Tests for the converter seam.
 
-#![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
-
 use super::*;
 
 fn raw(bytes: &str, mime: &str) -> RawDocument {
