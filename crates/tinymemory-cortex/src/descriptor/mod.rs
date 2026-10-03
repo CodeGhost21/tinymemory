@@ -102,12 +102,13 @@ impl CortexWire {
             (Self::Direct, Route::Forget) => "v1/forget",
             (Self::Direct, Route::Answer) => "v1/answer",
             (Self::Direct, Route::Health) => "v1/admin/health",
+            (Self::Direct, Route::Scopes) => "v1/scopes/list",
             (Self::TinyHumans, Route::Experience | Route::Bulk) => "memory/experience",
             (Self::TinyHumans, Route::Events) => "memory/events",
             (Self::TinyHumans, Route::Recall) => "memory/recall",
             (Self::TinyHumans, Route::Forget) => "memory/forget",
             (Self::TinyHumans, Route::Answer) => "memory/answer",
-            (Self::TinyHumans, Route::Health) => "memory/scopes",
+            (Self::TinyHumans, Route::Health | Route::Scopes) => "memory/scopes",
         }
     }
 }
@@ -129,6 +130,8 @@ pub(crate) enum Route {
     Answer,
     /// The cheapest authenticated probe.
     Health,
+    /// List the caller's registered scopes under a prefix.
+    Scopes,
 }
 
 #[cfg(test)]

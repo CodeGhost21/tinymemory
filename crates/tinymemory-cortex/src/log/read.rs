@@ -15,6 +15,10 @@ use crate::transport::{Attempts, urlencode};
 /// bounds the URL.
 pub(crate) const LABELS_PER_QUERY: usize = 50;
 
+/// Most scopes one scope listing asks for: three kinds for each of several
+/// hundred namespace nodes.
+const SCOPES_LIMIT: usize = 1000;
+
 /// One page of a scope listing.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Page {
@@ -119,6 +123,45 @@ impl Log {
             }
         }
         Ok(all)
+    }
+
+    /// The registered scope paths under `prefix`, as the engine names them
+    /// (the hosted backend may prefix the caller's tenant). CortexDB answers
+    /// `{items: [{path}]}`; the hosted route may answer `{scopes: [path]}`.
+    /// An engine without a scope listing (404) holds none worth naming.
+    ///
+    /// # Errors
+    ///
+    /// Backend failures other than a 404.
+    pub(crate) async fn scopes(&self, prefix: &str) -> Result<Vec<String>> {
+        let path = format!(
+            "{base}?prefix={prefix}&limit={SCOPES_LIMIT}",
+            base = self.client.wire().path(Route::Scopes),
+            prefix = urlencode(prefix),
+        );
+        let listed = match self
+            .client
+            .json(Method::GET, &path, None, Attempts::RetryTransient)
+            .await
+        {
+            Ok(listed) => listed,
+            Err(Error::NotFound(_)) => return Ok(Vec::new()),
+            Err(error) => return Err(error),
+        };
+        let items = listed
+            .get("items")
+            .or_else(|| listed.get("scopes"))
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        Ok(items
+            .iter()
+            .filter_map(|item| {
+                item.as_str()
+                    .or_else(|| item.get("path").and_then(Value::as_str))
+                    .map(str::to_owned)
+            })
+            .collect())
     }
 
     /// Builds a recall pack. A read: retried on transient failures.
