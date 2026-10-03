@@ -115,17 +115,20 @@ fn urlencoding_escapes_everything_a_cursor_could_reshape() {
     assert_eq!(urlencode("é"), "%C3%A9");
 }
 
-/// A server answering every request with `status`, counting hits.
+/// A server answering every request with `status`, counting hits. It has no
+/// `whoami` (like a server before the actor model), which is not counted.
 async fn counting(status: StatusCode) -> (String, Arc<AtomicUsize>) {
     let hits = Arc::new(AtomicUsize::new(0));
     let counter = hits.clone();
-    let app = Router::new().fallback(any(move || {
-        let counter = counter.clone();
-        async move {
-            counter.fetch_add(1, Ordering::SeqCst);
-            (status, "busy")
-        }
-    }));
+    let app = Router::new()
+        .route("/v1/auth/whoami", any(|| async { StatusCode::NOT_FOUND }))
+        .fallback(any(move || {
+            let counter = counter.clone();
+            async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+                (status, "busy")
+            }
+        }));
     (serve(app).await, hits)
 }
 
@@ -216,4 +219,96 @@ async fn an_unreachable_endpoint_is_unavailable_and_names_the_class() {
     assert!(matches!(error, Error::Unavailable(_)), "{error:?}");
     assert!(error.to_string().contains("could not connect"), "{error}");
     assert!(!error.to_string().contains("ctx_key"));
+}
+
+/// A CortexDB that, like its cloud, serves only requests naming the token's
+/// actor; it counts `whoami` lookups.
+async fn actor_checking(caller: &'static str) -> (String, Arc<AtomicUsize>) {
+    use axum::http::HeaderMap;
+    use axum::routing::get;
+    let lookups = Arc::new(AtomicUsize::new(0));
+    let counter = lookups.clone();
+    let app = Router::new()
+        .route(
+            "/v1/auth/whoami",
+            get(move || {
+                let counter = counter.clone();
+                async move {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                    axum::Json(serde_json::json!({ "caller": caller, "tenant_id": "t" }))
+                }
+            }),
+        )
+        .fallback(any(move |headers: HeaderMap| async move {
+            match headers.get("x-cortex-actor").and_then(|v| v.to_str().ok()) {
+                Some(actor) if actor == caller => (StatusCode::OK, "{}".to_string()),
+                _ => (
+                    StatusCode::UNAUTHORIZED,
+                    r#"{"error_code":"ACTOR_MISMATCH"}"#.to_string(),
+                ),
+            }
+        }));
+    (serve(app).await, lookups)
+}
+
+#[tokio::test]
+async fn the_direct_wire_names_the_whoami_actor_and_asks_once() {
+    let (endpoint, lookups) = actor_checking("user:u_123").await;
+    let c = client(&endpoint);
+    for _ in 0..3 {
+        c.json(Method::GET, "v1/events", None, Attempts::RetryTransient)
+            .await
+            .expect("served as the token's actor");
+    }
+    let body = serde_json::json!({});
+    c.clone()
+        .json(Method::POST, "v1/experience", Some(&body), Attempts::Once)
+        .await
+        .expect("a clone reuses the learned actor");
+    assert_eq!(lookups.load(Ordering::SeqCst), 1, "whoami is asked once");
+}
+
+#[tokio::test]
+async fn a_rejected_credential_makes_the_next_request_ask_again() {
+    let (endpoint, lookups) = actor_checking("user:u_123").await;
+    let c = client(&endpoint);
+    c.json(Method::GET, "v1/events", None, Attempts::RetryTransient)
+        .await
+        .unwrap();
+    c.actor
+        .learn(StatusCode::OK, br#"{"caller":"user:somebody_else"}"#);
+    let refused = c
+        .json(Method::GET, "v1/events", None, Attempts::RetryTransient)
+        .await;
+    assert!(
+        matches!(refused, Err(Error::Unauthorized(_))),
+        "{refused:?}"
+    );
+    c.json(Method::GET, "v1/events", None, Attempts::RetryTransient)
+        .await
+        .expect("the actor is learned again after the refusal");
+    assert_eq!(lookups.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn the_hosted_wire_sends_no_actor() {
+    let (endpoint, lookups) = actor_checking("user:u_123").await;
+    let hosted = HttpClient::new(
+        CortexWire::TinyHumans,
+        &endpoint,
+        CortexCredential::api_key("ctx_key"),
+    )
+    .unwrap();
+    let refused = hosted
+        .json(Method::GET, "memory/events", None, Attempts::Once)
+        .await;
+    assert!(
+        matches!(refused, Err(Error::Unauthorized(_))),
+        "{refused:?}"
+    );
+    assert_eq!(
+        lookups.load(Ordering::SeqCst),
+        0,
+        "the backend names the actor"
+    );
 }

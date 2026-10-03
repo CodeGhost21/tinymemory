@@ -10,7 +10,10 @@ fn starts_unknown_so_the_first_request_asks() {
 #[test]
 fn a_whoami_caller_is_sent_from_then_on() {
     let cache = ActorCache::default();
-    let learned = cache.learn(StatusCode::OK, br#"{"caller":"user:u_123","tenant_id":"t"}"#);
+    let learned = cache.learn(
+        StatusCode::OK,
+        br#"{"caller":"user:u_123","tenant_id":"t"}"#,
+    );
     let expected = HeaderValue::from_static("user:u_123");
     assert_eq!(learned.as_ref(), Some(&expected));
     assert_eq!(cache.lookup(), Lookup::Send(expected));
