@@ -329,7 +329,14 @@ async fn scopes(
     {
         return refused;
     }
-    ok(&state, 200, json!({ "items": [] }))
+    let prefix = params.get("prefix").cloned().unwrap_or_default();
+    let scopes = state.log.lock().unwrap().scopes(&prefix);
+    if state.hosted {
+        ok(&state, 200, json!({ "scopes": scopes }))
+    } else {
+        let items: Vec<Value> = scopes.iter().map(|path| json!({ "path": path })).collect();
+        ok(&state, 200, json!({ "items": items }))
+    }
 }
 
 /// CortexDB's own routes.
@@ -342,6 +349,7 @@ pub(super) fn direct(state: Shared) -> Router {
         .route("/v1/forget", post(forget))
         .route("/v1/answer", post(answer))
         .route("/v1/admin/health", get(health))
+        .route("/v1/scopes/list", get(scopes))
         .with_state(state)
 }
 

@@ -87,6 +87,21 @@ impl CortexLog {
         )
     }
 
+    /// `GET /v1/scopes/list`: every scope holding an event, at or below
+    /// `prefix` on a segment boundary, sorted.
+    pub(crate) fn scopes(&self, prefix: &str) -> Vec<String> {
+        let below = format!("{prefix}/");
+        let mut scopes: Vec<String> = self
+            .events
+            .iter()
+            .map(|e| str_of(e, "/scope").to_string())
+            .filter(|scope| prefix.is_empty() || scope == prefix || scope.starts_with(&below))
+            .collect();
+        scopes.sort();
+        scopes.dedup();
+        scopes
+    }
+
     /// `GET /v1/events`: newest first, every event twice, `limit` counting
     /// the copies, an offset `cursor`.
     pub(crate) fn page(&self, params: &BTreeMap<String, String>) -> Value {
