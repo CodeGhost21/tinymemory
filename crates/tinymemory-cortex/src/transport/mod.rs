@@ -11,6 +11,7 @@
 //! write leaves whether it applied unknown. Hosted writes recover from that
 //! one level up, with an `Idempotency-Key` claim (see `log::write`).
 
+mod actor;
 mod body;
 mod failure;
 
@@ -57,6 +58,7 @@ pub(crate) struct HttpClient {
     credential: CortexCredential,
     wire: CortexWire,
     read_backoff: Duration,
+    actor: actor::ActorCache,
 }
 
 impl std::fmt::Debug for HttpClient {
@@ -126,6 +128,7 @@ impl HttpClient {
             credential,
             wire,
             read_backoff: READ_BACKOFF,
+            actor: actor::ActorCache::default(),
         })
     }
 
@@ -219,6 +222,32 @@ impl HttpClient {
             .map(|_| ())
     }
 
+    /// The `X-Cortex-Actor` value to send (direct wire only), asking
+    /// `v1/auth/whoami` the first time. See `actor`.
+    async fn actor(&self) -> Option<HeaderValue> {
+        if self.wire != CortexWire::Direct {
+            return None;
+        }
+        match self.actor.lookup() {
+            actor::Lookup::Send(value) => Some(value),
+            actor::Lookup::Skip => None,
+            actor::Lookup::Ask => {
+                let response = self
+                    .request(Method::GET, actor::WHOAMI_PATH)
+                    .await
+                    .ok()?
+                    .send()
+                    .await
+                    .ok()?;
+                let status = response.status();
+                let bytes = body::read_capped(response, actor::WHOAMI_PATH)
+                    .await
+                    .unwrap_or_default();
+                self.actor.learn(status, &bytes)
+            }
+        }
+    }
+
     /// One send.
     async fn attempt(
         &self,
@@ -229,6 +258,9 @@ impl HttpClient {
     ) -> Result<Value> {
         let label = label(path);
         let mut request = self.request(method, path).await?;
+        if let Some(actor) = self.actor().await {
+            request = request.header(actor::ACTOR_HEADER, actor);
+        }
         if let Some(key) = idempotency.filter(|_| self.wire == CortexWire::TinyHumans) {
             request = request.header("Idempotency-Key", key);
         }
@@ -241,6 +273,9 @@ impl HttpClient {
             .map_err(|error| failure::transport_error(self.host(), &error))?;
         let status = response.status();
         if !status.is_success() {
+            if matches!(status.as_u16(), 401 | 403) {
+                self.actor.forget();
+            }
             let text = body::read_error_body(response).await;
             return Err(match self.wire {
                 CortexWire::Direct => {
