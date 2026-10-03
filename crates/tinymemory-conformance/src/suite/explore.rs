@@ -3,9 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use tinymemory_api::{
-    Error as ApiError, ExploreRequest, Facet, GetRequest, ItemId, MetaFilter,
-};
+use tinymemory_api::{Error as ApiError, ExploreRequest, Facet, GetRequest, ItemId};
 
 use super::{Ctx, ensure};
 use crate::error::Result;
@@ -100,7 +98,10 @@ pub(super) async fn get(ctx: &Ctx<'_>) -> Result<()> {
         "the run has nothing to read back".to_string()
     })?;
     let mut ids: Vec<ItemId> = listed.iter().rev().map(|hit| hit.id.clone()).collect();
-    ids.insert(1.min(ids.len()), ItemId::new(format!("{}-missing", ctx.run.marker)));
+    ids.insert(
+        1.min(ids.len()),
+        ItemId::new(format!("{}-missing", ctx.run.marker)),
+    );
     let hits = ctx
         .call(CHECK, ctx.engine.get(GetRequest { ids: ids.clone() }))
         .await?;
@@ -120,7 +121,12 @@ pub(super) async fn get(ctx: &Ctx<'_>) -> Result<()> {
         ensure(
             CHECK,
             hit.kind == listing.kind && hit.meta == listing.meta && hit.text == listing.text,
-            || format!("`{}` reads back differently from its listing", hit.id.as_str()),
+            || {
+                format!(
+                    "`{}` reads back differently from its listing",
+                    hit.id.as_str()
+                )
+            },
         )?;
     }
     let refused = ctx.engine.get(GetRequest { ids: Vec::new() }).await;
@@ -129,6 +135,5 @@ pub(super) async fn get(ctx: &Ctx<'_>) -> Result<()> {
         matches!(refused, Err(ApiError::InvalidRequest(_))),
         || format!("an empty get was not refused: {refused:?}"),
     )?;
-    let _ = MetaFilter::default();
     Ok(())
 }

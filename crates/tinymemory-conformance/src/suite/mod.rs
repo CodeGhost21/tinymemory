@@ -8,6 +8,10 @@
 //! 2. `round_trip` — one item of each kind stores and lists back with the same
 //!    kind, metadata and rendered text, and paging terminates.
 //! 3. `replay` — storing an identical item again is a replay with the same id.
+//! 3a. `explore` — per-kind and per-workspace counts agree with `list`, buckets
+//!    are largest first, and each bucket narrows to exactly its count.
+//! 3b. `get` — the run's items read back by id in the order asked, equal to
+//!    their listing, with an unknown id left out.
 //! 4. `fetch_filters` — for every declared fetch mode, a filter on each
 //!    metadata field selects exactly the item carrying it (and `list` agrees).
 //! 5. `unsupported_modes` — every undeclared fetch mode fails `Unsupported`.
@@ -20,6 +24,7 @@
 //! Finally the run's items are forgotten by filter and must be gone.
 
 mod checks;
+mod explore;
 mod fixtures;
 
 use std::collections::HashSet;
