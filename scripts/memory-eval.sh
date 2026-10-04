@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 # Runs the agent memory eval (crates/tinymemory-integrations/examples/memory_eval)
 # against a throwaway CortexDB from integration/cortexdb/, then tears it down.
-# Reports land in target/memory-eval/<label>.{md,json}. See docs/evals/.
+# Reports land in target/memory-eval/<label>.{md,json} (OUT_DIR overrides
+# the directory). See docs/evals/.
 #
 #   ./scripts/memory-eval.sh                 # deterministic mock models
 #   MODELS=openrouter ./scripts/memory-eval.sh   # real models via OpenRouter
 #   ./scripts/memory-eval.sh --llm           # extra flags go to the eval
 #   KEEP=1 ./scripts/memory-eval.sh          # leave the server running
+#   CORTEX_FLAGS_FILE=$PWD/integration/cortexdb/flags/no-graph.env \
+#     ./scripts/memory-eval.sh               # one CortexDB flag profile
+#
+# To compare flag profiles, use scripts/memory-flag-sweep.sh.
 #
 # MODELS=openrouter needs OPENROUTER_API_KEY. It sends the eval's synthetic
 # fixtures to OpenRouter for embeddings, extraction and answers. It is not
@@ -74,8 +79,9 @@ curl --fail --silent "$url/v1/admin/ready" >/dev/null || {
 }
 echo "CortexDB $(curl --silent "$url/v1/admin/health") at $url, models: $models"
 
-mkdir -p "$root/target/memory-eval"
+out="${OUT_DIR:-$root/target/memory-eval}"
+mkdir -p "$out"
 CORTEX_DB_URL="$url" CORTEX_DB_KEY="${TINYMEMORY_TEST_CORTEX_KEY:-tinymemory-cortex-test}" \
   cargo run --quiet -p tinymemory-integrations --features full --example memory_eval -- \
-  --label "$label" --json "$root/target/memory-eval/$label.json" "$@" |
-  tee "$root/target/memory-eval/$label.md"
+  --label "$label" --json "$out/$label.json" "$@" |
+  tee "$out/$label.md"
