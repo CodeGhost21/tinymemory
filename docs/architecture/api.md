@@ -163,7 +163,7 @@ Constructors: `RecallRequest::new(question, limit)`,
 empty filter and no cursor. `GetRequest` has no constructor.
 
 `Citation { id, kind, snippet, meta, score? }` is one item an answer drew on;
-its id resolves through `get` or `list`. `Hit { id, kind, text, meta, score,
+its id resolves through `list`. `Hit { id, kind, text, meta, score,
 confidence? }` is one stored item as a read returns it: `text` is
 `StoreItem::render_text()`, `score` is `0.0` in a listing, `confidence` is a
 learning's confidence and absent for other kinds.

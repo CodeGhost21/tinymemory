@@ -77,7 +77,7 @@ undeclared one is `Unsupported`.
 4. Return the answer text, its `Citation`s and, when the engine reports it,
    the model.
 
-Every citation's `id` must resolve through `get` or `list`; the conformance
+Every citation's `id` must resolve through `list`; the conformance
 suite checks it.
 
 ## list
@@ -241,6 +241,7 @@ reference engine uses the fingerprint itself.
 
 `health() -> EngineHealth` (`Ok`, `Degraded(reason)`, `Down(reason)`) is
 infallible and cheap to call. `Degraded` still serves; `Down` does not
-(`is_serving()`). Failures calling the engine are reported as `Down` with a
-sanitised reason, never as an error. The conformance suite's first check is
+(`is_serving()`). The method returns no `Result`, so an engine reports
+trouble through the variant and its reason (which must not carry a
+credential), never as an error. The conformance suite's first check is
 that the engine reports itself serving.
