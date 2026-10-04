@@ -3,10 +3,10 @@
 
 use std::sync::Arc;
 
-use tinymemory_api::MemoryEngine;
+use tinymemory_api::{LearningKind, MemoryEngine, MemoryMeta, Namespace, StoreItem};
 use tinymemory_tools::{
-    AgentMemory, Brain, BrainDocument, BrainSource, JobOutcome, MemoryLayout, PostTurn, PreTurn,
-    RecallPolicy, SessionStart,
+    AgentMemory, Brain, BrainDocument, BrainSource, CoreScope, JobOutcome, MemoryLayout, PostTurn,
+    PreTurn, RecallPolicy, SessionStart,
 };
 
 use crate::cortex::CortexWire;
@@ -139,5 +139,56 @@ async fn an_agent_loop_runs_the_same_on_either_wire() {
                 CortexWire::TinyHumans => assert!(learnings.is_none(), "{wire:?}: {pack}"),
             }
         }
+    }
+}
+
+#[tokio::test]
+async fn a_core_scope_recalls_the_company_node_on_either_wire() {
+    for (engine, state) in both().await {
+        let wire = engine.wire();
+        let engine: Arc<dyn MemoryEngine> = Arc::new(engine);
+        let acme: Namespace = "ws:acme".parse().unwrap();
+        let hive = MemoryLayout::new("ws:acme/team:hive".parse().unwrap()).unwrap();
+        let agent = AgentMemory::new(engine.clone(), hive, "a")
+            .unwrap()
+            .with_core(vec![CoreScope::new(acme.clone(), "Company")])
+            .unwrap();
+        agent
+            .promote(
+                &acme,
+                StoreItem::learning(
+                    "Acme closes for the holidays on Friday",
+                    LearningKind::Fact,
+                    0.9,
+                    MemoryMeta::default(),
+                ),
+            )
+            .await
+            .unwrap();
+        state.seen.lock().unwrap().recalls.clear();
+
+        let pack = agent.recall("holidays").await.unwrap().markdown;
+        assert!(
+            pack.contains("## Company\n\n- Acme closes for the holidays on Friday"),
+            "{wire:?}: {pack}"
+        );
+        let scopes: Vec<String> = state
+            .seen
+            .lock()
+            .unwrap()
+            .recalls
+            .iter()
+            .filter_map(|body| body["scope"].as_str().map(str::to_string))
+            .collect();
+        assert!(
+            scopes
+                .iter()
+                .any(|scope| scope.ends_with("app:tinymemory/ws:acme/app:learnings")),
+            "{wire:?}: {scopes:?}"
+        );
+        assert!(
+            scopes.iter().all(|scope| !scope.contains("team:other")),
+            "{wire:?}: {scopes:?}"
+        );
     }
 }

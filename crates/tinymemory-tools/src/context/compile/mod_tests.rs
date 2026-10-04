@@ -193,3 +193,32 @@ async fn a_reach_keeps_the_document_to_one_agent_s_memory() {
     );
     assert!(!doc.markdown.contains("writer habit"), "{}", doc.markdown);
 }
+
+#[tokio::test]
+async fn a_core_brief_reads_only_the_company_node() {
+    let engine = ReferenceEngine::new();
+    let mut company = learning("company holiday habit", 0.9, Some(1));
+    company.meta_mut().namespace = "ws:acme".parse().unwrap();
+    let mut sibling = learning("other team habit", 0.9, Some(1));
+    sibling.meta_mut().namespace = "ws:acme/team:other".parse().unwrap();
+    for item in [company, sibling] {
+        engine.store(item).await.unwrap();
+    }
+    let core = crate::layout::CoreScope::new("ws:acme".parse().unwrap(), "Company");
+    let spec = ContextSpec {
+        briefs: vec![core.brief("habit")],
+        learnings_limit: 0,
+        ..ContextSpec::default()
+    };
+    let doc = ContextCompiler::at(at())
+        .compile(&engine, &spec)
+        .await
+        .unwrap();
+    assert!(doc.markdown.contains("## Company"), "{}", doc.markdown);
+    assert!(doc.markdown.contains("company holiday habit"));
+    assert!(
+        !doc.markdown.contains("other team habit"),
+        "{}",
+        doc.markdown
+    );
+}
