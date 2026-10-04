@@ -27,12 +27,15 @@
 //!   the belief build (default 20 against CortexDB, 0 otherwise).
 //! - `--json <path>`: write every probe, pack included, as JSON.
 //! - `--label <name>`: name the run in the report.
+//! - `--llm`: also have a model answer every probe from its pack (see
+//!   `llm`).
 //!
 //! Everything is written below roots unique to the run and forgotten at the
 //! end, unless `CORTEX_DB_KEEP` is set.
 
 mod agent;
 mod inspect;
+mod llm;
 mod scenarios;
 mod score;
 
@@ -55,8 +58,9 @@ use tinymemory_tools::{
 
 use agent::{ScriptedAgent, ms};
 use inspect::{Derived, Inspector};
+use llm::Llm;
 use scenarios::{MAIN, Probe, Scenario, Step, Via};
-use score::{Latency, ProbeResult, Totals, score};
+use score::{Latency, ProbeResult, Totals, grade, score};
 
 type Error = Box<dyn std::error::Error>;
 
@@ -73,6 +77,7 @@ struct Args {
     enrich_wait: Option<u64>,
     json: Option<String>,
     label: String,
+    llm: bool,
 }
 
 fn args() -> Result<Args, Error> {
@@ -86,6 +91,7 @@ fn args() -> Result<Args, Error> {
         enrich_wait: None,
         json: None,
         label: String::new(),
+        llm: false,
     };
     let mut raw = std::env::args().skip(1);
     while let Some(flag) = raw.next() {
@@ -96,6 +102,7 @@ fn args() -> Result<Args, Error> {
             "--enrich-wait" => parsed.enrich_wait = Some(value()?.parse()?),
             "--json" => parsed.json = Some(value()?),
             "--label" => parsed.label = value()?,
+            "--llm" => parsed.llm = true,
             other => return Err(format!("unknown flag {other}").into()),
         }
     }
@@ -155,12 +162,18 @@ async fn main() -> Result<(), Error> {
     let enrich_wait = args
         .enrich_wait
         .unwrap_or(if inspector.is_some() { 20 } else { 0 });
+    let llm = if args.llm {
+        Some(Llm::from_env()?)
+    } else {
+        None
+    };
     let run = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
     println!(
-        "memory eval `{}`: engine {} ({:?}), run {run}\n",
+        "memory eval `{}`: engine {} ({:?}), answer model {}, run {run}\n",
         args.label,
         engine.descriptor().id,
-        engine.health().await
+        engine.health().await,
+        llm.as_ref().map_or("none", |llm| llm.model.as_str()),
     );
 
     let mut timings = Timings::default();
@@ -177,6 +190,7 @@ async fn main() -> Result<(), Error> {
         let report = run_scenario(
             &engine,
             inspector.as_ref(),
+            llm.as_ref(),
             run,
             &scenario,
             enrich_wait,
@@ -238,6 +252,7 @@ fn tenants(scenario: &Scenario) -> Vec<&'static str> {
 async fn run_scenario(
     engine: &Arc<dyn MemoryEngine>,
     inspector: Option<&Inspector>,
+    llm: Option<&Llm>,
     run: u64,
     scenario: &Scenario,
     enrich_wait: u64,
@@ -328,7 +343,7 @@ async fn run_scenario(
 
     let mut probes = Vec::new();
     for probe in &scenario.probes {
-        probes.push(run_probe(engine, run, scenario, probe, "recall", &policy, timings).await?);
+        probes.push(run_probe(engine, llm, run, scenario, probe, "recall", &policy, timings).await?);
     }
 
     // Synthesis: the jobs the writes handed back, then one build per tenant
@@ -380,7 +395,7 @@ async fn run_scenario(
     );
 
     for probe in &scenario.probes {
-        probes.push(run_probe(engine, run, scenario, probe, "synthesis", &policy, timings).await?);
+        probes.push(run_probe(engine, llm, run, scenario, probe, "synthesis", &policy, timings).await?);
     }
 
     if std::env::var("CORTEX_DB_KEEP").is_err() {
@@ -437,8 +452,10 @@ async fn settle(
     }
 }
 
+#[allow(clippy::too_many_arguments)] // Each is one plain input of the probe.
 async fn run_probe(
     engine: &Arc<dyn MemoryEngine>,
+    llm: Option<&Llm>,
     run: u64,
     scenario: &Scenario,
     probe: &Probe,
@@ -492,7 +509,7 @@ async fn run_probe(
         }
     };
     let elapsed = ms(started);
-    let result = score(
+    let mut result = score(
         scenario.name,
         phase,
         probe,
@@ -500,6 +517,11 @@ async fn run_probe(
         pack.tokens,
         elapsed,
     );
+    if let Some(llm) = llm {
+        let answer = llm.answer(&pack.markdown, probe.question).await?;
+        result.llm_ok = grade(probe, Some(&answer));
+        result.llm_answer = Some(answer);
+    }
     timings.add(&format!("probe {}", result.via), elapsed);
     Ok(result)
 }

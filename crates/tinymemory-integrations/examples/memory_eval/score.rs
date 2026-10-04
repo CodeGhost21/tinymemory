@@ -13,7 +13,8 @@
 //!   over the probes that name superseded values.
 //! - **leak**: a `forbidden` string is in the pack.
 //! - **answer**: the scripted agent's extractive answer (see `agent`) holds
-//!   every `expect` string and no stale one.
+//!   every `expect` string and no stale one. With `--llm`, a model's answer
+//!   from the same pack is graded the same way.
 
 use serde::Serialize;
 
@@ -42,6 +43,9 @@ pub(crate) struct ProbeResult {
     pub(crate) leak: bool,
     pub(crate) answer: Option<String>,
     pub(crate) answer_ok: Option<bool>,
+    /// The `--llm` model's answer from the same pack.
+    pub(crate) llm_answer: Option<String>,
+    pub(crate) llm_ok: Option<bool>,
     pub(crate) ms: f64,
     pub(crate) tokens: usize,
     pub(crate) units: usize,
@@ -125,11 +129,25 @@ pub(crate) fn score(
         leak: probe.forbidden.iter().any(has),
         answer: answered,
         answer_ok,
+        llm_answer: None,
+        llm_ok: None,
         ms,
         tokens,
         units: units.len(),
         markdown: markdown.to_string(),
     }
+}
+
+/// Whether `answer` is right for `probe`: every expected string and no stale
+/// one. `None` for a probe that expects nothing.
+pub(crate) fn grade(probe: &Probe, answer: Option<&str>) -> Option<bool> {
+    (!probe.expect.is_empty()).then(|| {
+        answer.is_some_and(|text| {
+            let text = text.to_lowercase();
+            probe.expect.iter().all(|e| text.contains(&e.to_lowercase()))
+                && !probe.stale.iter().any(|s| text.contains(&s.to_lowercase()))
+        })
+    })
 }
 
 /// Totals over a set of results.
@@ -140,6 +158,8 @@ pub(crate) struct Totals {
     pub(crate) hits: usize,
     pub(crate) mrr: f64,
     pub(crate) answers_ok: usize,
+    pub(crate) llm_scored: usize,
+    pub(crate) llm_ok: usize,
     pub(crate) contradictions: usize,
     pub(crate) fresh_first: usize,
     pub(crate) leak_checks: usize,
@@ -158,6 +178,10 @@ impl Totals {
                 totals.hits += usize::from(hit);
                 reciprocal += result.rank.map_or(0.0, |rank| 1.0 / rank as f64);
                 totals.answers_ok += usize::from(result.answer_ok == Some(true));
+                if let Some(ok) = result.llm_ok {
+                    totals.llm_scored += 1;
+                    totals.llm_ok += usize::from(ok);
+                }
             }
             if result.contradiction {
                 totals.contradictions += 1;
