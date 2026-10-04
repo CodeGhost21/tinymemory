@@ -1,19 +1,25 @@
-# tinymemory-sources
+# sources
 
-Readers that turn a source into `StoreItem`s: a folder, a single file, a web
+`tinymemory_integrations::sources` (features `sources` and `sources-network`):
+readers that turn a source into `StoreItem`s — a folder, a single file, a web
 page, a GitHub repository, an RSS feed, a Composio toolkit payload, or the
 host's local conversation threads. Conversion to markdown and language
-detection come from `tinymemory-documents`.
+detection come from the sibling `documents` module.
+
+Where a host stores its configured sources, and how it edits them, is the
+host's business: this module reads a `MemorySourceEntry` it is handed and
+checks it with `MemorySourceEntry::validate`, nothing more.
 
 ## Layers
 
 | Module | Owns |
 | --- | --- |
-| `types`, `validation`, `registry`, `reconcile` | the configuration a host persists: `MemorySourceEntry` keyed by `SourceKind`, `MemorySourcePatch`, field rules, the `[[memory_sources]]` TOML registry, Composio reconciliation |
-| `readers` | `SourceReader` (list, read, read as a `StoreItem`) and one reader per kind; the SSRF guard (`readers::ssrf`) |
-| `fetch` | one URL into a `RawDocument` or a link item, behind the SSRF guard (`network`) |
+| `types` | the configuration a host persists: `MemorySourceEntry` keyed by `SourceKind`, its field rules, and the reader output types (`SourceItem`, `SourceContent`, `ContentType`) |
+| `readers` | `SourceReader` (list, read, read as a `StoreItem`) and one reader per kind, each in its own module directory; `local_file` holds the shared size-capped read and the path-containment guard |
+| `fetch` | one URL into a `RawDocument` or a link item (`sources-network`); the RSS and web-page readers fetch through it with their own body caps |
+| `fetch::ssrf` | the SSRF guard: scheme and host policy, one address classifier for literal and resolved addresses, a public-only DNS resolver, per-hop redirect checks, and a capped body reader |
 | `items` | reader output to `StoreItem`s with `MemoryMeta` filled per kind; `collect_items` drives a reader end to end |
-| `composio` | toolkit normalisers (Gmail, Slack, GitHub, Linear, Notion, ClickUp) and `payload_items` |
+| `composio` | toolkit normalisers (Gmail, Slack, GitHub, Linear, Notion, ClickUp), the `fields::pick_str` lookup they share, and `payload_items` |
 | `error` | the crate `Error`, mapped onto `tinymemory_api::Error` |
 
 ## Kinds and metadata
@@ -37,7 +43,7 @@ takes markdown, plain text and source code (`is_default_candidate`). Either way
 it skips hidden files and directories and `target`, `node_modules`,
 `__pycache__` and `venv`, never follows symlinks while walking, refuses files
 over `FOLDER_FILE_SIZE_CAP_BYTES` (10 MiB), and confines reads to the folder
-root (`ensure_within_base`). A relative path is anchored on the workspace, not
+root (`readers::local_file::ensure_within_base`). A relative path is anchored on the workspace, not
 the process working directory.
 
 ## Who decides when
@@ -47,8 +53,23 @@ conversation), which are safe to drive on a timer. Network readers are
 constructed explicitly, or through `reader_for_request` for an explicit user
 request. Scheduling, credentials, OAuth and egress budgets stay with the host.
 
+## Fetching
+
+Every network fetch of a user-configured URL goes through `fetch` and its
+SSRF guard. A hostname is checked as text (private and reserved IP literals,
+`localhost`, `.local`/`.internal`, single-label names), its resolved addresses
+are checked again by the client's resolver, which pins the connection to an
+address it has vetted, and every redirect hop is re-checked. Bodies are read
+against a cap while streaming: 32 MiB for `fetch_url`, 10 MiB for a web page,
+5 MiB for a feed. Failures are typed — `Invalid` for a refused or malformed
+URL, `Unreachable`, `Upstream` for a failure status, `TooLarge`.
+
+Page titles and feed text are decoded with the `documents::html` helpers, so
+named and numeric entities decode the same way everywhere.
+
 ## Features
 
-- `network` — the GitHub, RSS and web-page readers, `fetch`, and the SSRF
-  guard. Off by default, so a host that only reads local sources links no HTTP
-  stack.
+- `sources` — the local readers, `items`, `composio` and `types`. Links no
+  HTTP stack.
+- `sources-network` — adds the GitHub, RSS and web-page readers, `fetch`, and
+  the SSRF guard.
