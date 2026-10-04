@@ -22,34 +22,34 @@ use crate::scenarios::{Probe, Style, Via};
 
 /// One probe's outcome in one phase.
 #[derive(Debug, Clone, Serialize)]
-pub struct ProbeResult {
-    pub scenario: &'static str,
-    pub phase: &'static str,
-    pub id: &'static str,
-    pub via: &'static str,
-    pub style: &'static str,
+pub(crate) struct ProbeResult {
+    pub(crate) scenario: &'static str,
+    pub(crate) phase: &'static str,
+    pub(crate) id: &'static str,
+    pub(crate) via: &'static str,
+    pub(crate) style: &'static str,
     /// `None` when the probe expects nothing (a pure leak check).
-    pub hit: Option<bool>,
-    pub rank: Option<usize>,
+    pub(crate) hit: Option<bool>,
+    pub(crate) rank: Option<usize>,
     /// The heading of the section holding the first expected string.
-    pub section: Option<String>,
+    pub(crate) section: Option<String>,
     /// Whether the probe names superseded values.
-    pub contradiction: bool,
-    pub stale_present: bool,
-    pub stale_first: bool,
+    pub(crate) contradiction: bool,
+    pub(crate) stale_present: bool,
+    pub(crate) stale_first: bool,
     /// Whether the probe names forbidden strings.
-    pub leak_checked: bool,
-    pub leak: bool,
-    pub answer: Option<String>,
-    pub answer_ok: Option<bool>,
-    pub ms: f64,
-    pub tokens: usize,
-    pub units: usize,
-    pub markdown: String,
+    pub(crate) leak_checked: bool,
+    pub(crate) leak: bool,
+    pub(crate) answer: Option<String>,
+    pub(crate) answer_ok: Option<bool>,
+    pub(crate) ms: f64,
+    pub(crate) tokens: usize,
+    pub(crate) units: usize,
+    pub(crate) markdown: String,
 }
 
 /// Which lifecycle call a probe used.
-pub fn via_name(via: &Via) -> &'static str {
+pub(crate) fn via_name(via: &Via) -> &'static str {
     match via {
         Via::Ask => "pre_turn",
         Via::Resume { .. } => "start_session",
@@ -83,7 +83,7 @@ fn units(markdown: &str) -> Vec<(String, String)> {
 }
 
 /// Scores one pack.
-pub fn score(
+pub(crate) fn score(
     scenario: &'static str,
     phase: &'static str,
     probe: &Probe,
@@ -104,7 +104,10 @@ pub fn score(
     let answer_ok = (!probe.expect.is_empty()).then(|| {
         answered.as_deref().is_some_and(|text| {
             let text = text.to_lowercase();
-            probe.expect.iter().all(|e| text.contains(&e.to_lowercase()))
+            probe
+                .expect
+                .iter()
+                .all(|e| text.contains(&e.to_lowercase()))
                 && !probe.stale.iter().any(|s| text.contains(&s.to_lowercase()))
         })
     });
@@ -140,21 +143,21 @@ pub fn score(
 
 /// Totals over a set of results.
 #[derive(Debug, Clone, Default, Serialize)]
-pub struct Totals {
-    pub probes: usize,
-    pub scored: usize,
-    pub hits: usize,
-    pub mrr: f64,
-    pub answers_ok: usize,
-    pub contradictions: usize,
-    pub fresh_first: usize,
-    pub leak_checks: usize,
-    pub leaks: usize,
+pub(crate) struct Totals {
+    pub(crate) probes: usize,
+    pub(crate) scored: usize,
+    pub(crate) hits: usize,
+    pub(crate) mrr: f64,
+    pub(crate) answers_ok: usize,
+    pub(crate) contradictions: usize,
+    pub(crate) fresh_first: usize,
+    pub(crate) leak_checks: usize,
+    pub(crate) leaks: usize,
 }
 
 impl Totals {
     /// Sums `results`.
-    pub fn of<'a>(results: impl IntoIterator<Item = &'a ProbeResult>) -> Self {
+    pub(crate) fn of<'a>(results: impl IntoIterator<Item = &'a ProbeResult>) -> Self {
         let mut totals = Self::default();
         let mut reciprocal = 0.0;
         for result in results {
@@ -167,8 +170,7 @@ impl Totals {
             }
             if result.contradiction {
                 totals.contradictions += 1;
-                totals.fresh_first +=
-                    usize::from(result.hit == Some(true) && !result.stale_first);
+                totals.fresh_first += usize::from(result.hit == Some(true) && !result.stale_first);
             }
             totals.leak_checks += usize::from(result.leak_checked);
             totals.leaks += usize::from(result.leak);
@@ -180,27 +182,30 @@ impl Totals {
     }
 
     /// `part` of `whole` as a percentage cell.
-    pub fn pct(part: usize, whole: usize) -> String {
+    pub(crate) fn pct(part: usize, whole: usize) -> String {
         if whole == 0 {
             "–".to_string()
         } else {
-            format!("{:.0}% ({part}/{whole})", 100.0 * part as f64 / whole as f64)
+            format!(
+                "{:.0}% ({part}/{whole})",
+                100.0 * part as f64 / whole as f64
+            )
         }
     }
 }
 
 /// Latency percentiles of a set of samples, in milliseconds.
 #[derive(Debug, Clone, Default, Serialize)]
-pub struct Latency {
-    pub n: usize,
-    pub p50: f64,
-    pub p95: f64,
-    pub max: f64,
+pub(crate) struct Latency {
+    pub(crate) n: usize,
+    pub(crate) p50: f64,
+    pub(crate) p95: f64,
+    pub(crate) max: f64,
 }
 
 impl Latency {
     /// Percentiles of `samples`.
-    pub fn of(samples: &[f64]) -> Self {
+    pub(crate) fn of(samples: &[f64]) -> Self {
         if samples.is_empty() {
             return Self::default();
         }

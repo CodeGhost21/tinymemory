@@ -23,30 +23,30 @@ use tinymemory_tools::{AgentMemory, BackgroundJob, ContextPack, PostTurn, PreTur
 
 /// A scripted tool call and the result the "tool" returns.
 #[derive(Debug, Clone, Copy)]
-pub struct ToolStep {
+pub(crate) struct ToolStep {
     /// The tool's name.
-    pub name: &'static str,
+    pub(crate) name: &'static str,
     /// What it returned.
-    pub result: &'static str,
+    pub(crate) result: &'static str,
 }
 
 /// What one scripted turn did and how long each step took.
 #[derive(Debug, Clone)]
-pub struct TurnRecord {
+pub(crate) struct TurnRecord {
     /// `pre_turn` latency, in milliseconds.
-    pub pre_ms: f64,
+    pub(crate) pre_ms: f64,
     /// `post_turn` latency, in milliseconds.
-    pub post_ms: f64,
+    pub(crate) post_ms: f64,
     /// Whether the user turn was logged.
-    pub logged: bool,
+    pub(crate) logged: bool,
     /// The jobs `post_turn` handed back.
-    pub jobs: Vec<BackgroundJob>,
+    pub(crate) jobs: Vec<BackgroundJob>,
     /// How many tool calls the reply made.
-    pub tool_calls: usize,
+    pub(crate) tool_calls: usize,
 }
 
 /// One conversation thread driven by the script.
-pub struct ScriptedAgent {
+pub(crate) struct ScriptedAgent {
     memory: AgentMemory,
     thread: String,
     next: u32,
@@ -58,7 +58,7 @@ pub struct ScriptedAgent {
 impl ScriptedAgent {
     /// A new thread for `memory`, keeping the last `window` turns in the
     /// prompt.
-    pub fn new(memory: AgentMemory, thread: impl Into<String>, window: u32) -> Self {
+    pub(crate) fn new(memory: AgentMemory, thread: impl Into<String>, window: u32) -> Self {
         Self {
             memory,
             thread: thread.into(),
@@ -69,7 +69,7 @@ impl ScriptedAgent {
     }
 
     /// Timestamps the thread's turns from `at`, a minute apart.
-    pub fn at(mut self, at: DateTime<Utc>) -> Self {
+    pub(crate) fn at(mut self, at: DateTime<Utc>) -> Self {
         self.clock = Some(at);
         self
     }
@@ -88,7 +88,7 @@ impl ScriptedAgent {
 
     /// One exchange: the user says `text`, the agent calls `tools` and
     /// replies.
-    pub async fn user(
+    pub(crate) async fn user(
         &mut self,
         text: &str,
         tools: &[ToolStep],
@@ -146,9 +146,9 @@ fn reply(pack: &ContextPack, text: &str, tools: &[ToolStep]) -> String {
 /// Words too common to tell two lines apart.
 const STOPWORDS: [&str; 42] = [
     "a", "an", "the", "is", "are", "was", "were", "do", "does", "did", "of", "to", "in", "on",
-    "at", "for", "and", "or", "our", "we", "i", "my", "me", "you", "your", "what", "which",
-    "who", "when", "where", "how", "it", "that", "this", "with", "be", "should", "can", "get",
-    "have", "has", "from",
+    "at", "for", "and", "or", "our", "we", "i", "my", "me", "you", "your", "what", "which", "who",
+    "when", "where", "how", "it", "that", "this", "with", "be", "should", "can", "get", "have",
+    "has", "from",
 ];
 
 /// The lowercase content words of `text`.
@@ -162,7 +162,7 @@ fn words(text: &str) -> Vec<String> {
 /// The pack line the agent would answer `question` with: the bullet sharing
 /// the most content words with it (earlier sections win ties), skipping the
 /// agent's own non-answers and lines that only repeat a question.
-pub fn answer(markdown: &str, question: &str) -> Option<String> {
+pub(crate) fn answer(markdown: &str, question: &str) -> Option<String> {
     let wanted = words(question);
     let mut best: Option<(usize, &str)> = None;
     for line in markdown.lines().filter_map(|line| line.strip_prefix("- ")) {
@@ -180,6 +180,6 @@ pub fn answer(markdown: &str, question: &str) -> Option<String> {
 }
 
 /// Milliseconds since `started`.
-pub fn ms(started: Instant) -> f64 {
+pub(crate) fn ms(started: Instant) -> f64 {
     started.elapsed().as_secs_f64() * 1e3
 }

@@ -142,16 +142,16 @@ async fn main() -> Result<(), Error> {
     let args = args()?;
     let url = std::env::var("CORTEX_DB_URL").unwrap_or_default();
     let key = std::env::var("CORTEX_DB_KEY").unwrap_or_else(|_| "tinymemory-cortex-test".into());
-    let (engine, inspector): (Arc<dyn MemoryEngine>, Option<Inspector>) =
-        match args.engine.as_str() {
-            "reference" => (Arc::new(ReferenceEngine::new()), None),
-            "cortex" if !url.is_empty() => (
-                Arc::new(CortexEngine::direct(&url, CortexCredential::api_key(&key))?),
-                Some(Inspector::new(&url, &key)),
-            ),
-            "cortex" => return Err("--engine cortex needs CORTEX_DB_URL".into()),
-            other => return Err(format!("unknown engine {other}").into()),
-        };
+    let (engine, inspector): (Arc<dyn MemoryEngine>, Option<Inspector>) = match args.engine.as_str()
+    {
+        "reference" => (Arc::new(ReferenceEngine::new()), None),
+        "cortex" if !url.is_empty() => (
+            Arc::new(CortexEngine::direct(&url, CortexCredential::api_key(&key))?),
+            Some(Inspector::new(&url, &key)),
+        ),
+        "cortex" => return Err("--engine cortex needs CORTEX_DB_URL".into()),
+        other => return Err(format!("unknown engine {other}").into()),
+    };
     let enrich_wait = args
         .enrich_wait
         .unwrap_or(if inspector.is_some() { 20 } else { 0 });
@@ -583,7 +583,10 @@ fn print_summary(label: &str, reports: &[ScenarioReport], timings: &Timings) {
             result.rank,
             result.stale_first,
             result.leak,
-            result.answer.as_deref().map(|a| a.chars().take(100).collect::<String>()),
+            result
+                .answer
+                .as_deref()
+                .map(|a| a.chars().take(100).collect::<String>()),
         );
     }
 }

@@ -17,10 +17,10 @@ use tinymemory_tools::BrainSource;
 use crate::agent::ToolStep;
 
 /// The default tenant.
-pub const MAIN: &str = "main";
+pub(crate) const MAIN: &str = "main";
 
 /// Something written before the probes run.
-pub enum Step {
+pub(crate) enum Step {
     /// A brain document.
     Doc {
         tenant: &'static str,
@@ -48,7 +48,7 @@ pub enum Step {
 
 /// How a probe reads memory.
 #[derive(Debug, Clone)]
-pub enum Via {
+pub(crate) enum Via {
     /// A new thread's first `pre_turn`.
     Ask,
     /// `start_session`, resuming `thread` (or none) for `focus` (or none).
@@ -72,7 +72,7 @@ pub enum Via {
 
 /// Whether a question shares its key words with the stored text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Style {
+pub(crate) enum Style {
     /// It does.
     Lexical,
     /// It does not: only meaning connects them.
@@ -81,16 +81,16 @@ pub enum Style {
 
 /// One question and what a correct pack holds.
 #[derive(Debug, Clone)]
-pub struct Probe {
-    pub id: &'static str,
-    pub tenant: &'static str,
-    pub agent: &'static str,
-    pub via: Via,
-    pub question: &'static str,
-    pub style: Style,
-    pub expect: Vec<&'static str>,
-    pub stale: Vec<&'static str>,
-    pub forbidden: Vec<&'static str>,
+pub(crate) struct Probe {
+    pub(crate) id: &'static str,
+    pub(crate) tenant: &'static str,
+    pub(crate) agent: &'static str,
+    pub(crate) via: Via,
+    pub(crate) question: &'static str,
+    pub(crate) style: Style,
+    pub(crate) expect: Vec<&'static str>,
+    pub(crate) stale: Vec<&'static str>,
+    pub(crate) forbidden: Vec<&'static str>,
 }
 
 impl Probe {
@@ -135,15 +135,15 @@ impl Probe {
 }
 
 /// A named scenario.
-pub struct Scenario {
-    pub name: &'static str,
-    pub about: &'static str,
-    pub steps: Vec<Step>,
-    pub probes: Vec<Probe>,
+pub(crate) struct Scenario {
+    pub(crate) name: &'static str,
+    pub(crate) about: &'static str,
+    pub(crate) steps: Vec<Step>,
+    pub(crate) probes: Vec<Probe>,
 }
 
 /// Every scenario, in run order.
-pub fn all() -> Vec<Scenario> {
+pub(crate) fn all() -> Vec<Scenario> {
     vec![
         brain_lookup(),
         restart_recall(),
@@ -352,8 +352,13 @@ fn restart_recall() -> Scenario {
                 Paraphrase,
             )
             .expect(&["WET"]),
-            Probe::new("codename", "assistant-01", "What's our project codename?", Lexical)
-                .expect(&["Bluefin"]),
+            Probe::new(
+                "codename",
+                "assistant-01",
+                "What's our project codename?",
+                Lexical,
+            )
+            .expect(&["Bluefin"]),
             Probe::new(
                 "release-day",
                 "assistant-01",
@@ -469,7 +474,10 @@ fn tool_heavy() -> Scenario {
                     "checkout version 2.14.3 deployed 40 minutes ago by ci-bot",
                 ),
                 tool("get_metrics", "checkout p99 latency 2.8s, up from 180ms"),
-                tool("list_alerts", "2 firing: CheckoutErrorRate, DbPoolSaturation"),
+                tool(
+                    "list_alerts",
+                    "2 firing: CheckoutErrorRate, DbPoolSaturation",
+                ),
             ],
         ),
         (
@@ -492,16 +500,16 @@ fn tool_heavy() -> Scenario {
                 tool("rollback", "checkout rolled back to 2.14.2"),
                 tool("get_metrics", "checkout p99 back to 190ms"),
                 tool("create_ticket", "ticket OPS-7781 opened for pool sizing"),
-                tool("notify_channel", "posted incident summary to #checkout-oncall"),
+                tool(
+                    "notify_channel",
+                    "posted incident summary to #checkout-oncall",
+                ),
             ],
         ),
         (
             "Find the commit that caused it.".to_string(),
             vec![
-                tool(
-                    "git_log",
-                    "commit 9f2c1ab lowered pool_size from 50 to 10",
-                ),
+                tool("git_log", "commit 9f2c1ab lowered pool_size from 50 to 10"),
                 tool("git_blame", "change authored by jmiller in PR 4412"),
                 tool("get_pr", "PR 4412 approved by one reviewer, merged Friday"),
             ],
@@ -617,7 +625,9 @@ fn team_handoff() -> Scenario {
 /// The 16 filler turns of the compaction scenario, after its four facts.
 fn agenda() -> Vec<String> {
     (1..=16)
-        .map(|n| format!("Next, agenda item {n}: assign an owner and a deadline for workstream {n}."))
+        .map(|n| {
+            format!("Next, agenda item {n}: assign an owner and a deadline for workstream {n}.")
+        })
         .collect()
 }
 
@@ -666,7 +676,12 @@ fn compaction() -> Scenario {
             })
             .expect(&["9 people"])
             // Turns 32..40 are agenda items 13 to 16: still in the prompt.
-            .forbid(&["agenda item 13", "agenda item 14", "agenda item 15", "agenda item 16"]),
+            .forbid(&[
+                "agenda item 13",
+                "agenda item 14",
+                "agenda item 15",
+                "agenda item 16",
+            ]),
         ],
     }
 }
@@ -753,7 +768,10 @@ fn needle_in_noise() -> Scenario {
                 thread: format!("noise-{n}"),
                 day: 0,
                 turns: vec![(
-                    format!("Customer {} asked about {topic}; I sent the help article.", 100 + n),
+                    format!(
+                        "Customer {} asked about {topic}; I sent the help article.",
+                        100 + n
+                    ),
                     Vec::new(),
                 )],
             }

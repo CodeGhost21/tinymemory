@@ -10,16 +10,16 @@ use serde_json::{Value, json};
 
 /// The derived layers of one scope.
 #[derive(Debug, Clone, Default, Serialize)]
-pub struct Derived {
-    pub scope: String,
-    pub facts: usize,
-    pub beliefs: usize,
+pub(crate) struct Derived {
+    pub(crate) scope: String,
+    pub(crate) facts: usize,
+    pub(crate) beliefs: usize,
     /// Each belief as "subject predicate object (stance, confidence)".
-    pub claims: Vec<String>,
+    pub(crate) claims: Vec<String>,
 }
 
 /// Reads CortexDB's derived layers below a layout root.
-pub struct Inspector {
+pub(crate) struct Inspector {
     client: reqwest::Client,
     url: String,
     key: String,
@@ -27,7 +27,7 @@ pub struct Inspector {
 
 impl Inspector {
     /// An inspector of the server at `url`.
-    pub fn new(url: &str, key: &str) -> Self {
+    pub(crate) fn new(url: &str, key: &str) -> Self {
         Self {
             client: reqwest::Client::new(),
             url: url.trim_end_matches('/').to_string(),
@@ -49,7 +49,7 @@ impl Inspector {
 
     /// Every registered scope whose path holds `node` (a layout root such as
     /// `project:eval-1-main`).
-    pub async fn scopes(&self, node: &str) -> Result<Vec<String>, reqwest::Error> {
+    pub(crate) async fn scopes(&self, node: &str) -> Result<Vec<String>, reqwest::Error> {
         let listed: Value = self
             .client
             .get(format!("{}/v1/scopes/list", self.url))
@@ -71,7 +71,11 @@ impl Inspector {
     }
 
     /// The facts and beliefs of `scope` relevant to `query`.
-    pub async fn derived(&self, scope: &str, query: &str) -> Result<Derived, reqwest::Error> {
+    pub(crate) async fn derived(
+        &self,
+        scope: &str,
+        query: &str,
+    ) -> Result<Derived, reqwest::Error> {
         let pack = self
             .post(
                 "v1/recall",
