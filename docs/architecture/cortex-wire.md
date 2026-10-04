@@ -44,6 +44,7 @@ for. Both fail with `Error::Unsupported` before any request.
 | Answer | `v1/answer` | `memory/answer` | POST |
 | Health | `v1/admin/health` | `memory/scopes` | GET |
 | Scopes (registered scopes under a prefix) | `v1/scopes/list` | `memory/scopes` | GET |
+| Build beliefs (one scope) | `v1/beliefs/build` | none (never sent) | POST |
 | Whoami (Direct only) | `v1/auth/whoami` | | GET |
 
 The endpoint is joined with the route, so a base URL with a path prefix keeps
@@ -85,7 +86,11 @@ Response: `{"event_id": "..."}` (Direct answers `202`, with `status` and
 `replayed_from_idempotency` the engine does not read). A response without
 `event_id` is `Error::Engine`.
 
-Direct appends with `?wait=indexed`. A single event goes to `v1/experience`;
+Direct appends with `?wait=indexed`, except for a store that waits only for
+acceptance (`store_with` with `WaitFor::Accepted`, which the agent lifecycle
+uses for live turns). That store omits the parameter and also skips the
+visibility waits, so the call returns once CortexDB has captured the event.
+A single event goes to `v1/experience`;
 **two or more** go to `v1/experience/bulk` with
 
 ```json
@@ -186,6 +191,23 @@ The reader accepts either `{"items": [{"path": "..."}]}` (Direct) or
 object with `path`. A `404` means "no scope listing" and is treated as no
 scopes.
 
+### Build beliefs: `v1/beliefs/build` (Direct only)
+
+`consolidate` resolves its reach and kinds to the kind scopes that CortexDB
+has registered. It reads them through `v1/scopes/list` under
+`app:tinymemory`, keeping only the scopes the reach admits. It then posts one
+request per scope, in order:
+
+```json
+{ "scope": "app:tinymemory/source:pdf/app:documents" }
+```
+
+CortexDB queues the build and answers at once. Any job handle in the answer
+(`job_id`, `build_id` or `id`) is collected into the receipt, which reports
+`Started`. Each build is sent once and never retried: a host can always ask
+again. The TinyHumans backend has no such route; its descriptor declares
+`Consolidation::Scheduled`, and `consolidate` sends nothing.
+
 ### Health
 
 Direct: `GET v1/admin/health`. TinyHumans has no health route, so it lists one
@@ -229,6 +251,7 @@ scope segment of the same text, using the contract's prefixes:
 | User | `user` |
 | Workspace | `ws` |
 | Project | `project` |
+| Source | `source` |
 | TinyMemory root and each kind leaf | `app` |
 
 These are CortexDB's built-in types, chosen on purpose. From CortexDB v0.10 a

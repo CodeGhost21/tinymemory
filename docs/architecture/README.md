@@ -1,7 +1,8 @@
 # Architecture
 
 How TinyMemory is built, one document per concern. The accepted behaviour (the
-"what and why") is [`specs/memory-v2.md`](../specs/memory-v2.md); these pages
+"what and why") is [`specs/memory-v2.md`](../specs/memory-v2.md) and, for the
+agent lifecycle, [`specs/agent-memory.md`](../specs/agent-memory.md); these pages
 describe the shape of the code that delivers it. Item-level reference lives in
 rustdoc next to the code.
 
@@ -15,6 +16,7 @@ rustdoc next to the code.
 | [cortex.md](cortex.md) | The CortexDB engine: wires, scopes, envelopes, recall |
 | [cortex-wire.md](cortex-wire.md), [cortex-flows.md](cortex-flows.md) | The CortexDB wire formats and the step-by-step request flows |
 | [tools.md](tools.md) | `tinymemory-tools`: the seven agent tools, host-fixed scoping, `context.md` |
+| [lifecycle.md](lifecycle.md) | The agent memory lifecycle: the standard layout (brain, conversations, learnings), holistic recall, pre- and post-turn, compaction, background belief builds |
 | [integrations.md](integrations.md) | `tinymemory-integrations`: registry and config, documents, sources, safety, legacy import |
 | [testing.md](testing.md) | The conformance suite, the reference engine and the test layout |
 

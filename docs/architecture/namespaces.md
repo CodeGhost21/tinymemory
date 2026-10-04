@@ -37,6 +37,7 @@ team:acme/agent:writer/agent:helper
 | `User` | `user` | A human user |
 | `Workspace` | `ws` | A shared workspace |
 | `Project` | `project` | A project |
+| `Source` | `source` | A knowledge source type (`source:pdf`): where the brain keeps each source's documents (see [lifecycle.md](lifecycle.md)) |
 
 `SegmentKind::as_str()` gives the path prefix (`ws` for `Workspace`). Note
 that the enum's own serde form is `snake_case` of the variant, so
