@@ -493,5 +493,5 @@ fn extract_attachments(msg: &Map<String, Value>) -> Vec<Value> {
 }
 
 #[cfg(test)]
-#[path = "gmail_post_process_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;

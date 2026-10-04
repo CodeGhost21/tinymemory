@@ -288,5 +288,5 @@ pub struct SourceContent {
 }
 
 #[cfg(test)]
-#[path = "types_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;

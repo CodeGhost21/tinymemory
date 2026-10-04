@@ -84,5 +84,5 @@ pub fn extract_page_title(page: &Value) -> Option<String> {
 }
 
 #[cfg(test)]
-#[path = "notion_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;

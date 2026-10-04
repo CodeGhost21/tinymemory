@@ -112,5 +112,5 @@ pub fn extract_issue_updated_at(issue: &Value) -> Option<String> {
 }
 
 #[cfg(test)]
-#[path = "github_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;

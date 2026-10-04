@@ -74,5 +74,5 @@ impl SourceReader for ComposioReader {
 }
 
 #[cfg(test)]
-#[path = "composio_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;

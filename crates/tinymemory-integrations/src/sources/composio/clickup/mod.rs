@@ -65,5 +65,5 @@ pub fn extract_task_updated(task: &Value) -> Option<String> {
 }
 
 #[cfg(test)]
-#[path = "clickup_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;

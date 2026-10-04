@@ -319,5 +319,5 @@ fn with_object(data: &mut Value, edit: impl FnOnce(&mut Map<String, Value>)) {
 }
 
 #[cfg(test)]
-#[path = "slack_post_process_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;

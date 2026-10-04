@@ -339,5 +339,5 @@ fn generic_records(data: &Value) -> Vec<ComposioDocument> {
 }
 
 #[cfg(test)]
-#[path = "documents_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;

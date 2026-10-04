@@ -75,5 +75,5 @@ pub fn extract_issue_updated(issue: &Value) -> Option<String> {
 }
 
 #[cfg(test)]
-#[path = "linear_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;
