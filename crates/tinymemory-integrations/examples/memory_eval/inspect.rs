@@ -7,7 +7,9 @@
 //! the models cost. That is the only way to tell whether memory captured an
 //! event even when a pack does not show it.
 
-use serde::Serialize;
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 /// The derived layers of one scope.
@@ -127,6 +129,10 @@ pub(crate) struct Captured {
     /// Each open or resolved conflict as "kind status: subject predicate
     /// [values]".
     pub(crate) conflicts: Vec<String>,
+    /// Beliefs by stance (`supported`, `contested`, …).
+    pub(crate) stances: BTreeMap<String, usize>,
+    /// Every belief's confidence.
+    pub(crate) confidences: Vec<f64>,
 }
 
 impl Captured {
@@ -138,23 +144,84 @@ impl Captured {
             .chain(&self.beliefs)
             .any(|line| line.to_lowercase().contains(&needle))
     }
+
+    /// Adds everything `other` holds.
+    pub(crate) fn extend(&mut self, other: Self) {
+        self.facts.extend(other.facts);
+        self.beliefs.extend(other.beliefs);
+        self.conflicts.extend(other.conflicts);
+        for (stance, n) in other.stances {
+            *self.stances.entry(stance).or_default() += n;
+        }
+        self.confidences.extend(other.confidences);
+    }
 }
 
-/// The models' usage CortexDB accounts for, as its routers price it.
-#[derive(Debug, Clone, Copy, Default, Serialize)]
-pub(crate) struct Usage {
+/// One line of the models' usage.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub(crate) struct Spend {
     pub(crate) calls: u64,
     pub(crate) tokens: u64,
     pub(crate) cost_usd: f64,
 }
 
-impl Usage {
+impl Spend {
+    /// A usage line as `v1/admin/usage` reports it.
+    fn of(line: &Value) -> Self {
+        let count = |name: &str| line[name].as_u64().unwrap_or_default();
+        Self {
+            calls: count("calls"),
+            tokens: count("tokens_total") + count("tokens_unsplit"),
+            cost_usd: line["cost_usd"].as_f64().unwrap_or_default(),
+        }
+    }
+
     /// What was spent between `before` and `self`.
-    pub(crate) fn since(self, before: Self) -> Self {
+    fn since(self, before: Self) -> Self {
         Self {
             calls: self.calls.saturating_sub(before.calls),
             tokens: self.tokens.saturating_sub(before.tokens),
             cost_usd: self.cost_usd - before.cost_usd,
+        }
+    }
+}
+
+/// The models' usage CortexDB accounts for, as its routers price it: in
+/// total, and by the role a model plays (extraction, enrichment, answer,
+/// embedding, …).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub(crate) struct Usage {
+    pub(crate) calls: u64,
+    pub(crate) tokens: u64,
+    pub(crate) cost_usd: f64,
+    pub(crate) by_role: BTreeMap<String, Spend>,
+}
+
+impl Usage {
+    /// What was spent between `before` and `self`.
+    pub(crate) fn since(&self, before: &Self) -> Self {
+        let total = self.total().since(before.total());
+        Self {
+            calls: total.calls,
+            tokens: total.tokens,
+            cost_usd: total.cost_usd,
+            by_role: self
+                .by_role
+                .iter()
+                .map(|(role, spend)| {
+                    let earlier = before.by_role.get(role).copied().unwrap_or_default();
+                    (role.clone(), spend.since(earlier))
+                })
+                .filter(|(_, spend)| spend.calls > 0 || spend.cost_usd > 0.0)
+                .collect(),
+        }
+    }
+
+    fn total(&self) -> Spend {
+        Spend {
+            calls: self.calls,
+            tokens: self.tokens,
+            cost_usd: self.cost_usd,
         }
     }
 }
@@ -205,6 +272,11 @@ impl Inspector {
             }
             for belief in listed(&self.get("v1/beliefs", &page).await?, "beliefs") {
                 captured.beliefs.push(claim(&belief));
+                let stance = belief["stance"].as_str().unwrap_or("unknown");
+                *captured.stances.entry(stance.to_string()).or_default() += 1;
+                if let Some(confidence) = belief["confidence"].as_f64() {
+                    captured.confidences.push(confidence);
+                }
             }
             for conflict in listed(&self.get("v1/conflicts", &page).await?, "conflicts") {
                 let values: Vec<String> = conflict["records"]
@@ -242,12 +314,32 @@ impl Inspector {
     /// The models' usage so far.
     pub(crate) async fn usage(&self) -> Result<Usage, reqwest::Error> {
         let report = self.get("v1/admin/usage", &[]).await?;
-        let total = &report["total"];
+        let total = Spend::of(&report["total"]);
+        // A map keyed by role, or a list of lines that each name theirs.
+        let by_role = match &report["by_role"] {
+            Value::Object(roles) => roles
+                .iter()
+                .map(|(role, line)| (role.clone(), Spend::of(line)))
+                .collect(),
+            Value::Array(lines) => lines
+                .iter()
+                .map(|line| {
+                    let role = line["role"].as_str().unwrap_or("unknown");
+                    (role.to_string(), Spend::of(line))
+                })
+                .collect(),
+            _ => BTreeMap::new(),
+        };
         Ok(Usage {
-            calls: total["calls"].as_u64().unwrap_or_default(),
-            tokens: total["tokens_total"].as_u64().unwrap_or_default()
-                + total["tokens_unsplit"].as_u64().unwrap_or_default(),
-            cost_usd: total["cost_usd"].as_f64().unwrap_or_default(),
+            calls: total.calls,
+            tokens: total.tokens,
+            cost_usd: total.cost_usd,
+            by_role,
         })
+    }
+
+    /// The server's version and the capabilities it advertises.
+    pub(crate) async fn version(&self) -> Result<Value, reqwest::Error> {
+        self.get("v1/admin/version", &[]).await
     }
 }
