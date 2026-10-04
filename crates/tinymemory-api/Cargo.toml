@@ -1,16 +1,19 @@
 [package]
 name = "tinymemory-api"
-publish = false
-version = "2.0.0"
-edition = "2024"
-rust-version = "1.96"
-license = "GPL-3.0-only"
-repository = "https://github.com/tinyhumansai/tinymemory"
-description = "The TinyMemory v2 contract: recall, fetch and store over typed memory items"
+description = "The TinyMemory core contract: recall, fetch and store over typed memory items"
+readme = "README.md"
+keywords = ["memory", "agent", "llm", "retrieval"]
+categories = ["database"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
 
 # The contract an engine compiles against. It performs no I/O and links no
-# runtime, storage engine or HTTP stack; anything heavier belongs in an engine
-# crate.
+# runtime, storage engine or HTTP stack; anything heavier belongs in
+# `tinymemory-integrations`.
 [dependencies]
 # `MemoryEngine` is an object-safe trait of `async fn`s.
 async-trait = "0.1"
@@ -28,23 +31,12 @@ thiserror = "2"
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt"] }
 
-[lints.rust]
-unsafe_code = "forbid"
-missing_docs = "warn"
-missing_debug_implementations = "warn"
-unreachable_pub = "warn"
-rust_2018_idioms = { level = "warn", priority = -1 }
+[features]
+default = []
+# `conformance::run`, the behavioural suite every engine must pass, and
+# `conformance::ReferenceEngine`, an in-memory engine that passes it. Adds no
+# dependency: both are written against the contract alone.
+conformance = []
 
-[lints.clippy]
-all = { level = "warn", priority = -1 }
-unwrap_used = "warn"
-expect_used = "warn"
-panic = "warn"
-todo = "warn"
-unimplemented = "warn"
-missing_errors_doc = "warn"
-missing_panics_doc = "warn"
-
-[lints.rustdoc]
-broken_intra_doc_links = "warn"
-private_intra_doc_links = "warn"
+[lints]
+workspace = true
