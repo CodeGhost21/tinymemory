@@ -91,6 +91,9 @@ pub(crate) struct Probe {
     pub(crate) expect: Vec<&'static str>,
     pub(crate) stale: Vec<&'static str>,
     pub(crate) forbidden: Vec<&'static str>,
+    /// Other wordings a correct answer may use instead of every `expect`
+    /// string ("Thursday" for "Thursdays"). They grade answers, not packs.
+    pub(crate) accept: Vec<&'static str>,
 }
 
 impl Probe {
@@ -105,6 +108,7 @@ impl Probe {
             expect: Vec::new(),
             stale: Vec::new(),
             forbidden: Vec::new(),
+            accept: Vec::new(),
         }
     }
 
@@ -115,6 +119,11 @@ impl Probe {
 
     fn stale(mut self, stale: &[&'static str]) -> Self {
         self.stale = stale.to_vec();
+        self
+    }
+
+    fn accept(mut self, accept: &[&'static str]) -> Self {
+        self.accept = accept.to_vec();
         self
     }
 
@@ -243,21 +252,24 @@ fn brain_lookup() -> Scenario {
                 "How many business days do refunds take to settle?",
                 Lexical,
             )
-            .expect(&["five business days"]),
+            .expect(&["five business days"])
+            .accept(&["5 business days"]),
             Probe::new(
                 "refund-paraphrase",
                 "support-01",
                 "If we give money back to a customer, when does it land?",
                 Paraphrase,
             )
-            .expect(&["five business days"]),
+            .expect(&["five business days"])
+            .accept(&["5 business days"]),
             Probe::new(
                 "handover",
                 "support-01",
                 "When does the on-call rotation hand over?",
                 Lexical,
             )
-            .expect(&["Monday at 09:00"]),
+            .expect(&["Monday at 09:00"])
+            .accept(&["Monday"]),
             Probe::new(
                 "page-escalation",
                 "support-01",
@@ -271,7 +283,8 @@ fn brain_lookup() -> Scenario {
                 "How much does the Team plan cost per seat?",
                 Lexical,
             )
-            .expect(&["40 dollars"]),
+            .expect(&["40 dollars"])
+            .accept(&["$40", "40 USD"]),
             Probe::new(
                 "undo-release",
                 "support-01",
@@ -285,7 +298,8 @@ fn brain_lookup() -> Scenario {
                 "When are the scheduled maintenance windows?",
                 Lexical,
             )
-            .expect(&["Sundays"]),
+            .expect(&["Sundays"])
+            .accept(&["Sunday"]),
             Probe::new(
                 "credential-rotation",
                 "support-01",
@@ -337,7 +351,8 @@ fn restart_recall() -> Scenario {
                 thread: None,
                 focus: Some("the user's timezone and location"),
             })
-            .expect(&["WET"]),
+            .expect(&["WET"])
+            .accept(&["Western European", "Lisbon"]),
             Probe::new(
                 "name-team",
                 "assistant-01",
@@ -351,7 +366,8 @@ fn restart_recall() -> Scenario {
                 "Which time zone should meetings with me be scheduled in?",
                 Paraphrase,
             )
-            .expect(&["WET"]),
+            .expect(&["WET"])
+            .accept(&["Western European", "Lisbon"]),
             Probe::new(
                 "codename",
                 "assistant-01",
@@ -365,14 +381,16 @@ fn restart_recall() -> Scenario {
                 "Which weekday do our releases go out?",
                 Paraphrase,
             )
-            .expect(&["Thursdays"]),
+            .expect(&["Thursdays"])
+            .accept(&["Thursday"]),
             Probe::new(
                 "format",
                 "assistant-01",
                 "How should you format replies for me?",
                 Paraphrase,
             )
-            .expect(&["bullet points"]),
+            .expect(&["bullet points"])
+            .accept(&["bullet"]),
         ],
     }
 }
@@ -429,9 +447,11 @@ fn contradictions() -> Scenario {
                 Lexical,
             )
             .expect(&["6500"])
+            .accept(&["6,500"])
             .stale(&["5000", "8000"]),
             Probe::new("standup", "ops-01", "When is standup?", Lexical)
                 .expect(&["Thursdays"])
+                .accept(&["Thursday"])
                 .stale(&["Tuesdays"]),
             Probe::new(
                 "spend-limit",
@@ -440,6 +460,7 @@ fn contradictions() -> Scenario {
                 Paraphrase,
             )
             .expect(&["6500"])
+            .accept(&["6,500"])
             .stale(&["5000", "8000"]),
             Probe::new("database", "ops-01", "Which database do we run?", Lexical)
                 .expect(&["Postgres 14"]),
@@ -454,6 +475,7 @@ fn contradictions() -> Scenario {
                 focus: None,
             })
             .expect(&["6500"])
+            .accept(&["6,500"])
             .stale(&["5000", "8000"]),
         ],
     }
@@ -617,7 +639,8 @@ fn team_handoff() -> Scenario {
                 "Has anyone been billed two times for the same month?",
                 Paraphrase,
             )
-            .expect(&["charged twice"]),
+            .expect(&["charged twice"])
+            .accept(&["twice"]),
         ],
     }
 }
@@ -675,6 +698,7 @@ fn compaction() -> Scenario {
                 in_prompt_from: 32,
             })
             .expect(&["9 people"])
+            .accept(&["9 vegetarian", "nine vegetarian", "9 meals"])
             // Turns 32..40 are agenda items 13 to 16: still in the prompt.
             .forbid(&[
                 "agenda item 13",
@@ -839,14 +863,21 @@ fn learnings() -> Scenario {
                 "Can you quote a price for 12 seats?",
                 Lexical,
             )
-            .expect(&["confirm the customer's plan"]),
+            .expect(&["confirm the customer's plan"])
+            .accept(&[
+                "confirm your plan",
+                "confirm the plan",
+                "confirm which plan",
+                "confirm the customer",
+            ]),
             Probe::new(
                 "units",
                 "sales-03",
                 "Should the report use miles or kilometres?",
                 Paraphrase,
             )
-            .expect(&["metric units"]),
+            .expect(&["metric units"])
+            .accept(&["kilomet", "metric"]),
         ],
     }
 }
