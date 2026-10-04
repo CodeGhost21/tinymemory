@@ -178,7 +178,7 @@ pub(crate) fn answer(markdown: &str, question: &str) -> Option<String> {
         let body = body.trim();
         let held = words(body);
         let overlap = wanted.iter().filter(|word| held.contains(word)).count();
-        if overlap > 0 && best.is_none_or(|(score, _)| overlap > score) {
+        if overlap > 0 && best.as_ref().is_none_or(|(score, _)| overlap > *score) {
             best = Some((overlap, body.to_string()));
         }
     }
