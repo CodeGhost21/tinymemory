@@ -4,8 +4,8 @@
 //! Every section runs on its own and none can fail the pack: an engine error
 //! or an empty result becomes a [`SkippedSection`], logged and reported.
 //! [`section`] reads; [`settle`] then applies the request's exclusions and
-//! the items earlier sections already show, in section order, so an item
-//! appears once — in its highest-priority section.
+//! the items earlier sections already list, in section order, so an item is
+//! listed once — in its highest-priority section.
 
 use std::collections::HashSet;
 
@@ -234,9 +234,10 @@ async fn latest(
     Ok(all)
 }
 
-/// Settles one gathered section: answers pass through (their citations
-/// join `shown`); hits lose the request's exclusions and anything in
-/// `shown`, are cut to the section's limit, and join `shown`.
+/// Settles one gathered section: answers pass through untouched (an answer
+/// citing an item does not hide its bullet elsewhere); hits lose the
+/// request's exclusions and any item an earlier section already lists, are
+/// cut to the section's limit, and join `shown`.
 pub(super) fn settle(
     request: &HolisticRecall,
     section: &ScopeSection,
@@ -245,10 +246,7 @@ pub(super) fn settle(
 ) -> Settled {
     let hits = match gathered {
         Gathered::Skipped(reason) => return Settled::Skipped(reason),
-        Gathered::Answered(rendered, hits) => {
-            shown.extend(hits.hits.iter().map(|hit| hit.id.clone()));
-            return Settled::Filled(rendered, hits);
-        }
+        Gathered::Answered(rendered, hits) => return Settled::Filled(rendered, hits),
         Gathered::Hits(hits) => hits,
     };
     let kinds = &section.filter.kinds;

@@ -12,9 +12,10 @@
 //!   a model, so this is for session start and compaction.
 //! - **Latest** — the newest, most confident items, with no query.
 //!
-//! The sections are read concurrently. An item shows once, in the first
-//! section that found it, so overlapping scopes (one agent's history inside
-//! the team's) never repeat a line. Then they are rendered under one `#` title,
+//! The sections are read concurrently. An item is listed once, in the first
+//! section that lists it, so overlapping scopes (one agent's history inside
+//! the team's) never repeat a bullet; an answer citing an item does not
+//! hide it. Then they are rendered under one `#` title,
 //! one `##` heading per section that found something. The block fits
 //! `budget_tokens` (four characters per token): bullets are trimmed from the
 //! last section first, then answers shorten (see `render`).

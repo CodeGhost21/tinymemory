@@ -264,3 +264,30 @@ async fn an_invalid_request_is_refused() {
         assert!(matches!(error, Error::InvalidRequest(_)), "{error:?}");
     }
 }
+
+#[tokio::test]
+async fn an_item_is_listed_once_in_its_first_section() {
+    let engine = seeded().await;
+    let request = HolisticRecall::new(
+        Some("refunds".into()),
+        vec![
+            ScopeSection::fetch("Docs", docs(), 1),
+            ScopeSection::fetch("Everything", MetaFilter::default(), 10),
+        ],
+    );
+    let pack = holistic_recall(&engine, &request).await.unwrap();
+    assert_eq!(
+        pack.markdown
+            .matches("Refunds take five business days.")
+            .count(),
+        1,
+        "{}",
+        pack.markdown
+    );
+    assert!(
+        pack.sections[1]
+            .hits
+            .iter()
+            .all(|hit| hit.id != pack.sections[0].hits[0].id)
+    );
+}
