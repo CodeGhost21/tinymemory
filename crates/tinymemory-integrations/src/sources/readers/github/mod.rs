@@ -21,7 +21,7 @@ mod issues;
 mod types;
 
 #[cfg(test)]
-#[path = "github_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;
 
 use std::time::Duration;

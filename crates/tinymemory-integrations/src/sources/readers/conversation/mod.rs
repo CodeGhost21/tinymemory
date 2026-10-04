@@ -271,5 +271,5 @@ fn format_thread_as_markdown(thread: &serde_json::Value) -> String {
 }
 
 #[cfg(test)]
-#[path = "conversation_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;

@@ -351,5 +351,5 @@ fn extract_attr(xml: &str, tag: &str, attr: &str) -> Option<String> {
 }
 
 #[cfg(test)]
-#[path = "rss_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;

@@ -32,10 +32,10 @@ use super::{GH_CLI_TIMEOUT, parse_iso_ts};
 // Its behavior is unchanged; only the test override storage moved.
 //
 #[cfg(not(test))]
-#[path = "api/transport_override.rs"]
+#[path = "transport_override.rs"]
 mod response_override;
 #[cfg(test)]
-#[path = "api/transport_tests.rs"]
+#[path = "transport_tests.rs"]
 mod response_override;
 
 #[cfg(test)]

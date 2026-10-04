@@ -316,5 +316,5 @@ pub(super) async fn read_commit_git(
 }
 
 #[cfg(test)]
-#[path = "git_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;

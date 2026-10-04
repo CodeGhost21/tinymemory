@@ -113,5 +113,5 @@ pub(crate) fn read_capped(canonical: PathBuf, id: String) -> Result<LocalFile> {
 }
 
 #[cfg(test)]
-#[path = "local_file_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;

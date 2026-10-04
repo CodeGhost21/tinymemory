@@ -353,5 +353,5 @@ fn glob_to_regex(pattern: &str) -> Result<Regex> {
 }
 
 #[cfg(test)]
-#[path = "folder_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;

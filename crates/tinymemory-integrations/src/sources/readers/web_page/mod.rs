@@ -440,5 +440,5 @@ fn strip_html_tags(html: &str) -> String {
 }
 
 #[cfg(test)]
-#[path = "web_page_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;

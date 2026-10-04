@@ -157,5 +157,5 @@ impl SourceReader for FileReader {
 }
 
 #[cfg(test)]
-#[path = "file_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;

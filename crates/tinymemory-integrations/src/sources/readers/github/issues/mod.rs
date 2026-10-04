@@ -300,5 +300,5 @@ async fn fetch_issue_comments(
 }
 
 #[cfg(test)]
-#[path = "issues_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;
