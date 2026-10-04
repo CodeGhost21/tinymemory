@@ -75,3 +75,50 @@ fn source_ids_round_trip() {
     assert!(" ".parse::<BrainSource>().is_err());
     assert_eq!(BrainSource::Github.source_kind(), SourceKind::Github);
 }
+
+#[test]
+fn admits_only_a_strict_ancestor_as_core() {
+    let layout = MemoryLayout::new("ws:acme/team:hive".parse().unwrap()).unwrap();
+    layout.admits_core(&Namespace::ROOT).unwrap();
+    layout.admits_core(&"ws:acme".parse().unwrap()).unwrap();
+    for refused in ["ws:acme/team:hive", "ws:acme/team:other", "ws:acme/team:hive/agent:a", "ws:other"] {
+        assert!(
+            matches!(
+                layout.admits_core(&refused.parse().unwrap()),
+                Err(Error::InvalidRequest(_))
+            ),
+            "{refused}"
+        );
+    }
+    assert!(MemoryLayout::default().admits_core(&Namespace::ROOT).is_err());
+}
+
+#[test]
+fn ancestors_lists_root_first() {
+    let layout = MemoryLayout::new("ws:acme/team:hive".parse().unwrap()).unwrap();
+    let ancestors: Vec<String> = layout.ancestors().iter().map(ToString::to_string).collect();
+    assert_eq!(ancestors, ["root", "ws:acme"]);
+    assert!(MemoryLayout::default().ancestors().is_empty());
+}
+
+#[test]
+fn a_core_scope_reads_its_node_exactly() {
+    let company = CoreScope::new("ws:acme".parse().unwrap(), "Company")
+        .kinds([ItemKind::Learning])
+        .limit(2);
+    let filter = company.filter();
+    let reach = filter.reach.unwrap();
+    assert!(reach.admits(&"ws:acme".parse().unwrap()));
+    assert!(!reach.admits(&Namespace::ROOT));
+    assert!(!reach.admits(&"ws:acme/team:other".parse().unwrap()));
+    assert_eq!(filter.kinds, [ItemKind::Learning]);
+    assert_eq!(company.limit, 2);
+
+    let brief = company.brief("What does the company know?");
+    assert_eq!(brief.heading, "Company");
+    assert_eq!(brief.filter, company.filter());
+
+    let parsed: CoreScope =
+        serde_json::from_value(serde_json::json!({"at": "ws:acme", "heading": "Company"})).unwrap();
+    assert_eq!(parsed, CoreScope::new("ws:acme".parse().unwrap(), "Company"));
+}
