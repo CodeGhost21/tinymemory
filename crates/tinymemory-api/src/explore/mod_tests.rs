@@ -33,7 +33,7 @@ impl Paging {
                 needs_key: false,
                 default_endpoint: None,
                 fetch_modes: Vec::new(),
-                consolidation: CONS,
+                consolidation: Consolidation::None,
             },
             hits,
             pages: AtomicUsize::new(0),

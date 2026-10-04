@@ -47,7 +47,7 @@ impl ReferenceEngine {
                 needs_key: false,
                 default_endpoint: None,
                 fetch_modes: FetchMode::ALL.to_vec(),
-                consolidation: CONS,
+                consolidation: Consolidation::OnDemand,
             },
             items: Mutex::new(Vec::new()),
         }
