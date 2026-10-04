@@ -447,7 +447,10 @@ fn acme() -> Namespace {
 async fn a_core_scope_adds_its_section_after_learnings() {
     let (_, memory) = company().await;
     let without = memory.recall("").await.unwrap().markdown;
-    assert_eq!(without, "# Memory\n\n## Learnings\n\n- The hive ships on Mondays");
+    assert_eq!(
+        without,
+        "# Memory\n\n## Learnings\n\n- The hive ships on Mondays\n"
+    );
     assert!(!without.contains("holidays"), "{without}");
 
     let memory = memory
