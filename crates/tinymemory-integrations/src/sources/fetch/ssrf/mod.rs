@@ -21,10 +21,10 @@
 //! runs.
 //!
 //! An IPv6 literal URL such as `http://[::1]/` is refused whatever its address,
-//! including a public one: [`reqwest::Url::host_str`] keeps the brackets, the
+//! including a public one: `reqwest::Url::host_str` keeps the brackets, the
 //! text no longer parses as an IP address, and a name with no dot is treated
 //! as a single-label internal name. That is a fail-closed limitation, not a
-//! classification: the address classifier ([`is_public_ip`]) does handle IPv6
+//! classification: the address classifier (`is_public_ip`) does handle IPv6
 //! (and IPv4-mapped forms) for *resolved* addresses, which is how a hostname
 //! with an AAAA record is still vetted.
 
