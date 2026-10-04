@@ -19,8 +19,6 @@
 //! Unless a KPI says otherwise it is read in the synthesis phase, after the
 //! belief build: the state memory settles into.
 
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
 
 use crate::inspect::Usage;
@@ -490,31 +488,22 @@ pub(crate) fn compute(
     kpis
 }
 
-/// The KPIs as a markdown section, one table per group.
+/// The KPIs as a markdown table, in the order `compute` groups them.
 pub(crate) fn print(label: &str, kpis: &[Kpi]) {
     println!("\n## KPIs (`{label}`)\n");
-    let mut groups: BTreeMap<usize, (&str, Vec<&Kpi>)> = BTreeMap::new();
-    let mut order: Vec<&str> = Vec::new();
-    for kpi in kpis {
-        let at = order
-            .iter()
-            .position(|g| *g == kpi.group)
-            .unwrap_or_else(|| {
-                order.push(&kpi.group);
-                order.len() - 1
-            });
-        groups.entry(at).or_insert((&kpi.group, Vec::new())).1.push(kpi);
-    }
     println!("| Group | KPI | Value | Better |");
     println!("| --- | --- | --- | --- |");
-    for (group, kpis) in groups.values() {
-        for kpi in kpis {
-            let better = match kpi.better {
-                Better::Higher => "higher",
-                Better::Lower => "lower",
-                Better::Neither => "–",
-            };
-            println!("| {group} | {} | {} | {better} |", kpi.name, kpi.cell());
-        }
+    for kpi in kpis {
+        let better = match kpi.better {
+            Better::Higher => "higher",
+            Better::Lower => "lower",
+            Better::Neither => "–",
+        };
+        println!(
+            "| {} | {} | {} | {better} |",
+            kpi.group,
+            kpi.name,
+            kpi.cell()
+        );
     }
 }
