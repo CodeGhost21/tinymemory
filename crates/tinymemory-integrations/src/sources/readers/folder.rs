@@ -31,10 +31,9 @@ use crate::sources::items;
 use crate::sources::types::{
     ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind,
 };
-use crate::sources::validation::ensure_within_base;
 
 use super::SourceReader;
-use super::local_file::{LocalFile, modified_at, read_capped, resolve_base};
+use super::local_file::{LocalFile, ensure_within_base, modified_at, read_capped, resolve_base};
 
 /// Directory names never descended into, wherever they appear.
 const IGNORED_DIRS: &[&str] = &[

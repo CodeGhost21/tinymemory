@@ -3,7 +3,9 @@
 //! The folder and file readers share this: both resolve a configured path
 //! against the workspace, both refuse files over
 //! [`FOLDER_FILE_SIZE_CAP_BYTES`], and both hand the raw bytes on so a host
-//! converter can handle formats that are not UTF-8 text (PDF, DOCX).
+//! converter can handle formats that are not UTF-8 text (PDF, DOCX). The
+//! path-containment guard every local reader applies, [`ensure_within_base`],
+//! lives here too.
 
 use std::path::{Path, PathBuf};
 
@@ -66,6 +68,26 @@ pub(crate) fn resolve_base(base_path: &str, workspace: &Path) -> PathBuf {
     }
 }
 
+/// Canonicalize `target` and ensure it stays within canonicalized `base`.
+///
+/// This is the shared path-traversal guard for local readers. Both paths must
+/// exist (they are passed through [`std::fs::canonicalize`], which resolves
+/// symlinks and `..` segments). If the resolved target escapes the base
+/// directory, the guard refuses it.
+///
+/// # Errors
+///
+/// [`Error::PathEscape`] carrying `"path traversal denied"` when the target
+/// escapes, [`Error::Io`] when either path cannot be canonicalised.
+pub fn ensure_within_base(base: &Path, target: &Path) -> Result<PathBuf> {
+    let canonical_base = std::fs::canonicalize(base)?;
+    let canonical_target = std::fs::canonicalize(target)?;
+    if !canonical_target.starts_with(&canonical_base) {
+        return Err(Error::PathEscape("path traversal denied".to_string()));
+    }
+    Ok(canonical_target)
+}
+
 /// The modification time of `metadata`, as a UTC instant.
 pub(crate) fn modified_at(metadata: &std::fs::Metadata) -> Option<DateTime<Utc>> {
     metadata.modified().ok().map(DateTime::<Utc>::from)
@@ -89,3 +111,7 @@ pub(crate) fn read_capped(canonical: PathBuf, id: String) -> Result<LocalFile> {
         bytes,
     })
 }
+
+#[cfg(test)]
+#[path = "local_file_tests.rs"]
+mod tests;

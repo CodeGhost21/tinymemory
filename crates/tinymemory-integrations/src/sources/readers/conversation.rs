@@ -21,10 +21,9 @@ use crate::sources::items;
 use crate::sources::types::{
     ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind,
 };
-use crate::sources::validation::ensure_within_base;
 
 use super::SourceReader;
-use super::local_file::modified_at;
+use super::local_file::{ensure_within_base, modified_at};
 
 /// One thread read from disk, parsed into turns.
 #[derive(Debug, Clone, PartialEq)]
