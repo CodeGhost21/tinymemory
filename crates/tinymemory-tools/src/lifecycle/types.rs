@@ -81,7 +81,11 @@ impl PreTurn {
     /// A turn of `thread_id` at `turn_index` saying `user_text`, with the
     /// whole thread in the prompt.
     #[must_use]
-    pub fn new(thread_id: impl Into<String>, turn_index: u32, user_text: impl Into<String>) -> Self {
+    pub fn new(
+        thread_id: impl Into<String>,
+        turn_index: u32,
+        user_text: impl Into<String>,
+    ) -> Self {
         Self {
             thread_id: thread_id.into(),
             turn_index,

@@ -24,9 +24,17 @@ fn distils_the_first_sentence_of_documents_and_user_turns() {
             ],
             meta: at(Namespace::agent("support")),
         },
-        StoreItem::learning("already a belief", LearningKind::Fact, 0.9, at(Namespace::ROOT)),
+        StoreItem::learning(
+            "already a belief",
+            LearningKind::Fact,
+            0.9,
+            at(Namespace::ROOT),
+        ),
     ];
-    let beliefs = distil(&items, &ConsolidateRequest::new(Reach::subtree(Namespace::ROOT)));
+    let beliefs = distil(
+        &items,
+        &ConsolidateRequest::new(Reach::subtree(Namespace::ROOT)),
+    );
     let texts: Vec<String> = beliefs.iter().map(StoreItem::render_text).collect();
     assert_eq!(texts, ["Refunds take five days.", "I live in Lagos."]);
     let StoreItem::Learning { evidence, meta, .. } = &beliefs[1] else {
@@ -53,7 +61,10 @@ fn honours_the_reach_and_the_kinds() {
 #[test]
 fn skips_blank_text_and_caps_long_sentences() {
     assert_eq!(first_sentence("  \n#  \n"), None);
-    assert_eq!(first_sentence("# Only a title").as_deref(), Some("Only a title"));
+    assert_eq!(
+        first_sentence("# Only a title").as_deref(),
+        Some("Only a title")
+    );
     let long = "word ".repeat(200);
     assert_eq!(
         first_sentence(&long).map(|s| s.chars().count()),

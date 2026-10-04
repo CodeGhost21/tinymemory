@@ -18,7 +18,10 @@ fn at(namespace: Namespace) -> MemoryMeta {
 fn reads_the_job_handle_by_any_known_field() {
     assert_eq!(job_id(&json!({ "job_id": "j1" })).as_deref(), Some("j1"));
     assert_eq!(job_id(&json!({ "build_id": 7 })).as_deref(), Some("7"));
-    assert_eq!(job_id(&json!({ "id": "x", "build_id": "b" })).as_deref(), Some("b"));
+    assert_eq!(
+        job_id(&json!({ "id": "x", "build_id": "b" })).as_deref(),
+        Some("b")
+    );
     assert_eq!(job_id(&json!({ "job_id": "" })), None);
     assert_eq!(job_id(&json!({ "status": "queued" })), None);
 }
@@ -36,7 +39,9 @@ async fn builds_every_held_scope_in_reach_and_nothing_else() {
     }
 
     let receipt = engine
-        .consolidate(ConsolidateRequest::new(Reach::exact(Namespace::source("pdf"))))
+        .consolidate(ConsolidateRequest::new(Reach::exact(Namespace::source(
+            "pdf",
+        ))))
         .await
         .unwrap();
     assert_eq!(receipt.status, ConsolidateStatus::Started);
@@ -62,7 +67,9 @@ async fn builds_every_held_scope_in_reach_and_nothing_else() {
 async fn an_empty_reach_builds_nothing() {
     let (endpoint, state) = direct_double().await;
     let receipt = direct_engine(&endpoint)
-        .consolidate(ConsolidateRequest::new(Reach::exact(Namespace::agent("nobody"))))
+        .consolidate(ConsolidateRequest::new(Reach::exact(Namespace::agent(
+            "nobody",
+        ))))
         .await
         .unwrap();
     assert_eq!(receipt.scopes, 0);
@@ -99,10 +106,14 @@ async fn a_malformed_request_is_refused_before_any_request() {
     let (endpoint, state) = direct_double().await;
     let error = direct_engine(&endpoint)
         .consolidate(
-            ConsolidateRequest::new(Reach::default()).kinds([ItemKind::Learning, ItemKind::Learning]),
+            ConsolidateRequest::new(Reach::default())
+                .kinds([ItemKind::Learning, ItemKind::Learning]),
         )
         .await
         .unwrap_err();
-    assert!(matches!(error, crate::cortex::Error::InvalidRequest(_)), "{error:?}");
+    assert!(
+        matches!(error, crate::cortex::Error::InvalidRequest(_)),
+        "{error:?}"
+    );
     assert!(state.requests().is_empty());
 }

@@ -6,10 +6,10 @@
 use async_trait::async_trait;
 use tinymemory_api::conformance::{Error, ReferenceEngine, run};
 use tinymemory_api::{
-    ConsolidateReceipt, ConsolidateRequest, ConsolidateStatus, Consolidation, EngineDescriptor, EngineHealth, ExplorePage, ExploreRequest, FetchMode, FetchPage,
-    FetchRequest, ForgetReport, ForgetTarget, GetRequest, Hit, ListPage, ListRequest, MemoryEngine,
-    MetaFilter, RecallAnswer, RecallRequest, Result, StoreItem, StoreReceipt, WaitFor,
-    WriteOptions,
+    ConsolidateReceipt, ConsolidateRequest, ConsolidateStatus, Consolidation, EngineDescriptor,
+    EngineHealth, ExplorePage, ExploreRequest, FetchMode, FetchPage, FetchRequest, ForgetReport,
+    ForgetTarget, GetRequest, Hit, ListPage, ListRequest, MemoryEngine, MetaFilter, RecallAnswer,
+    RecallRequest, Result, StoreItem, StoreReceipt, WaitFor, WriteOptions,
 };
 
 #[tokio::test]

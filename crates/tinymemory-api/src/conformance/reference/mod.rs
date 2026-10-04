@@ -17,9 +17,9 @@ pub use distil::CONSOLIDATED_TAG;
 
 use crate::{
     Citation, ConsolidateReceipt, ConsolidateRequest, ConsolidateStatus, Consolidation,
-    EngineDescriptor, EngineHealth, Error, FetchMode, FetchPage, FetchRequest,
-    ForgetReport, ForgetTarget, Hit, ItemId, ListPage, ListRequest, MemoryEngine, MetaFilter,
-    RecallAnswer, RecallRequest, Result, StoreItem, StoreReceipt,
+    EngineDescriptor, EngineHealth, Error, FetchMode, FetchPage, FetchRequest, ForgetReport,
+    ForgetTarget, Hit, ItemId, ListPage, ListRequest, MemoryEngine, MetaFilter, RecallAnswer,
+    RecallRequest, Result, StoreItem, StoreReceipt,
 };
 use async_trait::async_trait;
 

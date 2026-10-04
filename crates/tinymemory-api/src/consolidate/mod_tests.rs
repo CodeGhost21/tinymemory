@@ -14,8 +14,8 @@ fn an_unnamed_kind_list_admits_every_kind() {
 
 #[test]
 fn rejects_a_kind_named_twice() {
-    let request = ConsolidateRequest::new(Reach::default())
-        .kinds([ItemKind::Document, ItemKind::Document]);
+    let request =
+        ConsolidateRequest::new(Reach::default()).kinds([ItemKind::Document, ItemKind::Document]);
     assert!(matches!(request.validate(), Err(Error::InvalidRequest(_))));
 }
 

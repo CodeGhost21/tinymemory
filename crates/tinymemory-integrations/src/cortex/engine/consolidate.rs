@@ -31,16 +31,21 @@ const JOB_FIELDS: [&str; 3] = ["job_id", "build_id", "id"];
 
 /// The job handle a build answer carries, if any.
 pub(super) fn job_id(answer: &Value) -> Option<String> {
-    JOB_FIELDS.iter().find_map(|field| match answer.get(field)? {
-        Value::String(id) if !id.is_empty() => Some(id.clone()),
-        Value::Number(id) => Some(id.to_string()),
-        _ => None,
-    })
+    JOB_FIELDS
+        .iter()
+        .find_map(|field| match answer.get(field)? {
+            Value::String(id) if !id.is_empty() => Some(id.clone()),
+            Value::Number(id) => Some(id.to_string()),
+            _ => None,
+        })
 }
 
 impl CortexEngine {
     /// See the module docs.
-    pub(super) async fn build_beliefs(&self, req: ConsolidateRequest) -> Result<ConsolidateReceipt> {
+    pub(super) async fn build_beliefs(
+        &self,
+        req: ConsolidateRequest,
+    ) -> Result<ConsolidateReceipt> {
         req.validate()?;
         let wire = self.wire();
         if wire == CortexWire::TinyHumans {

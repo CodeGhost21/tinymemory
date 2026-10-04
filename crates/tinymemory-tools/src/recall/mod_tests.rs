@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use tinymemory_api::conformance::ReferenceEngine;
 use tinymemory_api::{
     EngineDescriptor, EngineHealth, Error, FetchPage, FetchRequest, ForgetReport, ForgetTarget,
-    ItemKind, LearningKind, ListPage, ListRequest, MemoryMeta, MetaFilter, Namespace,
-    Reach, RecallAnswer, RecallRequest, Role, StoreItem, StoreReceipt, Turn, TurnRange,
+    ItemKind, LearningKind, ListPage, ListRequest, MemoryMeta, MetaFilter, Namespace, Reach,
+    RecallAnswer, RecallRequest, Role, StoreItem, StoreReceipt, Turn, TurnRange,
 };
 
 use super::*;
@@ -81,9 +81,12 @@ async fn a_section_s_own_query_overrides_the_pack_s() {
     section.query = SectionQuery::Fetch {
         query: Some("deploys fridays".into()),
     };
-    let pack = holistic_recall(&engine, &HolisticRecall::new(Some("refunds".into()), vec![section]))
-        .await
-        .unwrap();
+    let pack = holistic_recall(
+        &engine,
+        &HolisticRecall::new(Some("refunds".into()), vec![section]),
+    )
+    .await
+    .unwrap();
     assert!(pack.markdown.contains("Deploys happen on Fridays."));
 }
 
@@ -92,10 +95,19 @@ async fn answered_sections_are_prose_with_citations() {
     let engine = seeded().await;
     let request = HolisticRecall::new(
         None,
-        vec![ScopeSection::answer("Refunds", "how long do refunds take", docs(), 3)],
+        vec![ScopeSection::answer(
+            "Refunds",
+            "how long do refunds take",
+            docs(),
+            3,
+        )],
     );
     let pack = holistic_recall(&engine, &request).await.unwrap();
-    assert!(pack.markdown.contains("## Refunds\n\nFrom "), "{}", pack.markdown);
+    assert!(
+        pack.markdown.contains("## Refunds\n\nFrom "),
+        "{}",
+        pack.markdown
+    );
     assert!(pack.sections[0].answer.is_some());
     assert!(!pack.refs.is_empty());
 }
@@ -189,7 +201,11 @@ async fn a_failed_answer_falls_back_to_fetch_only_when_asked() {
     let fallen = holistic_recall(&engine, &HolisticRecall::new(None, vec![section]))
         .await
         .unwrap();
-    assert!(fallen.markdown.contains("- Refunds take five business days."));
+    assert!(
+        fallen
+            .markdown
+            .contains("- Refunds take five business days.")
+    );
 }
 
 #[tokio::test]
@@ -235,7 +251,10 @@ async fn sections_read_only_their_scope() {
     };
     let pack = holistic_recall(
         &engine,
-        &HolisticRecall::new(Some("refunds".into()), vec![ScopeSection::fetch("Pdf", pdf_only, 5)]),
+        &HolisticRecall::new(
+            Some("refunds".into()),
+            vec![ScopeSection::fetch("Pdf", pdf_only, 5)],
+        ),
     )
     .await
     .unwrap();

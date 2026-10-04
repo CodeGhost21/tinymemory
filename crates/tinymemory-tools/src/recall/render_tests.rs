@@ -230,7 +230,11 @@ fn the_last_lines_section_is_trimmed_first_and_dropped_when_empty() {
     assert!(rendered.markdown.contains("z1") && !rendered.markdown.contains("z2"));
     assert!(rendered.markdown.contains("a2"));
     let tighter = render(all, full.tokens - 25, "Memory", None);
-    assert!(!tighter.markdown.contains("## Last"), "{}", tighter.markdown);
+    assert!(
+        !tighter.markdown.contains("## Last"),
+        "{}",
+        tighter.markdown
+    );
     assert!(tighter.markdown.contains("## First"));
 }
 

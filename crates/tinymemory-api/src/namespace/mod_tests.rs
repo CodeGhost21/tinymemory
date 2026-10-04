@@ -121,7 +121,11 @@ fn builds_source_and_child_nodes() {
         .child(Segment::sanitized(SegmentKind::Source, "notion export"))
         .unwrap();
     assert_eq!(child.depth(), 2);
-    assert!(child.to_string().starts_with("team:acme/source:notion-export-"));
+    assert!(
+        child
+            .to_string()
+            .starts_with("team:acme/source:notion-export-")
+    );
     assert!(Reach::subtree(team).admits(&child));
 }
 

@@ -19,7 +19,10 @@ async fn with_brain() -> Arc<ReferenceEngine> {
     let engine = Arc::new(ReferenceEngine::new());
     let brain = Brain::new(engine.clone(), MemoryLayout::default());
     brain
-        .ingest(BrainDocument::new(BrainSource::Pdf, "Refunds take five business days."))
+        .ingest(BrainDocument::new(
+            BrainSource::Pdf,
+            "Refunds take five business days.",
+        ))
         .await
         .unwrap();
     engine
@@ -46,7 +49,10 @@ async fn pre_turn_logs_the_turn_and_recalls_without_it() {
     assert!(md.starts_with("# Memory\n"), "{md}");
     assert!(md.contains("## Learnings\n\n- Customers want refund updates by email"));
     assert!(md.contains("## Brain\n\n- Refunds take five business days."));
-    assert!(!md.contains("how long do refunds take"), "the live turn is left out");
+    assert!(
+        !md.contains("how long do refunds take"),
+        "the live turn is left out"
+    );
     let receipt = context.logged.unwrap();
     assert!(context.log_error.is_none());
 
@@ -71,11 +77,19 @@ async fn the_thread_in_the_prompt_is_left_out_until_it_is_compacted_away() {
     let engine = with_brain().await;
     let support = memory(&engine, "support-01");
     support
-        .pre_turn(PreTurn::new("t1", 0, "my order number is 4417 for the refund"))
+        .pre_turn(PreTurn::new(
+            "t1",
+            0,
+            "my order number is 4417 for the refund",
+        ))
         .await
         .unwrap();
     support
-        .post_turn(PostTurn::new("t1", 1, "Thanks, refund for order 4417 noted."))
+        .post_turn(PostTurn::new(
+            "t1",
+            1,
+            "Thanks, refund for order 4417 noted.",
+        ))
         .await
         .unwrap();
 
@@ -151,7 +165,12 @@ async fn post_turn_asks_for_a_belief_build_on_the_policy_s_cadence() {
         .list(ListRequest::new(MetaFilter::default(), 10))
         .await
         .unwrap();
-    assert!(listed.items.iter().any(|hit| hit.text.contains("lookup_order")));
+    assert!(
+        listed
+            .items
+            .iter()
+            .any(|hit| hit.text.contains("lookup_order"))
+    );
 
     let never = memory(&engine, "quiet").with_policy(RecallPolicy {
         build_beliefs_every: None,
@@ -187,7 +206,11 @@ async fn a_belief_build_turns_history_into_learnings() {
     let engine = Arc::new(ReferenceEngine::new());
     let support = memory(&engine, "support-01");
     support
-        .pre_turn(PreTurn::new("t1", 0, "I prefer refunds to my original card."))
+        .pre_turn(PreTurn::new(
+            "t1",
+            0,
+            "I prefer refunds to my original card.",
+        ))
         .await
         .unwrap();
     let report = support
@@ -225,7 +248,10 @@ async fn start_session_resumes_the_thread_first() {
     assert!(thread < md.find("## Learnings").unwrap());
     assert!(md[thread..].starts_with("## Earlier in this thread\n\n- assistant: Refund for 4417"));
 
-    let fresh = support.start_session(SessionStart::default()).await.unwrap();
+    let fresh = support
+        .start_session(SessionStart::default())
+        .await
+        .unwrap();
     assert!(!fresh.markdown.contains("## Earlier in this thread"));
     assert!(fresh.markdown.contains("## Brain"));
 }
@@ -279,7 +305,10 @@ async fn blank_inputs_are_refused() {
             .err(),
     ];
     for refusal in refusals {
-        assert!(matches!(refusal, Some(Error::InvalidRequest(_))), "{refusal:?}");
+        assert!(
+            matches!(refusal, Some(Error::InvalidRequest(_))),
+            "{refusal:?}"
+        );
     }
     assert!(engine.is_empty());
 }
@@ -316,7 +345,10 @@ impl MemoryEngine for ReadOnly {
 async fn a_failed_log_still_returns_the_pack() {
     let inner = ReferenceEngine::new();
     inner
-        .store(StoreItem::document("Refunds take five days.", MemoryMeta::default()))
+        .store(StoreItem::document(
+            "Refunds take five days.",
+            MemoryMeta::default(),
+        ))
         .await
         .unwrap();
     let support =
@@ -361,5 +393,8 @@ fn a_zero_limit_leaves_its_section_out() {
         .into_iter()
         .map(|section| section.heading)
         .collect();
-    assert_eq!(headings, [LEARNINGS_HEADING, BRAIN_HEADING, HISTORY_HEADING]);
+    assert_eq!(
+        headings,
+        [LEARNINGS_HEADING, BRAIN_HEADING, HISTORY_HEADING]
+    );
 }

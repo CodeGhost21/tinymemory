@@ -113,7 +113,10 @@ async fn search_and_forget_stay_inside_one_source() {
         (BrainSource::Pdf, "refund policy pdf"),
         (BrainSource::Notion, "refund policy notion"),
     ] {
-        brain.ingest(BrainDocument::new(source, text)).await.unwrap();
+        brain
+            .ingest(BrainDocument::new(source, text))
+            .await
+            .unwrap();
     }
     assert_eq!(brain.search("refund", None, 10).await.unwrap().len(), 2);
     let notion = brain

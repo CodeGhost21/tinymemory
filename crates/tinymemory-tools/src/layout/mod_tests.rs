@@ -46,7 +46,10 @@ fn filters_read_their_scope_only() {
 #[test]
 fn refuses_a_root_with_no_room_below() {
     let deep: Namespace = ["agent:a"; 8].join("/").parse().unwrap();
-    assert!(matches!(MemoryLayout::new(deep), Err(Error::InvalidRequest(_))));
+    assert!(matches!(
+        MemoryLayout::new(deep),
+        Err(Error::InvalidRequest(_))
+    ));
     let deepest_allowed: Namespace = ["agent:a"; 7].join("/").parse().unwrap();
     let layout = MemoryLayout::new(deepest_allowed).unwrap();
     assert_eq!(layout.brain(&BrainSource::Web).unwrap().depth(), 8);

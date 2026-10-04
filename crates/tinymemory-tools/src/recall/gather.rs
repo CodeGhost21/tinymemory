@@ -56,28 +56,24 @@ pub(super) async fn section(
             question,
             instructions,
             fallback_to_fetch,
-        } => {
-            match answer(engine, section, question, instructions.clone()).await {
-                Ok(Some(filled)) => return filled,
-                Ok(None) => Ok(Vec::new()),
-                Err(error) if *fallback_to_fetch => {
-                    log::debug!(
-                        "[recall] answer failed, fetching instead heading={:?} error={error}",
-                        section.heading
-                    );
-                    fetch(engine, &section.filter, question, want).await
-                }
-                Err(error) => Err(error),
+        } => match answer(engine, section, question, instructions.clone()).await {
+            Ok(Some(filled)) => return filled,
+            Ok(None) => Ok(Vec::new()),
+            Err(error) if *fallback_to_fetch => {
+                log::debug!(
+                    "[recall] answer failed, fetching instead heading={:?} error={error}",
+                    section.heading
+                );
+                fetch(engine, &section.filter, question, want).await
             }
-        }
-        SectionQuery::Fetch { query } => {
-            match query.as_deref().or(request.query.as_deref()) {
-                Some(query) if !query.trim().is_empty() => {
-                    fetch(engine, &section.filter, query, want).await
-                }
-                _ => latest(engine, &section.filter, want).await,
+            Err(error) => Err(error),
+        },
+        SectionQuery::Fetch { query } => match query.as_deref().or(request.query.as_deref()) {
+            Some(query) if !query.trim().is_empty() => {
+                fetch(engine, &section.filter, query, want).await
             }
-        }
+            _ => latest(engine, &section.filter, want).await,
+        },
         SectionQuery::Latest => latest(engine, &section.filter, want).await,
     };
     match outcome {

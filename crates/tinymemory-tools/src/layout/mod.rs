@@ -44,9 +44,7 @@
 
 mod source;
 
-use tinymemory_api::{
-    Error, ItemKind, MetaFilter, Namespace, Reach, Result, Segment, SegmentKind,
-};
+use tinymemory_api::{Error, ItemKind, MetaFilter, Namespace, Reach, Result, Segment, SegmentKind};
 
 pub use source::BrainSource;
 

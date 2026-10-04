@@ -141,7 +141,11 @@ impl AgentMemory {
     /// # Errors
     ///
     /// [`Error::InvalidRequest`] for a blank agent id.
-    pub fn new(engine: Arc<dyn MemoryEngine>, layout: MemoryLayout, agent_id: &str) -> Result<Self> {
+    pub fn new(
+        engine: Arc<dyn MemoryEngine>,
+        layout: MemoryLayout,
+        agent_id: &str,
+    ) -> Result<Self> {
         let agent_id = agent_id.trim();
         if agent_id.is_empty() {
             return Err(Error::InvalidRequest(
@@ -403,7 +407,11 @@ impl AgentMemory {
                 self.layout.learnings_filter(),
                 policy.learnings_limit,
             ),
-            (BRAIN_HEADING, self.layout.brain_filter(None), policy.brain_limit),
+            (
+                BRAIN_HEADING,
+                self.layout.brain_filter(None),
+                policy.brain_limit,
+            ),
             (
                 HISTORY_HEADING,
                 self.layout.conversations_filter(Some(&self.agent_id)),
@@ -429,7 +437,11 @@ impl AgentMemory {
         }
     }
 
-    async fn read(&self, query: Option<String>, sections: Vec<ScopeSection>) -> Result<ContextPack> {
+    async fn read(
+        &self,
+        query: Option<String>,
+        sections: Vec<ScopeSection>,
+    ) -> Result<ContextPack> {
         holistic_recall(self.engine.as_ref(), &self.request(query, sections)).await
     }
 
@@ -461,7 +473,9 @@ impl AgentMemory {
 fn non_blank<'a>(value: &'a str, what: &str) -> Result<&'a str> {
     let value = value.trim();
     if value.is_empty() {
-        Err(Error::InvalidRequest(format!("the {what} must not be blank")))
+        Err(Error::InvalidRequest(format!(
+            "the {what} must not be blank"
+        )))
     } else {
         Ok(value)
     }
@@ -480,7 +494,12 @@ fn gist(turns: &[Turn]) -> Option<String> {
         return None;
     }
     let count = joined.chars().count();
-    Some(joined.chars().skip(count.saturating_sub(MAX_GIST_CHARS)).collect())
+    Some(
+        joined
+            .chars()
+            .skip(count.saturating_sub(MAX_GIST_CHARS))
+            .collect(),
+    )
 }
 
 #[cfg(test)]

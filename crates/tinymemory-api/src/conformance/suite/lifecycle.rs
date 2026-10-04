@@ -38,7 +38,10 @@ pub(super) async fn store_with(ctx: &Ctx<'_>) -> Result<()> {
         "a store waiting for visibility was not listed on return".to_string()
     })?;
     let again = ctx
-        .call(CHECK, ctx.engine.store_with(visible, WriteOptions::visible()))
+        .call(
+            CHECK,
+            ctx.engine.store_with(visible, WriteOptions::visible()),
+        )
         .await?;
     ensure(CHECK, again.replayed, || {
         "storing a visible item again was not a replay".to_string()

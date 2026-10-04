@@ -40,7 +40,10 @@ async fn a_build_on_a_consolidating_engine_reports_its_receipt() {
         Some(ConsolidateStatus::Completed)
     );
     let learnings = engine
-        .list(ListRequest::new(MetaFilter::kinds([ItemKind::Learning]), 10))
+        .list(ListRequest::new(
+            MetaFilter::kinds([ItemKind::Learning]),
+            10,
+        ))
         .await
         .unwrap();
     assert_eq!(learnings.items.len(), 1);
@@ -83,7 +86,10 @@ async fn a_build_on_an_engine_that_cannot_is_skipped_not_failed() {
         })
         .await
         .unwrap();
-    assert!(matches!(report.outcome, JobOutcome::Skipped { .. }), "{report:?}");
+    assert!(
+        matches!(report.outcome, JobOutcome::Skipped { .. }),
+        "{report:?}"
+    );
     assert!(report.consolidation.is_none());
 }
 
