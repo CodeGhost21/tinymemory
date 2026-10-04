@@ -13,7 +13,6 @@ use serde_json::Value;
 use crate::safety::policy::{Policy, SanitizationReport, Sanitized};
 use crate::safety::{markers, pii};
 
-/// Credential shape tables: private-key blocks and token/assignment shapes.
 mod patterns;
 
 use patterns::{BLOCK_PATTERNS, REDACTION_PATTERNS};

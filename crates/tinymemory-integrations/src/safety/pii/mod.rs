@@ -33,11 +33,8 @@ use std::sync::LazyLock;
 use crate::safety::pattern::literal;
 use crate::safety::policy::{BareCardGate, Policy, SanitizationReport, Sanitized};
 
-/// Checksum and structural validators (Luhn, mod-97, Verhoeff, CPF/CNPJ, …).
 mod checks;
-/// Fullwidth / zero-width normalization used before matching.
 mod normalize;
-/// The single cheap byte pass that decides which pattern classes run.
 mod prefilter;
 
 use checks::*;

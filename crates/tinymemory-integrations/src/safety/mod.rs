@@ -34,19 +34,14 @@
 //! caller that does not opt in redacts less than before. Callers that want the
 //! corroborated behaviour use the `*_with` variants and [`Policy::corroborated`].
 
-/// Scrubbing a whole [`tinymemory_api::StoreItem`] before it is stored.
 mod item;
-/// One-time-secret URLs and `Bearer` values, including short ones.
 mod markers;
-/// Compiling the built-in regular expressions.
 mod pattern;
 /// Exhaustive checksum-gated multilingual national-ID PII module. Content
 /// scrubbing runs from [`sanitize_text`]; the boundary check is re-exported as
 /// [`has_likely_pii`].
 pub mod pii;
-/// The policy knob and the report types every pass returns.
 mod policy;
-/// Text and JSON scrubbing: private keys, credential shapes, sensitive keys.
 mod sanitize;
 
 pub use item::{scrub_item, scrub_item_with};
