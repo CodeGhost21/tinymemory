@@ -101,16 +101,7 @@ pub(crate) fn score(
     let stale_at = probe.stale.iter().filter_map(|needle| first(needle)).min();
     let has = |needle: &&str| lower.contains(&needle.to_lowercase());
     let answered = answer(markdown, probe.question);
-    let answer_ok = (!probe.expect.is_empty()).then(|| {
-        answered.as_deref().is_some_and(|text| {
-            let text = text.to_lowercase();
-            probe
-                .expect
-                .iter()
-                .all(|e| text.contains(&e.to_lowercase()))
-                && !probe.stale.iter().any(|s| text.contains(&s.to_lowercase()))
-        })
-    });
+    let answer_ok = grade(probe, answered.as_deref());
     ProbeResult {
         scenario,
         phase,
