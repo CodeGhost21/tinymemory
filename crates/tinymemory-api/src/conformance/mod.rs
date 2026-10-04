@@ -16,14 +16,14 @@
 //! # Example
 //!
 //! ```
-//! use tinymemory_conformance::{ReferenceEngine, run};
+//! use tinymemory_api::conformance::{ReferenceEngine, run};
 //!
 //! # let runtime = tokio::runtime::Builder::new_current_thread().build()?;
 //! # runtime.block_on(async {
 //! let engine = ReferenceEngine::new();
 //! run(&engine).await?;
 //! assert!(engine.is_empty(), "the suite cleans up after itself");
-//! # Ok::<(), tinymemory_conformance::Error>(())
+//! # Ok::<(), tinymemory_api::conformance::Error>(())
 //! # })?;
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```

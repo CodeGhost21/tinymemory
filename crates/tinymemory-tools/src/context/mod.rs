@@ -19,8 +19,8 @@
 //!
 //! ```
 //! use tinymemory_api::{LearningKind, MemoryEngine, MemoryMeta, StoreItem};
-//! use tinymemory_conformance::ReferenceEngine;
-//! use tinymemory_context::{ContextSpec, compile};
+//! use tinymemory_api::conformance::ReferenceEngine;
+//! use tinymemory_tools::context::{ContextSpec, compile};
 //!
 //! # let runtime = tokio::runtime::Builder::new_current_thread().build()?;
 //! # runtime.block_on(async {
@@ -31,11 +31,11 @@
 //! engine
 //!     .store(StoreItem::learning("prefers short answers", LearningKind::Preference, 0.9, MemoryMeta::default()))
 //!     .await
-//!     .map_err(|e| tinymemory_context::Error::InvalidSpec(e.to_string()))?;
+//!     .map_err(|e| tinymemory_tools::context::Error::InvalidSpec(e.to_string()))?;
 //! let doc = compile(&engine, &ContextSpec::default()).await?;
 //! assert!(doc.markdown.contains("## Learnings"));
 //! assert!(doc.tokens <= ContextSpec::default().budget_tokens);
-//! # Ok::<(), tinymemory_context::Error>(())
+//! # Ok::<(), tinymemory_tools::context::Error>(())
 //! # })?;
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```

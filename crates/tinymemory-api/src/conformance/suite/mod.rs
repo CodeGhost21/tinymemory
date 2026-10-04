@@ -39,9 +39,9 @@ mod namespaces;
 use std::collections::HashSet;
 use std::future::Future;
 
-use tinymemory_api::{Hit, ListRequest, MemoryEngine, MetaFilter};
+use crate::{Hit, ListRequest, MemoryEngine, MetaFilter};
 
-use crate::error::{Error, Result};
+use crate::conformance::error::{Error, Result};
 use fixtures::Run;
 
 /// Most pages one listing may take before the suite calls the cursor endless.
@@ -74,7 +74,7 @@ impl Ctx<'_> {
     pub(crate) async fn call<T>(
         &self,
         check: &'static str,
-        call: impl Future<Output = tinymemory_api::Result<T>>,
+        call: impl Future<Output = crate::Result<T>>,
     ) -> Result<T> {
         call.await.map_err(|source| Error::Engine { check, source })
     }

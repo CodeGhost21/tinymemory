@@ -17,7 +17,7 @@ pub enum Error {
         /// The check's name.
         check: &'static str,
         /// The engine's error.
-        source: tinymemory_api::Error,
+        source: crate::Error,
     },
 }
 

@@ -3,10 +3,10 @@
 
 use std::collections::BTreeMap;
 
-use tinymemory_api::{Error as ApiError, ExploreRequest, Facet, GetRequest, ItemId};
+use crate::{Error as ApiError, ExploreRequest, Facet, GetRequest, ItemId};
 
 use super::{Ctx, ensure};
-use crate::error::Result;
+use crate::conformance::error::Result;
 
 /// Groups the run's items by kind and by workspace and checks every count
 /// against a listing, then narrows by each bucket and lists again.
@@ -51,7 +51,7 @@ pub(super) async fn explore(ctx: &Ctx<'_>) -> Result<()> {
         let mut narrowed = filter.clone();
         Facet::Kind
             .narrow(&mut narrowed, &bucket.value)
-            .map_err(|source| crate::Error::Engine {
+            .map_err(|source| crate::conformance::Error::Engine {
                 check: CHECK,
                 source,
             })?;

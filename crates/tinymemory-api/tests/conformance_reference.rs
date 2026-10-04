@@ -9,7 +9,7 @@ use tinymemory_api::{
     FetchRequest, ForgetReport, ForgetTarget, GetRequest, Hit, ListPage, ListRequest, MemoryEngine,
     MetaFilter, RecallAnswer, RecallRequest, Result, StoreItem, StoreReceipt,
 };
-use tinymemory_conformance::{Error, ReferenceEngine, run};
+use tinymemory_api::conformance::{Error, ReferenceEngine, run};
 
 #[tokio::test]
 async fn the_reference_engine_passes_and_cleans_up() {

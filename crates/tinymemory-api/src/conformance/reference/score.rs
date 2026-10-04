@@ -4,7 +4,7 @@
 //! Neither is meant to rank well. They exist so the reference engine can serve
 //! all three fetch modes with behaviour that is obvious by inspection.
 
-use tinymemory_api::FetchMode;
+use crate::FetchMode;
 
 /// Dimensions of the toy vector.
 const DIMENSIONS: usize = 64;

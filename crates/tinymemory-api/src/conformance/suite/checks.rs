@@ -2,13 +2,13 @@
 
 use std::collections::BTreeSet;
 
-use tinymemory_api::{
+use crate::{
     Error as ApiError, FetchMode, FetchRequest, ForgetTarget, ItemId, MemoryMeta, MetaFilter,
     RecallRequest,
 };
 
 use super::{Ctx, ensure};
-use crate::error::Result;
+use crate::conformance::error::Result;
 
 /// Every check, stopping at the first failure.
 pub(super) async fn all(ctx: &Ctx<'_>) -> Result<()> {

@@ -11,7 +11,7 @@ mod score;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use tinymemory_api::{
+use crate::{
     Citation, EngineDescriptor, EngineHealth, Error, FetchMode, FetchPage, FetchRequest,
     ForgetReport, ForgetTarget, Hit, ItemId, ListPage, ListRequest, MemoryEngine, MetaFilter,
     RecallAnswer, RecallRequest, Result, StoreItem, StoreReceipt,

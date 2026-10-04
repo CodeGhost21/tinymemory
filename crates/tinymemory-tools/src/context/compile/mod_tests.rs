@@ -6,10 +6,10 @@ use tinymemory_api::{
     EngineDescriptor, EngineHealth, Error as ApiError, FetchPage, FetchRequest, ForgetReport,
     ForgetTarget, LearningKind, ListPage, MemoryMeta, RecallAnswer, StoreItem, StoreReceipt,
 };
-use tinymemory_conformance::ReferenceEngine;
+use tinymemory_api::conformance::ReferenceEngine;
 
 use super::*;
-use crate::spec::Brief;
+use crate::context::spec::Brief;
 
 fn at() -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 10, 2, 12, 0, 0).unwrap()
@@ -85,7 +85,7 @@ async fn briefs_and_learnings_fill_the_document_in_order() {
     .collect();
     assert!(order.windows(2).all(|pair| pair[0] < pair[1]), "{md}");
     assert!(!doc.refs.is_empty());
-    assert_eq!(doc.tokens, crate::estimate_tokens(md));
+    assert_eq!(doc.tokens, crate::context::estimate_tokens(md));
 }
 
 #[tokio::test]
@@ -156,7 +156,7 @@ async fn an_invalid_spec_is_refused() {
     };
     assert!(matches!(
         compile(&engine, &spec).await,
-        Err(crate::Error::InvalidSpec(_))
+        Err(crate::context::Error::InvalidSpec(_))
     ));
 }
 

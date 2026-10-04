@@ -3,13 +3,13 @@
 
 use std::collections::BTreeSet;
 
-use tinymemory_api::{
+use crate::{
     ExploreRequest, Facet, FetchRequest, ForgetTarget, GetRequest, ItemId, MetaFilter, Namespace,
     Reach, StoreItem,
 };
 
 use super::{Ctx, ensure};
-use crate::error::{Error, Result};
+use crate::conformance::error::{Error, Result};
 
 const CHECK: &str = "namespaces";
 
@@ -50,7 +50,7 @@ pub(super) async fn namespaces(ctx: &Ctx<'_>) -> Result<()> {
         meta.tags = vec![TAG.to_string()];
         StoreItem::learning(
             format!("{} {label} shared fact", ctx.run.marker),
-            tinymemory_api::LearningKind::Fact,
+            crate::LearningKind::Fact,
             0.9,
             meta,
         )

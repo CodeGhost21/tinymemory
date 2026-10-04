@@ -4,8 +4,8 @@
 //! can isolate its own items on an engine that already holds data and find
 //! them with any fetch mode.
 
-use tinymemory_api::chrono::{TimeZone, Utc};
-use tinymemory_api::{
+use crate::chrono::{TimeZone, Utc};
+use crate::{
     DocumentBody, ItemKind, LearningKind, MemoryMeta, MetaFilter, Role, SourceKind, SourceRef,
     StoreItem, ToolCallRef, Turn, TurnRange,
 };

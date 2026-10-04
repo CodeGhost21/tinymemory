@@ -1,10 +1,10 @@
 //! The bulk check: `store_many` stores in order, every item is listed on
 //! return, a repeat is all replays, and an empty batch is refused.
 
-use tinymemory_api::Error as ApiError;
+use crate::Error as ApiError;
 
 use super::{Ctx, ensure};
-use crate::error::Result;
+use crate::conformance::error::Result;
 
 pub(super) async fn store_many(ctx: &Ctx<'_>) -> Result<()> {
     const CHECK: &str = "store_many";

@@ -14,8 +14,8 @@ use tinymemory_api::{
     Hit, ItemId, ItemKind, ListRequest, MemoryEngine, MetaFilter, Reach, RecallRequest,
 };
 
-use crate::error::Result;
-use crate::spec::ContextSpec;
+use crate::context::error::Result;
+use crate::context::spec::ContextSpec;
 use render::{BriefSection, LearningLine, Sections};
 
 pub use render::estimate_tokens;
@@ -74,7 +74,7 @@ impl ContextCompiler {
     ///
     /// # Errors
     ///
-    /// [`crate::Error::InvalidSpec`] when the spec cannot produce a document.
+    /// [`crate::context::Error::InvalidSpec`] when the spec cannot produce a document.
     /// Engine failures are not errors: see the module docs.
     pub async fn compile(
         &self,
@@ -108,7 +108,7 @@ impl ContextCompiler {
 ///
 /// # Errors
 ///
-/// [`crate::Error::InvalidSpec`] when the spec cannot produce a document.
+/// [`crate::context::Error::InvalidSpec`] when the spec cannot produce a document.
 pub async fn compile(engine: &dyn MemoryEngine, spec: &ContextSpec) -> Result<ContextDoc> {
     ContextCompiler::new().compile(engine, spec).await
 }

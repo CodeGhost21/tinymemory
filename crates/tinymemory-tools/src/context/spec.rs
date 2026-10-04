@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use tinymemory_api::{MetaFilter, Reach};
 
-use crate::error::{Error, Result};
+use crate::context::error::{Error, Result};
 
 /// Default token budget for the whole document.
 pub const DEFAULT_BUDGET_TOKENS: usize = 1_500;

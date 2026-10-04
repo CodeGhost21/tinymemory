@@ -1,6 +1,6 @@
 //! The reference engine's own behaviour, independent of the suite.
 
-use tinymemory_api::{ItemKind, LearningKind, MemoryMeta};
+use crate::{ItemKind, LearningKind, MemoryMeta};
 
 use super::*;
 
