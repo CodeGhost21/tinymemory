@@ -6,9 +6,10 @@
 use async_trait::async_trait;
 use tinymemory_api::conformance::{Error, ReferenceEngine, run};
 use tinymemory_api::{
-    ConsolidateReceipt, ConsolidateRequest, ConsolidateStatus, Consolidation, EngineDescriptor,
-    EngineHealth, ExplorePage, ExploreRequest, FetchMode, FetchPage, FetchRequest, ForgetReport,
-    ForgetTarget, GetRequest, Hit, ListPage, ListRequest, MemoryEngine, MetaFilter, RecallAnswer,
+    BELIEF_TAG, BeliefsRequest, ConsolidateReceipt, ConsolidateRequest, ConsolidateStatus,
+    Consolidation, EngineDescriptor, EngineHealth, ExplorePage, ExploreRequest, FetchMode,
+    FetchPage, FetchRequest, ForgetReport, ForgetTarget, GetRequest, Hit, ItemId, ItemKind,
+    ListPage, ListRequest, MemoryEngine, MemoryMeta, MetaFilter, Namespace, RecallAnswer,
     RecallRequest, Result, StoreItem, StoreReceipt, WaitFor, WriteOptions,
 };
 
@@ -59,6 +60,10 @@ enum Fault {
     ConsolidateUndeclared,
     /// Builds without validating the request.
     ConsolidateUnvalidated,
+    /// Returns beliefs that are not tagged as beliefs.
+    BeliefsUntagged,
+    /// Returns beliefs outside the reach asked for.
+    BeliefsOutOfReach,
 }
 
 struct Faulty {
@@ -151,6 +156,31 @@ impl MemoryEngine for Faulty {
         }
     }
 
+    async fn beliefs(&self, req: BeliefsRequest) -> Result<Vec<Hit>> {
+        req.validate()?;
+        let namespace = match self.fault {
+            Fault::BeliefsUntagged => req.reach.at.clone(),
+            Fault::BeliefsOutOfReach => Namespace::agent("somebody-else"),
+            _ => return self.inner.beliefs(req).await,
+        };
+        let tags = match self.fault {
+            Fault::BeliefsUntagged => Vec::new(),
+            _ => vec![BELIEF_TAG.to_string()],
+        };
+        Ok(vec![Hit {
+            id: ItemId::new("belief-1"),
+            kind: ItemKind::Learning,
+            text: "a belief".to_string(),
+            meta: MemoryMeta {
+                namespace,
+                tags,
+                ..MemoryMeta::default()
+            },
+            score: 1.0,
+            confidence: Some(0.9),
+        }])
+    }
+
     async fn forget(&self, target: ForgetTarget) -> Result<ForgetReport> {
         if matches!(self.fault, Fault::AcceptEmptyForget) && target.validate().is_err() {
             return Ok(ForgetReport::default());
@@ -216,6 +246,8 @@ async fn each_fault_is_caught_by_its_check() {
         (Fault::ConsolidateOffPromise, "consolidate"),
         (Fault::ConsolidateUndeclared, "consolidate"),
         (Fault::ConsolidateUnvalidated, "consolidate"),
+        (Fault::BeliefsUntagged, "consolidate"),
+        (Fault::BeliefsOutOfReach, "consolidate"),
     ];
     for (fault, expected) in cases {
         let error = run(&Faulty::new(fault))
