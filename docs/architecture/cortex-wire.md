@@ -340,9 +340,10 @@ The loopback doubles reproduce all of them (see [testing](testing.md)).
 - **Append-only.** There is no update route. Forget removes events but **not**
   their idempotency records, so a reused body `idempotency_key` after a forget
   is swallowed as a replay.
-- **Accepted is not readable.** An append answers `202` and indexes afterwards;
-  neither `?wait=indexed` nor the status route is a readiness signal for the
-  listing.
+- **Accepted is not readable.** An append answers `202` and indexes afterwards.
+  The status route and the lifecycle stream are not readiness signals, so the
+  engine waits on the listing and on recall itself (see
+  [flows](cortex-flows.md#waiting-for-a-write-to-be-readable)).
 - **The listing emits every event twice**, and `limit` counts the copies.
 - **Unknown query parameters are ignored.**
 - **Recall and the listing return different bytes** (`[role] {...}` versus the
