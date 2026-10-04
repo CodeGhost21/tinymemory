@@ -86,7 +86,7 @@ impl ContextCompiler {
         let engine_id = engine.descriptor().id;
         let sections = Sections {
             briefs: gather_briefs(engine, spec).await,
-            learnings: gather_learnings(engine, spec.learnings_limit).await,
+            learnings: gather_learnings(engine, spec.learnings_limit, spec.reach.as_ref()).await,
         };
         let rendered = render::render(sections, spec.budget_tokens, engine_id, generated_at);
         log::debug!(
