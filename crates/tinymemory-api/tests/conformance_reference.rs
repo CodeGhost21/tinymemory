@@ -6,9 +6,10 @@
 use async_trait::async_trait;
 use tinymemory_api::conformance::{Error, ReferenceEngine, run};
 use tinymemory_api::{
-    EngineDescriptor, EngineHealth, ExplorePage, ExploreRequest, FetchMode, FetchPage,
+    ConsolidateReceipt, ConsolidateRequest, ConsolidateStatus, Consolidation, EngineDescriptor, EngineHealth, ExplorePage, ExploreRequest, FetchMode, FetchPage,
     FetchRequest, ForgetReport, ForgetTarget, GetRequest, Hit, ListPage, ListRequest, MemoryEngine,
-    MetaFilter, RecallAnswer, RecallRequest, Result, StoreItem, StoreReceipt,
+    MetaFilter, RecallAnswer, RecallRequest, Result, StoreItem, StoreReceipt, WaitFor,
+    WriteOptions,
 };
 
 #[tokio::test]
@@ -50,6 +51,14 @@ enum Fault {
     ListIgnoresReach,
     /// Reads ids by `get` whatever the reach.
     GetIgnoresReach,
+    /// Answers an accepted store with an id other than the item's.
+    AcceptedWrongId,
+    /// Declares on-demand consolidation but only acknowledges a schedule.
+    ConsolidateOffPromise,
+    /// Declares no consolidation yet answers a request.
+    ConsolidateUndeclared,
+    /// Builds without validating the request.
+    ConsolidateUnvalidated,
 }
 
 struct Faulty {
@@ -64,6 +73,9 @@ impl Faulty {
         let mut descriptor = inner.descriptor().clone();
         if matches!(fault, Fault::ClaimEveryMode) {
             descriptor.fetch_modes = vec![FetchMode::Hybrid];
+        }
+        if matches!(fault, Fault::ConsolidateUndeclared) {
+            descriptor.consolidation = Consolidation::None;
         }
         Self {
             inner,
@@ -112,6 +124,30 @@ impl MemoryEngine for Faulty {
             receipt.replayed = false;
         }
         Ok(receipt)
+    }
+
+    async fn store_with(&self, item: StoreItem, options: WriteOptions) -> Result<StoreReceipt> {
+        let accepted = options.wait == WaitFor::Accepted;
+        let mut receipt = self.inner.store_with(item, options).await?;
+        if accepted && matches!(self.fault, Fault::AcceptedWrongId) {
+            receipt.id = "not-the-item".into();
+        }
+        Ok(receipt)
+    }
+
+    async fn consolidate(&self, req: ConsolidateRequest) -> Result<ConsolidateReceipt> {
+        match self.fault {
+            Fault::ConsolidateOffPromise => {
+                req.validate()?;
+                Ok(ConsolidateReceipt::scheduled())
+            }
+            Fault::ConsolidateUnvalidated => Ok(ConsolidateReceipt {
+                status: ConsolidateStatus::Completed,
+                jobs: Vec::new(),
+                scopes: 1,
+            }),
+            _ => self.inner.consolidate(req).await,
+        }
     }
 
     async fn forget(&self, target: ForgetTarget) -> Result<ForgetReport> {
@@ -175,6 +211,10 @@ async fn each_fault_is_caught_by_its_check() {
         (Fault::StoreManyUnordered, "store_many"),
         (Fault::ListIgnoresReach, "namespaces"),
         (Fault::GetIgnoresReach, "namespaces"),
+        (Fault::AcceptedWrongId, "store_with"),
+        (Fault::ConsolidateOffPromise, "consolidate"),
+        (Fault::ConsolidateUndeclared, "consolidate"),
+        (Fault::ConsolidateUnvalidated, "consolidate"),
     ];
     for (fault, expected) in cases {
         let error = run(&Faulty::new(fault))
@@ -185,4 +225,47 @@ async fn each_fault_is_caught_by_its_check() {
         };
         assert_eq!(*check, expected, "{fault:?}: {error}");
     }
+}
+
+#[tokio::test]
+async fn an_engine_without_consolidation_passes_by_refusing_it() {
+    /// The reference engine, minus consolidation: the trait's default.
+    struct NoBeliefs {
+        inner: ReferenceEngine,
+        descriptor: EngineDescriptor,
+    }
+
+    #[async_trait]
+    impl MemoryEngine for NoBeliefs {
+        fn descriptor(&self) -> &EngineDescriptor {
+            &self.descriptor
+        }
+        async fn health(&self) -> EngineHealth {
+            self.inner.health().await
+        }
+        async fn recall(&self, req: RecallRequest) -> Result<RecallAnswer> {
+            self.inner.recall(req).await
+        }
+        async fn fetch(&self, req: FetchRequest) -> Result<FetchPage> {
+            self.inner.fetch(req).await
+        }
+        async fn store(&self, item: StoreItem) -> Result<StoreReceipt> {
+            self.inner.store(item).await
+        }
+        async fn forget(&self, target: ForgetTarget) -> Result<ForgetReport> {
+            self.inner.forget(target).await
+        }
+        async fn list(&self, req: ListRequest) -> Result<ListPage> {
+            self.inner.list(req).await
+        }
+    }
+
+    let inner = ReferenceEngine::new();
+    let descriptor = EngineDescriptor {
+        consolidation: Consolidation::None,
+        ..inner.descriptor().clone()
+    };
+    let engine = NoBeliefs { inner, descriptor };
+    run(&engine).await.expect("refusing consolidation conforms");
+    assert!(engine.inner.is_empty());
 }
