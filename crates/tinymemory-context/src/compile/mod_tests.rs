@@ -159,3 +159,29 @@ async fn an_invalid_spec_is_refused() {
         Err(crate::Error::InvalidSpec(_))
     ));
 }
+
+#[tokio::test]
+async fn a_reach_keeps_the_document_to_one_agent_s_memory() {
+    let engine = ReferenceEngine::new();
+    let mut own = learning("researcher habit", 0.9, Some(1));
+    own.meta_mut().namespace = tinymemory_api::Namespace::agent("researcher");
+    let mut sibling = learning("writer habit", 0.9, Some(1));
+    sibling.meta_mut().namespace = tinymemory_api::Namespace::agent("writer");
+    for item in [own, sibling, learning("shared habit", 0.9, Some(1))] {
+        engine.store(item).await.unwrap();
+    }
+    let spec = ContextSpec {
+        briefs: vec![Brief::new("About the user", "habit")],
+        reach: Some(tinymemory_api::Reach::of(
+            tinymemory_api::Namespace::agent("researcher"),
+        )),
+        ..ContextSpec::default()
+    };
+    let doc = ContextCompiler::at(at())
+        .compile(&engine, &spec)
+        .await
+        .unwrap();
+    assert!(doc.markdown.contains("- researcher habit"), "{}", doc.markdown);
+    assert!(doc.markdown.contains("- shared habit"), "the root is inherited");
+    assert!(!doc.markdown.contains("writer habit"), "{}", doc.markdown);
+}
