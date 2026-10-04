@@ -1,4 +1,5 @@
-//! GitHub host normalization helpers — result extraction, identity helpers, and time utilities.
+//! GitHub host normalization helpers — issue extraction and issue id, title and
+//! timestamp helpers.
 //!
 //! GitHub's REST API (proxied through Composio) returns search results and
 //! authenticated-user payloads in a small number of shapes. The functions here

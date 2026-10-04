@@ -1,5 +1,5 @@
-//! Notion host normalization helpers — result extraction, pagination cursor,
-//! page title extraction, and time utilities.
+//! Notion host normalization helpers — result extraction, page markdown and
+//! page title extraction.
 
 use serde_json::Value;
 
