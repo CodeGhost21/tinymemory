@@ -81,7 +81,12 @@ fn admits_only_a_strict_ancestor_as_core() {
     let layout = MemoryLayout::new("ws:acme/team:hive".parse().unwrap()).unwrap();
     layout.admits_core(&Namespace::ROOT).unwrap();
     layout.admits_core(&"ws:acme".parse().unwrap()).unwrap();
-    for refused in ["ws:acme/team:hive", "ws:acme/team:other", "ws:acme/team:hive/agent:a", "ws:other"] {
+    for refused in [
+        "ws:acme/team:hive",
+        "ws:acme/team:other",
+        "ws:acme/team:hive/agent:a",
+        "ws:other",
+    ] {
         assert!(
             matches!(
                 layout.admits_core(&refused.parse().unwrap()),
@@ -90,7 +95,11 @@ fn admits_only_a_strict_ancestor_as_core() {
             "{refused}"
         );
     }
-    assert!(MemoryLayout::default().admits_core(&Namespace::ROOT).is_err());
+    assert!(
+        MemoryLayout::default()
+            .admits_core(&Namespace::ROOT)
+            .is_err()
+    );
 }
 
 #[test]
@@ -120,5 +129,8 @@ fn a_core_scope_reads_its_node_exactly() {
 
     let parsed: CoreScope =
         serde_json::from_value(serde_json::json!({"at": "ws:acme", "heading": "Company"})).unwrap();
-    assert_eq!(parsed, CoreScope::new("ws:acme".parse().unwrap(), "Company"));
+    assert_eq!(
+        parsed,
+        CoreScope::new("ws:acme".parse().unwrap(), "Company")
+    );
 }

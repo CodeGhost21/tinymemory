@@ -76,7 +76,7 @@ use std::sync::Arc;
 use futures::future::join;
 use tinymemory_api::{
     ConsolidateRequest, Error, ItemKind, MemoryEngine, MemoryMeta, MetaFilter, Namespace, Reach,
-    Result, Role, SourceKind, SourceRef, StoreItem, Turn, TurnRange, WriteOptions,
+    Result, Role, SourceKind, SourceRef, StoreItem, StoreReceipt, Turn, TurnRange, WriteOptions,
 };
 
 use crate::background::{BackgroundJob, BackgroundRunner, JobReport};
@@ -530,8 +530,8 @@ impl AgentMemory {
             .chain(core)
             .chain(layout)
             .filter(|(_, _, limit)| *limit > 0)
-        .map(|(heading, filter, limit)| ScopeSection::fetch(heading, filter, limit))
-        .collect()
+            .map(|(heading, filter, limit)| ScopeSection::fetch(heading, filter, limit))
+            .collect()
     }
 
     fn request(&self, query: Option<String>, sections: Vec<ScopeSection>) -> HolisticRecall {
