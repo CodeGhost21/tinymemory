@@ -36,7 +36,8 @@
 
 use serde_json::{Map, Value};
 
-/// Entry point called from `SlackProvider::post_process_action_result`.
+/// Entry point a host calls on each Slack action response (the slug names
+/// the action) before handing it to `normalise_payload`.
 ///
 /// Dispatches on the Composio action slug and rewrites `data` in place.
 /// Unknown slugs are silently ignored.
@@ -62,7 +63,7 @@ pub fn post_process(slug: &str, _arguments: Option<&Value>, data: &mut Value) {
 /// shape under a top-level `messages[]` key. The consumed nested array is
 /// removed from the payload so the raw verbose rows don't linger alongside
 /// the slim copy. The caller injects `channel_id` via
-/// [`super::sync::extract_messages`].
+/// the host's Slack sync pipeline.
 fn reshape_fetch_history(data: &mut Value) {
     let arr = take_array(
         data,

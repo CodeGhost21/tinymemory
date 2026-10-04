@@ -1,4 +1,4 @@
-//! With every feature on, each optional crate is reachable through the facade,
+//! With every feature on, each integration is reachable through its module,
 //! and the pieces compose: scrub an item, store it in the reference engine,
 //! run the conformance suite, and compile a context from what is left.
 #![cfg(feature = "full")]
@@ -6,7 +6,7 @@
 use tinymemory_api::{LearningKind, MemoryEngine, MemoryMeta, StoreItem};
 
 #[tokio::test]
-async fn the_optional_crates_compose_through_the_facade() {
+async fn the_integrations_compose_through_their_modules() {
     let engine = tinymemory_api::conformance::ReferenceEngine::new();
     tinymemory_api::conformance::run(&engine)
         .await

@@ -3,7 +3,7 @@
 //! Run with:
 //!
 //! ```sh
-//! cargo run -p tinymemory --example basic
+//! cargo run -p tinymemory-integrations --example basic
 //! ```
 //!
 //! It needs no network: building an engine validates configuration and

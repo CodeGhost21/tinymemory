@@ -1,4 +1,4 @@
-//! The crate-wide [`Error`] and [`Result`].
+//! The import module's [`Error`] and [`Result`].
 
 use std::path::PathBuf;
 
@@ -46,7 +46,7 @@ pub enum Error {
         #[source]
         source: tinymemory_api::Error,
         /// The last committed resume point (boxed to keep every `Result`
-        /// of this crate small).
+        /// of this module small).
         checkpoint: Box<Checkpoint>,
     },
 }
@@ -63,5 +63,5 @@ impl Error {
     }
 }
 
-/// The crate-wide result.
+/// The import module's result alias.
 pub type Result<T> = std::result::Result<T, Error>;

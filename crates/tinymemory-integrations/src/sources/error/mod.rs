@@ -1,4 +1,4 @@
-//! The crate-wide error and result alias.
+//! The sources module's error and result alias.
 //!
 //! Variants say what went wrong in terms a host can act on: bad
 //! configuration or input ([`Error::Invalid`]), something that is not there
@@ -63,7 +63,7 @@ impl From<Error> for tinymemory_api::Error {
     }
 }
 
-/// Result alias for this crate's fallible operations.
+/// Result alias for this module's fallible operations.
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(test)]

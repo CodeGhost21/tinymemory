@@ -9,7 +9,7 @@
 //! readers fetch through here too, each with its own body cap.
 //!
 //! No scheduling, no retries, no credentials, no robots.txt: this fetches one
-//! URL, once, when asked. Conversion to markdown is `tinymemory-documents`'.
+//! URL, once, when asked. Conversion to markdown is the `documents` module's.
 
 use crate::documents::{DocumentConverter, MAX_DOCUMENT_BYTES, RawDocument, document_item};
 use tinymemory_api::{MemoryMeta, SourceKind, StoreItem};

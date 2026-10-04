@@ -53,7 +53,8 @@
 
 use serde_json::{Map, Value, json};
 
-/// Entry point called from `GmailProvider::post_process_action_result`.
+/// Entry point a host calls on each Gmail action response (the slug names
+/// the action) before handing it to `normalise_payload`.
 ///
 /// Dispatches on the Composio action slug. Unknown Gmail slugs fall
 /// through to a no-op.
@@ -97,7 +98,7 @@ pub fn apply_response_level_markdown(data: &mut Value, top_md: &str) {
     }
     // Presence is checked immutably first, then fetched mutably. The original
     // form re-fetched with `unwrap()` after a mutable probe, which is sound but
-    // relies on the reader to see why; this crate forbids `unwrap`, and the
+    // relies on the reader to see why; this module's crate forbids `unwrap`, and the
     // immutable probe expresses the same reasoning to the compiler.
     let container = if data.get("messages").is_some() {
         data

@@ -18,8 +18,8 @@
 //! Every item's `meta.source` is `SourceKind::Import` with a section-scoped
 //! legacy id (`memory_docs:<document_id>`, `episodic_log:<session_id>`,
 //! `user_profile:<facet_id>`, `mem_tree_chunks:<kind>:<id>`), and
-//! `meta.workspace` is the workspace path. The crate README details every
-//! mapping decision.
+//! `meta.workspace` is the workspace path. The module's `README.md` details
+//! every mapping decision.
 //!
 //! Import is resumable: each [`ImportedItem`] carries the [`Checkpoint`] to
 //! persist once its item is stored, and [`LegacyWorkspace::items_from`]

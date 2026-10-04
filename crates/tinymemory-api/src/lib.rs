@@ -21,9 +21,9 @@
 //! [`EngineDescriptor`]; a fetch mode it does not list fails with
 //! [`Error::Unsupported`].
 //!
-//! This crate performs no I/O. Engines live in their own crates
-//! (`tinymemory-cortex`), and the `tinymemory` facade builds one from
-//! configuration.
+//! This crate performs no I/O. Engines live in `tinymemory-integrations`
+//! (the CortexDB engine, and the registry that builds one from
+//! configuration).
 //!
 //! # Example
 //!

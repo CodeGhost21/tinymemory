@@ -16,7 +16,7 @@
 //! - **Composio** — [`composio`] normalises toolkit payloads (Gmail, Slack,
 //!   GitHub, Linear, Notion, ClickUp) and maps them to items.
 //!
-//! Scheduling, credentials and egress budgets stay with the host: this crate
+//! Scheduling, credentials and egress budgets stay with the host: this module
 //! reads when asked.
 //!
 //! # Example
@@ -57,9 +57,11 @@
 //!
 //! # Feature flags
 //!
-//! - `sources-network` — the GitHub, RSS and web-page readers, `fetch`, and
-//!   the SSRF guard. Without it, a host that only reads local sources links
-//!   no HTTP stack.
+//! - `sources` — everything above except the network pieces. Implies
+//!   `documents`; links no HTTP stack.
+//! - `sources-network` — the GitHub, RSS and web-page readers, `fetch`,
+//!   `readers::reader_for_request` and the SSRF guard. Without it, a host that
+//!   only reads local sources links no HTTP stack.
 
 pub mod composio;
 pub mod error;
