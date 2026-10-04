@@ -344,7 +344,8 @@ impl Eval {
         // Settle: wait until every write is listed.
         let started = Instant::now();
         for (tenant, expected) in &writes {
-            settle(engine, &layout(run, scenario.name, tenant)?, *expected).await?;
+            self.settle(&layout(run, scenario.name, tenant)?, *expected)
+                .await?;
         }
         let settle_ms = ms(started);
         timings.add("settle (all writes listed)", settle_ms);
@@ -427,11 +428,7 @@ impl Eval {
     }
 
     /// Waits until `layout` lists at least `expected` items.
-    async fn settle(
-        engine: &Arc<dyn MemoryEngine>,
-        layout: &MemoryLayout,
-        expected: usize,
-    ) -> Result<(), Error> {
+    async fn settle(&self, layout: &MemoryLayout, expected: usize) -> Result<(), Error> {
         let started = Instant::now();
         loop {
             let mut listed = 0;
@@ -439,7 +436,7 @@ impl Eval {
             loop {
                 let mut req = ListRequest::new(layout.holistic_filter(), 100);
                 req.cursor = cursor;
-                let page = engine.list(req).await?;
+                let page = self.engine.list(req).await?;
                 listed += page.items.len();
                 cursor = page.next_cursor;
                 if cursor.is_none() {
