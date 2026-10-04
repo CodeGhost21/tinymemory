@@ -38,7 +38,7 @@ pub enum Step {
     Chat {
         tenant: &'static str,
         agent: &'static str,
-        thread: &'static str,
+        thread: String,
         /// Days after the run's epoch the thread starts: orders threads in
         /// time.
         day: i64,
@@ -188,7 +188,7 @@ fn chat(
     Step::Chat {
         tenant: MAIN,
         agent,
-        thread,
+        thread: thread.to_string(),
         day,
         turns,
     }
@@ -686,7 +686,7 @@ fn isolation() -> Scenario {
             Step::Chat {
                 tenant: "acme",
                 agent: "cfo-bot",
-                thread: "q3",
+                thread: "q3".to_string(),
                 day: 0,
                 turns: said(&["Our Q3 revenue was 4.2 million dollars."]),
             },
@@ -699,7 +699,7 @@ fn isolation() -> Scenario {
             Step::Chat {
                 tenant: "globex",
                 agent: "cfo-bot",
-                thread: "q3",
+                thread: "q3".to_string(),
                 day: 0,
                 turns: said(&["Our Q3 revenue was strong this year."]),
             },
@@ -750,7 +750,7 @@ fn needle_in_noise() -> Scenario {
             Step::Chat {
                 tenant: MAIN,
                 agent: "support-02",
-                thread: Box::leak(format!("noise-{n}").into_boxed_str()),
+                thread: format!("noise-{n}"),
                 day: 0,
                 turns: vec![(
                     format!("Customer {} asked about {topic}; I sent the help article.", 100 + n),

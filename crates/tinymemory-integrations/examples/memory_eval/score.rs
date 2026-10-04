@@ -8,7 +8,9 @@
 //! - **rank**: the 1-based unit holding the first `expect` string. Its
 //!   reciprocal averages to the MRR.
 //! - **stale first**: a superseded value comes in an earlier unit than the
-//!   current one. That is the error a reader is most likely to repeat.
+//!   current one, or the current one is missing. That is the error a reader
+//!   is most likely to repeat. **Fresh first** is its complement, counted
+//!   over the probes that name superseded values.
 //! - **leak**: a `forbidden` string is in the pack.
 //! - **answer**: the scripted agent's extractive answer (see `agent`) holds
 //!   every `expect` string and no stale one.
@@ -31,8 +33,12 @@ pub struct ProbeResult {
     pub rank: Option<usize>,
     /// The heading of the section holding the first expected string.
     pub section: Option<String>,
+    /// Whether the probe names superseded values.
+    pub contradiction: bool,
     pub stale_present: bool,
     pub stale_first: bool,
+    /// Whether the probe names forbidden strings.
+    pub leak_checked: bool,
     pub leak: bool,
     pub answer: Option<String>,
     pub answer_ok: Option<bool>,
@@ -114,12 +120,14 @@ pub fn score(
         hit: (!probe.expect.is_empty()).then(|| probe.expect.iter().all(has)),
         rank: expected.map(|at| at + 1),
         section: expected.map(|at| units[at].0.clone()),
+        contradiction: !probe.stale.is_empty(),
         stale_present: probe.stale.iter().any(has),
         stale_first: match (stale_at, expected) {
             (Some(stale), Some(fresh)) => stale < fresh,
             (Some(_), None) => true,
             _ => false,
         },
+        leak_checked: !probe.forbidden.is_empty(),
         leak: probe.forbidden.iter().any(has),
         answer: answered,
         answer_ok,
@@ -157,13 +165,12 @@ impl Totals {
                 reciprocal += result.rank.map_or(0.0, |rank| 1.0 / rank as f64);
                 totals.answers_ok += usize::from(result.answer_ok == Some(true));
             }
-            if result.stale_present || result.stale_first {
+            if result.contradiction {
                 totals.contradictions += 1;
-                totals.fresh_first += usize::from(!result.stale_first);
+                totals.fresh_first +=
+                    usize::from(result.hit == Some(true) && !result.stale_first);
             }
-            if result.leak || result.hit.is_none() || result.id.contains("window") {
-                totals.leak_checks += 1;
-            }
+            totals.leak_checks += usize::from(result.leak_checked);
             totals.leaks += usize::from(result.leak);
         }
         if totals.scored > 0 {
