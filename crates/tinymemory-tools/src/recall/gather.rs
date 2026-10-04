@@ -10,7 +10,7 @@
 use std::collections::HashSet;
 
 use tinymemory_api::{
-    FetchMode, FetchRequest, Hit, ItemId, ListRequest, MemoryEngine, MetaFilter, RecallRequest,
+    FetchMode, FetchRequest, Hit, ItemId, ItemKind, ListRequest, MemoryEngine, MetaFilter, RecallRequest,
 };
 
 use super::render::{Body, Line, Section, shorten, single_line};
@@ -230,6 +230,19 @@ async fn latest(
     Ok(all)
 }
 
+/// The text a hit's bullet shows: a titled document as `title: body` rather
+/// than its `# title` heading run into the body.
+fn bullet_text(hit: &Hit) -> String {
+    if hit.kind == ItemKind::Document
+        && let Some(rest) = hit.text.strip_prefix("# ")
+        && let Some((title, body)) = rest.split_once("\n\n")
+        && !title.contains('\n')
+    {
+        return format!("{}: {}", title.trim(), body);
+    }
+    hit.text.clone()
+}
+
 /// Settles one gathered section: answers pass through untouched (an answer
 /// citing an item does not hide its bullet elsewhere); hits lose the
 /// request's exclusions and any item an earlier section already lists, are
@@ -259,7 +272,7 @@ pub(super) fn settle(
     let lines = hits
         .iter()
         .map(|hit| {
-            let text = single_line(&hit.text);
+            let text = single_line(&bullet_text(hit));
             let text = if text.chars().count() > MAX_LINE_CHARS {
                 shorten(&text, MAX_LINE_CHARS)
             } else {

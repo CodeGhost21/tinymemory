@@ -22,20 +22,27 @@ use tinymemory_tools::{
     PostTurn, PreTurn, RecallPolicy, SessionStart,
 };
 
-/// Stands in for the model: answers from the injected context.
+/// Stands in for the model: answers with the injected line sharing the most
+/// words with the question, never quoting its own earlier answers.
 fn generate(context: &str, user: &str) -> String {
-    let grounded = context
+    let words: Vec<String> = user
+        .split_whitespace()
+        .map(|word| word.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase())
+        .filter(|word| word.len() > 4)
+        .collect();
+    let overlap = |line: &str| {
+        let line = line.to_lowercase();
+        words.iter().filter(|word| line.contains(word.as_str())).count()
+    };
+    let best = context
         .lines()
-        .filter(|line| line.starts_with("- "))
-        .map(|line| line.trim_start_matches("- "))
-        .find(|line| {
-            user.split_whitespace()
-                .filter(|word| word.len() > 4)
-                .any(|word| line.to_lowercase().contains(&word.to_lowercase()))
-        });
-    match grounded {
-        Some(fact) => format!("From memory: {fact}"),
-        None => "I don't have that in memory yet.".to_string(),
+        .filter_map(|line| line.strip_prefix("- "))
+        .filter(|line| !line.starts_with("assistant:"))
+        .max_by_key(|line| overlap(line))
+        .filter(|line| overlap(line) > 0);
+    match best {
+        Some(fact) => format!("Going by memory ({fact})."),
+        None => "I have nothing on that yet; noting it.".to_string(),
     }
 }
 
