@@ -1,11 +1,13 @@
-# tinymemory-documents
+# documents
 
-Document intake for TinyMemory: work out what a file is, turn it into markdown,
-and wrap it as the `StoreItem::Document` an engine stores.
+Document intake for TinyMemory, the `documents` module of
+`tinymemory-integrations` (feature `documents`): work out what a file is, turn
+it into markdown, and wrap it as the `StoreItem::Document` an engine stores.
 
-This crate does no I/O. Reading files and fetching URLs belongs to
-`tinymemory-sources`, which depends on this crate for conversion and language
-detection.
+This module does no I/O. Reading files and fetching URLs belongs to the
+[`sources`](../sources/README.md) module, which depends on this one for
+conversion and language detection. Architecture overview:
+[`docs/architecture/integrations.md`](../../../../docs/architecture/integrations.md).
 
 ## Three decisions
 
@@ -39,12 +41,12 @@ caller's to state.
 | `ConvertedDocument` | markdown plus title, source format, language, and converter metadata |
 | `DocumentConverter` | the conversion seam — object-safe and async |
 | `NativeConverter` | markdown, text, HTML and code, with no dependencies |
-| `OfficeConverter` | PDF, DOCX, PPTX and XLSX, in-process (feature `office`) |
+| `OfficeConverter` | PDF, DOCX, PPTX and XLSX, in-process (feature `documents-office`) |
 | `ConverterChain` | converters in priority order; first claim wins |
 | `document_item` / `converted_item` | the conversion wrapped as a `StoreItem::Document` |
 | `markdown_from_text` | the synchronous core, for callers that already hold text |
 | `html::to_markdown` | the structural HTML converter, usable on its own |
-| `Error` / `Result` | the crate error: `Invalid`, `TooLarge`, `UnsupportedFormat`, `Converter` |
+| `Error` / `Result` | the module error: `Invalid`, `TooLarge`, `UnsupportedFormat`, `Converter` |
 
 ## The item
 
@@ -65,7 +67,7 @@ conversion is a trait a host binds:
 let chain = ConverterChain::default().prepend(Box::new(MyPdfConverter));
 ```
 
-The `office` feature ships one such binding, `OfficeConverter`: PDF (text
+The `documents-office` feature ships one such binding, `OfficeConverter`: PDF (text
 layer only — a scanned PDF is refused as having no text), DOCX, PPTX (slides
 in numeric order) and XLSX (one `sheet | cell | cell` line per row), all pure
 Rust. It refuses hostile input rather than allocating for it: an archive whose
@@ -97,6 +99,6 @@ success.
 
 ## Features
 
-- `office` — `OfficeConverter` (`pdf-extract`, `calamine`, `zip`,
+- `documents-office` — `OfficeConverter` (`pdf-extract`, `calamine`, `zip`,
   `quick-xml`). Off by default; it links a PDF parser and a spreadsheet reader
   a text-only host has no use for.
