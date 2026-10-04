@@ -31,6 +31,8 @@ services:
       CORTEX_VERIFIER_API_KEY: ${CORTEX_INFERENCE_KEY:-tinymemory-test}
       CORTEX_VERIFIER_MODEL: ${CORTEX_VERIFIER_MODEL:-max-reasoning}
       CORTEX_VERIFIER_MAX_TOKENS: "16384"
+      # Only the rerank-cohere flag profile uses it.
+      COHERE_API_KEY: ${COHERE_API_KEY:-}
     # The server's feature flags: the baseline, then the profile under test
     # (scripts/memory-flag-sweep.sh), which only names what it changes. See
     # flags/README.md. A variable in `environment` above wins over both.

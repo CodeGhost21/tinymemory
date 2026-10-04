@@ -1,0 +1,32 @@
+# cortex.toml with background learning off, for the no-learning-loop flag
+# profile: the feedback-weight and cognitive-persist jobs (which fold usage
+# back into the ranker) are pushed out to once a year. Only the whole
+# scheduler can be disabled, and that would stop enrichment too.
+[cluster]
+node_id = 1
+
+[storage]
+data_path = "/data/cortex"
+wal_sync = true
+
+[engine]
+vector_dimensions = 3072
+hnsw_m = 32
+hnsw_ef_construction = 500
+hnsw_ef_search = 200
+# v0.9.9's shipped TOML enum uses `None` for lossless fp32 storage.
+hnsw_quantization = "None"
+block_cache_bytes = 536870912
+
+[network]
+
+[llm]
+
+[governance]
+
+[scheduler]
+enabled = true
+compaction_interval_secs = 300
+methylation_interval_secs = 600
+cognitive_persist_interval_secs = 31536000
+feedback_weight_interval_secs = 31536000
