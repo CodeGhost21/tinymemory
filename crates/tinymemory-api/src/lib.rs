@@ -43,6 +43,8 @@
 //! # Ok::<(), tinymemory_api::Error>(())
 //! ```
 
+#[cfg(feature = "conformance")]
+pub mod conformance;
 pub mod engine;
 pub mod error;
 pub mod explore;

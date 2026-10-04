@@ -38,5 +38,9 @@ default = []
 # dependency: both are written against the contract alone.
 conformance = []
 
+[[test]]
+name = "conformance_reference"
+required-features = ["conformance"]
+
 [lints]
 workspace = true
