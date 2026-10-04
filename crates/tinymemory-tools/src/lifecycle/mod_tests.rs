@@ -407,3 +407,216 @@ fn a_zero_limit_leaves_its_section_out() {
         [LEARNINGS_HEADING, BRAIN_HEADING, HISTORY_HEADING]
     );
 }
+
+/// A hive below a company: a company fact, a root fact, a sibling tenant's
+/// secret and the hive's own learning, with `a` in the hive.
+async fn company() -> (Arc<ReferenceEngine>, AgentMemory) {
+    let engine = Arc::new(ReferenceEngine::new());
+    for (at, text) in [
+        ("ws:acme", "Acme closes for the holidays on Friday"),
+        ("root", "Every agent answers in English"),
+        (
+            "ws:acme/team:other",
+            "The other team closes for the holidays on Monday",
+        ),
+        ("ws:acme/team:hive", "The hive ships on Mondays"),
+    ] {
+        engine
+            .store(StoreItem::learning(
+                text,
+                LearningKind::Fact,
+                0.9,
+                MemoryMeta {
+                    namespace: at.parse().unwrap(),
+                    ..MemoryMeta::default()
+                },
+            ))
+            .await
+            .unwrap();
+    }
+    let layout = MemoryLayout::new("ws:acme/team:hive".parse().unwrap()).unwrap();
+    let memory = AgentMemory::new(engine.clone(), layout, "a").unwrap();
+    (engine, memory)
+}
+
+fn acme() -> Namespace {
+    "ws:acme".parse().unwrap()
+}
+
+#[tokio::test]
+async fn a_core_scope_adds_its_section_after_learnings() {
+    let (_, memory) = company().await;
+    let without = memory.recall("").await.unwrap().markdown;
+    assert_eq!(
+        without,
+        "# Memory\n\n## Learnings\n\n- The hive ships on Mondays\n"
+    );
+    assert!(!without.contains("holidays"), "{without}");
+
+    let memory = memory
+        .with_core(vec![CoreScope::new(acme(), "Company")])
+        .unwrap();
+    let md = memory.recall("").await.unwrap().markdown;
+    let learnings = md.find("## Learnings").unwrap();
+    let company = md
+        .find("## Company\n\n- Acme closes for the holidays on Friday")
+        .unwrap();
+    assert!(learnings < company, "{md}");
+    assert!(md.contains("The hive ships on Mondays"));
+}
+
+#[tokio::test]
+async fn a_core_scope_never_reads_a_sibling_tenant() {
+    let (_, memory) = company().await;
+    let memory = memory
+        .with_core(vec![
+            CoreScope::new(Namespace::ROOT, "Core"),
+            CoreScope::new(acme(), "Company"),
+        ])
+        .unwrap();
+    let md = memory.recall("").await.unwrap().markdown;
+    assert!(
+        md.contains("## Core\n\n- Every agent answers in English"),
+        "{md}"
+    );
+    assert!(md.contains("Acme closes"));
+    assert!(!md.contains("Kestrel"), "{md}");
+}
+
+#[tokio::test]
+async fn with_core_replaces_the_set_per_call() {
+    let (_, memory) = company().await;
+    let without = memory.recall("").await.unwrap().markdown;
+    let memory = memory
+        .with_core(vec![CoreScope::new(acme(), "Company")])
+        .unwrap();
+    let override_ = memory
+        .clone()
+        .with_core(vec![CoreScope::new(Namespace::ROOT, "Core")])
+        .unwrap();
+    let md = override_.recall("").await.unwrap().markdown;
+    assert!(md.contains("## Core") && !md.contains("## Company"), "{md}");
+    assert_eq!(memory.core()[0].at, acme(), "the original keeps its set");
+
+    let dropped = memory.clone().with_core(Vec::new()).unwrap();
+    assert!(dropped.core().is_empty());
+    assert_eq!(dropped.recall("").await.unwrap().markdown, without);
+}
+
+#[tokio::test]
+async fn rejects_a_core_scope_outside_the_ancestors() {
+    let (_, memory) = company().await;
+    for at in [
+        "ws:acme/team:hive",
+        "ws:acme/team:other",
+        "ws:acme/team:hive/agent:a",
+    ] {
+        let refused = memory
+            .clone()
+            .with_core(vec![CoreScope::new(at.parse().unwrap(), "Shared")]);
+        assert!(matches!(refused, Err(Error::InvalidRequest(_))), "{at}");
+    }
+}
+
+#[tokio::test]
+async fn rejects_a_duplicate_core_node_or_a_blank_heading() {
+    let (_, memory) = company().await;
+    let twice = memory.clone().with_core(vec![
+        CoreScope::new(acme(), "Company"),
+        CoreScope::new(acme(), "Again"),
+    ]);
+    assert!(matches!(twice, Err(Error::InvalidRequest(_))));
+    let blank = memory.with_core(vec![CoreScope::new(acme(), "  ")]);
+    assert!(matches!(blank, Err(Error::InvalidRequest(_))));
+}
+
+#[tokio::test]
+async fn a_zero_limit_core_scope_is_left_out() {
+    let (_, memory) = company().await;
+    let memory = memory
+        .with_core(vec![CoreScope::new(acme(), "Company").limit(0)])
+        .unwrap();
+    let md = memory.recall("").await.unwrap().markdown;
+    assert!(!md.contains("## Company"), "{md}");
+}
+
+#[tokio::test]
+async fn promote_writes_at_the_core_node() {
+    let (engine, memory) = company().await;
+    let memory = memory
+        .with_core(vec![CoreScope::new(acme(), "Company")])
+        .unwrap();
+    let receipt = memory
+        .promote(
+            &acme(),
+            StoreItem::document("The expense limit is 500 euros", MemoryMeta::default()),
+        )
+        .await
+        .unwrap();
+    let stored = engine
+        .list(ListRequest::new(
+            MetaFilter::kinds([ItemKind::Document]),
+            10,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(stored.items[0].id, receipt.id);
+    assert_eq!(stored.items[0].meta.namespace, acme());
+
+    let other = AgentMemory::new(
+        engine.clone(),
+        MemoryLayout::new("ws:acme/team:hive".parse().unwrap()).unwrap(),
+        "b",
+    )
+    .unwrap()
+    .with_core(vec![CoreScope::new(acme(), "Company")])
+    .unwrap();
+    let md = other.recall("expense limit").await.unwrap().markdown;
+    assert!(md.contains("The expense limit is 500 euros"), "{md}");
+}
+
+#[tokio::test]
+async fn promote_rejects_a_conversation_and_an_unconfigured_node() {
+    let (_, memory) = company().await;
+    let learning = StoreItem::learning("x", LearningKind::Fact, 0.5, MemoryMeta::default());
+    let unconfigured = memory.promote(&acme(), learning.clone()).await;
+    assert!(matches!(unconfigured, Err(Error::InvalidRequest(_))));
+
+    let memory = memory
+        .with_core(vec![CoreScope::new(acme(), "Company")])
+        .unwrap();
+    let conversation = StoreItem::Conversation {
+        meta: MemoryMeta::default(),
+        turns: vec![Turn::new(Role::User, "hello")],
+    };
+    let refused = memory.promote(&acme(), conversation).await;
+    assert!(matches!(refused, Err(Error::InvalidRequest(_))));
+
+    let learning_only = memory
+        .with_core(vec![
+            CoreScope::new(acme(), "Company").kinds([ItemKind::Learning]),
+        ])
+        .unwrap();
+    let document = StoreItem::document("x", MemoryMeta::default());
+    assert!(matches!(
+        learning_only.promote(&acme(), document).await,
+        Err(Error::InvalidRequest(_))
+    ));
+}
+
+#[tokio::test]
+async fn core_build_consolidates_exactly_the_core_node() {
+    let (_, memory) = company().await;
+    assert!(matches!(
+        memory.core_build(&acme()),
+        Err(Error::InvalidRequest(_))
+    ));
+    let memory = memory
+        .with_core(vec![CoreScope::new(acme(), "Company")])
+        .unwrap();
+    let BackgroundJob::BuildBeliefs { request } = memory.core_build(&acme()).unwrap() else {
+        panic!("a core build is a belief build");
+    };
+    assert_eq!(request.reach, Reach::exact(acme()));
+    assert!(request.kinds.is_empty());
+}

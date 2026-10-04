@@ -18,11 +18,15 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use tinymemory_api::{ForgetTarget, MemoryEngine, MemoryMeta};
+use tinymemory_api::{
+    ForgetTarget, LearningKind, MemoryEngine, MemoryMeta, MetaFilter, Namespace, Reach, StoreItem,
+};
 use tinymemory_integrations::brain::brain_document;
 use tinymemory_integrations::cortex::{CortexCredential, CortexEngine};
 use tinymemory_integrations::documents::{ConverterChain, RawDocument};
-use tinymemory_tools::{AgentMemory, Brain, ContextPack, MemoryLayout, PostTurn, PreTurn};
+use tinymemory_tools::{
+    AgentMemory, Brain, ContextPack, CoreScope, MemoryLayout, PostTurn, PreTurn,
+};
 
 const DEFAULT_KEY: &str = "tinymemory-cortex-test";
 
@@ -140,4 +144,91 @@ async fn live_an_agent_loop_runs_against_cortexdb() {
         .await
         .expect("forget");
     assert!(forgotten.forgotten >= 4, "{forgotten:?}");
+}
+
+#[tokio::test]
+async fn live_core_scope_recall_and_promotion_respect_tenant_boundaries() {
+    let Some(engine) = live_engine() else {
+        eprintln!("TINYMEMORY_LIVE_CORTEXDB_URL unset; skipping");
+        return;
+    };
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after the epoch")
+        .as_nanos();
+    let company: Namespace = format!("project:core-{nanos}")
+        .parse()
+        .expect("valid namespace");
+    let hive: Namespace = format!("project:core-{nanos}/team:hive")
+        .parse()
+        .expect("valid namespace");
+    let other: Namespace = format!("project:core-{nanos}/team:other")
+        .parse()
+        .expect("valid namespace");
+    let layout = MemoryLayout::new(hive).expect("valid layout");
+    let agent = AgentMemory::new(engine.clone(), layout.clone(), "core-test")
+        .expect("agent")
+        .with_core(vec![CoreScope::new(company.clone(), "Company")])
+        .expect("company ancestor scope");
+
+    agent
+        .promote(
+            &company,
+            StoreItem::learning(
+                "Quasar holidays close the support desk on Friday",
+                LearningKind::Fact,
+                0.9,
+                MemoryMeta::default(),
+            ),
+        )
+        .await
+        .expect("promote into company scope");
+    let build = agent
+        .core_build(&company)
+        .expect("build job for configured company scope");
+    agent
+        .run_background(build)
+        .await
+        .expect("run the company-scope belief build");
+    engine
+        .store(StoreItem::learning(
+            "Quasar holidays reveal the other tenant's private schedule",
+            LearningKind::Fact,
+            0.9,
+            MemoryMeta {
+                namespace: other.clone(),
+                ..MemoryMeta::default()
+            },
+        ))
+        .await
+        .expect("store sibling fixture");
+
+    let pack = recall_until(
+        &agent,
+        "Quasar holidays",
+        &["Quasar holidays close the support desk on Friday"],
+    )
+    .await;
+    assert!(
+        pack.markdown
+            .contains("## Company\n\n- Quasar holidays close the support desk on Friday"),
+        "company core appears in recall:\n{}",
+        pack.markdown
+    );
+    assert!(
+        !pack.markdown.contains("other tenant's private schedule"),
+        "sibling item is excluded:\n{}",
+        pack.markdown
+    );
+
+    for namespace in [company, other] {
+        let forgotten = engine
+            .forget(ForgetTarget::Filter(MetaFilter {
+                reach: Some(Reach::exact(namespace)),
+                ..MetaFilter::default()
+            }))
+            .await
+            .expect("clean up test data");
+        assert_eq!(forgotten.forgotten, 1, "{forgotten:?}");
+    }
 }

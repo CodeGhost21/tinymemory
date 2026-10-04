@@ -42,6 +42,7 @@ host                         AgentMemory                     engine
  │                              ├─ store_with(turn, Accepted) ─▶ (≈ capture, no indexing wait)
  │                              ├─ holistic recall, concurrently:
  │                              │    Learnings  fetch ──────────▶
+ │                              │    <core>     fetch ──────────▶ (one per CoreScope, exact node)
  │                              │    Brain      fetch ──────────▶
  │                              │    History    fetch ──────────▶
  │                              │    Team       fetch ──────────▶

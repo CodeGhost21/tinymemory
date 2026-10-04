@@ -21,9 +21,16 @@
 //! part of the thread still in the prompt.
 //!
 //! A pack's sections, highest priority first (budget trimming takes from the
-//! last): **Learnings**, **Brain**, **This agent's history**, and **Team
-//! conversations** (other agents' turns). An item appears once, in the first
-//! section that found it.
+//! last): **Learnings**, one section per [`CoreScope`], **Brain**, **This
+//! agent's history**, and **Team conversations** (other agents' turns). An
+//! item appears once, in the first section that found it.
+//!
+//! Core scopes share memory above the layout, such as a hive-wide core or a
+//! company brain. They are empty by default; [`AgentMemory::with_core`] sets
+//! them, and because the memory is cheap to clone a host can override them
+//! for one call: `memory.clone().with_core(scopes)?.pre_turn(turn)`. Only the
+//! host writes there, through [`AgentMemory::promote`]; the model's tools
+//! never choose a node.
 //!
 //! Each turn is stored as its own one-turn conversation item carrying the
 //! thread id, the turn's index, the agent id and the `conversation` source,
@@ -69,12 +76,12 @@ use std::sync::Arc;
 use futures::future::join;
 use tinymemory_api::{
     ConsolidateRequest, Error, ItemKind, MemoryEngine, MemoryMeta, MetaFilter, Namespace, Reach,
-    Result, Role, SourceKind, SourceRef, StoreItem, Turn, TurnRange, WriteOptions,
+    Result, Role, SourceKind, SourceRef, StoreItem, StoreReceipt, Turn, TurnRange, WriteOptions,
 };
 
 use crate::background::{BackgroundJob, BackgroundRunner, JobReport};
 use crate::brain::Brain;
-use crate::layout::MemoryLayout;
+use crate::layout::{CoreScope, MemoryLayout};
 use crate::recall::{
     ContextPack, HolisticRecall, ScopeSection, SectionQuery, ThreadWindow, holistic_recall,
 };
@@ -127,6 +134,7 @@ pub struct AgentMemory {
     agent_id: String,
     node: Namespace,
     policy: RecallPolicy,
+    core: Vec<CoreScope>,
 }
 
 impl std::fmt::Debug for AgentMemory {
@@ -136,6 +144,7 @@ impl std::fmt::Debug for AgentMemory {
             .field("agent_id", &self.agent_id)
             .field("node", &self.node.to_string())
             .field("policy", &self.policy)
+            .field("core", &self.core)
             .finish()
     }
 }
@@ -164,6 +173,7 @@ impl AgentMemory {
             layout,
             agent_id: agent_id.to_string(),
             policy: RecallPolicy::default(),
+            core: Vec::new(),
         })
     }
 
@@ -172,6 +182,89 @@ impl AgentMemory {
     pub fn with_policy(mut self, policy: RecallPolicy) -> Self {
         self.policy = policy;
         self
+    }
+
+    /// The same memory recalling `core` as well, replacing any core scopes it
+    /// had; an empty list drops them. Clone first to override them for one
+    /// call.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::InvalidRequest`] for a scope that is not a strict ancestor of
+    /// the layout root ([`MemoryLayout::admits_core`]), a blank heading, or a
+    /// node named twice.
+    pub fn with_core(mut self, core: Vec<CoreScope>) -> Result<Self> {
+        for (index, scope) in core.iter().enumerate() {
+            self.layout.admits_core(&scope.at)?;
+            if scope.heading.trim().is_empty() {
+                return Err(Error::InvalidRequest(format!(
+                    "the core scope `{}` needs a heading",
+                    scope.at
+                )));
+            }
+            if core[..index].iter().any(|earlier| earlier.at == scope.at) {
+                return Err(Error::InvalidRequest(format!(
+                    "the core scope `{}` is named twice",
+                    scope.at
+                )));
+            }
+        }
+        self.core = core;
+        Ok(self)
+    }
+
+    /// The core scopes recalled alongside the layout, in section order.
+    #[must_use]
+    pub fn core(&self) -> &[CoreScope] {
+        &self.core
+    }
+
+    /// Writes `item` into the core scope at `scope`, for every agent below it
+    /// to recall: a hive-wide learning or a company brain document. The
+    /// item's namespace is set to `scope` whatever it was. Waits as
+    /// [`MemoryEngine::store`] does.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::InvalidRequest`] for a node that is not one of this memory's
+    /// core scopes, or a conversation (turns stay at the agent's node); the
+    /// engine's failure to store.
+    pub async fn promote(&self, scope: &Namespace, mut item: StoreItem) -> Result<StoreReceipt> {
+        let Some(core) = self.core.iter().find(|core| &core.at == scope) else {
+            return Err(Error::InvalidRequest(format!(
+                "`{scope}` is not a core scope of this memory"
+            )));
+        };
+        let kind = item.kind();
+        if kind == ItemKind::Conversation {
+            return Err(Error::InvalidRequest(
+                "only learnings and documents are promoted to a core scope".to_string(),
+            ));
+        }
+        if !core.kinds.is_empty() && !core.kinds.contains(&kind) {
+            return Err(Error::InvalidRequest(format!(
+                "the core scope `{scope}` does not read {kind:?} items"
+            )));
+        }
+        item.meta_mut().namespace = scope.clone();
+        self.engine.store(item).await
+    }
+
+    /// A belief build of exactly the core scope at `scope`.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::InvalidRequest`] for a node that is not one of this memory's
+    /// core scopes.
+    pub fn core_build(&self, scope: &Namespace) -> Result<BackgroundJob> {
+        if !self.core.iter().any(|core| &core.at == scope) {
+            return Err(Error::InvalidRequest(format!(
+                "`{scope}` is not a core scope of this memory"
+            )));
+        }
+        Ok(BackgroundJob::BuildBeliefs {
+            request: ConsolidateRequest::new(Reach::exact(scope.clone())),
+        })
     }
 
     /// The agent's id.
@@ -217,7 +310,8 @@ impl AgentMemory {
     }
 
     /// The model-facing memory tools for this agent: writes land at its node,
-    /// reads see its node and the shared root ([`Reach::of`]).
+    /// reads see its node and every node above it ([`Reach::of`]), core
+    /// scopes included.
     #[must_use]
     pub fn tools(&self) -> MemoryTools {
         MemoryTools::new(self.engine.clone()).placed_at(self.node.clone())
@@ -408,16 +502,20 @@ impl AgentMemory {
         }
     }
 
-    /// Learnings, brain, this agent's history, then the team's, each filled
-    /// by fetch; a zero limit leaves its section out.
+    /// Learnings, each core scope, brain, this agent's history, then the
+    /// team's, each filled by fetch; a zero limit leaves its section out.
     fn standard_sections(&self) -> Vec<ScopeSection> {
         let policy = &self.policy;
-        [
-            (
-                LEARNINGS_HEADING,
-                self.layout.learnings_filter(),
-                policy.learnings_limit,
-            ),
+        let learnings = (
+            LEARNINGS_HEADING,
+            self.layout.learnings_filter(),
+            policy.learnings_limit,
+        );
+        let core = self
+            .core
+            .iter()
+            .map(|scope| (scope.heading.as_str(), scope.filter(), scope.limit));
+        let layout = [
             (
                 BRAIN_HEADING,
                 self.layout.brain_filter(None),
@@ -433,11 +531,13 @@ impl AgentMemory {
                 self.layout.conversations_filter(None),
                 policy.team_limit,
             ),
-        ]
-        .into_iter()
-        .filter(|(_, _, limit)| *limit > 0)
-        .map(|(heading, filter, limit)| ScopeSection::fetch(heading, filter, limit))
-        .collect()
+        ];
+        std::iter::once(learnings)
+            .chain(core)
+            .chain(layout)
+            .filter(|(_, _, limit)| *limit > 0)
+            .map(|(heading, filter, limit)| ScopeSection::fetch(heading, filter, limit))
+            .collect()
     }
 
     fn request(&self, query: Option<String>, sections: Vec<ScopeSection>) -> HolisticRecall {

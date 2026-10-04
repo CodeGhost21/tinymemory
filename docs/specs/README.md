@@ -7,6 +7,9 @@
   source, per-agent conversations, learnings), holistic recall, pre- and
   post-turn calls, compaction and background belief builds. Accepted; builds
   on memory v2.
+- [Core scopes](core-scopes.md) — shared memory above a layout (a hive-wide
+  core, a company brain) recalled as its own sections, set per agent or per
+  call, written by the host. Accepted; builds on the agent memory lifecycle.
 
 Specifications define what the system must do before implementation details
 take over. Create one for behavior that changes a public API, crosses module
