@@ -62,7 +62,10 @@ fn a_filter_field_outside_the_subset_is_refused() {
     let value = json!({ "filter": { "commit": "abc" } });
     let args = Args::parse("t", &value, &["filter"]).unwrap();
     let text = invalid_message(meta_filter(&args, "filter"));
-    assert!(text.contains("`filter.commit` is not an argument"), "{text}");
+    assert!(
+        text.contains("`filter.commit` is not an argument"),
+        "{text}"
+    );
 }
 
 #[test]
@@ -70,7 +73,10 @@ fn a_namespace_inside_the_filter_is_refused() {
     let value = json!({ "filter": { "namespace": "agent:other" } });
     let args = Args::parse("t", &value, &["filter"]).unwrap();
     let text = invalid_message(meta_filter(&args, "filter"));
-    assert!(text.contains("`filter.namespace` is fixed by the host"), "{text}");
+    assert!(
+        text.contains("`filter.namespace` is fixed by the host"),
+        "{text}"
+    );
 }
 
 #[test]
@@ -78,12 +84,18 @@ fn a_bad_kind_or_timestamp_is_refused_by_field() {
     let value = json!({ "filter": { "kinds": ["memo"] } });
     let args = Args::parse("t", &value, &["filter"]).unwrap();
     let text = invalid_message(meta_filter(&args, "filter"));
-    assert!(text.contains("`filter.kinds` `memo` is not an item kind"), "{text}");
+    assert!(
+        text.contains("`filter.kinds` `memo` is not an item kind"),
+        "{text}"
+    );
 
     let value = json!({ "filter": { "observed_after": "yesterday" } });
     let args = Args::parse("t", &value, &["filter"]).unwrap();
     let text = invalid_message(meta_filter(&args, "filter"));
-    assert!(text.contains("`filter.observed_after` must be an rfc 3339 timestamp"), "{text}");
+    assert!(
+        text.contains("`filter.observed_after` must be an rfc 3339 timestamp"),
+        "{text}"
+    );
 }
 
 #[test]
@@ -100,7 +112,12 @@ fn facets_are_read_and_the_namespace_facet_is_refused() {
 fn fetch_modes_follow_the_engine() {
     let value = json!({ "mode": "vector" });
     let args = Args::parse("t", &value, &["mode"]).unwrap();
-    let text = invalid_message(fetch_mode(&args, "mode", &[FetchMode::Keyword], FetchMode::Keyword));
+    let text = invalid_message(fetch_mode(
+        &args,
+        "mode",
+        &[FetchMode::Keyword],
+        FetchMode::Keyword,
+    ));
     assert!(text.contains("`mode` must be one of keyword"), "{text}");
     assert_eq!(
         fetch_mode(&args, "mode", &FetchMode::ALL, FetchMode::Hybrid).unwrap(),

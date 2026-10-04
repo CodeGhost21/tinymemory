@@ -60,7 +60,10 @@ fn every_object_is_closed_and_none_names_a_namespace_or_reach() {
             );
             let properties = object["properties"].as_object().expect("properties");
             for forbidden in ["namespace", "reach"] {
-                assert!(!properties.contains_key(forbidden), "{path} names {forbidden}");
+                assert!(
+                    !properties.contains_key(forbidden),
+                    "{path} names {forbidden}"
+                );
             }
         }
     }
@@ -75,7 +78,10 @@ fn the_fetch_mode_enum_lists_exactly_the_engine_modes() {
 
     let all = specs(&FetchMode::ALL, true);
     let mode = &find(&all, MEMORY_FETCH).parameters["properties"]["mode"];
-    assert_eq!(mode["enum"], serde_json::json!(["keyword", "vector", "hybrid"]));
+    assert_eq!(
+        mode["enum"],
+        serde_json::json!(["keyword", "vector", "hybrid"])
+    );
     assert_eq!(mode["default"], serde_json::json!("hybrid"));
 }
 
@@ -88,5 +94,10 @@ fn an_engine_without_fetch_modes_gets_no_fetch_tool() {
 fn the_explore_facets_leave_out_the_namespace() {
     let all = specs(&FetchMode::ALL, true);
     let facets = &find(&all, MEMORY_EXPLORE).parameters["properties"]["facet"]["enum"];
-    assert!(!facets.as_array().expect("enum").contains(&Value::from("namespace")));
+    assert!(
+        !facets
+            .as_array()
+            .expect("enum")
+            .contains(&Value::from("namespace"))
+    );
 }

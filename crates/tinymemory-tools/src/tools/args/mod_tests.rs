@@ -71,7 +71,10 @@ fn counts_default_and_are_range_checked() {
     assert_eq!(args.count("missing", 9, 50).unwrap(), 9);
     for key in ["b", "c", "d", "e"] {
         let text = message(args.count(key, 1, 50).unwrap_err());
-        assert!(text.contains(&format!("`{key}` must be an integer from 1 to 50")), "{text}");
+        assert!(
+            text.contains(&format!("`{key}` must be an integer from 1 to 50")),
+            "{text}"
+        );
     }
 }
 
@@ -102,7 +105,9 @@ fn strings_are_type_checked() {
 fn a_nested_value_that_is_not_an_object_is_refused() {
     let value = json!({ "filter": "kinds=learning" });
     let args = Args::parse("t", &value, &["filter"]).unwrap();
-    assert!(message(args.object("filter", "filter.", &[]).unwrap_err()).contains("must be an object"));
+    assert!(
+        message(args.object("filter", "filter.", &[]).unwrap_err()).contains("must be an object")
+    );
 }
 
 #[test]
@@ -110,6 +115,8 @@ fn an_array_element_that_is_not_an_object_is_refused() {
     let value = json!({ "turns": ["hi"] });
     let args = Args::parse("t", &value, &["turns"]).unwrap();
     let element = &args.array("turns").unwrap()[0];
-    let error = args.element("turns", element, "turns[].", &["text"]).unwrap_err();
+    let error = args
+        .element("turns", element, "turns[].", &["text"])
+        .unwrap_err();
     assert!(message(error).contains("`turns` must hold only objects"));
 }

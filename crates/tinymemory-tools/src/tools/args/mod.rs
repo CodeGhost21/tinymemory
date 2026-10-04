@@ -218,17 +218,17 @@ impl<'a> Args<'a> {
     }
 
     fn check_keys(&self, allowed: &[&str]) -> Result<()> {
-        if let Some(key) = self.map.keys().find(|key| HOST_FIXED.contains(&key.as_str())) {
+        if let Some(key) = self
+            .map
+            .keys()
+            .find(|key| HOST_FIXED.contains(&key.as_str()))
+        {
             return Err(self.field_error(
                 key,
                 "is fixed by the host and cannot be passed to a memory tool",
             ));
         }
-        if let Some(key) = self
-            .map
-            .keys()
-            .find(|key| !allowed.contains(&key.as_str()))
-        {
+        if let Some(key) = self.map.keys().find(|key| !allowed.contains(&key.as_str())) {
             return Err(self.field_error(key, "is not an argument of this tool"));
         }
         Ok(())

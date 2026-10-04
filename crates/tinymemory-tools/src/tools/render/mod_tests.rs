@@ -2,9 +2,7 @@
 
 use super::*;
 use tinymemory_api::chrono::{TimeZone, Utc};
-use tinymemory_api::{
-    Facet, FacetBucket, ItemKind, Namespace, SourceKind, SourceRef,
-};
+use tinymemory_api::{Facet, FacetBucket, ItemKind, Namespace, SourceKind, SourceRef};
 
 fn sample_hit() -> Hit {
     let mut meta = MemoryMeta::from_source(SourceKind::Folder, Some("notes".into()));
@@ -96,7 +94,10 @@ fn recall_renders_answer_and_citations() {
     };
     let rendered = recall(&answer);
     assert_eq!(rendered["answer"], json!("it moves"));
-    assert_eq!(rendered["citations"][0]["snippet"], json!("ownership moves"));
+    assert_eq!(
+        rendered["citations"][0]["snippet"],
+        json!("ownership moves")
+    );
     assert!(rendered["citations"][0].get("score").is_none());
     assert!(rendered.get("model").is_none());
 }

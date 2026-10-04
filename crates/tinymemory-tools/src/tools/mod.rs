@@ -158,7 +158,10 @@ impl MemoryTools {
     #[must_use]
     pub fn placed_at(mut self, place: Namespace) -> Self {
         let writes = self.scope.writes;
-        self.scope = ToolScope { writes, ..ToolScope::at(place) };
+        self.scope = ToolScope {
+            writes,
+            ..ToolScope::at(place)
+        };
         self
     }
 
