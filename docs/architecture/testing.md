@@ -306,7 +306,9 @@ TINYMEMORY_LIVE_CORTEXDB_URL=http://127.0.0.1:3141 \
 
 The harness runs `mock-inference`, a deterministic OpenAI-compatible double for
 CortexDB's embeddings, extraction and answer models, so it needs no
-credential; it is a wiring fixture, not a quality benchmark. Live tests name
+credential; it is a wiring fixture, not a quality benchmark. Quality is
+measured by the agent memory eval instead (`./scripts/memory-eval.sh`, with
+`MODELS=openrouter` for real models); see [`docs/evals/`](../evals/README.md). Live tests name
 their file `live_*` (or `*_live`) so they are easy to exclude, and write only
 under a workspace unique to the run.
 

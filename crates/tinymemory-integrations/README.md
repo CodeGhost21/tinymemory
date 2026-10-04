@@ -108,6 +108,12 @@ the integration tests: `reader_dispatch` (sources), `legacy_import`,
 `TINYMEMORY_LIVE_CORTEXDB_URL` names a CortexDB server; `scripts/cortexdb-live.sh`
 boots the pinned harness in `integration/cortexdb/` and runs them against it.
 
+`examples/memory_eval/` is the agent memory eval: a scripted agent plays nine
+scenarios through the lifecycle and scores every pack.
+`scripts/memory-eval.sh` runs it against a throwaway CortexDB, with mock or
+real models; [`docs/evals/`](../../docs/evals/README.md) has the method and
+the recorded results.
+
 ## Architecture
 
 [`docs/architecture/integrations.md`](../../docs/architecture/integrations.md)

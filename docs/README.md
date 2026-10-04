@@ -13,6 +13,7 @@ docs/
 ├── architecture/  # how the code is built, one document per concern
 ├── specs/         # behavior and architecture specifications
 ├── plans/         # implementation plans derived from approved specs
+├── evals/         # accuracy and latency evals, with recorded runs
 └── adr/           # architecture decision records, numbered and immutable
 ```
 
@@ -24,6 +25,9 @@ docs/
 - **[`plans/`](plans/README.md)** — implementation-ordered, test-first steps for
   delivering an approved specification. Plans name exact files and verification
   commands, and are updated as the work progresses.
+- **[`evals/`](evals/README.md)** — how well the memory serves an agent,
+  measured: each eval's method, how to rerun it, and the results of recorded
+  runs.
 - **`adr/`** — a dated record per significant decision. Use
   [`adr/0001-record-architecture-decisions.md`](adr/0001-record-architecture-decisions.md)
   as the template. An accepted ADR is not edited; it is superseded by a later
