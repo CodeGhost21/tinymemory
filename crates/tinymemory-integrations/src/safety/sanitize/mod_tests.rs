@@ -2,6 +2,7 @@
 //! sensitive JSON keys, the depth cap and the credential-marker pass.
 
 use super::*;
+use crate::safety::has_likely_pii;
 use serde_json::json;
 
 /// Assembled at run time so a repository secret scanner does not read the

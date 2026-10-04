@@ -9,6 +9,7 @@ use crate::safety::pii::{
     PII_AADHAAR, PII_CC, PII_CNPJ, PII_CPF, PII_CUIT, PII_DNI, PII_IBAN, PII_MYNUM, PII_NINO,
     PII_PAN_IN, PII_PHONE, PII_RFC, PII_RRN, PII_SSN, redact_pii, scan_candidates,
 };
+use crate::safety::{BareCardGate, has_likely_email, has_likely_pii};
 
 /// Assembled rather than written out so a repository secret scanner does
 /// not read the fixture as a real key block.
