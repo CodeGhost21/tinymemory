@@ -9,12 +9,12 @@
 
 use serde_json::Value;
 use tinymemory_api::{
-    Error, ExploreRequest, FetchRequest, GetRequest, ItemId, ListRequest, MemoryEngine,
+    Error, ExploreRequest, FetchRequest, GetRequest, Hit, ItemId, ListRequest, MemoryEngine,
     RecallRequest, Result,
 };
 
 use super::ToolScope;
-use super::args::{Args, facet, fetch_mode, invalid, meta_filter};
+use super::args::{Args, facet, fetch_mode, meta_filter};
 use super::render;
 use super::spec::schema::{DEFAULT_LIMIT, MAX_IDS, MAX_LIMIT, default_mode};
 use super::spec::{MEMORY_EXPLORE, MEMORY_FETCH, MEMORY_GET, MEMORY_LIST, MEMORY_RECALL};
@@ -153,7 +153,7 @@ pub(crate) async fn resolve(
     engine: &dyn MemoryEngine,
     scope: &ToolScope,
     ids: &[ItemId],
-) -> Result<Vec<tinymemory_api::Hit>> {
+) -> Result<Vec<Hit>> {
     engine
         .get(GetRequest {
             ids: ids.to_vec(),
@@ -174,7 +174,7 @@ pub(crate) fn item_ids(args: &Args<'_>, key: &str) -> Result<Vec<ItemId>> {
         return Err(args.field_error(key, &format!("must list from 1 to {MAX_IDS} ids")));
     }
     if raw.iter().any(|id| id.trim().is_empty()) {
-        return Err(invalid(args.tool(), &format!("`{key}` must not hold a blank id")));
+        return Err(args.field_error(key, "must not hold a blank id"));
     }
     let mut ids: Vec<ItemId> = Vec::with_capacity(raw.len());
     for id in raw {
