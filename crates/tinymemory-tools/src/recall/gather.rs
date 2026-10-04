@@ -232,14 +232,22 @@ async fn latest(
 }
 
 /// The text a hit's bullet shows: a titled document as `title: body` rather
-/// than its `# title` heading run into the body.
+/// than its `# title` heading run into the body, and without the body's own
+/// copy of that heading when converted markdown repeats it.
 fn bullet_text(hit: &Hit) -> String {
     if hit.kind == ItemKind::Document
         && let Some(rest) = hit.text.strip_prefix("# ")
         && let Some((title, body)) = rest.split_once("\n\n")
         && !title.contains('\n')
     {
-        return format!("{}: {}", title.trim(), body);
+        let title = title.trim();
+        let body = body.trim_start();
+        let body = body
+            .strip_prefix("# ")
+            .and_then(|heading| heading.strip_prefix(title))
+            .filter(|after| after.is_empty() || after.starts_with('\n'))
+            .map_or(body, str::trim_start);
+        return format!("{title}: {body}");
     }
     hit.text.clone()
 }

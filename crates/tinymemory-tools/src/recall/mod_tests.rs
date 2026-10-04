@@ -310,3 +310,33 @@ async fn an_item_is_listed_once_in_its_first_section() {
             .all(|hit| hit.id != pack.sections[0].hits[0].id)
     );
 }
+
+#[tokio::test]
+async fn a_titled_document_is_one_readable_bullet() {
+    let engine = ReferenceEngine::new();
+    for (title, body) in [
+        ("Onboarding", "# Onboarding\n\nReply within four hours."),
+        ("Refunds", "Refunds take five days."),
+        ("Billing", "# Billing disputes\n\nGo to finance."),
+    ] {
+        engine
+            .store(StoreItem::Document {
+                title: Some(title.into()),
+                body: tinymemory_api::DocumentBody::Text(body.into()),
+                mime: None,
+                meta: MemoryMeta::default(),
+            })
+            .await
+            .unwrap();
+    }
+    let pack = holistic_recall(
+        &engine,
+        &HolisticRecall::new(None, vec![ScopeSection::latest("Docs", docs(), 5)]),
+    )
+    .await
+    .unwrap();
+    let md = &pack.markdown;
+    assert!(md.contains("- Onboarding: Reply within four hours.\n"), "{md}");
+    assert!(md.contains("- Refunds: Refunds take five days.\n"), "{md}");
+    assert!(md.contains("- Billing: # Billing disputes Go to finance.\n"), "{md}");
+}
