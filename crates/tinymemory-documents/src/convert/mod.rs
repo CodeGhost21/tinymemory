@@ -8,26 +8,31 @@
 //! ## Why this is a trait
 //!
 //! Text, markdown and HTML convert with no dependencies, and this crate does
-//! them ([`NativeConverter`]). PDF and DOCX do not: they need a real extractor,
-//! and which extractor a deployment uses is its own decision — an in-process
-//! crate, a TinyBus module, a service. So conversion is a trait a host binds
-//! rather than a fixed table, and [`ConverterChain`] composes the native
-//! converter with whatever the host brings.
+//! them ([`NativeConverter`]). PDF and the Office formats do not: they need a
+//! real extractor, and which extractor a deployment uses is its own decision —
+//! an in-process crate, a TinyBus module, a service. So conversion is a trait a
+//! host binds rather than a fixed table, and [`ConverterChain`] composes the
+//! native converter with whatever the host brings — including this crate's own
+//! `OfficeConverter` when the `office` feature is on.
 //!
-//! A format with no converter is [`MemoryError::Invalid`] naming the format,
-//! never a silent empty document.
+//! Source code is textual too, and [`NativeConverter`] stores it exactly as
+//! written: reflowing it or running it through the HTML converter would change
+//! what the code says. Its language rides along in
+//! [`ConvertedDocument::language`].
+//!
+//! A format with no converter is [`Error::UnsupportedFormat`] naming the
+//! format, never a silent empty document.
 
 mod types;
 
 use async_trait::async_trait;
 
-use tinymemory_api::error::MemoryError;
-
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::format::DocumentFormat;
 use crate::html;
+use crate::language::language_for_path;
 
-pub use types::{ConvertedDocument, RawDocument, MAX_DOCUMENT_BYTES};
+pub use types::{ConvertedDocument, MAX_DOCUMENT_BYTES, RawDocument};
 
 /// Turns a document of some format into markdown.
 ///
@@ -48,9 +53,10 @@ pub trait DocumentConverter: Send + Sync {
     ///
     /// # Errors
     ///
-    /// [`MemoryError::Invalid`] for a format this converter does not handle or
-    /// a document it cannot decode, [`MemoryError::BudgetExceeded`] for one
-    /// over [`MAX_DOCUMENT_BYTES`].
+    /// [`Error::UnsupportedFormat`] for a format this converter does not
+    /// handle, [`Error::Invalid`] for a document it cannot decode,
+    /// [`Error::TooLarge`] for one over [`MAX_DOCUMENT_BYTES`], and
+    /// [`Error::Converter`] for the converter's own failure.
     async fn convert(&self, document: &RawDocument) -> Result<ConvertedDocument>;
 }
 
@@ -63,26 +69,42 @@ pub trait DocumentConverter: Send + Sync {
 ///
 /// # Errors
 ///
-/// [`MemoryError::Invalid`] for an empty body, [`MemoryError::BudgetExceeded`]
-/// for one over [`MAX_DOCUMENT_BYTES`].
+/// [`Error::Invalid`] for an empty body, [`Error::TooLarge`] for one over
+/// [`MAX_DOCUMENT_BYTES`].
 pub fn check_size(document: &RawDocument) -> Result<()> {
     if document.bytes.is_empty() {
-        return Err(MemoryError::Invalid("document body is empty".to_string()));
+        return Err(Error::Invalid("document body is empty".to_string()));
     }
     if document.bytes.len() > MAX_DOCUMENT_BYTES {
-        return Err(MemoryError::BudgetExceeded(format!(
-            "document is {} bytes, over the {MAX_DOCUMENT_BYTES}-byte intake limit",
-            document.bytes.len()
-        )));
+        return Err(Error::TooLarge {
+            size: document.bytes.len(),
+            limit: MAX_DOCUMENT_BYTES,
+        });
     }
     Ok(())
 }
 
-/// The formats this crate converts without help: markdown, plain text, HTML.
+/// Turn already-decoded text of a textual `format` into markdown.
+///
+/// The synchronous core of [`NativeConverter`], for callers that already hold
+/// a `String` (a source reader's body) rather than a byte buffer: HTML goes
+/// through [`html::to_markdown`], and markdown, plain text and code are
+/// returned exactly as written. A non-textual format is returned unchanged
+/// too, because there is nothing this function could decode it with.
+#[must_use]
+pub fn markdown_from_text(text: &str, format: DocumentFormat) -> String {
+    match format {
+        DocumentFormat::Html => html::to_markdown(text),
+        _ => text.to_string(),
+    }
+}
+
+/// The formats this crate converts without help: markdown, plain text, HTML
+/// and source code.
 ///
 /// Everything it handles is already text, so the whole implementation is
-/// decoding plus, for HTML, [`crate::html::to_markdown`]. PDF and DOCX are
-/// deliberately absent — see the module docs.
+/// decoding plus, for HTML, [`crate::html::to_markdown`]. PDF and the Office
+/// formats are deliberately absent — see the module docs.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NativeConverter;
 
@@ -100,29 +122,32 @@ impl DocumentConverter for NativeConverter {
         check_size(document)?;
         let format = document.format();
         if !self.supports(format) {
-            return Err(MemoryError::Invalid(format!(
+            return Err(Error::UnsupportedFormat(format!(
                 "the native converter does not handle {format}; bind a converter that does"
             )));
         }
-        let text = std::str::from_utf8(&document.bytes).map_err(|error| {
-            MemoryError::Invalid(format!("document is not valid utf-8: {error}"))
-        })?;
+        let text = std::str::from_utf8(&document.bytes)
+            .map_err(|error| Error::Invalid(format!("document is not valid utf-8: {error}")))?;
 
-        let (markdown, title) = match format {
-            DocumentFormat::Html => (html::to_markdown(text), html::extract_title(text)),
-            // Plain text is valid markdown. Rewriting it — escaping, wrapping,
-            // guessing at headings — would change the user's words, which is
-            // worse than storing prose that happens to lack markup.
-            DocumentFormat::Markdown | DocumentFormat::PlainText => (text.to_string(), None),
-            other => {
-                return Err(MemoryError::Invalid(format!(
-                    "the native converter does not handle {other}"
-                )))
-            }
+        // Plain text and code are valid markdown as written. Rewriting them —
+        // escaping, wrapping, guessing at headings — would change the user's
+        // words or the program's meaning.
+        let markdown = markdown_from_text(text, format);
+        let title = match format {
+            DocumentFormat::Html => html::extract_title(text),
+            _ => None,
+        };
+        let language = match format {
+            DocumentFormat::Code => document
+                .filename
+                .as_deref()
+                .and_then(language_for_path)
+                .map(str::to_string),
+            _ => None,
         };
 
         if markdown.trim().is_empty() {
-            return Err(MemoryError::Invalid(format!(
+            return Err(Error::Invalid(format!(
                 "converting {format} produced no text"
             )));
         }
@@ -130,6 +155,7 @@ impl DocumentConverter for NativeConverter {
         Ok(
             ConvertedDocument::new(markdown, format, document.bytes.len())
                 .with_title(title)
+                .with_language(language)
                 .with_metadata(serde_json::json!({ "converter": self.name() })),
         )
     }
@@ -167,6 +193,7 @@ impl Default for ConverterChain {
 
 impl ConverterChain {
     /// Build a chain from converters in priority order.
+    #[must_use]
     pub fn new(converters: Vec<Box<dyn DocumentConverter>>) -> Self {
         Self { converters }
     }
@@ -186,13 +213,17 @@ impl ConverterChain {
     }
 
     /// Every format some converter in this chain claims.
+    #[must_use]
     pub fn supported_formats(&self) -> Vec<DocumentFormat> {
         [
             DocumentFormat::Markdown,
             DocumentFormat::PlainText,
             DocumentFormat::Html,
+            DocumentFormat::Code,
             DocumentFormat::Pdf,
             DocumentFormat::Docx,
+            DocumentFormat::Xlsx,
+            DocumentFormat::Pptx,
         ]
         .into_iter()
         .filter(|format| self.supports(*format))
@@ -215,7 +246,7 @@ impl DocumentConverter for ConverterChain {
         let format = document.format();
         match self.converters.iter().find(|c| c.supports(format)) {
             Some(converter) => converter.convert(document).await,
-            None => Err(MemoryError::Invalid(format!(
+            None => Err(Error::UnsupportedFormat(format!(
                 "no converter handles {format}; this build converts {}",
                 describe(&self.supported_formats())
             ))),
@@ -237,4 +268,4 @@ fn describe(formats: &[DocumentFormat]) -> String {
 
 #[cfg(test)]
 #[path = "mod_tests.rs"]
-mod test;
+mod tests;

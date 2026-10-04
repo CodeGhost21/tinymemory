@@ -28,11 +28,11 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 
+use crate::error::{Error, Result};
 use crate::raw_kind::RawKind;
 use crate::types::{MemorySourceEntry, SourceContent, SourceItem, SourceKind};
-use crate::SourceResult;
 
-use super::{into_engine_error, SourceReader};
+use super::SourceReader;
 
 // Re-export for the sibling submodules and the test module.
 pub(crate) use types::{ItemKind, LIST_CACHE};
@@ -74,6 +74,7 @@ async fn gh_available() -> bool {
 
 /// Reader for a GitHub repository source: lists and fetches commits, issues
 /// and pull requests via the REST API, and file content via a shallow clone.
+#[derive(Debug, Clone, Copy, Default)]
 pub struct GithubReader;
 
 /// Parse `owner` and `repo` from a GitHub URL.
@@ -82,7 +83,7 @@ pub struct GithubReader;
 /// shape — extra segments like `/tree/main` or `/blob/...` are rejected
 /// so callers can't accidentally derive the wrong owner/repo from a
 /// deep link.
-pub(crate) fn parse_github_url(url: &str) -> Result<(String, String), String> {
+pub(crate) fn parse_github_url(url: &str) -> std::result::Result<(String, String), String> {
     let trimmed = url.trim();
     let rest = trimmed
         .strip_prefix("https://github.com/")
@@ -153,10 +154,10 @@ impl SourceReader for GithubReader {
         &self,
         source: &MemorySourceEntry,
         workspace: &std::path::Path,
-    ) -> SourceResult<Vec<SourceItem>> {
+    ) -> Result<Vec<SourceItem>> {
         self.list_items_inner(source, workspace)
             .await
-            .map_err(into_engine_error)
+            .map_err(Error::Reader)
     }
 
     async fn read_item(
@@ -164,10 +165,10 @@ impl SourceReader for GithubReader {
         source: &MemorySourceEntry,
         item_id: &str,
         workspace: &std::path::Path,
-    ) -> SourceResult<SourceContent> {
+    ) -> Result<SourceContent> {
         self.read_item_inner(source, item_id, workspace)
             .await
-            .map_err(into_engine_error)
+            .map_err(Error::Reader)
     }
 }
 
@@ -176,7 +177,7 @@ impl GithubReader {
         &self,
         source: &MemorySourceEntry,
         workspace: &std::path::Path,
-    ) -> Result<Vec<SourceItem>, String> {
+    ) -> std::result::Result<Vec<SourceItem>, String> {
         let url = source
             .url
             .as_deref()
@@ -265,7 +266,7 @@ impl GithubReader {
         source: &MemorySourceEntry,
         item_id: &str,
         workspace: &std::path::Path,
-    ) -> Result<SourceContent, String> {
+    ) -> std::result::Result<SourceContent, String> {
         let url = source
             .url
             .as_deref()

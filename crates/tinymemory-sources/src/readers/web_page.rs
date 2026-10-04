@@ -1,8 +1,10 @@
 //! Web page source reader.
 //!
-//! Fetches a single URL and extracts its text content. When a CSS
-//! `selector` is configured, only matching elements are included;
-//! otherwise the full page body is returned.
+//! Fetches a single URL and extracts its content. When a CSS `selector` is
+//! configured, only the text of matching elements is included (plain text);
+//! otherwise the whole page is converted to markdown through
+//! `tinymemory_documents::html::to_markdown`, keeping its headings, lists and
+//! links.
 //!
 //! The fetch-side SSRF guard (scheme/host policy plus a DNS resolver that
 //! pins connections to globally routable addresses) lives in the shared
@@ -15,13 +17,14 @@ use async_trait::async_trait;
 use super::ssrf::{build_client, is_url_allowed, read_body_capped};
 use types::SelectorSpec;
 
+use crate::error::{Error, Result};
 use crate::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
-use crate::SourceResult;
 
-use super::{into_engine_error, SourceReader};
+use super::SourceReader;
 
 /// Reader for a single-page web source: fetches one URL and extracts its
 /// readable text.
+#[derive(Debug, Clone, Copy, Default)]
 pub struct WebPageReader;
 
 #[async_trait]
@@ -34,10 +37,10 @@ impl SourceReader for WebPageReader {
         &self,
         source: &MemorySourceEntry,
         workspace: &std::path::Path,
-    ) -> SourceResult<Vec<SourceItem>> {
+    ) -> Result<Vec<SourceItem>> {
         self.list_items_inner(source, workspace)
             .await
-            .map_err(into_engine_error)
+            .map_err(Error::Reader)
     }
 
     async fn read_item(
@@ -45,10 +48,10 @@ impl SourceReader for WebPageReader {
         source: &MemorySourceEntry,
         item_id: &str,
         workspace: &std::path::Path,
-    ) -> SourceResult<SourceContent> {
+    ) -> Result<SourceContent> {
         self.read_item_inner(source, item_id, workspace)
             .await
-            .map_err(into_engine_error)
+            .map_err(Error::Reader)
     }
 }
 
@@ -57,7 +60,7 @@ impl WebPageReader {
         &self,
         source: &MemorySourceEntry,
         _workspace: &std::path::Path,
-    ) -> Result<Vec<SourceItem>, String> {
+    ) -> std::result::Result<Vec<SourceItem>, String> {
         let url = source
             .url
             .as_deref()
@@ -75,7 +78,7 @@ impl WebPageReader {
         source: &MemorySourceEntry,
         item_id: &str,
         _workspace: &std::path::Path,
-    ) -> Result<SourceContent, String> {
+    ) -> std::result::Result<SourceContent, String> {
         let url = if item_id.starts_with("http") {
             item_id.to_string()
         } else {
@@ -117,17 +120,22 @@ impl WebPageReader {
         let bytes = read_body_capped(resp, MAX_BODY_BYTES).await?;
         let body = String::from_utf8_lossy(&bytes).into_owned();
 
-        let extracted = if let Some(selector) = source.selector.as_deref() {
-            extract_by_selector(&body, selector)
-        } else {
-            strip_html_tags(&body)
+        let title = tinymemory_documents::html::extract_title(&body)
+            .or_else(|| extract_title(&body))
+            .unwrap_or_else(|| url.clone());
+        let (extracted, content_type) = match source.selector.as_deref() {
+            Some(selector) => (extract_by_selector(&body, selector), ContentType::Plaintext),
+            None => (
+                tinymemory_documents::html::to_markdown(&body),
+                ContentType::Markdown,
+            ),
         };
 
         Ok(SourceContent {
             id: url.clone(),
-            title: extract_title(&body).unwrap_or_else(|| url.clone()),
+            title,
             body: extracted,
-            content_type: ContentType::Plaintext,
+            content_type,
             metadata: serde_json::json!({ "url": url }),
         })
     }

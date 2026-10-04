@@ -31,6 +31,7 @@ pub struct RawDocument {
 
 impl RawDocument {
     /// A document from an upload, with no filename or declared type.
+    #[must_use]
     pub fn new(bytes: impl Into<Vec<u8>>) -> Self {
         Self {
             bytes: bytes.into(),
@@ -62,6 +63,7 @@ impl RawDocument {
     }
 
     /// Detect this document's format from every signal it carries.
+    #[must_use]
     pub fn format(&self) -> DocumentFormat {
         DocumentFormat::sniff(
             &self.bytes,
@@ -72,6 +74,7 @@ impl RawDocument {
 
     /// A display name for this document: its filename, else its origin, else a
     /// generated name based on the detected format.
+    #[must_use]
     pub fn display_name(&self) -> String {
         self.filename
             .clone()
@@ -91,6 +94,10 @@ pub struct ConvertedDocument {
     pub title: Option<String>,
     /// Format the source was detected as.
     pub format: DocumentFormat,
+    /// Programming language, for [`DocumentFormat::Code`] whose filename named
+    /// one (see [`crate::language_for_path`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
     /// Size of the source document in bytes, before conversion.
     pub source_bytes: usize,
     /// Anything else the converter learned — page counts, author, the
@@ -102,11 +109,13 @@ pub struct ConvertedDocument {
 
 impl ConvertedDocument {
     /// A converted document with no title and no metadata.
+    #[must_use]
     pub fn new(markdown: impl Into<String>, format: DocumentFormat, source_bytes: usize) -> Self {
         Self {
             markdown: markdown.into(),
             title: None,
             format,
+            language: None,
             source_bytes,
             metadata: serde_json::Value::Null,
         }
@@ -116,6 +125,13 @@ impl ConvertedDocument {
     #[must_use]
     pub fn with_title(mut self, title: Option<String>) -> Self {
         self.title = title.filter(|t| !t.trim().is_empty());
+        self
+    }
+
+    /// Attach a programming language.
+    #[must_use]
+    pub fn with_language(mut self, language: Option<String>) -> Self {
+        self.language = language.filter(|l| !l.trim().is_empty());
         self
     }
 
@@ -132,6 +148,7 @@ impl ConvertedDocument {
     /// Documents that carry no title metadata almost always open with their
     /// title as a heading, and a stored document named `upload.pdf` is one
     /// nobody finds again.
+    #[must_use]
     pub fn title_or(&self, fallback: &str) -> String {
         if let Some(title) = &self.title {
             return title.clone();

@@ -4,6 +4,7 @@
 use std::time::Instant;
 
 /// A fetched feed snapshot cached across a list-then-read sync pass.
+#[derive(Debug)]
 pub(super) struct FeedCache {
     pub url: String,
     pub fetched_at: Instant,

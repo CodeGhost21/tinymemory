@@ -49,7 +49,10 @@ impl DocumentConverter for Failing {
     }
 
     async fn convert(&self, _document: &RawDocument) -> Result<ConvertedDocument> {
-        Err(MemoryError::Backend("extractor crashed".to_string()))
+        Err(Error::Converter {
+            converter: "failing".to_string(),
+            message: "extractor crashed".to_string(),
+        })
     }
 }
 
@@ -102,7 +105,10 @@ async fn the_converter_records_its_own_name_in_metadata() {
 async fn a_pdf_is_refused_with_an_error_that_says_what_is_missing() {
     let pdf = RawDocument::new(b"%PDF-1.7\ncontent".to_vec());
     let error = NativeConverter.convert(&pdf).await.unwrap_err();
-    assert!(matches!(error, MemoryError::Invalid(_)), "got {error:?}");
+    assert!(
+        matches!(error, Error::UnsupportedFormat(_)),
+        "got {error:?}"
+    );
     assert!(error.to_string().contains("pdf"), "got {error}");
 }
 
@@ -119,10 +125,7 @@ async fn an_empty_document_is_rejected() {
 async fn a_document_over_the_cap_is_a_budget_error_not_a_validation_one() {
     let oversized = RawDocument::new(vec![b'a'; MAX_DOCUMENT_BYTES + 1]).with_mime("text/plain");
     let error = NativeConverter.convert(&oversized).await.unwrap_err();
-    assert!(
-        matches!(error, MemoryError::BudgetExceeded(_)),
-        "got {error:?}"
-    );
+    assert!(matches!(error, Error::TooLarge { .. }), "got {error:?}");
 }
 
 #[tokio::test]
@@ -149,14 +152,15 @@ async fn html_that_converts_to_nothing_is_an_error_not_an_empty_document() {
 }
 
 #[tokio::test]
-async fn the_default_chain_converts_the_three_native_formats_and_nothing_else() {
+async fn the_default_chain_converts_the_four_native_formats_and_nothing_else() {
     let chain = ConverterChain::default();
     assert_eq!(
         chain.supported_formats(),
         vec![
             DocumentFormat::Markdown,
             DocumentFormat::PlainText,
-            DocumentFormat::Html
+            DocumentFormat::Html,
+            DocumentFormat::Code,
         ]
     );
     assert!(!chain.supports(DocumentFormat::Pdf));
@@ -224,7 +228,7 @@ async fn a_chain_does_not_fall_through_when_its_chosen_converter_fails() {
         .convert(&RawDocument::new(b"%PDF-1.7\nx".to_vec()))
         .await
         .unwrap_err();
-    assert!(matches!(error, MemoryError::Backend(_)), "got {error:?}");
+    assert!(matches!(error, Error::Converter { .. }), "got {error:?}");
 }
 
 #[tokio::test]
@@ -299,4 +303,61 @@ fn a_blank_title_is_treated_as_no_title() {
 fn an_empty_heading_is_not_mistaken_for_a_title() {
     let converted = ConvertedDocument::new("#\n\nbody", DocumentFormat::Markdown, 7);
     assert_eq!(converted.title_or("fallback"), "fallback");
+}
+
+#[tokio::test]
+async fn code_is_stored_verbatim_with_its_language() {
+    let source = "# not a heading\nfn main() {\n    println!(\"<b>hi</b>\");\n}\n";
+    let converted = NativeConverter
+        .convert(&RawDocument::new(source).with_filename("src/main.rs"))
+        .await
+        .unwrap();
+    assert_eq!(converted.markdown, source);
+    assert_eq!(converted.format, DocumentFormat::Code);
+    assert_eq!(converted.language.as_deref(), Some("rust"));
+    assert_eq!(converted.title, None);
+}
+
+#[tokio::test]
+async fn code_declared_with_the_code_mime_but_no_filename_has_no_language() {
+    let converted = NativeConverter
+        .convert(&raw("SELECT 1;", "text/x-source"))
+        .await
+        .unwrap();
+    assert_eq!(converted.format, DocumentFormat::Code);
+    assert_eq!(converted.language, None);
+}
+
+#[tokio::test]
+async fn html_markup_inside_code_is_not_converted() {
+    let source = "<template><div>{{ msg }}</div></template>";
+    let converted = NativeConverter
+        .convert(&RawDocument::new(source).with_filename("App.vue"))
+        .await
+        .unwrap();
+    assert_eq!(converted.markdown, source);
+    assert_eq!(converted.language.as_deref(), Some("vue"));
+}
+
+#[test]
+fn markdown_from_text_converts_only_html() {
+    assert_eq!(
+        markdown_from_text("<p>A <b>b</b></p>", DocumentFormat::Html),
+        "A **b**"
+    );
+    for format in [
+        DocumentFormat::Markdown,
+        DocumentFormat::PlainText,
+        DocumentFormat::Code,
+        DocumentFormat::Pdf,
+    ] {
+        assert_eq!(markdown_from_text("<p>x</p>", format), "<p>x</p>");
+    }
+}
+
+#[test]
+fn a_blank_language_is_treated_as_no_language() {
+    let converted =
+        ConvertedDocument::new("x", DocumentFormat::Code, 1).with_language(Some(" ".to_string()));
+    assert_eq!(converted.language, None);
 }

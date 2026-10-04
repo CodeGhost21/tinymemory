@@ -16,8 +16,6 @@ fn test_source() -> MemorySourceEntry {
         url: None,
         branch: None,
         paths: Vec::new(),
-        query: None,
-        since_days: None,
         max_items: None,
         max_commits: None,
         max_issues: None,

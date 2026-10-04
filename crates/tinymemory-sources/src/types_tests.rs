@@ -8,8 +8,8 @@ fn source_kind_round_trips_via_serde() {
         SourceKind::Composio,
         SourceKind::Conversation,
         SourceKind::Folder,
+        SourceKind::File,
         SourceKind::GithubRepo,
-        SourceKind::TwitterQuery,
         SourceKind::RssFeed,
         SourceKind::WebPage,
     ] {
@@ -25,7 +25,7 @@ fn source_kind_as_str_matches_wire_strings() {
     assert_eq!(SourceKind::Conversation.as_str(), "conversation");
     assert_eq!(SourceKind::Folder.as_str(), "folder");
     assert_eq!(SourceKind::GithubRepo.as_str(), "github_repo");
-    assert_eq!(SourceKind::TwitterQuery.as_str(), "twitter_query");
+    assert_eq!(SourceKind::File.as_str(), "file");
     assert_eq!(SourceKind::RssFeed.as_str(), "rss_feed");
     assert_eq!(SourceKind::WebPage.as_str(), "web_page");
 }
@@ -77,16 +77,55 @@ fn validate_github_requires_url() {
 }
 
 #[test]
-fn validate_twitter_requires_query() {
-    let entry = MemorySourceEntry {
-        id: "src_tw".into(),
-        kind: SourceKind::TwitterQuery,
-        label: "Tweets".into(),
-        enabled: true,
-        query: None,
-        ..default_entry()
-    };
+fn validate_file_requires_path() {
+    let entry = MemorySourceEntry::new("src_file", SourceKind::File, "One file");
     assert!(entry.validate().is_err());
+    let valid = MemorySourceEntry {
+        path: Some("notes/plan.md".into()),
+        ..entry
+    };
+    assert!(valid.validate().is_ok());
+}
+
+#[test]
+fn the_removed_twitter_query_kind_no_longer_decodes() {
+    let decoded = serde_json::from_str::<SourceKind>("\"twitter_query\"");
+    assert!(decoded.is_err());
+}
+
+#[test]
+fn every_config_kind_maps_onto_a_contract_source_kind() {
+    use tinymemory_api::SourceKind as Api;
+    let mapped: Vec<Api> = SourceKind::ALL.iter().map(SourceKind::api_kind).collect();
+    assert_eq!(
+        mapped,
+        vec![
+            Api::Composio,
+            Api::Conversation,
+            Api::Folder,
+            Api::File,
+            Api::Github,
+            Api::Rss,
+            Api::Link,
+        ]
+    );
+}
+
+#[test]
+fn path_applies_to_folders_and_files_but_glob_only_to_folders() {
+    let path = MemorySourcePatch {
+        path: Some(Some("a".into())),
+        ..Default::default()
+    };
+    assert!(path.validate_for_kind(SourceKind::Folder).is_ok());
+    assert!(path.validate_for_kind(SourceKind::File).is_ok());
+    assert!(path.validate_for_kind(SourceKind::RssFeed).is_err());
+    let glob = MemorySourcePatch {
+        glob: Some(Some("*.md".into())),
+        ..Default::default()
+    };
+    assert!(glob.validate_for_kind(SourceKind::Folder).is_ok());
+    assert!(glob.validate_for_kind(SourceKind::File).is_err());
 }
 
 #[test]
@@ -233,8 +272,6 @@ pub(super) fn default_entry() -> MemorySourceEntry {
         max_commits: None,
         max_issues: None,
         max_prs: None,
-        query: None,
-        since_days: None,
         max_items: None,
         selector: None,
         max_tokens_per_sync: None,
@@ -260,21 +297,13 @@ fn max_items_is_applicable_to_composio_and_rss_but_not_other_kinds() {
     assert!(patch().validate_for_kind(SourceKind::WebPage).is_err());
 }
 
-/// The engine keeps its own copy of these types in `memory/sources/types.rs`,
-/// and the two are joined by a live wire: `tinymemory-core`'s engine seam
-/// converts between them with `serde_json::to_value` / `from_value` for the
-/// tree-coupled source kinds, in both directions. Nothing but the serialised
-/// shape holds that seam together — the copies are distinct Rust types in
-/// distinct crates and neither compiles against the other.
+/// Hosts persist these types in their `config.toml` and exchange them over
+/// RPC as JSON, so a renamed field or a new `SourceKind` variant is not a
+/// compile error anywhere: it is a runtime failure the first time a host reads
+/// a config written by another version.
 ///
-/// So a renamed field or a new `SourceKind` variant on either side is not a
-/// compile error. It is a runtime failure on the first external-source sync
-/// after the engine pin moves, at the point of conversion, far from the edit
-/// that caused it.
-///
-/// These pin the full serialised shape of each type that crosses. A failure
-/// here means the copies have diverged and the change needs coordinating
-/// across both crates, never a local edit to the expectation.
+/// These pin the full serialised shape. A failure here means the wire format
+/// changed and hosts need a migration, never a local edit to the expectation.
 #[test]
 fn source_entry_wire_format_is_pinned() {
     let entry = MemorySourceEntry {
@@ -292,8 +321,6 @@ fn source_entry_wire_format_is_pinned() {
         max_commits: Some(10),
         max_issues: Some(20),
         max_prs: Some(30),
-        query: Some("from:me".into()),
-        since_days: Some(7),
         max_items: Some(40),
         selector: Some("article".into()),
         max_tokens_per_sync: Some(50_000),
@@ -318,8 +345,6 @@ fn source_entry_wire_format_is_pinned() {
             "max_commits": 10,
             "max_issues": 20,
             "max_prs": 30,
-            "query": "from:me",
-            "since_days": 7,
             "max_items": 40,
             "selector": "article",
             "max_tokens_per_sync": 50000,

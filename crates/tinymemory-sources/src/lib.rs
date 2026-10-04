@@ -1,43 +1,71 @@
-//! Engine-neutral memory-source contracts (#18 §B4).
+//! Source readers for TinyMemory: turn a folder, a file, a web page, a GitHub
+//! repository, an RSS feed, a Composio toolkit payload or a local conversation
+//! into [`StoreItem`](tinymemory_api::StoreItem)s.
 //!
-//! What a configured source *is* ([`types::MemorySourceEntry`]), what a reader
-//! hands back when it lists ([`types::SourceItem`]) and when it fetches
-//! ([`types::SourceContent`]).
+//! - **Configuration** — what a source *is* ([`MemorySourceEntry`], keyed by
+//!   [`SourceKind`]), its partial updates ([`MemorySourcePatch`]), field rules
+//!   ([`validation`]), the host's persisted registry ([`SourceRegistry`]) and
+//!   Composio reconciliation ([`reconcile`]).
+//! - **Readers** — [`readers::SourceReader`] lists a source's items and reads
+//!   one. Local readers (folder, file, conversation) are always compiled; the
+//!   network readers (GitHub, RSS, web page) and `fetch` sit behind the
+//!   `network` feature, behind one SSRF guard (`readers::ssrf`).
+//! - **Items** — [`items`] maps reader output to `StoreItem`s with
+//!   [`MemoryMeta`](tinymemory_api::MemoryMeta) filled per kind; every text
+//!   body is converted to markdown through `tinymemory-documents`.
+//! - **Composio** — [`composio`] normalises toolkit payloads (Gmail, Slack,
+//!   GitHub, Linear, Notion, ClickUp) and maps them to items.
 //!
-//! # Why these are not the contract crate's types of the same name
+//! Scheduling, credentials and egress budgets stay with the host: this crate
+//! reads when asked.
 //!
-//! `tinymemory-api` has a `SourceItem` and a `SourceKind` already, and neither
-//! is this one:
+//! # Example
 //!
-//! - `provider::types::SourceItem` is an **ingest** entry — it carries content,
-//!   because it is what `MemorySourceSink` accepts. The one here is a
-//!   **listing** entry, deliberately without content: `list_items` enumerates
-//!   cheaply and `read_item` fetches per item, so a reader never downloads a
-//!   repository to tell you what is in it.
-//! - `chunks::SourceKind` is `Chat | Email | Document` — the kind of *content* a
-//!   chunk came from. The one here is `Composio | Folder | GithubRepo | …` — the
-//!   kind of *connector*.
+//! ```
+//! use tinymemory_api::{SourceKind as ApiKind, StoreItem};
+//! use tinymemory_documents::ConverterChain;
+//! use tinymemory_sources::{items, readers, MemorySourceEntry, SourceKind};
 //!
-//! They are different concepts that happen to share two names. Renaming was
-//! considered and rejected: the pairs never appear in one scope, and the churn
-//! would be ~150 call sites here plus 24 in OpenHuman to fix a collision that
-//! does not bite. Recorded so the next reader does not mistake the duplication
-//! for an oversight.
+//! # let runtime = tokio::runtime::Builder::new_current_thread().build()?;
+//! # runtime.block_on(async {
+//! let workspace = tempfile::tempdir()?;
+//! std::fs::create_dir(workspace.path().join("notes"))?;
+//! std::fs::write(workspace.path().join("notes/plan.md"), "# Plan\n\nShip v2.")?;
+//! std::fs::write(workspace.path().join("notes/build.rs"), "fn main() {}\n")?;
 //!
-//! # Why a crate rather than the contract
+//! let mut entry = MemorySourceEntry::new("src_notes", SourceKind::Folder, "Notes");
+//! entry.path = Some("notes".into());
+//! let reader = readers::reader_for(&entry.kind).expect("folders are local");
 //!
-//! This is a *host-side ingestion* protocol, upstream of the driver contract:
-//! a reader produces listings, the pipeline turns them into
-//! `provider::types::SourceItem`s, and only then does a driver see them. Putting
-//! it in `tinymemory-api` would widen the driver contract with something no
-//! driver implements.
+//! let converter = ConverterChain::default();
+//! let mut collected =
+//!     items::collect_items(reader.as_ref(), &entry, workspace.path(), &converter).await?;
+//! collected.items.sort_by_key(|item| item.meta().file_path.clone());
+//!
+//! let rust = &collected.items[0];
+//! assert_eq!(rust.meta().source.kind, ApiKind::Folder);
+//! assert_eq!(rust.meta().source.id.as_deref(), Some("src_notes"));
+//! assert_eq!(rust.meta().language.as_deref(), Some("rust"));
+//! let StoreItem::Document { title, .. } = &collected.items[1] else {
+//!     unreachable!("folder sources produce documents");
+//! };
+//! assert_eq!(title.as_deref(), Some("Plan"));
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! # })?;
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
+//! # Feature flags
+//!
+//! - `network` — the GitHub, RSS and web-page readers, `fetch`, and the
+//!   SSRF guard. Off by default, so a host that only reads local sources
+//!   links no HTTP stack.
 
-// The crate's lints hold library code to no `unwrap`/`expect`. Tests are held
-// to a different standard on purpose: a panic in a test *is* the failure
-// report, and rewriting 159 assertions into `let ... else` would obscure what
-// each one checks. Scoped to `cfg(test)` so the library rule is untouched.
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-
+pub mod composio;
+pub mod error;
+#[cfg(feature = "network")]
+pub mod fetch;
+pub mod items;
 pub mod raw_kind;
 pub mod readers;
 pub mod reconcile;
@@ -45,19 +73,11 @@ pub mod registry;
 pub mod types;
 pub mod validation;
 
-/// What a reader returns.
-///
-/// The engine spelled this `MemoryEngineResult`; the error is the contract's
-/// [`tinymemory_api::error::MemoryError`], so a reader now fails in the same
-/// vocabulary as the driver that will store what it read.
-pub type SourceResult<T> = Result<T, tinymemory_api::error::MemoryError>;
-
-/// Largest file a folder source will read.
-///
-/// Moved with the readers: it is a reader policy, and the engine's config was
-/// only its previous address.
+/// Largest file a folder or file source will read.
 pub const FOLDER_FILE_SIZE_CAP_BYTES: u64 = 10 * 1024 * 1024;
 
+pub use error::{Error, Result};
+pub use items::{collect_items, content_item, conversation_item, file_item, Collected};
 pub use registry::{
     apply_kind_defaults, memory_sync_defaults_for_toolkit, ComposioUpsertTarget, SourceRegistry,
 };

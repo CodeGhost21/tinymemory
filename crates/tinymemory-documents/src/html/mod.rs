@@ -365,19 +365,17 @@ fn attribute(body: &str, name: &str) -> Option<String> {
                 .is_some_and(char::is_whitespace);
         let rest = &body[at + name.len()..];
         let trimmed = rest.trim_start();
-        if before_ok {
-            if let Some(value) = trimmed.strip_prefix('=') {
-                let value = value.trim_start();
-                let decoded = match value.chars().next() {
-                    Some('"') => value[1..].split('"').next().map(str::to_string),
-                    Some('\'') => value[1..].split('\'').next().map(str::to_string),
-                    _ => value
-                        .split([' ', '\t', '\n', '>'])
-                        .next()
-                        .map(str::to_string),
-                };
-                return decoded.map(|v| decode_entities(&v));
-            }
+        if before_ok && let Some(value) = trimmed.strip_prefix('=') {
+            let value = value.trim_start();
+            let decoded = match value.chars().next() {
+                Some('"') => value[1..].split('"').next().map(str::to_string),
+                Some('\'') => value[1..].split('\'').next().map(str::to_string),
+                _ => value
+                    .split([' ', '\t', '\n', '>'])
+                    .next()
+                    .map(str::to_string),
+            };
+            return decoded.map(|v| decode_entities(&v));
         }
         from = at + name.len();
     }
@@ -403,4 +401,4 @@ fn collapse_whitespace(text: &str) -> String {
 
 #[cfg(test)]
 #[path = "mod_tests.rs"]
-mod test;
+mod tests;

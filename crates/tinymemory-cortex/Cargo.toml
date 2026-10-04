@@ -1,0 +1,60 @@
+[package]
+name = "tinymemory-cortex"
+publish = false
+version = "2.0.0"
+edition = "2024"
+rust-version = "1.96"
+license = "GPL-3.0-only"
+repository = "https://github.com/tinyhumansai/tinymemory"
+description = "The CortexDB memory engine, direct (`/v1/*`) and behind the TinyHumans backend (`/memory/*`)"
+
+[dependencies]
+# The contract this engine implements: `MemoryEngine`, the item and query
+# types, `EngineDescriptor` and the one `Error`.
+tinymemory-api = { path = "../tinymemory-api" }
+# `BearerSource` is an object-safe async trait, like `MemoryEngine`.
+async-trait = "0.1"
+# CortexDB speaks HTTP/JSON. `stream` is for `bytes_stream()`: response bodies
+# are read against a byte cap rather than buffered whole, because the endpoint
+# is operator-supplied and a broken or hostile one must not exhaust the host.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+# Only the timer: read-retry backoff and visibility polling. reqwest already
+# requires a tokio runtime, so this adds no new runtime assumption.
+tokio = { version = "1", default-features = false, features = ["time"] }
+# The v2 event envelope and the opaque page cursors are JSON.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# `StreamExt` to read a capped body chunk by chunk.
+futures = "0.3"
+# Lookup labels are fixed-length SHA-256 digests of metadata values.
+sha2 = "0.10"
+
+[dev-dependencies]
+# The behavioural suite every engine must pass, run over both wires' doubles.
+tinymemory-conformance = { path = "../tinymemory-conformance" }
+# `tests/live_cortexdb.rs` compiles `context.md` from a live server.
+tinymemory-context = { path = "../tinymemory-context" }
+# The CortexDB and TinyHumans doubles are real HTTP servers on loopback.
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+
+[lints.rustdoc]
+broken_intra_doc_links = "warn"
+private_intra_doc_links = "warn"

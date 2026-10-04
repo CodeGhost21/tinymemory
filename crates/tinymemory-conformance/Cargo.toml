@@ -1,39 +1,41 @@
 [package]
 name = "tinymemory-conformance"
 publish = false
-version = "0.1.0"
-edition = "2021"
+version = "2.0.0"
+edition = "2024"
 rust-version = "1.96"
 license = "GPL-3.0-only"
-description = "Behavioural conformance suite every MemoryProvider driver must pass"
 repository = "https://github.com/tinyhumansai/tinymemory"
+description = "The behavioural suite every TinyMemory engine must pass, plus a reference in-memory engine"
 
 [dependencies]
-# The contract under test. This crate deliberately depends on NOTHING else of
-# substance: a conformance suite that pulled in an engine would be unable to
-# prove that a driver is interchangeable, because it would already have chosen
-# one. In particular it must not reach `tinymemory-core`, which links a bundled
-# SQLite and the embedded engine unconditionally (issue #18 §D).
+# The contract the suite exercises and the reference engine implements.
 tinymemory-api = { path = "../tinymemory-api" }
-# `MemoryProvider` and its families are object-safe async traits.
+# `ReferenceEngine` implements the object-safe async `MemoryEngine` trait.
 async-trait = "0.1"
-# `ExportRecord::payload` is a `serde_json::Value`, so the portability
-# assertions have to construct and compare one.
-serde_json = "1"
-# The reference driver maps a poisoned lock onto `MemoryError::Other`, which is
-# `#[from] anyhow::Error`.
-anyhow = "1"
+# The crate-wide `Error`.
+thiserror = "2"
 
 [dev-dependencies]
-# The suite's own tests drive it against the reference drivers.
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "rt"] }
 
 [lints.rust]
 unsafe_code = "forbid"
 missing_docs = "warn"
+missing_debug_implementations = "warn"
 unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }
 unwrap_used = "warn"
 expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+
+[lints.rustdoc]
+broken_intra_doc_links = "warn"
+private_intra_doc_links = "warn"

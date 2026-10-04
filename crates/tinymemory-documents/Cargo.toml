@@ -1,47 +1,57 @@
 [package]
 name = "tinymemory-documents"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 rust-version = "1.96"
 license = "GPL-3.0-only"
 repository = "https://github.com/tinyhumansai/tinymemory"
-description = "Document and URL intake for TinyMemory: sniff a format, convert it to markdown, put it in whichever engine is bound"
+description = "Document intake for TinyMemory: sniff a format, convert it to markdown, emit a StoreItem::Document"
 publish = false
 
 [dependencies]
-# The contract. Everything this crate produces is handed to a `MemoryProvider`,
-# and every error it returns is a `MemoryError`, so intake speaks the same
-# language as the drivers it feeds.
+# The contract. Intake emits `StoreItem::Document` with the caller's
+# `MemoryMeta`, so the item it builds is exactly what an engine stores.
 tinymemory-api = { path = "../tinymemory-api" }
 # `DocumentConverter` is an object-safe async trait: a host swaps the converter
-# without this crate knowing which one it got.
+# (a PDF or DOCX extractor) without this crate knowing which one it got.
 async-trait = "0.1"
-# `ConvertedDocument::metadata` is an open `Value`, and `MemoryDocuments`
-# returns its listings as one.
+# `ConvertedDocument::metadata` is an open `Value` a converter fills with
+# whatever it learned (page count, author, its own name).
 serde_json = "1"
-# The intake types are persisted by whichever engine receives them and cross
-# the testing harness's HTTP boundary.
+# `DocumentFormat` and `ConvertedDocument` cross host boundaries as JSON.
 serde = { version = "1", features = ["derive"] }
-# Ingested content carries an event time for tree placement.
-chrono = { version = "0.4", features = ["serde"] }
-# The URL path reuses the source readers' SSRF guard rather than growing a
-# second one — see `fetch`. Optional because a host that only accepts uploads
-# links no HTTP stack.
-tinymemory-sources = { path = "../tinymemory-sources", optional = true }
-# The fetch path needs the response's status, content type and body. Same
-# default-features-off rustls configuration as `tinymemory-sources`, so the two
-# do not pull in two TLS backends.
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
+# The crate-wide `Error`.
+thiserror = "2"
+# The office converter (`office` feature): text out of the formats people
+# actually drop into memory — a contract PDF, a spec `.docx`, a pricing
+# `.xlsx`, a deck. All pure Rust with no system libraries.
+#
+# `pdf-extract` reads a PDF's text layer. `zip` + `quick-xml` are the whole of
+# `.docx` and `.pptx`, which are zip archives of XML: walking them directly is
+# smaller than a document library. `.xlsx` is not — shared-string tables and
+# cell typing make hand-parsing it a liability — so `calamine` reads that one.
+# `zip` and `quick-xml` are the versions `calamine` already links, so the
+# graph carries one copy of each.
+pdf-extract = { version = "0.12", optional = true }
+calamine = { version = "0.36", optional = true }
+quick-xml = { version = "0.41", optional = true }
+zip = { version = "8", default-features = false, features = ["deflate"], optional = true }
 
 [dev-dependencies]
-# The converter and ingest paths are async.
+# The converter and item paths are async.
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
+# The format and office tests build their OOXML fixtures in code, so each test
+# says what it is asserting about instead of pointing at an opaque binary.
+zip = { version = "8", default-features = false, features = ["deflate"] }
 
 [features]
-# Nothing by default: uploads and conversion need no network.
+# Nothing by default: text, markdown, HTML and code need no extractor.
 default = []
-# The URL intake path, and with it the SSRF guard and an HTTP client.
-network = ["dep:tinymemory-sources", "tinymemory-sources/network", "dep:reqwest"]
+# `OfficeConverter`: PDF, DOCX, PPTX and XLSX to markdown, for a host to
+# prepend to its `ConverterChain`. Off by default because a PDF parser and a
+# spreadsheet reader are real weight a host that takes only text should not
+# link.
+office = ["dep:pdf-extract", "dep:calamine", "dep:quick-xml", "dep:zip"]
 
 [lints.rust]
 unsafe_code = "forbid"

@@ -113,10 +113,7 @@ fn a_pre_block_becomes_a_fence_and_keeps_its_whitespace() {
 #[test]
 fn code_inside_a_pre_block_is_not_double_backticked() {
     let markdown = to_markdown("<pre><code>x = 1</code></pre>");
-    assert!(!markdown
-        .contains('`')
-        .then(|| markdown.contains("`x"))
-        .unwrap_or(false));
+    assert!(!markdown.contains("`x"), "{markdown}");
     assert!(markdown.contains("x = 1"), "{markdown}");
 }
 

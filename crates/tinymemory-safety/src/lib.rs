@@ -3,14 +3,23 @@
 //!
 //! Conservative by design — it prefers false positives over leaking
 //! credentials into long-lived stores. One copy of this policy is shared by the
-//! TinyCortex engine (`tinycortex::memory::store::safety`), `tinymemory-core`
-//! (through TinyCortex) and the OpenHuman host; it used to exist three times.
+//! memory engines and the OpenHuman host; it used to exist three times.
+//!
+//! [`scrub_item`] applies the policy to every text a
+//! [`tinymemory_api::StoreItem`] carries, and is what a host runs on each item
+//! before `MemoryEngine::store`.
 //!
 //! The exhaustive multilingual national-ID PII module ([`pii`], ~1k lines of
 //! checksum logic) runs as part of [`sanitize_text`]. The write-rejection
 //! boundary ([`has_likely_pii`]) stays stricter than content scrubbing:
 //! formatted national IDs are rejected, while phone/email-like text is
 //! scrubbed from content without rejecting every write that mentions them.
+//!
+//! Before the shape regexes, [`sanitize_text`] redacts the value after a
+//! credential *marker* — a one-time-secret URL's `/secret/<key>` and a `Bearer`
+//! value too short for the regexes — keeping the marker and the prose around
+//! it. [`redact_credential_markers`] runs just those rules, for a host that
+//! scrubs plain text without the PII pass.
 //!
 //! # The one policy knob
 //!
@@ -35,6 +44,16 @@ use serde_json::Value;
 pub mod pii;
 
 pub use pii::{has_likely_email, has_likely_pii};
+
+/// Scrubbing a whole [`tinymemory_api::StoreItem`] before it is stored.
+mod item;
+
+/// One-time-secret URLs and `Bearer` values, including short ones.
+mod markers;
+
+pub use markers::redact_credential_markers;
+
+pub use item::{scrub_item, scrub_item_with};
 
 pub(crate) const REDACTED_SECRET: &str = "[REDACTED_SECRET]";
 pub(crate) const REDACTED_PRIVATE_KEY: &str = "[REDACTED_PRIVATE_KEY]";
@@ -250,6 +269,17 @@ pub fn sanitize_text_with(value: &str, policy: Policy) -> Sanitized<String> {
             report.blocked_secret_hits += hits;
             out = pattern.replace_all(&out, REDACTED_PRIVATE_KEY).into_owned();
         }
+    }
+
+    // Values after a credential marker (`/secret/<key>`, `Bearer <value>`),
+    // before the shape regexes: it catches what they cannot — a one-time key,
+    // a short bearer value — and its `[REDACTED]` is not token-shaped, so no
+    // regex below fires on it again. Only ever replaces, so the pass makes the
+    // scrubber strictly stricter.
+    let (marked, hits) = markers::redact_counted(&out);
+    if hits > 0 {
+        report.text_redactions += hits;
+        out = marked.into_owned();
     }
 
     for (pattern, replacement) in REDACTION_PATTERNS.iter() {

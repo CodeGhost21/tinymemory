@@ -26,8 +26,6 @@ fn folder_entry(id: &str) -> MemorySourceEntry {
         max_commits: None,
         max_issues: None,
         max_prs: None,
-        query: None,
-        since_days: None,
         max_items: None,
         selector: None,
         max_tokens_per_sync: None,
@@ -182,7 +180,7 @@ fn write_uses_atomic_temp_file_without_leaving_stale_temp() {
 
     let stale_temp_files: Vec<_> = std::fs::read_dir(tmp.path())
         .unwrap()
-        .filter_map(Result::ok)
+        .filter_map(std::result::Result::ok)
         .filter(|entry| {
             entry
                 .file_name()
@@ -468,17 +466,6 @@ fn an_rss_feed_gets_an_item_cap() {
 }
 
 #[test]
-fn a_twitter_query_gets_a_lookback_window() {
-    let mut entry = entry_of_kind(SourceKind::TwitterQuery);
-    apply_kind_defaults(&mut entry);
-    assert_eq!(entry.since_days, Some(7));
-
-    entry.since_days = Some(2);
-    apply_kind_defaults(&mut entry);
-    assert_eq!(entry.since_days, Some(2), "a user-set window must survive");
-}
-
-#[test]
 fn kinds_with_no_defaults_are_left_alone() {
     // Composio caps come from the toolkit slug at upsert time, which this
     // function does not have; folders and web pages have no caps at all.
@@ -486,12 +473,12 @@ fn kinds_with_no_defaults_are_left_alone() {
         SourceKind::Composio,
         SourceKind::Conversation,
         SourceKind::Folder,
+        SourceKind::File,
         SourceKind::WebPage,
     ] {
         let mut entry = entry_of_kind(kind.clone());
         apply_kind_defaults(&mut entry);
         assert!(entry.max_items.is_none(), "{kind:?} gained an item cap");
-        assert!(entry.since_days.is_none(), "{kind:?} gained a lookback");
         assert!(
             entry.max_prs.is_none(),
             "{kind:?} gained a pull-request cap"

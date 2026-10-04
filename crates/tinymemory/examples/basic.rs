@@ -1,83 +1,55 @@
-//! Bind a memory driver the way a host does: admit, then construct, then use.
+//! Choose and build a memory engine the way a host does.
 //!
 //! Run with:
 //!
 //! ```sh
-//! cargo run --example basic
+//! cargo run -p tinymemory --example basic
 //! ```
 //!
-//! This uses the null driver so it needs no engine, no workspace, and no
-//! network — the point is the *shape* of binding, which is identical for a real
-//! engine. Swap `NullMemoryProvider` for an adapter's provider and nothing else
-//! here changes.
-//!
-//! The order matters and is the reason this example exists. A host does not
-//! construct a driver and then ask whether it was allowed; it admits an id
-//! first, and only then builds the thing. Admission is engine-neutral and
-//! answers one question — *is this driver id real, and may it answer for
-//! memory* — while construction needs everything an engine needs.
+//! It needs no network: building an engine validates configuration and
+//! prepares the client, but sends nothing until the first call.
 
 use std::sync::Arc;
 
-use tinymemory::api::null::NullMemoryProvider;
-use tinymemory::api::provider::{audit_provider, MemoryProvider};
-use tinymemory::api::types::{MemoryCategory, MemoryTaint, GLOBAL_NAMESPACE};
-use tinymemory::registry::{ConfigLabels, DriverRegistry, NULL_DRIVER_ID};
-use tinymemory::CONTRACT_VERSION;
+use async_trait::async_trait;
+use tinymemory::{BearerSource, EngineCredential, MemoryConfig, list_engines};
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("contract version: {CONTRACT_VERSION:?}");
+/// A host's session store: the token is looked up on every request, so a
+/// refreshed session is picked up without rebuilding the engine.
+struct Session;
 
-    // 1. Admission. The host names a driver; the registry decides whether it is
-    //    real and what class it binds as. A reserved embedded or null id needs
-    //    no configuration entry, which is what lets an unconfigured host boot.
-    let registry = DriverRegistry::builtin();
-    let admission = registry.admit(NULL_DRIVER_ID, None, ConfigLabels::default())?;
-    println!("admitted '{}' as {:?}", admission.id, admission.class);
+#[async_trait]
+impl BearerSource for Session {
+    async fn bearer(&self) -> tinymemory::Result<String> {
+        Ok("session-jwt-from-the-host".to_string())
+    }
+}
 
-    // 2. Construction. The host's job, not the registry's — see
-    //    `tinymemory::registry`'s module docs for why the two are separate.
-    let provider: Arc<dyn MemoryProvider> = Arc::new(NullMemoryProvider::new());
-
-    // 3. Negotiation. `audit_provider` checks the driver advertises exactly the
-    //    families it can actually serve. A driver whose capability set overstates
-    //    its accessors would let a host register RPC methods that answer errors.
-    audit_provider(provider.as_ref())?;
-    // `Capabilities` is a set, not a string — render it by walking it, which is
-    // also how a host filters its RPC surface from the negotiated set.
-    let families: Vec<&str> = provider
-        .capabilities()
-        .iter()
-        .map(tinymemory::capabilities::Capability::as_str)
-        .collect();
-    println!(
-        "driver '{}' serves {} families: {}",
-        provider.driver_id(),
-        families.len(),
-        families.join(", ")
-    );
-
-    // 4. Use. Every driver serves the three mandatory families, so this much
-    //    works against any of them.
-    provider
-        .store(
-            GLOBAL_NAMESPACE,
-            "greeting",
-            "hello from the basic example",
-            MemoryCategory::Core,
-            None,
-            MemoryTaint::Internal,
-        )
-        .await?;
-
-    // The null driver accepts writes and discards them — `/dev/null` semantics,
-    // a legitimate binding for a deployment that wants the ports wired and
-    // nothing retained. Reading back nothing here is correct, not a failure.
-    match provider.get(GLOBAL_NAMESPACE, "greeting").await? {
-        Some(entry) => println!("read back: {}", entry.content),
-        None => println!("read back: nothing — the null driver retains no writes"),
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    for engine in list_engines() {
+        let modes: Vec<&str> = engine.fetch_modes.iter().map(|m| m.as_str()).collect();
+        println!(
+            "{:<11} hosted={:<5} default={:<28} fetch={modes:?}",
+            engine.id,
+            engine.hosted,
+            engine.default_endpoint.unwrap_or("-"),
+        );
     }
 
+    // A host keeps `MemoryConfig` in its config file and the credential in
+    // its secret store.
+    let config: MemoryConfig = toml::from_str(r#"engine = "tinyhumans""#)?;
+    let engine = config.build(EngineCredential::Dynamic(Arc::new(Session)))?;
+    println!("built `{}`", engine.descriptor().id);
+
+    // Misconfiguration is refused up front, never at the first write.
+    let refused = MemoryConfig {
+        engine: "cortexdb".to_string(),
+        ..MemoryConfig::default()
+    }
+    .build(EngineCredential::None);
+    if let Err(error) = refused {
+        println!("refused: {error}");
+    }
     Ok(())
 }

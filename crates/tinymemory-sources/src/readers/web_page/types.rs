@@ -5,6 +5,7 @@
 /// classes (`tag.a.b`, `.a.b`). A descendant/child chain (`div.content p`)
 /// targets the final compound selector — a full CSS engine is out of scope for
 /// this reader.
+#[derive(Debug)]
 pub(super) struct SelectorSpec {
     pub tag: Option<String>,
     pub id: Option<String>,

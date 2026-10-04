@@ -27,6 +27,10 @@ use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 /// Build an HTTP client with a redirect policy that re-applies the SSRF
 /// host/scheme check to every redirect hop, and a DNS resolver that only
 /// yields globally routable addresses.
+///
+/// # Errors
+///
+/// A message naming the failure when the TLS backend cannot be initialised.
 pub fn build_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
@@ -50,6 +54,11 @@ pub fn build_client() -> Result<reqwest::Client, String> {
 /// server that omits or understates `Content-Length` (for example a chunked
 /// response) could OOM the process despite the cap. Reading incrementally
 /// enforces the limit while the bytes arrive.
+///
+/// # Errors
+///
+/// A message containing `exceeds {max}-byte limit` when the body is over the
+/// cap, or `failed to read response body` when the stream fails mid-read.
 pub async fn read_body_capped(resp: reqwest::Response, max: u64) -> Result<Vec<u8>, String> {
     // Trust a truthful Content-Length up front so a known-huge body is
     // rejected before the first byte is read.
@@ -154,6 +163,13 @@ fn is_public_ipv6(ip: Ipv6Addr) -> bool {
     // mapped loopback/private address stays blocked.
     if let Some(v4) = ip.to_ipv4_mapped() {
         return is_public_ipv4(v4);
+    }
+    // The deprecated IPv4-compatible form (`::a.b.c.d`) carries an IPv4
+    // address too, and `to_ipv4_mapped` answers `None` for it — so without
+    // this, `::127.0.0.1` and `::169.254.169.254` read as public. `::` and
+    // `::1` are judged as themselves above, before this reading applies.
+    if o[..12].iter().all(|byte| *byte == 0) {
+        return is_public_ipv4(Ipv4Addr::new(o[12], o[13], o[14], o[15]));
     }
     true
 }

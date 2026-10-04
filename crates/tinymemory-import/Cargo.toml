@@ -2,35 +2,51 @@
 name = "tinymemory-import"
 publish = false
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 rust-version = "1.96"
 license = "GPL-3.0-only"
-description = "One-shot memory importers: read another assistant's workspace (OpenClaw, Hermes) and write it into any TinyMemory `Memory`"
+description = "Reads a legacy (v1, embedded TinyCortex) workspace and yields TinyMemory v2 `StoreItem`s, resumably"
 repository = "https://github.com/tinyhumansai/tinymemory"
 
-# An importer reads another product's on-disk workspace and writes what it
-# finds into a `Memory` the host hands over, so this crate needs the contract
-# and a SQLite reader for OpenClaw's `brain.db`, and nothing else from the
-# engine. Which `Memory` to write into (the bound driver, refusing the null
-# one) is the host's call and arrives as a closure.
+# The importer reads a v1 workspace straight off disk: the SQLite files with
+# rusqlite and the chunk bodies with `std::fs`. It deliberately does not link
+# the engine that wrote them, which no longer exists in this tree.
 [dependencies]
+# `StoreItem`, `MemoryMeta`, `SourceKind::Import` and the re-exported `chrono`
+# the importer maps every legacy row into.
 tinymemory-api = { path = "../tinymemory-api" }
-anyhow = "1"
-directories = "6"
-log = "0.4"
+# Read-only access to `memory/memory.db` and `memory_tree/chunks.db`. Bundled
+# so the importer does not depend on a system SQLite.
+rusqlite = { version = "0.40", features = ["bundled"] }
+# `Checkpoint` is persisted by the host between runs.
 serde = { version = "1", features = ["derive"] }
-# Read-only access to the source database. Same pin and feature set as
-# `tinymemory-core`, so a host that links both compiles one SQLite.
-rusqlite = { version = "=0.40.2", features = ["bundled"] }
+# Legacy rows carry JSON columns (tags, metadata, learning candidates, tool
+# calls), and `Checkpoint` round-trips through JSON.
+serde_json = "1"
+# The crate-wide `Error`.
+thiserror = "2"
 
 [dev-dependencies]
+# Each test builds a throwaway v1 workspace in a temporary directory.
 tempfile = "3"
-tokio = { version = "1", features = ["macros", "rt"] }
-async-trait = "0.1"
-serde_json = "1"
 
 [lints.rust]
 unsafe_code = "forbid"
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+
+[lints.rustdoc]
+broken_intra_doc_links = "warn"
+private_intra_doc_links = "warn"

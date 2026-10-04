@@ -1,448 +1,137 @@
 # TinyMemory
 
-The engine-neutral memory layer for TinyHumans agents.
+The memory layer for TinyHumans agents: **recall, fetch and store** over
+pluggable engines, plus a token-budgeted `context.md` compiled from whatever is
+stored.
 
-A host that embeds TinyMemory performs every memory operation through one
-contract, and picks which engine answers it by configuration rather than by
-recompiling. [TinyCortex](https://github.com/tinyhumansai/tinycortex) is the
-default embedded engine; a second engine implements the same traits and binds in
-its place without the host learning anything new.
+| Operation | Meaning |
+| --- | --- |
+| **Recall** | A question in, a synthesised answer with citations out. The engine owns how it answers. |
+| **Fetch** | Raw keyword, vector or hybrid retrieval over stored items, filtered by metadata. No synthesis. |
+| **Store** | Ingest a document, a conversation or a learning, each with typed metadata. |
+
+The behaviour is specified in [`docs/specs/memory-v2.md`](docs/specs/memory-v2.md),
+which is the source of truth.
 
 ## Layout
 
 ```text
 crates/
-├── tinymemory/         the facade a host depends on. Re-exports the contract
-│                       wholesale, so the types are the same types, and reaches
-│                       every other crate here through a feature named after it
-│   ├── src/lib.rs      the entire public re-export surface
-│   ├── src/registry/   driver admission — which ids exist, what class each
-│   │                   binds as, and the fail-closed external-driver gate
-│   ├── tests/          integration tests against the public API only
-│   └── examples/       runnable, compiled-in-CI usage examples
-├── tinymemory-api/     the driver contract: the traits an engine implements and
-│                       the host seam it binds through, plus every
-│                       `tinymemory-bus` type re-exported at its historical path.
-│                       Dependency-light on purpose: depending on it never drags
-│                       in SQLite, git2, reqwest, or an async runtime
-├── tinymemory-bus/     the wire vocabulary: every type that crosses the module
-│                       boundary, plus the member names. Sits *below* the
-│                       contract — `tinymemory-api` depends on it and re-exports
-│                       it — so a host that only makes calls into
-│                       `tinymemory-module` links this alone and compiles no
-│                       traits, no null driver and no config surface
-├── tinymemory-core/    the substance: ingestion, the summary tree, chunk
-│                       storage, entities, the graph, the diff ledger, goals,
-│                       tool-memory, and the Composio sync layer. The largest
-│                       crate here by a wide margin. Unlike the contract it is
-│                       not dependency-light: today it links the TinyCortex
-│                       engine, a bundled SQLite, and an HTTP stack
-│                       unconditionally
-├── tinymemory-sync/    the engine-neutral Composio payload normalisers, so a
-│                       host binding a driver that is not TinyCortex can run
-│                       them
-├── tinymemory-import/  one-shot importers (OpenClaw, Hermes workspaces) that write
-│                       into any `Memory` the host hands over
-├── tinymemory-gate/    the scheduler gate: host power/CPU sampling and the
-│                       cooperative wait that keeps background memory work
-│                       from lagging the machine
-├── tinymemory-guard/   the policy decorator over any `MemoryProvider`: tier,
-│                       source scope, taint, redaction, char budgets and audit,
-│                       all consulted through the host-implemented
-│                       `GuardPolicy` trait
-├── tinymemory-safety/  secret and PII scrubbing (credential patterns,
-│                       checksum-gated national-ID redaction) shared by
-│                       TinyCortex, `tinymemory-core` and the host
-├── tinymemory-tools/   the memory agent tools (tree retrieval, raw and vector
-│                       search, tool-scoped rules) as `tinytools::Tool`s over any
-│                       provider, behind a host seam
-├── tinymemory-sources/ memory-source contracts and readers — local folders
-│                       always, GitHub/RSS/web pages behind `network`
-├── tinymemory-documents/ document and URL intake: sniff a format, convert it
-│                       to markdown, and write it into whichever engine is
-│                       bound. The URL half is behind `network` and reuses the
-│                       source readers' SSRF guard rather than growing a second
-├── tinymemory-tinycortex/  the TinyCortex engine seen through the contract
-├── tinymemory-remote/  native HTTP dialects for Supermemory, Mem0, and Cognee
-├── tinymemory-conformance/ the behavioural suite every driver must pass
-├── tinymemory-testing-ui/  a local HTTP + web harness for driving engines by
-│                       hand. A workspace member, but held out of
-│                       `default-members` so the contract commands skip it
-└── tinymemory-module/  the TinyBus loadable-module driver. Excluded from the
-                        workspace on purpose — see the note in `Cargo.toml`.
-vendor/
-├── tinycortex/         the engine, pinned as a submodule
-├── tinyinference/      provider-neutral inference APIs, pinned as a submodule
-└── tinybus/            pinned TinyBus submodule
+├── tinymemory/              the facade a host depends on: re-exports the
+│                            contract, the engine registry (`list_engines`,
+│                            `build_engine`), `MemoryConfig`, and every other
+│                            crate behind a feature named after it
+├── tinymemory-api/          the contract: `MemoryEngine`, `StoreItem`,
+│                            `MemoryMeta`, `MetaFilter`, request/response
+│                            types, `EngineDescriptor`, `Error`. No I/O
+├── tinymemory-cortex/       the CortexDB engine, registered twice: `cortexdb`
+│                            (direct `/v1/*`) and `tinyhumans` (CortexDB behind
+│                            the TinyHumans backend `/memory/*`)
+├── tinymemory-documents/    format sniffing and conversion to markdown
+│                            (markdown, text, HTML, code; PDF/DOCX through a
+│                            host converter), emitting `StoreItem::Document`
+├── tinymemory-sources/      readers turning a source into `StoreItem`s: folder,
+│                            file, link, GitHub, RSS, Composio payloads, local
+│                            conversations; includes the SSRF guard
+├── tinymemory-safety/       secret and PII scrubbing applied before `store`
+├── tinymemory-context/      `ContextCompiler`: builds `context.md` from an engine
+├── tinymemory-import/       reads a legacy v1 (embedded TinyCortex) workspace
+│                            and yields resumable `StoreItem`s
+└── tinymemory-conformance/  the suite every engine must pass, plus a reference
+                             in-memory engine
+docs/
+├── specs/                   behaviour and architecture specifications
+├── plans/                   test-first implementation plans
+└── adr/                     immutable architecture decision records
 ```
-
-Every crate lives under `crates/`, one directory per package, each directory
-named for the package it holds. The workspace root is virtual — there is no
-root package, so the facade is a member like any other and `members` is the
-glob `crates/*`: a new crate joins the workspace by existing.
 
 ## Features
 
-`tinymemory` is the one dependency a host takes, and every other crate in the
-workspace is reachable from it by a feature named after it. Nothing is on by
-default: naming no feature gets the contract, the registry and the mandatory
-composition — no storage engine, no HTTP stack, no native library.
-`scripts/ci/dependency-budget.sh` holds that to a ceiling on every run.
+The facade reaches every optional crate through a feature of the same name.
+Nothing is on by default: naming no feature gets the contract, the registry and
+the CortexDB engines.
 
-| Feature | Brings in |
+| Feature | Adds |
 | --- | --- |
-| `tinycortex` | the embedded TinyCortex engine, as `tinymemory::tinycortex` |
-| `supermemory`, `mem0`, `cognee`, `cortex`, `agentmemory` | the matching HTTP adapter, as `tinymemory::remote` |
-| `tinyhumans` | CortexDB hosted by the TinyHumans backend (`/memory/*`); implies `cortex` |
-| `factory` | `tinymemory::factory` — `list_engines()` and `build_provider(id, config, credential)`; each engine arm needs that engine's own feature |
-| `livingbrain` | the LivingBrain Brain API client, as `tinymemory::remote` (not a `MemoryProvider`) |
-| `engines` | all seven `MemoryProvider` engines above (including `tinyhumans`) |
-| `core` | `tinymemory::core` — the memory subsystem |
-| `sync` | `tinymemory::sync` — the Composio normalisers |
-| `sources` | `tinymemory::sources` — source contracts and local readers |
-| `sources-network` | `sources`, plus the GitHub/RSS/web-page readers |
-| `documents` | `tinymemory::documents` — document intake and markdown conversion |
-| `documents-network` | `documents`, plus the URL fetch path |
-| `conformance` | `tinymemory::conformance` — the driver contract suite |
-| `memory-git` | git-backed diff snapshots (implies `tinycortex`; links libgit2) |
-| `contacts` | the macOS address-book seeding path (implies `core`) |
-| `test-support` | the workspace's test doubles and helpers |
-| `full` | `engines`, `core`, `sync`, `sources-network`, `documents-network`, `conformance`, and `memory-git`; not `factory`, `livingbrain`, `contacts`, or `test-support` |
-
-Capability features imply the engine that serves them, so asking for a
-capability cannot produce a build where nothing implements it. `test-support`
-is deliberately outside `full`: "give me the whole workspace" is not the same
-request as "give me the test doubles".
-
-This table says which crate each feature brings in. For what each *engine*
-feature actually serves — driver class, and which capability
-families answer — see the engine table under
-[Using from your project](#using-from-your-project).
-
-
-Run `git submodule update --init --recursive` after cloning. Nothing in the
-workspace builds without it — `tinymemory-core` names `tinyinference` and
-`tinycortex` by path through `vendor/`. An uninitialized checkout therefore fails at
-manifest resolution rather than at compile time, which reads as a confusing
-error.
+| `documents` | `tinymemory::documents` |
+| `documents-office` | `tinymemory::documents::OfficeConverter` (PDF, DOCX, PPTX, XLSX) |
+| `sources` | `tinymemory::sources` (local readers) |
+| `sources-network` | the GitHub, RSS, web-page and URL-fetch readers (implies `sources`) |
+| `safety` | `tinymemory::safety` |
+| `context` | `tinymemory::context` |
+| `import` / `legacy-import` | `tinymemory::import` |
+| `conformance` | `tinymemory::conformance` |
+| `full` | all of the above |
 
 ## Using from your project
 
-None of these crates are on crates.io yet, so you take the facade by git.
-Which patch table you need depends on the engine you pick.
-
-**Remote engines and clients (Supermemory, Mem0, Cognee, CortexDB, AgentMemory, LivingBrain) — no patch table:**
+Nothing is published to crates.io; take the facade by git, pinned to a tag:
 
 ```toml
 [dependencies]
-tinymemory = { git = "https://github.com/tinyhumansai/tinymemory", features = ["supermemory"] }
+tinymemory = { git = "https://github.com/tinyhumansai/tinymemory", tag = "vX.Y.Z", features = ["context", "safety"] }
 ```
 
-```rust,ignore
-use std::sync::Arc;
-
-let backend = tinymemory::remote::SupermemoryMemory::cloud("sm_...")?;
-let provider = Arc::new(tinymemory::remote::supermemory_provider(backend));
-```
-
-The remote adapter reaches only crates.io dependencies, so cargo resolves it
-without any `[patch]` entries.
-
-**The embedded engine (TinyCortex) — vendor this repository as a submodule.**
-
-The remote recipe above works by git because the remote adapter reaches only
-published crates. The embedded engine does not: it pulls `tinycortex`,
-`tinycortex-api` and `tinyinference`, none of which are published, and
-`tinycortex-api` takes `tinymemory-api` *by git*, which cargo will resolve as a
-second copy of a crate this workspace also provides by path. Patching that away
-needs the crates on disk, so the embedded path is a submodule dependency until
-these crates are published:
-
-```sh
-git submodule add https://github.com/tinyhumansai/tinymemory vendor/tinymemory
-git -C vendor/tinymemory submodule update --init --recursive
-```
-
-```toml
-[dependencies]
-tinymemory = { path = "vendor/tinymemory", features = ["tinycortex"] }
-
-# All five entries are required. The three crates.io patches resolve unpublished
-# crates used by the memory layer and embedded engine. The TinyInference source
-# patch collapses TinyCortex's git dependency onto that same crate identity. The
-# fifth entry collapses `tinycortex-api`'s git dependency on `tinymemory-api`
-# onto the copy in this tree — without it two distinct
-# `tinymemory_api::MemoryEntry` types exist and the seam stops type-checking.
-[patch.crates-io]
-tinycortex = { path = "vendor/tinymemory/vendor/tinycortex" }
-tinycortex-api = { path = "vendor/tinymemory/vendor/tinycortex/api" }
-tinyinference = { path = "vendor/tinymemory/vendor/tinyinference/crates/tinyinference" }
-[patch."https://github.com/tinyhumansai/tinyinference"]
-tinyinference = { path = "vendor/tinymemory/vendor/tinyinference/crates/tinyinference" }
-[patch."https://github.com/tinyhumansai/tinymemory"]
-tinymemory-api = { path = "vendor/tinymemory/api" }
-```
-
-This exact patch set is what the reference consumer in
-`crates/tinymemory/examples/` and the repository's own root manifest use; a
-build missing any of the five fails at resolution, before compiling a line.
-
-```rust,ignore
-use std::sync::Arc;
-use tinymemory::tinycortex::{provider, InMemoryMemoryStore};
-
-let provider = Arc::new(provider(Arc::new(InMemoryMemoryStore::new())));
-```
-
-That is a complete embedded setup for the mandatory families plus document
-ingestion. The full
-full engine (`TinycortexProvider`) additionally needs the host
-seams (`EmbeddingHost` et al.) installed — see
-`crates/tinymemory-tinycortex/tests/full_provider_conformance.rs` for the
-minimal working wiring.
-
-| Feature | Engine | Class | Families served |
-| --- | --- | --- | --- |
-| `tinycortex` | TinyCortex, in-process | embedded | mandatory + document ingest via `provider`; every compiled family via `TinycortexProvider` |
-| `supermemory` | Supermemory, hosted | external | 3 (mandatory) |
-| `mem0` | Mem0, hosted (`cloud`) or self-hosted | external | mandatory + conversation ingest |
-| `cognee` | Cognee, hosted or self-hosted | external | 3 (mandatory) |
-| `cortex` | CortexDB, hosted or self-hosted | external | mandatory + document, conversation, learning, event, and answer |
-| `agentmemory` | AgentMemory, self-hosted | external | 3 (mandatory) |
-| `tinyhumans` | CortexDB via the TinyHumans backend | external | as `cortex`, plus goals, tool memory, documents, sources, maintenance, retrieval (scored by rank), ingest, profile, episodic, scoring and the derived-understanding tree (see [the spec](docs/specs/tinyhumans-hosted-cortex.md) and [the families](docs/specs/tinyhumans-hosted-families.md)) |
-| `memory-git` | add-on: git-backed diff snapshots | — | requires `tinycortex` |
-| *(none)* | `NullMemoryProvider` | null | contract + registry only, 40 crates |
-
-The `namespace` driver id you may see in the registry's reserved table is
-host-internal: it names `tinymemory-core`'s own store, whose constructors live
-in that crate — it is not selectable from the facade.
-
-**A note on remote-engine performance:** recall is native to each hosted API,
-but exact-CRUD operations (`get`, `list`, `count`, upsert-by-key) are
-enumeration-based — the adapter pages the hosted API to find the record. Fine
-for assistant-memory workloads; wrong for high-volume keyed storage.
-
-## The contract
-
-`MemoryProvider` is an object-safe trait with **three mandatory** capability
-families and independently negotiated optional ones. The mandatory three are supertraits, so
-a driver missing any of them cannot be constructed; the optional twenty-three
-are reached through `as_ingest()` / `as_tree()` / … accessors that default to `None`,
-so a minimal driver implements what it supports and inherits correct absence for
-everything else.
-
-A driver's advertised set and its reachable accessors must agree.
-`audit_provider` checks exactly that, which turns "advertised but not
-implemented" into a detectable, testable mistake rather than a runtime surprise
-on the first call.
-
-The product-facing routes are available through one router:
-
-```rust,ignore
-use tinymemory::{MemoryApi, operations::AnswerRequest};
-
-let memory = MemoryApi::new(provider.as_ref());
-let hits = memory.recall("release date", 10, &Default::default(), None).await?;
-
-if provider.as_answer().is_some() {
-    let response = memory.answer(AnswerRequest::new("When do we release?")).await?;
-    println!("{}", response.answer);
-}
-```
-
-Document, conversation, learning, event, and answer support are independent
-capabilities. Recall remains mandatory. See the
-[operation specification](docs/specs/ingestion-retrieval-api.md) for the adapter
-matrix and payload rules.
-
-Capabilities are asked **once, at bind time, and cached**: a host filters its RPC
-surface and its agent-tool list from the answer, so a set that changed
-afterwards would not be noticed.
-
-## The section surface
-
-Namespaces follow a `<section>:<scope>` convention — `conversation:thread-8f21`,
-`learning:rust-async`, `document:handbook` — so "conversational memory",
-"document memory" and "learnings" mean the same thing to every host and every
-engine. `tinymemory::sections` makes that convention a typed surface instead of
-a string every caller concatenates by hand:
-
-```rust
-use tinymemory::sections::Sections;
-
-let sections = Sections::new(provider.as_ref());
-
-sections.conversations().put("thread-8f21", "turn-1", text, category, None, taint).await?;
-let topics = sections.learnings().scopes().await?;
-let hits = sections.recall().across_section(&MemorySection::Learning, "async", 10, &opts, None).await?;
-```
-
-`conversations()`, `learnings()` and `documents()` are the three sections a host
-writes to routinely; `section()` reaches the other four and `Custom`. Every call
-composes the **mandatory** families only, so the whole surface works on every
-driver — nothing to negotiate, and no capability-absent path. On a driver that
-retains nothing, every call succeeds and returns empty.
-
-`across_section` is a fan-out: one namespace enumeration plus one recall per
-scope, capped, reporting what it searched and whether the cap bit. It is not an
-unfinished optimisation — `OwnedRecallOpts::namespace` is an exact match, and
-leaving it unset means the `global` namespace on the embedded engine but *every*
-namespace on the reference driver, so there is no cross-namespace recall to build
-a single call on. See [`docs/specs/memory-section-api.md`](docs/specs/memory-section-api.md).
-
-Handing the layer a **file** is a different path: `DocumentIntake` sniffs the
-format, converts it, and picks the capability family. The section surface is for
-text you already hold.
-
-## What lives here, and what deliberately does not
-
-| Here | In the host |
-| --- | --- |
-| the contract; capability negotiation; driver admission; the shared mandatory families; per-engine adapters | RPC surface, agent tools, security policy, credentials, schedulers, event bus, config mapping |
-
-**Policy is not here, on purpose.** Tier enforcement, scope predicates, taint
-stamping, redaction, egress checks and audit belong in a decorator the *host*
-owns, on the path every caller takes. A driver that could be swapped for one
-that skips enforcement is the entire reason the policy layer exists.
-
-## Adding an engine
-
-1. Implement `tinymemory_api::traits::Memory` for the backend, **overriding
-   `store_with_taint`** — the trait default silently drops the taint, which
-   would launder externally-sourced content into internal-trust content.
-2. Wrap it: `MemoryTraitProvider::new(backend, "my-engine")`. That yields a
-   driver advertising Core, Recall and Portability, with the four
-   easy-to-get-wrong parts (see `src/mandatory/mod.rs`) already handled.
-3. Implement any optional families over the engine's own entry points, and
-   widen `capabilities()` in lockstep with the accessors.
-4. Reserve the driver id: `DriverRegistry::builtin().with_reserved("my-engine", DriverClass::Embedded)`.
-
-## Remote engines
-
-The `tinymemory-remote` crate supports the managed and self-hosted native APIs
-of Supermemory, Cognee, Mem0, and AgentMemory. Each adapter stores TinyMemory's key,
-category, session, and provenance in backend metadata or a versioned native-content
-envelope, so exact CRUD and portability survive the seam while recall remains
-engine-native. Provider-facing dataset names, container tags,
-and filenames are bounded stable hashes, so every namespace and key accepted by
-the TinyMemory contract remains valid on the remote API.
-
-```rust
-use tinymemory_remote::{SupermemoryMemory, supermemory_provider};
-
-let memory = SupermemoryMemory::self_hosted("http://localhost:6767", "sm_...")?;
-let provider = supermemory_provider(memory);
-# Ok::<_, anyhow::Error>(provider)
-```
-
-Managed APIs have explicit constructors so their authentication cannot be
-confused with a self-hosted token:
-
-```rust
-use tinymemory_remote::{CogneeMemory, Mem0Memory, SupermemoryMemory};
-
-// Cognee Cloud issues a per-tenant base URL (the API-key dashboard shows it);
-// there is no shared endpoint, so its constructor takes one.
-let cognee = CogneeMemory::api("https://tenant-<uuid>.aws.cognee.ai", "cognee-api-key")?;
-
-// Supermemory and Mem0 both serve one hosted origin, so theirs take only a key.
-let supermemory = SupermemoryMemory::cloud("sm_...")?;
-let mem0 = Mem0Memory::cloud("m0-...")?;
-# Ok::<_, anyhow::Error>((cognee, supermemory, mem0))
-```
-
-AgentMemory is local-first. It exposes its REST API at `http://localhost:3111`
-by default; pass its optional API secret when one is configured:
-
-```rust
-use tinymemory_remote::{agentmemory_provider, AgentMemoryMemory};
-
-let provider = agentmemory_provider(AgentMemoryMemory::local(None)?);
-# Ok::<_, anyhow::Error>(provider)
-```
-
-Cognee Cloud uses `X-Api-Key`; authenticated self-hosted Cognee uses a bearer
-access token. Supermemory uses bearer API keys for both deployment modes. Mem0's
-hosted platform uses `Authorization: Token`, and self-hosted Mem0 uses
-`X-API-Key`. All constructors redact credentials from `Debug` output, from
-transport errors, and from the request's own header rendering.
-
-All four advertise the mandatory Core, Recall, and Portability families. The
-live Docker harness and conformance command are documented in
-[`integration/remote-engines/`](integration/remote-engines/README.md).
-
-`tinymemory::conformance::parity` measures how well an engine finds what it was
-given — hit@1, hit@5, MRR, and store and recall latency over a bundled corpus
-of notes and paraphrased questions. The `recall_parity` example runs it on the
-full embedded engine and on hosted CortexDB side by side (its docs list the
-environment it reads):
-
-```sh
-cargo run -p tinymemory --example recall_parity \
-    --features tinycortex,core,tinyhumans,conformance
-```
-
-LivingBrain is different: its hosted API accepts asynchronous captures and
-returns compiled pages, native semantic search, graph data, and markdown
-exports. It is available behind `livingbrain`, but is intentionally a
-brain-scoped client rather than a `MemoryProvider`, because it cannot uphold
-TinyMemory's exact namespace/key CRUD and portability contract:
+Choose an engine by configuration and hand it a credential from your own
+secret store:
 
 ```rust,no_run
-use tinymemory::remote::{Capture, CaptureKind, LivingBrain};
+use std::sync::Arc;
+use tinymemory::{
+    EngineCredential, FetchMode, FetchRequest, MemoryConfig, MemoryMeta, SourceKind, StaticBearer,
+    StoreItem,
+};
 
-async fn capture_note() -> anyhow::Result<()> {
-    let brain = LivingBrain::cloud("lbk_...", "host-subject-id", "brain-id")?;
-    let _receipt = brain.capture(&Capture {
-        kind: CaptureKind::Note,
-        content: Some("Customer prefers concise weekly updates.".into()),
-        fetch_url: None,
-        origin_ref: Some("crm:customer-42:note-9".into()),
-        source: Some("crm".into()),
-        label: Some("CRM note".into()),
-    }).await?;
-    Ok(())
-}
+# async fn demo() -> tinymemory::Result<()> {
+let config: MemoryConfig = toml::from_str(r#"engine = "tinyhumans""#).unwrap();
+let engine = config.build(EngineCredential::Dynamic(Arc::new(StaticBearer::new("tiny_live_..."))))?;
+
+let mut meta = MemoryMeta::from_source(SourceKind::Folder, Some("notes".into()));
+meta.file_path = Some("/notes/rust/ownership.md".into());
+engine.store(StoreItem::document("Ownership moves values.", meta)).await?;
+
+let page = engine.fetch(FetchRequest::new("ownership", FetchMode::Hybrid, 5)).await?;
+# let _ = page;
+# Ok(())
+# }
 ```
 
-Pass credentials from the host's secret store; never commit them. Every request
-uses both `Authorization: Bearer` and `x-subject-id`.
+`build_engine` refuses an unknown engine id, a missing required endpoint or
+credential, and a credentialed cleartext endpoint that is not loopback.
 
-One of them restricts what it will store. Supermemory removes `U+0000` and
-`U+FFFD` from content server-side, so the adapter refuses such content with
-`MemoryError::Invalid` rather than storing a value the service would quietly
-rewrite: `MemoryCore::store` promises that what is read back equals what was
-stored, and a driver may refuse a shape but may not accept one and hand back
-another. The restriction is no wider than the defect — every other C0 control,
-plus DEL, NEL, ZWSP, BOM and U+2028, survives — and identity is untouched,
-because keys and namespaces travel in metadata, which the service does not
-sanitise. Callers that might hold either character should strip or replace it
-first; `U+FFFD` in particular arrives in any text that has been through a lossy
-decode (issue #80).
+## Engines
 
-Behaviour like that is visible only against the real service, so
-`tinymemory-remote` carries a live target that runs the full contract suite
-against a hosted endpoint when credentials are present and skips when they are
-not. Point it at a scratch account: the suite writes and deletes records.
+| Id | What | Fetch modes |
+| --- | --- | --- |
+| `cortexdb` | CortexDB's own `/v1/*` API with an API key | `hybrid` |
+| `tinyhumans` | CortexDB behind the TinyHumans backend `/memory/*`, with a per-request bearer | `hybrid` |
 
-```bash
-TINYMEMORY_TEST_SUPERMEMORY_URL=https://api.supermemory.ai \
-TINYMEMORY_TEST_SUPERMEMORY_KEY=sm_... \
-  cargo test -p tinymemory-remote --test live_remote_engines
-```
+CortexDB is an append-only event log: writes wait until they are readable,
+listings are de-duplicated, forgets always name event ids, and an empty forget
+selector (which CortexDB reads as "the whole scope") is never sent. Its recall
+route has no keyword/vector switch, so both wires declare hybrid fetch only. See
+`crates/tinymemory-cortex/README.md`.
+
+### Adding an engine
+
+Implement `tinymemory_api::MemoryEngine` in its own crate, declare its fetch
+modes honestly in its `EngineDescriptor`, pass `tinymemory_conformance::run`
+against it, and register it in `crates/tinymemory/src/registry/`.
 
 ## Development
 
+Run from the repository root; CI runs exactly these:
+
 ```bash
-git submodule update --init --recursive
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo build --all-targets --all-features
+cargo test --all-features
 ```
 
-Engine adapters name their engines by **version requirement, not path**, so a
-host that already pins its own engine checkout unifies onto one copy through its
-own `[patch.crates-io]`. The workspace root patches them to the nested `vendor/`
-submodules for a standalone build. A path dependency in an adapter would defeat
-that and hand a host two copies of one engine with two incompatible `Memory`
-traits.
+`cargo run -p tinymemory --example basic` lists the engines and builds one
+from configuration. Contribution rules are in [`AGENTS.md`](AGENTS.md).
+
+## License
+
+GPL-3.0-only. See [`LICENSE`](LICENSE).

@@ -1,179 +1,74 @@
 [package]
 name = "tinymemory"
-# Not published: `tinymemory-core` depends on `tinycortex-api`, which is
-# consumed by path and is not on crates.io, so `cargo package` cannot resolve
-# the graph. Every consumer takes this repo by path or git.
+# Not published: hosts take this repository by git or path.
 publish = false
 version = "1.22.4"
-edition = "2021"
+edition = "2024"
 rust-version = "1.96"
 license = "GPL-3.0-only"
-description = "Engine-neutral memory contract, driver registry, and engine adapters"
+description = "TinyMemory: recall, fetch and store over pluggable memory engines"
 repository = "https://github.com/tinyhumansai/tinymemory"
-documentation = "https://docs.rs/tinymemory"
 readme = "../../README.md"
 keywords = ["memory", "agent", "llm", "retrieval"]
 categories = ["database"]
 
 [dependencies]
-# The contract itself. Re-exported wholesale from `src/lib.rs` so a host takes
-# one dependency rather than two, and so `tinymemory::MemoryProvider` and
-# `tinymemory_api::provider::MemoryProvider` are the same type.
+# The contract, re-exported wholesale so a host takes one dependency and
+# `tinymemory::MemoryEngine` is `tinymemory_api::MemoryEngine`.
 tinymemory-api = { path = "../tinymemory-api" }
-# The engines, each behind its own feature (#18 §D1). Optional, so the default
-# build is still the contract, the registry and the mandatory composition and
-# nothing that links C.
-#
-# This direction only became legal once `mandatory` and the reserved driver ids
-# moved into `tinymemory-api`: the adapters used to depend on this crate for
-# them, and a facade depending back on the adapters is a package cycle cargo
-# forbids.
-tinymemory-tinycortex = { path = "../tinymemory-tinycortex", optional = true }
-tinymemory-remote = { path = "../tinymemory-remote", optional = true }
-# The rest of the workspace, each behind the feature named after it. Optional
-# for the same reason the adapters are: a host that wants the ports and nothing
-# else must not link a storage engine, an HTTP stack, or a native library.
-#
-# `tinymemory-core` is a normal dependency here and this crate is a *dev*
-# dependency of it. Cargo permits that, because a cycle closed by a
-# dev-dependency edge is not a build cycle — but the core side must stay
-# dev-only or the graph becomes unbuildable.
-tinymemory-core = { path = "../tinymemory-core", optional = true }
-tinymemory-sync = { path = "../tinymemory-sync", optional = true }
-tinymemory-sources = { path = "../tinymemory-sources", optional = true }
-tinymemory-documents = { path = "../tinymemory-documents", optional = true }
-tinymemory-conformance = { path = "../tinymemory-conformance", optional = true }
-# The mandatory capability families are `async fn`s on object-safe traits.
-async-trait = "0.1"
-# `Memory` is anyhow-typed; `mandatory::engine_error` maps it onto `MemoryError`.
-anyhow = "1"
-# `ExportRecord::payload` is a `serde_json::Value`.
-serde_json = "1"
-
-# `DriverClass` is read out of a host's config file, so its serde form is the
-# config form and is pinned by a test.
+# The engines the registry builds (`cortexdb`, `tinyhumans`), and the
+# `BearerSource` seam `EngineCredential::Dynamic` carries. Not optional: a
+# registry with no engine has nothing to build. A host that wants only the
+# contract types depends on `tinymemory-api` alone.
+tinymemory-cortex = { path = "../tinymemory-cortex" }
+# `MemoryConfig` is read out of a host's config file.
 serde = { version = "1", features = ["derive"] }
+# The optional crates, each behind the feature named after it, re-exported as a
+# module of the same name.
+tinymemory-documents = { path = "../tinymemory-documents", optional = true }
+tinymemory-sources = { path = "../tinymemory-sources", optional = true }
+tinymemory-safety = { path = "../tinymemory-safety", optional = true }
+tinymemory-context = { path = "../tinymemory-context", optional = true }
+tinymemory-import = { path = "../tinymemory-import", optional = true }
+tinymemory-conformance = { path = "../tinymemory-conformance", optional = true }
 
 [dev-dependencies]
-# The mandatory-family tests are async.
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-# `TestHostConfig`, for the driver-selection tests. A dev-dependency: the
-# facade must not carry a test double into a consumer's graph.
-tinymemory-api = { path = "../tinymemory-api", features = ["test-support"] }
-# The reference driver and the behavioural suite, for the workspace-level
-# integration tests. A dev-dependency as well as an optional normal one: the
-# facade's own suite must have it regardless of which features are selected.
-tinymemory-conformance = { path = "../tinymemory-conformance" }
-# The extracted Composio normalisers, for the integration test that runs them
-# against a driver that is not TinyCortex (issue #18 §B3).
-tinymemory-sync = { path = "../tinymemory-sync" }
-# The `recall_parity` example's OpenAI-compatible embedder for the embedded
-# engine. Already in the graph through `tinymemory-remote`; dev-only, so no
-# consumer links an HTTP stack for it.
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# `MemoryConfig` round-trips through the TOML and JSON a host stores it in.
+toml = "1"
+serde_json = "1"
+# The registry tests implement `BearerSource`.
+async-trait = "0.1"
+tokio = { version = "1", features = ["macros", "rt", "time"] }
+# The live Office pipeline test converts a real OOXML archive and stores the
+# resulting document through the CortexDB engine.
+zip = { version = "8", default-features = false, features = ["deflate"] }
 
-# Every crate in this workspace is reachable from here by a feature named after
-# it, so a host takes one dependency and states what it wants rather than
-# assembling the graph itself. Three groups, all additive:
-#
-#   engines      — which backend implements `MemoryProvider`
-#   subsystems   — which workspace crates are re-exported as modules
-#   capabilities — optional behaviour that needs a specific engine
-#
-# Nothing is on by default. Naming no feature gets the contract, the registry
-# and the mandatory composition: no storage engine, no HTTP stack, no native
-# library. `scripts/ci/dependency-budget.sh` holds that to a ceiling.
+# One feature per optional crate, all additive and none on by default: naming
+# no feature gets the contract, the registry and the CortexDB engines.
 [features]
 default = []
-
-# --- Engines ---------------------------------------------------------------
-# Each pulls exactly the adapter that serves it. `supermemory`, `mem0` and
-# `cognee` share one adapter crate, so enabling several costs one dependency
-# rather than three.
-tinycortex = ["dep:tinymemory-tinycortex"]
-supermemory = ["dep:tinymemory-remote"]
-mem0 = ["dep:tinymemory-remote"]
-cognee = ["dep:tinymemory-remote"]
-cortex = ["dep:tinymemory-remote"]
-agentmemory = ["dep:tinymemory-remote"]
-# CortexDB hosted by the TinyHumans backend (`/memory/*`): the same adapter as
-# `cortex`, speaking the hosted dialect. Implies `cortex`.
-tinyhumans = ["cortex"]
-# LivingBrain exposes a brain-scoped remote API client, not an exact-record
-# `MemoryProvider`; see docs/specs/livingbrain-remote-api.md.
-livingbrain = ["dep:tinymemory-remote"]
-# Every engine at once. A host that binds its driver from configuration rather
-# than at compile time wants this: `DriverRegistry` admission is a static policy
-# table, so which adapters are compiled in decides what it can actually bind.
-engines = ["tinycortex", "supermemory", "mem0", "cognee", "cortex", "agentmemory", "tinyhumans"]
-
-# Config-driven engine construction (`tinymemory::factory`): list the engines
-# compiled in and build a provider from an id, endpoint and credential. Each
-# engine arm is gated on that engine's own feature, so this adds only the
-# shared HTTP adapter crate (for `BearerSource`), never an engine by itself.
-factory = ["dep:tinymemory-remote"]
-
-# --- Subsystems ------------------------------------------------------------
-# The workspace crates that are not adapters, each re-exported as a module of
-# the same name. Off by default because each is a real weight: `core` links a
-# bundled SQLite and the embedded engine, `sources` an HTTP stack behind its own
-# `network` gate.
-core = ["dep:tinymemory-core"]
-sync = ["dep:tinymemory-sync"]
-sources = ["dep:tinymemory-sources"]
-# Document and URL intake: sniff a format, convert it to markdown, and write it
-# into whichever engine is bound. Contract-only in its dependencies until
-# `documents-network` adds the fetch path.
+# Format sniffing and conversion to markdown (`tinymemory::documents`).
 documents = ["dep:tinymemory-documents"]
-# The behavioural suite every driver must pass, for a host that wants to hold
-# its *own* `MemoryProvider` to the contract. Contract-only in its dependencies,
-# so it is cheap; still opt-in, because a test harness has no business in a
-# production graph unless it was asked for.
-conformance = ["dep:tinymemory-conformance"]
-# The network readers in `tinymemory-sources` — GitHub, RSS, web pages. Implies
-# the crate that holds them, so asking for the readers cannot produce a build
-# where they are absent.
+# `OfficeConverter`: PDF, DOCX, PPTX and XLSX to markdown in-process, for a
+# host to prepend to its `ConverterChain`. Implies `documents`.
+documents-office = ["documents", "tinymemory-documents/office"]
+# Source readers that emit `StoreItem`s (`tinymemory::sources`).
+sources = ["dep:tinymemory-sources"]
+# The network readers in `sources` (GitHub, RSS, web pages, URL fetch).
 sources-network = ["sources", "tinymemory-sources/network"]
-# The URL intake path in `tinymemory-documents`. Implies the crate that holds
-# it, for the same reason `sources-network` implies `sources`.
-documents-network = ["documents", "tinymemory-documents/network"]
+# Secret and PII scrubbing applied before `store` (`tinymemory::safety`).
+safety = ["dep:tinymemory-safety"]
+# The `context.md` compiler (`tinymemory::context`).
+context = ["dep:tinymemory-context"]
+# The legacy v1 workspace reader (`tinymemory::import`).
+import = ["dep:tinymemory-import"]
+# The spec's name for `import`.
+legacy-import = ["import"]
+# The behavioural suite and reference engine (`tinymemory::conformance`).
+conformance = ["dep:tinymemory-conformance"]
+# Everything.
+full = ["documents", "documents-office", "sources-network", "safety", "context", "legacy-import", "conformance"]
 
-# --- Capability add-ons ----------------------------------------------------
-# Each requires the engine that serves it, so asking for a capability cannot
-# produce a build where nothing implements it.
-memory-git = ["tinycortex", "tinymemory-tinycortex/memory-git"]
-# The macOS CNContactStore address-book seeding path, served by the embedded
-# engine through `tinymemory-core`. No-op off macOS.
-contacts = ["core", "tinymemory-core/contacts"]
-
-# --- Test support ----------------------------------------------------------
-# The workspace's test doubles and helpers, for a downstream harness that needs
-# them: `TestHostConfig` from the contract, and `tinymemory-core`'s chat and
-# tool-memory helpers when `core` is on. A production build must not carry them,
-# which is why this is not implied by anything above.
-test-support = [
-    "tinymemory-api/test-support",
-    "tinymemory-core?/test-support",
-]
-
-# Everything, for the sake of one name. Deliberately excludes `test-support`:
-# "give me the whole workspace" is not the same request as "give me the test
-# doubles", and rolling them together is how a harness reaches a release build.
-full = [
-    "engines",
-    "core",
-    "sync",
-    "sources-network",
-    "documents-network",
-    "conformance",
-    "memory-git",
-]
-
-# Lints apply to this package only, deliberately. `crates/tinymemory-api` is
-# contract code moved verbatim from `tinycortex-api` and is held
-# byte-identical; subjecting it to a stricter lint set than it was written under
-# would force cosmetic edits through a surface whose serde representations and
-# enum wire strings are persisted on disk. Adapter crates opt in individually.
 [lints.rust]
 unsafe_code = "forbid"
 missing_docs = "warn"
@@ -183,29 +78,14 @@ rust_2018_idioms = { level = "warn", priority = -1 }
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }
-pedantic = { level = "warn", priority = -1 }
-# Library code must not panic on its own; tests and examples may.
 unwrap_used = "warn"
 expect_used = "warn"
 panic = "warn"
 todo = "warn"
 unimplemented = "warn"
-# Public fallible/panicking APIs must document their failure modes.
 missing_errors_doc = "warn"
 missing_panics_doc = "warn"
-# Documentation hygiene.
-doc_markdown = "warn"
-# `#[must_use]` on pure public functions.
-must_use_candidate = "warn"
 
 [lints.rustdoc]
 broken_intra_doc_links = "warn"
 private_intra_doc_links = "warn"
-
-[[example]]
-name = "tinycortex"
-required-features = ["tinycortex"]
-
-[[example]]
-name = "recall_parity"
-required-features = ["tinycortex", "core", "tinyhumans", "conformance"]

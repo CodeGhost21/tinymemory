@@ -13,13 +13,12 @@ This is a Cargo **workspace** with a virtual root: there is no root package,
 and every crate lives in its own directory under `crates/`, named for the
 package it holds. `members` is the glob `crates/*`, so a new crate joins the
 workspace by existing. `crates/tinymemory` is the facade a host depends on;
-`crates/tinymemory-api` is the contract; the rest are the subsystems and the
-engine adapters, each reachable from the facade by a feature named after it.
-Engines themselves are submodules under `vendor/`, excluded from the workspace.
+`crates/tinymemory-api` is the contract; `crates/tinymemory-cortex` is the
+CortexDB engine; the rest are subsystems, each reachable from the facade by a
+feature named after it. The accepted behaviour is
+[`docs/specs/memory-v2.md`](docs/specs/memory-v2.md).
 
-See [`README.md`](README.md) for the full layout, the feature table, and the
-rules that govern them — in particular, why policy stays in the host and why
-adapters name their engines by version requirement rather than by path.
+See [`README.md`](README.md) for the full layout and the feature table.
 
 ```text
 crates/<package>/
@@ -34,14 +33,13 @@ crates/<package>/
         └── mod_tests.rs # module-local unit tests
 crates/<package>/tests/     # integration tests against the public API only
 crates/<package>/examples/  # runnable, compiled-in-CI usage examples
-vendor/tinybus/         # pinned TinyBus source; optional until wired by a project
 docs/
 ├── specs/              # behavior and architecture specifications
 ├── plans/              # test-first implementation plans
 └── adr/                # immutable architecture decision records
 ```
 
-A new crate goes in `crates/<package>/`, and a package that is not an adapter
+A new crate goes in `crates/<package>/`, and a package that is not an engine
 or a subsystem of the memory layer probably does not belong here at all. Reach
 it from the facade by adding an optional dependency and a feature of the same
 name, so a host keeps taking one dependency and stating what it wants.
@@ -144,21 +142,6 @@ add one:
 Keep `Cargo.lock` committed; this crate ships a lockfile so CI and releases are
 reproducible.
 
-### Vendored dependencies
-
-TinyBus is registered as the `vendor/tinybus` git submodule and pinned by its
-gitlink. Initialize it after cloning with:
-
-```sh
-git submodule update --init --recursive
-```
-
-Do not edit vendored code from the parent repository. Make TinyBus changes in
-its own repository, push them there, then update this repository's gitlink in a
-separate commit. If the generated project consumes TinyBus, use the exact crate
-path and minimal features it needs; the template does not force that dependency
-on every generated crate.
-
 ## Testing
 
 - Module-local unit tests live in `crates/<package>/src/<feature>/mod_tests.rs` and
@@ -239,16 +222,12 @@ explicitly declined with a reason.
 Releases run from `.github/workflows/release.yml` via a manual
 `workflow_dispatch` with a `patch` / `minor` / `major` bump. The workflow
 re-runs formatting, clippy, tests, and rustdoc, computes the next version,
-updates `crates/tinymemory/Cargo.toml`, `Cargo.lock`, and
-`crates/tinymemory-module/Cargo.lock`, commits and tags `vX.Y.Z`, and pushes
-both. It then builds the per-platform `tinymemory-module` archives and attaches
-them, with a `checksum.toml`, to a GitHub release for the tag. Setting
-`existing_tag` re-cuts those archives for a tag that already exists, without a
-new bump or tag.
+updates `crates/tinymemory/Cargo.toml` and `Cargo.lock`, commits and tags
+`vX.Y.Z`, pushes both, and creates a GitHub release for the tag. There are no
+binary artifacts.
 
-Nothing is published to crates.io. `tinymemory-core` depends on the
-unpublished `tinycortex-api`, so `cargo package` cannot resolve it; every crate
-is `publish = false`, and hosts take this repository by git or path.
+Nothing is published to crates.io: every crate is `publish = false`, and hosts
+take this repository by git or path, pinned to a tag.
 
 Consequently:
 

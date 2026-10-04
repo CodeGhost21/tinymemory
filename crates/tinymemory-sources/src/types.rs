@@ -9,13 +9,16 @@
 //!
 //! Reader output contracts ([`SourceItem`], [`SourceContent`], [`ContentType`])
 //! are shared across every reader implementation so the host can ingest source
-//! payloads uniformly regardless of where they came from.
+//! payloads uniformly regardless of where they came from; [`crate::items`]
+//! turns them into `StoreItem`s.
 //!
 //! Wire strings are snake_case and are part of the persisted contract — do not
 //! rename them when porting from OpenHuman.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+use crate::error::{Error, Result};
 
 pub(crate) fn default_true() -> bool {
     true
@@ -24,21 +27,22 @@ pub(crate) fn default_true() -> bool {
 /// The kind of a configured memory source.
 ///
 /// The wire representation is snake_case (`github_repo`, `rss_feed`, …) and is
-/// persisted in `config.toml`; it must stay stable across versions.
+/// persisted in `config.toml`; it must stay stable across versions. Each maps
+/// onto one [`tinymemory_api::SourceKind`] through [`SourceKind::api_kind`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceKind {
     /// A Composio OAuth connector (Gmail, Slack, Notion, …). Network-backed;
-    /// the live fetch is owned by the host, not TinyCortex.
+    /// the live fetch is owned by the host, not this crate.
     Composio,
     /// Local agent conversation transcripts stored in the workspace.
     Conversation,
     /// A local folder of files matched by an optional glob.
     Folder,
+    /// A single local file.
+    File,
     /// A GitHub repository's project activity (commits, issues, PRs).
     GithubRepo,
-    /// A Twitter/X search query.
-    TwitterQuery,
     /// An RSS/Atom feed.
     RssFeed,
     /// A single web page, optionally narrowed by a CSS selector.
@@ -46,16 +50,45 @@ pub enum SourceKind {
 }
 
 impl SourceKind {
+    /// Every kind, in declaration order.
+    pub const ALL: [Self; 7] = [
+        Self::Composio,
+        Self::Conversation,
+        Self::Folder,
+        Self::File,
+        Self::GithubRepo,
+        Self::RssFeed,
+        Self::WebPage,
+    ];
+
     /// The stable snake_case wire string for this kind.
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             SourceKind::Composio => "composio",
             SourceKind::Conversation => "conversation",
             SourceKind::Folder => "folder",
+            SourceKind::File => "file",
             SourceKind::GithubRepo => "github_repo",
-            SourceKind::TwitterQuery => "twitter_query",
             SourceKind::RssFeed => "rss_feed",
             SourceKind::WebPage => "web_page",
+        }
+    }
+
+    /// The contract's [`tinymemory_api::SourceKind`] for items this kind of
+    /// source produces: a web page is a `Link`, a GitHub repository `Github`,
+    /// an RSS feed `Rss`; the rest keep their name.
+    #[must_use]
+    pub fn api_kind(&self) -> tinymemory_api::SourceKind {
+        use tinymemory_api::SourceKind as Api;
+        match self {
+            SourceKind::Composio => Api::Composio,
+            SourceKind::Conversation => Api::Conversation,
+            SourceKind::Folder => Api::Folder,
+            SourceKind::File => Api::File,
+            SourceKind::GithubRepo => Api::Github,
+            SourceKind::RssFeed => Api::Rss,
+            SourceKind::WebPage => Api::Link,
         }
     }
 }
@@ -86,11 +119,13 @@ pub struct MemorySourceEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub connection_id: Option<String>,
 
-    // ── Folder ──
-    /// Filesystem path of the folder to read. Required for `folder`.
+    // ── Folder / File ──
+    /// Filesystem path of the folder or file to read. Required for `folder`
+    /// and `file`; a relative path is anchored on the workspace.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
-    /// Optional glob applied under `path` (defaults to `**/*.md`).
+    /// Optional glob applied under a folder's `path`. When absent the folder
+    /// reader takes markdown, plain-text and source-code files.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub glob: Option<String>,
 
@@ -116,14 +151,6 @@ pub struct MemorySourceEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_prs: Option<u32>,
 
-    // ── TwitterQuery ──
-    /// Search query. Required for `twitter_query`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub query: Option<String>,
-    /// Optional look-back window in days for the query.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub since_days: Option<u32>,
-
     // ── RssFeed ──
     /// Max feed items to pull per sync.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -147,16 +174,47 @@ pub struct MemorySourceEntry {
 }
 
 impl MemorySourceEntry {
+    /// An enabled entry of `kind` with every optional field unset.
+    #[must_use]
+    pub fn new(id: impl Into<String>, kind: SourceKind, label: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            kind,
+            label: label.into(),
+            enabled: true,
+            toolkit: None,
+            connection_id: None,
+            path: None,
+            glob: None,
+            url: None,
+            branch: None,
+            paths: Vec::new(),
+            max_commits: None,
+            max_issues: None,
+            max_prs: None,
+            max_items: None,
+            selector: None,
+            max_tokens_per_sync: None,
+            max_cost_per_sync_usd: None,
+            sync_depth_days: None,
+        }
+    }
+
     /// Validate required fields for this entry's [`SourceKind`].
     ///
     /// Delegates to [`crate::validation::validate_entry`].
-    /// Returns a human-readable error message on the first failing rule.
-    pub fn validate(&self) -> Result<(), String> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Invalid`] naming the first failing rule.
+    pub fn validate(&self) -> Result<()> {
         crate::validation::validate_entry(self)
     }
 }
 
-fn deserialize_double_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+fn deserialize_double_option<'de, D, T>(
+    deserializer: D,
+) -> std::result::Result<Option<Option<T>>, D::Error>
 where
     D: serde::Deserializer<'de>,
     T: serde::Deserialize<'de>,
@@ -198,12 +256,6 @@ pub struct MemorySourcePatch {
     /// Explicit path allowlist within a repo source.
     #[serde(default)]
     pub paths: Option<Vec<String>>,
-    /// Search/filter query string for query-driven sources.
-    #[serde(default, deserialize_with = "deserialize_double_option")]
-    pub query: Option<Option<String>>,
-    /// Lookback window in days for items to ingest.
-    #[serde(default, deserialize_with = "deserialize_double_option")]
-    pub since_days: Option<Option<u32>>,
     /// Cap on the number of items pulled per sync.
     #[serde(default, deserialize_with = "deserialize_double_option")]
     pub max_items: Option<Option<u32>>,
@@ -240,20 +292,23 @@ impl MemorySourcePatch {
     ///
     /// # Errors
     ///
-    /// Returns the first inapplicable field, named.
-    pub fn validate_for_kind(&self, kind: SourceKind) -> anyhow::Result<()> {
+    /// [`Error::Invalid`] naming the first inapplicable field.
+    pub fn validate_for_kind(&self, kind: SourceKind) -> Result<()> {
         let reject = |field: &str| {
-            Err(anyhow::anyhow!(
+            Err(Error::Invalid(format!(
                 "field '{field}' is not applicable to source kind '{}'",
                 kind.as_str()
-            ))
+            )))
         };
         if (self.toolkit.is_some() || self.connection_id.is_some()) && kind != SourceKind::Composio
         {
             return reject("toolkit/connection_id");
         }
-        if (self.path.is_some() || self.glob.is_some()) && kind != SourceKind::Folder {
-            return reject("path/glob");
+        if self.path.is_some() && !matches!(kind, SourceKind::Folder | SourceKind::File) {
+            return reject("path");
+        }
+        if self.glob.is_some() && kind != SourceKind::Folder {
+            return reject("glob");
         }
         if (self.branch.is_some()
             || self.paths.is_some()
@@ -263,12 +318,6 @@ impl MemorySourcePatch {
             && kind != SourceKind::GithubRepo
         {
             return reject("github repository fields");
-        }
-        if self.query.is_some() && kind != SourceKind::TwitterQuery {
-            return reject("query");
-        }
-        if matches!(self.since_days, Some(Some(_))) && kind != SourceKind::TwitterQuery {
-            return reject("since_days");
         }
         if self.selector.is_some() && kind != SourceKind::WebPage {
             return reject("selector");
@@ -321,12 +370,6 @@ impl MemorySourcePatch {
         }
         if let Some(value) = self.paths {
             entry.paths = value;
-        }
-        if let Some(value) = self.query {
-            entry.query = value;
-        }
-        if let Some(value) = self.since_days {
-            entry.since_days = value;
         }
         if let Some(value) = self.max_items {
             entry.max_items = value;

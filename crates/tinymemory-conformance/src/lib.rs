@@ -1,66 +1,37 @@
-//! Behavioural conformance for `MemoryProvider` drivers.
+//! The behavioural suite every TinyMemory engine must pass, and a reference
+//! in-memory engine to calibrate it.
 //!
-//! TinyMemory's premise is that an engine can be swapped without the host
-//! learning anything new. [`audit_provider`](tinymemory_api::provider::audit_provider)
-//! checks that a driver's advertised capabilities match its reachable
-//! accessors, which proves the *shape* is honest. Nothing checked that two
-//! drivers answer the same question the same way — and that is the claim the
-//! premise actually rests on.
+//! [`run`] stores, lists, fetches, recalls and forgets through any
+//! [`tinymemory_api::MemoryEngine`] and reports the first behaviour that breaks
+//! the contract. It covers store/list round trips for each item kind, replay
+//! idempotency, fetch filtering by every metadata field in every declared
+//! mode, forget by id and by filter, refusal of an empty forget,
+//! `Unsupported` for undeclared modes, and recall citations that resolve
+//! through `list`. It writes only under a workspace unique to the run and
+//! forgets it afterwards, so it can run against an engine that holds data.
 //!
-//! This crate is that check. Hand [`assert_provider`] any bound driver and it
-//! drives the contract: the mandatory three families, upsert semantics on
-//! `(namespace, key)`, namespace isolation, provenance preservation, recall
-//! limits, export pagination, and import round-tripping.
+//! [`ReferenceEngine`] is the calibration subject: obvious by inspection, so a
+//! failure against it means the assertion is wrong, not the engine.
 //!
-//! ```no_run
-//! use std::sync::Arc;
-//! use tinymemory_conformance::{assert_provider, InMemoryProvider};
+//! # Example
 //!
-//! # async fn run() {
-//! assert_provider(Arc::new(InMemoryProvider::new())).await;
-//! # }
 //! ```
+//! use tinymemory_conformance::{ReferenceEngine, run};
 //!
-//! # What it deliberately does not depend on
-//!
-//! Only `tinymemory-api`. A conformance suite that pulled in an engine could
-//! not prove interchangeability, because it would already have chosen one — and
-//! reaching `tinymemory-core` would drag in a bundled SQLite and the embedded
-//! engine besides (issue #18 §D).
-//!
-//! # Provenance is the sharp one
-//!
-//! [`assert_taint_is_preserved`] is not a formality. A driver that reads back
-//! `Internal` for content stored as `ExternalSync` has laundered external
-//! content into internal-trust content, and every policy gate keyed on taint is
-//! then silently wrong. That failure is invisible until something acts on it.
+//! # let runtime = tokio::runtime::Builder::new_current_thread().build()?;
+//! # runtime.block_on(async {
+//! let engine = ReferenceEngine::new();
+//! run(&engine).await?;
+//! assert!(engine.is_empty(), "the suite cleans up after itself");
+//! # Ok::<(), tinymemory_conformance::Error>(())
+//! # })?;
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
-#![forbid(unsafe_code)]
-#![warn(missing_docs)]
-
-pub mod parity;
+pub mod error;
 pub mod reference;
-pub mod suite;
+mod suite;
 
-pub use reference::fixed::{FixedRecallProvider, FIXED_RECALL_DRIVER_ID};
-pub use reference::full::{Call, RecordingProvider, FULL_DRIVER_ID};
-pub use reference::{InMemoryProvider, REFERENCE_DRIVER_ID};
-pub use suite::{
-    assert_answer_is_grounded, assert_answer_refuses_an_empty_question,
-    assert_awkward_content_round_trips, assert_capability_audit, assert_conversation_ingest,
-    assert_document_ingest, assert_documents_round_trip, assert_event_ingest,
-    assert_export_cursor_terminates, assert_export_import_round_trip, assert_forget_is_idempotent,
-    assert_ingest_families, assert_kv_round_trip, assert_learning_ingest,
-    assert_list_filters_narrow, assert_namespaces_are_isolated,
-    assert_namespaces_preserve_their_section, assert_provider,
-    assert_recall_respects_limit_and_namespace, assert_store_get_round_trip,
-    assert_taint_is_preserved, assert_upsert_replaces_rather_than_duplicates,
-};
-pub use suite::{
-    // Exported alongside the assertions because a caller standing up its own
-    // backend double needs it: `assert_provider` skips every write-path
-    // assertion when the driver does not retain, so a double that silently
-    // dropped writes would let a whole run pass vacuously. Probing for that
-    // directly is how a caller proves its harness is real.
-    retains_writes,
-};
+pub use error::{Error, Result};
+pub use reference::{REFERENCE_ENGINE_ID, ReferenceEngine};
+pub use suite::run;

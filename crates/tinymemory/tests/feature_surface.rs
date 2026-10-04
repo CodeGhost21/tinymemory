@@ -1,55 +1,41 @@
-//! Public facade and Cargo feature implication tests.
+//! With every feature on, each optional crate is reachable through the facade,
+//! and the pieces compose: scrub an item, store it in the reference engine,
+//! run the conformance suite, and compile a context from what is left.
+#![cfg(feature = "full")]
 
-#[test]
-fn facade_reexports_the_contract_types_without_conversion() {
-    fn accepts_api_category(_: tinymemory::api::types::MemoryCategory) {}
-    let category = tinymemory::types::MemoryCategory::Core;
-    accepts_api_category(category);
+use tinymemory::{LearningKind, MemoryEngine, MemoryMeta, StoreItem};
 
-    let provider = tinymemory::null::NullMemoryProvider::new();
-    let _: &dyn tinymemory::provider::MemoryProvider = &provider;
+#[tokio::test]
+async fn the_optional_crates_compose_through_the_facade() {
+    let engine = tinymemory::conformance::ReferenceEngine::new();
+    tinymemory::conformance::run(&engine)
+        .await
+        .expect("the reference engine conforms");
+
+    let item = StoreItem::learning(
+        "prefers answers without the key sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCD",
+        LearningKind::Preference,
+        0.8,
+        MemoryMeta::default(),
+    );
+    let scrubbed = tinymemory::safety::scrub_item(item);
+    assert!(scrubbed.report.changed());
+    engine.store(scrubbed.value).await.expect("store");
+
+    let doc = tinymemory::context::compile(&engine, &tinymemory::context::ContextSpec::default())
+        .await
+        .expect("compile");
+    assert!(doc.markdown.contains("## Learnings"));
+    assert!(!doc.markdown.contains("sk-proj-"));
+    assert_eq!(doc.engine, "reference");
 }
 
-#[cfg(all(feature = "sources-network", not(feature = "sources")))]
-compile_error!("sources-network must imply sources");
-#[cfg(all(feature = "documents-network", not(feature = "documents")))]
-compile_error!("documents-network must imply documents");
-#[cfg(all(feature = "memory-git", not(feature = "tinycortex")))]
-compile_error!("memory-git must imply tinycortex");
-#[cfg(all(feature = "contacts", not(feature = "core")))]
-compile_error!("contacts must imply core");
-#[cfg(all(
-    feature = "engines",
-    not(all(
-        feature = "tinycortex",
-        feature = "supermemory",
-        feature = "mem0",
-        feature = "cognee",
-        feature = "cortex",
-        feature = "agentmemory",
-        feature = "tinyhumans"
-    ))
-))]
-compile_error!("engines must expose every engine adapter");
-#[cfg(all(
-    feature = "full",
-    not(all(
-        feature = "engines",
-        feature = "core",
-        feature = "sync",
-        feature = "sources-network",
-        feature = "documents-network",
-        feature = "conformance",
-        feature = "memory-git"
-    ))
-))]
-compile_error!("full must imply every production feature group");
-
-#[cfg(feature = "conformance")]
 #[test]
-fn conformance_feature_exposes_the_reference_provider() {
-    let _ = tinymemory::conformance::InMemoryProvider::new();
+fn the_reader_and_converter_crates_are_reachable() {
+    assert_eq!(
+        tinymemory::documents::language_for_path("src/main.rs"),
+        Some("rust")
+    );
+    let _ = std::any::type_name::<tinymemory::import::Checkpoint>();
+    let _ = std::any::type_name::<tinymemory::sources::MemorySourceEntry>();
 }
-
-#[cfg(all(feature = "tinyhumans", not(feature = "cortex")))]
-compile_error!("tinyhumans must imply cortex");

@@ -7,7 +7,14 @@ all-features = true
 [advisories]
 # Fail on any crate with a security advisory or an unmaintained warning.
 # Add an entry here only with a comment explaining the exposure and the plan.
-ignore = []
+ignore = [
+    # RUSTSEC-2026-0192 marks ttf-parser unmaintained; it is pulled by
+    # pdf-extract for the optional Office PDF converter. No safe upgrade exists.
+    # The Office feature only parses caller-supplied uploads and has byte and
+    # panic guards. Replace pdf-extract when a maintained pure-Rust parser can
+    # pass the existing PDF fixtures and live document pipeline.
+    { id = "RUSTSEC-2026-0192", reason = "optional PDF conversion path; replacement is tracked above" },
+]
 
 [licenses]
 # Licenses accepted for this crate and its dependencies. Keep GPL-3.0-only for
@@ -19,18 +26,13 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     # `webpki-roots` — Mozilla's CA root bundle, reached through
-    # `reqwest`'s rustls-tls, which the hosted-engine adapter needs for HTTPS.
+    # `reqwest`'s rustls-tls, which the CortexDB engine needs for HTTPS.
     #
     # A *data* licence rather than a code one, which is why it is not on the
     # usual list: the crate is Mozilla's trust store rendered as a Rust array,
     # not software. CDLA-Permissive-2.0 places no conditions on use or
     # redistribution of that data and adds no obligations to the binaries that
     # embed it.
-    #
-    # It reached this graph when #18 §D1 gave the facade per-engine features:
-    # `[graph] all-features = true` above now enables `supermemory`/`mem0`/
-    # `cognee`, so the remote adapter's TLS stack is evaluated where before
-    # nothing on the facade pulled it.
     "CDLA-Permissive-2.0",
     "GPL-3.0-only",
     "ISC",
@@ -69,5 +71,4 @@ deny = []
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-# TinyInference's pinned tinytools-agent dependency is a sibling TinyHumans repo.
-allow-git = ["https://github.com/tinyhumansai/tinytools"]
+allow-git = []

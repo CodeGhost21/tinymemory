@@ -1,0 +1,139 @@
+//! The two registrations of the engine, and the routes each wire speaks.
+//!
+//! One engine type serves two configuration ids:
+//!
+//! - [`CORTEXDB_ENGINE_ID`] — a CortexDB server's own `/v1/*` API with an API
+//!   key ([`CortexWire::Direct`]);
+//! - [`TINYHUMANS_ENGINE_ID`] — CortexDB behind the TinyHumans backend's
+//!   `/memory/*` routes with the host's bearer ([`CortexWire::TinyHumans`]).
+//!
+//! # Why both declare only [`FetchMode::Hybrid`]
+//!
+//! Fetch maps onto CortexDB's recall route, and its request body accepts only
+//! `scope`, `query`, `budgets`, `view`, `include`, `temporal` and `filters`.
+//! There is no field that switches between lexical and embedding retrieval:
+//! the engine always blends them. Declaring `Keyword` or `Vector` would
+//! promise a ranking the wire cannot ask for, so both descriptors list
+//! `Hybrid` alone and the other modes fail with
+//! [`tinymemory_api::Error::Unsupported`].
+
+use tinymemory_api::{EngineDescriptor, FetchMode};
+
+/// Configuration id of CortexDB reached directly.
+pub const CORTEXDB_ENGINE_ID: &str = "cortexdb";
+
+/// Configuration id of CortexDB behind the TinyHumans backend.
+pub const TINYHUMANS_ENGINE_ID: &str = "tinyhumans";
+
+/// Default base URL of CortexDB's managed API.
+pub const CORTEX_API_ENDPOINT: &str = "https://api-v1.cortexdb.ai";
+
+/// Default origin of the TinyHumans backend that hosts CortexDB.
+pub const TINYHUMANS_API_ENDPOINT: &str = "https://api.tinyhumans.ai";
+
+/// The fetch modes both wires serve: hybrid only (see the module docs).
+const FETCH_MODES: [FetchMode; 1] = [FetchMode::Hybrid];
+
+/// The descriptor of CortexDB reached directly: not hosted by a third party,
+/// an endpoint is optional ([`CORTEX_API_ENDPOINT`] by default), an API key
+/// is required, and fetch is hybrid only.
+#[must_use]
+pub fn cortexdb_descriptor() -> EngineDescriptor {
+    EngineDescriptor {
+        id: CORTEXDB_ENGINE_ID,
+        label: "CortexDB",
+        description: "CortexDB's own API: an append-only memory log with ranked recall and \
+                      grounded answers",
+        hosted: false,
+        needs_endpoint: false,
+        needs_key: true,
+        default_endpoint: Some(CORTEX_API_ENDPOINT),
+        fetch_modes: FETCH_MODES.to_vec(),
+    }
+}
+
+/// The descriptor of CortexDB behind the TinyHumans backend: hosted, the
+/// endpoint defaults to [`TINYHUMANS_API_ENDPOINT`], a bearer (session JWT or
+/// API key) is required, and fetch is hybrid only.
+#[must_use]
+pub fn tinyhumans_descriptor() -> EngineDescriptor {
+    EngineDescriptor {
+        id: TINYHUMANS_ENGINE_ID,
+        label: "TinyHumans",
+        description: "CortexDB hosted by the TinyHumans backend, billed to the signed-in account",
+        hosted: true,
+        needs_endpoint: false,
+        needs_key: true,
+        default_endpoint: Some(TINYHUMANS_API_ENDPOINT),
+        fetch_modes: FETCH_MODES.to_vec(),
+    }
+}
+
+/// Which HTTP surface an engine talks to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum CortexWire {
+    /// A CortexDB server's own `/v1/*` API: bare JSON bodies, `?wait=indexed`
+    /// and a bulk append route.
+    Direct,
+    /// CortexDB behind the TinyHumans backend's `/memory/*` routes:
+    /// `{success,data}` envelopes, typed `errorCode` failures, a strict answer
+    /// schema, `Idempotency-Key` claims on writes, and no bulk, wait or health
+    /// route.
+    TinyHumans,
+}
+
+impl CortexWire {
+    /// The descriptor this wire registers under.
+    #[must_use]
+    pub fn descriptor(self) -> EngineDescriptor {
+        match self {
+            Self::Direct => cortexdb_descriptor(),
+            Self::TinyHumans => tinyhumans_descriptor(),
+        }
+    }
+
+    /// The request path (no query string) of `route` on this wire.
+    pub(crate) fn path(self, route: Route) -> &'static str {
+        match (self, route) {
+            (Self::Direct, Route::Experience) => "v1/experience",
+            (Self::Direct, Route::Bulk) => "v1/experience/bulk",
+            (Self::Direct, Route::Events) => "v1/events",
+            (Self::Direct, Route::Recall) => "v1/recall",
+            (Self::Direct, Route::Forget) => "v1/forget",
+            (Self::Direct, Route::Answer) => "v1/answer",
+            (Self::Direct, Route::Health) => "v1/admin/health",
+            (Self::Direct, Route::Scopes) => "v1/scopes/list",
+            (Self::TinyHumans, Route::Experience | Route::Bulk) => "memory/experience",
+            (Self::TinyHumans, Route::Events) => "memory/events",
+            (Self::TinyHumans, Route::Recall) => "memory/recall",
+            (Self::TinyHumans, Route::Forget) => "memory/forget",
+            (Self::TinyHumans, Route::Answer) => "memory/answer",
+            (Self::TinyHumans, Route::Health | Route::Scopes) => "memory/scopes",
+        }
+    }
+}
+
+/// One logical CortexDB operation, mapped to a path per [`CortexWire`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Route {
+    /// Append one event.
+    Experience,
+    /// Append an ordered batch (Direct only; hosted writes one at a time).
+    Bulk,
+    /// List a scope's events, newest first.
+    Events,
+    /// Build a ranked recall pack.
+    Recall,
+    /// Remove named events.
+    Forget,
+    /// Answer a question from a recall pack.
+    Answer,
+    /// The cheapest authenticated probe.
+    Health,
+    /// List the caller's registered scopes under a prefix.
+    Scopes,
+}
+
+#[cfg(test)]
+#[path = "mod_tests.rs"]
+mod tests;

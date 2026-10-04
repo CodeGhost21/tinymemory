@@ -1,305 +1,79 @@
-//! `tinymemory-import` — one-shot importers that read another assistant's
-//! workspace and write what they find into a [`Memory`].
+//! Import a legacy (v1, embedded TinyCortex) workspace into TinyMemory v2.
 //!
-//! Two sources are supported: **OpenClaw** (`memory/brain.db`, `MEMORY.md`,
-//! `memory/*.md`) and **Hermes** (`MEMORY.md`, `USER.md`, `SOUL.md`). Both share
-//! one shape: resolve the source workspace, refuse a self-migration, collect
-//! entries, and, unless `dry_run`, back up the target's existing memory files
-//! and write each entry, skipping content that is already present and renaming
-//! a key that collides with different content.
+//! [`LegacyWorkspace::open`] detects a v1 store (`<path>/memory/memory.db`
+//! with the `memory_docs`, `episodic_log` and `user_profile` tables) and
+//! refuses anything else with [`Error::NotLegacy`]. [`LegacyWorkspace::items`]
+//! then streams every importable record as a [`StoreItem`], read straight off
+//! disk with SQLite opened read-only — the engine that wrote the store is not
+//! linked:
 //!
-//! Which [`Memory`] to write into is the host's decision and arrives as a
-//! closure (`open_target`), called only once there is something to write and
-//! after the backup, so a host that refuses (for instance a null driver that
-//! would discard every write) refuses at exactly the point it always did.
+//! | Legacy record | v2 item |
+//! | --- | --- |
+//! | `memory_docs` rows in document namespaces | `Document` |
+//! | `memory_tree/chunks.db` sources (optional) | `Document`, or `Conversation` for `chat` |
+//! | `episodic_log` threads | `Conversation` |
+//! | `memory_docs` rows in `learning:*` and `global` | `Learning` |
+//! | `user_profile` facets | `Learning(Preference)` |
+//!
+//! Every item's `meta.source` is `SourceKind::Import` with a section-scoped
+//! legacy id (`memory_docs:<document_id>`, `episodic_log:<session_id>`,
+//! `user_profile:<facet_id>`, `mem_tree_chunks:<kind>:<id>`), and
+//! `meta.workspace` is the workspace path. The crate README details every
+//! mapping decision.
+//!
+//! Import is resumable: each [`ImportedItem`] carries the [`Checkpoint`] to
+//! persist once its item is stored, and [`LegacyWorkspace::items_from`]
+//! continues after it.
+//!
+//! # Example
+//!
+//! ```
+//! use tinymemory_import::{Checkpoint, LegacyWorkspace};
+//! # let dir = tempfile::tempdir()?;
+//! # std::fs::create_dir_all(dir.path().join("memory"))?;
+//! # let db = rusqlite::Connection::open(dir.path().join("memory/memory.db"))?;
+//! # db.execute_batch(
+//! #     "CREATE TABLE memory_docs (document_id TEXT PRIMARY KEY, namespace TEXT NOT NULL,
+//! #        title TEXT NOT NULL, content TEXT NOT NULL, tags_json TEXT NOT NULL,
+//! #        metadata_json TEXT NOT NULL, updated_at REAL NOT NULL);
+//! #      CREATE TABLE episodic_log (id INTEGER PRIMARY KEY, session_id TEXT NOT NULL,
+//! #        timestamp REAL NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL);
+//! #      CREATE TABLE user_profile (facet_id TEXT PRIMARY KEY, facet_type TEXT NOT NULL,
+//! #        key TEXT NOT NULL, value TEXT NOT NULL, confidence REAL NOT NULL,
+//! #        last_seen_at REAL NOT NULL);
+//! #      INSERT INTO memory_docs VALUES
+//! #        ('d1', 'document_notes', 'Plan', 'Ship v2.', '[]', '{}', 1700000000.0);
+//! #      INSERT INTO user_profile VALUES ('f1', 'preference', 'tone', 'terse', 0.9, 1700000000.0);",
+//! # )?;
+//! # drop(db);
+//! # let path = dir.path();
+//! let workspace = LegacyWorkspace::open(path)?;
+//!
+//! let mut saved = Checkpoint::default();
+//! for imported in workspace.items_from(&saved) {
+//!     let imported = imported?;
+//!     // engine.store(imported.item).await?;
+//!     saved = imported.checkpoint; // persist it
+//! }
+//! assert_eq!(saved.documents.as_deref(), Some("d1"));
+//! assert_eq!(saved.profile.as_deref(), Some("f1"));
+//!
+//! // A later run resumes after the last stored item: nothing is left.
+//! assert_eq!(workspace.items_from(&saved).count(), 0);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
-mod keys;
-mod source;
+mod checkpoint;
+mod convert;
+mod error;
+mod items;
+mod sections;
+mod workspace;
 
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+pub use checkpoint::{Checkpoint, ChunkCursor, ImportedItem};
+pub use error::{Error, Result};
+pub use items::{DEFAULT_PAGE_SIZE, Items};
+pub use workspace::LegacyWorkspace;
 
-use anyhow::{bail, Context, Result};
-use directories::UserDirs;
-use serde::{Deserialize, Serialize};
-use tinymemory_api::traits::Memory;
-use tinymemory_api::types::MemoryCategory;
-
-use keys::{backup_target_memory, next_available_key, paths_equal};
-use source::{collect_source_entries, hermes_file_mappings};
-
-/// One importable memory, before it is written.
-#[derive(Debug, Clone)]
-pub(crate) struct SourceEntry {
-    pub(crate) key: String,
-    pub(crate) content: String,
-    pub(crate) category: MemoryCategory,
-}
-
-/// What an import read and wrote.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct MigrationStats {
-    /// Entries read from the source's SQLite database (OpenClaw only).
-    pub from_sqlite: usize,
-    /// Entries read from markdown files.
-    pub from_markdown: usize,
-    /// Entries written to the target.
-    pub imported: usize,
-    /// Entries skipped because the target already held identical content.
-    pub skipped_unchanged: usize,
-    /// Entries written under a new key because the key held different content.
-    pub renamed_conflicts: usize,
-}
-
-/// The outcome of one import run.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MigrationReport {
-    /// The workspace that was read.
-    pub source_workspace: PathBuf,
-    /// The workspace the entries were (or, in a dry run, would be) written to.
-    pub target_workspace: PathBuf,
-    /// Whether nothing was written.
-    pub dry_run: bool,
-    /// Counts.
-    pub stats: MigrationStats,
-    /// Non-fatal observations (missing files, the backup location, ...).
-    pub warnings: Vec<String>,
-}
-
-/// Where an OpenClaw workspace lives when the caller names none.
-pub fn resolve_openclaw_workspace(source: Option<PathBuf>) -> Result<PathBuf> {
-    if let Some(path) = source {
-        return Ok(path);
-    }
-
-    let Some(user_dirs) = UserDirs::new() else {
-        bail!("Failed to determine user home directory");
-    };
-
-    Ok(user_dirs.home_dir().join(".openclaw").join("workspace"))
-}
-
-/// Where a Hermes workspace lives when the caller names none.
-pub fn resolve_hermes_workspace(source: Option<PathBuf>) -> Result<PathBuf> {
-    if let Some(path) = source {
-        return Ok(path);
-    }
-
-    let Some(user_dirs) = UserDirs::new() else {
-        bail!("Failed to determine user home directory");
-    };
-
-    #[cfg(windows)]
-    {
-        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
-            return Ok(PathBuf::from(local_app_data).join("hermes"));
-        }
-    }
-
-    Ok(user_dirs.home_dir().join(".hermes"))
-}
-
-/// Import an OpenClaw workspace into the target.
-///
-/// `source_workspace` defaults to `~/.openclaw/workspace`. `open_target` yields
-/// the memory to write into; it is only called when there is something to
-/// import and this is not a dry run, after the backup.
-pub async fn migrate_openclaw_memory(
-    target_workspace: &Path,
-    source_workspace: Option<PathBuf>,
-    dry_run: bool,
-    open_target: impl FnOnce() -> Result<Arc<dyn Memory>>,
-) -> Result<MigrationReport> {
-    let source_workspace = resolve_openclaw_workspace(source_workspace)?;
-    if !source_workspace.exists() {
-        bail!(
-            "OpenClaw workspace not found at {}. Provide a valid source workspace.",
-            source_workspace.display()
-        );
-    }
-
-    if paths_equal(&source_workspace, target_workspace) {
-        bail!("Source workspace matches current OpenHuman workspace; refusing self-migration");
-    }
-
-    let mut stats = MigrationStats::default();
-    let entries = collect_source_entries(&source_workspace, &mut stats)?;
-    let mut warnings = Vec::new();
-
-    if entries.is_empty() {
-        warnings.push(format!(
-            "No importable memory found in {}",
-            source_workspace.display()
-        ));
-        warnings.push("Checked for: memory/brain.db, MEMORY.md, memory/*.md".to_string());
-        return Ok(MigrationReport {
-            source_workspace,
-            target_workspace: target_workspace.to_path_buf(),
-            dry_run,
-            stats,
-            warnings,
-        });
-    }
-
-    if dry_run {
-        return Ok(MigrationReport {
-            source_workspace,
-            target_workspace: target_workspace.to_path_buf(),
-            dry_run,
-            stats,
-            warnings,
-        });
-    }
-
-    if let Some(backup_dir) = backup_target_memory(target_workspace)? {
-        warnings.push(format!("Backup created: {}", backup_dir.display()));
-    }
-
-    let memory = open_target()?;
-
-    for (idx, entry) in entries.into_iter().enumerate() {
-        let mut key = entry.key.trim().to_string();
-        if key.is_empty() {
-            key = format!("openclaw_{idx}");
-        }
-
-        if let Some(existing) = memory.get("", &key).await? {
-            if existing.content.trim() == entry.content.trim() {
-                stats.skipped_unchanged += 1;
-                continue;
-            }
-
-            let renamed = next_available_key(memory.as_ref(), &key).await?;
-            key = renamed;
-            stats.renamed_conflicts += 1;
-        }
-
-        memory
-            .store("", &key, &entry.content, entry.category, None)
-            .await?;
-        stats.imported += 1;
-    }
-
-    Ok(MigrationReport {
-        source_workspace,
-        target_workspace: target_workspace.to_path_buf(),
-        dry_run,
-        stats,
-        warnings,
-    })
-}
-
-/// Import a Hermes workspace (`MEMORY.md`, `USER.md`, `SOUL.md`) into the target.
-///
-/// `source_workspace` defaults to `~/.hermes` (`%LOCALAPPDATA%\\hermes` on
-/// Windows). `open_target` is called under the same conditions as in
-/// [`migrate_openclaw_memory`].
-pub async fn migrate_hermes_memory(
-    target_workspace: &Path,
-    source_workspace: Option<PathBuf>,
-    dry_run: bool,
-    open_target: impl FnOnce() -> Result<Arc<dyn Memory>>,
-) -> Result<MigrationReport> {
-    let source_workspace = resolve_hermes_workspace(source_workspace)?;
-    if !source_workspace.exists() {
-        bail!(
-            "Hermes workspace not found at {}. Provide a valid source workspace.",
-            source_workspace.display()
-        );
-    }
-
-    if paths_equal(&source_workspace, target_workspace) {
-        bail!("Source workspace matches current OpenHuman workspace; refusing self-migration");
-    }
-
-    let mut stats = MigrationStats::default();
-    let mut warnings = Vec::new();
-    let mut entries = Vec::new();
-
-    for (filename, key, category) in hermes_file_mappings() {
-        let path = source_workspace.join(filename);
-        if !path.exists() {
-            warnings.push(format!(
-                "{filename} not found in {}",
-                source_workspace.display()
-            ));
-            continue;
-        }
-        let content = fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read {}", path.display()))?;
-        if content.trim().is_empty() {
-            warnings.push(format!("{filename} is empty, skipping"));
-            continue;
-        }
-        entries.push(SourceEntry {
-            key: key.to_string(),
-            content: content.trim().to_string(),
-            category,
-        });
-    }
-
-    stats.from_markdown = entries.len();
-
-    if entries.is_empty() {
-        warnings.push(format!(
-            "No importable memory found in {}",
-            source_workspace.display()
-        ));
-        warnings.push("Checked for: MEMORY.md, USER.md, SOUL.md".to_string());
-        return Ok(MigrationReport {
-            source_workspace,
-            target_workspace: target_workspace.to_path_buf(),
-            dry_run,
-            stats,
-            warnings,
-        });
-    }
-
-    if dry_run {
-        return Ok(MigrationReport {
-            source_workspace,
-            target_workspace: target_workspace.to_path_buf(),
-            dry_run,
-            stats,
-            warnings,
-        });
-    }
-
-    if let Some(backup_dir) = backup_target_memory(target_workspace)? {
-        warnings.push(format!("Backup created: {}", backup_dir.display()));
-    }
-
-    let memory = open_target()?;
-
-    for entry in entries {
-        let mut key = entry.key;
-
-        if let Some(existing) = memory.get("", &key).await? {
-            if existing.content.trim() == entry.content.trim() {
-                stats.skipped_unchanged += 1;
-                continue;
-            }
-            let renamed = next_available_key(memory.as_ref(), &key).await?;
-            key = renamed;
-            stats.renamed_conflicts += 1;
-        }
-
-        memory
-            .store("", &key, &entry.content, entry.category, None)
-            .await?;
-        stats.imported += 1;
-    }
-
-    Ok(MigrationReport {
-        source_workspace,
-        target_workspace: target_workspace.to_path_buf(),
-        dry_run,
-        stats,
-        warnings,
-    })
-}
-
-#[cfg(test)]
-#[path = "import_tests.rs"]
-mod tests;
+/// Re-exported so a host names the same item type the importer yields.
+pub use tinymemory_api::StoreItem;

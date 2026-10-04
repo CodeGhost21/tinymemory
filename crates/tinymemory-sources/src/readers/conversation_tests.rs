@@ -21,8 +21,6 @@ fn conversation_source() -> MemorySourceEntry {
         max_commits: None,
         max_issues: None,
         max_prs: None,
-        query: None,
-        since_days: None,
         max_items: None,
         selector: None,
         max_tokens_per_sync: None,
@@ -208,4 +206,58 @@ async fn read_item_rejects_path_traversal() {
         .unwrap_err()
         .to_string()
         .contains("path traversal denied"));
+}
+
+#[test]
+fn roles_map_onto_the_contract_and_unknown_roles_are_dropped() {
+    let thread = serde_json::json!({
+        "messages": [
+            {"role": "Human", "content": "a"},
+            {"role": "agent", "content": "b"},
+            {"role": "system", "content": "c"},
+            {"role": "function", "content": "d"},
+            {"role": "narrator", "content": "e"},
+            {"content": "f"},
+            {"role": "user", "content": "   "},
+        ]
+    });
+    let roles: Vec<Role> = thread_turns(&thread).iter().map(|turn| turn.role).collect();
+    assert_eq!(
+        roles,
+        [Role::User, Role::Assistant, Role::System, Role::Tool]
+    );
+}
+
+#[test]
+fn timestamps_parse_from_rfc3339_epoch_seconds_and_millis() {
+    let rfc = parse_timestamp(&serde_json::json!("2024-05-21T12:00:00+02:00"));
+    assert_eq!(rfc.map(|at| at.timestamp()), Some(1_716_285_600));
+    let seconds = parse_timestamp(&serde_json::json!(1_716_285_600));
+    assert_eq!(seconds, rfc);
+    let millis = parse_timestamp(&serde_json::json!(1_716_285_600_000_i64));
+    assert_eq!(millis, rfc);
+    assert_eq!(parse_timestamp(&serde_json::json!("yesterday")), None);
+    assert_eq!(parse_timestamp(&serde_json::json!(true)), None);
+}
+
+#[test]
+fn read_thread_returns_title_turns_and_mtime() {
+    let tmp = tempdir().unwrap();
+    let threads_dir = tmp.path().join("threads");
+    fs::create_dir_all(&threads_dir).unwrap();
+    fs::write(
+        threads_dir.join("t.json"),
+        r#"{"title":"T","messages":[{"role":"user","content":"hi","timestamp":10}]}"#,
+    )
+    .unwrap();
+
+    let thread = ConversationReader.read_thread("t", tmp.path()).unwrap();
+    assert_eq!(thread.id, "t");
+    assert_eq!(thread.title.as_deref(), Some("T"));
+    assert_eq!(thread.turns.len(), 1);
+    assert_eq!(thread.turns[0].at.map(|at| at.timestamp()), Some(10));
+    assert!(thread.modified.is_some());
+
+    let error = ConversationReader.read_thread("", tmp.path()).unwrap_err();
+    assert!(matches!(error, Error::Invalid(_)), "got {error:?}");
 }
