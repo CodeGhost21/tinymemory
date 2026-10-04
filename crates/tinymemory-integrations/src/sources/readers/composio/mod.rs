@@ -4,8 +4,8 @@
 //! with its credentials and hands the responses to [`crate::sources::composio`], which
 //! normalises them and maps them to `StoreItem`s. For a Composio source,
 //! `list_items` returns the connection as one sync target and `read_item`
-//! describes that pipeline. The reader exists so the registry can query every
-//! source kind uniformly.
+//! describes that pipeline. The reader exists so `reader_for_request` can hand
+//! out a reader for every source kind uniformly.
 
 use std::path::Path;
 
@@ -21,8 +21,8 @@ use crate::sources::types::{
 ///
 /// Composio data arrives through the provider sync pipeline rather than
 /// item-by-item, so `read_item` returns a description of that rather than
-/// content. The reader exists so the registry can query every source kind
-/// uniformly.
+/// content. The reader exists so `reader_for_request` can serve every source
+/// kind uniformly.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ComposioReader;
 
