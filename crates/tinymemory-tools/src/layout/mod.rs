@@ -25,6 +25,11 @@
 //! below a node of its own (`team:acme`), which keeps tenants apart on one
 //! engine.
 //!
+//! **Core scopes** share memory beyond one layout. A host that nests every
+//! tenant under one company node (`ws:acme/team:hive`) can name an ancestor
+//! of the root as a [`CoreScope`]: a hive-wide core or a company brain that
+//! every agent below it recalls, read exactly so sibling tenants stay apart.
+//!
 //! # Example
 //!
 //! ```
@@ -43,10 +48,12 @@
 //! ```
 
 mod source;
+mod types;
 
 use tinymemory_api::{Error, ItemKind, MetaFilter, Namespace, Reach, Result, Segment, SegmentKind};
 
 pub use source::BrainSource;
+pub use types::{CoreScope, DEFAULT_CORE_LIMIT};
 
 /// Deepest a layout root may be: one level must remain for the brain's and
 /// the agents' nodes.
@@ -78,6 +85,33 @@ impl MemoryLayout {
     #[must_use]
     pub fn root(&self) -> &Namespace {
         &self.root
+    }
+
+    /// The root's strict ancestors, root first: the nodes a [`CoreScope`]
+    /// may name. Empty for a layout at [`Namespace::ROOT`].
+    #[must_use]
+    pub fn ancestors(&self) -> Vec<Namespace> {
+        let mut nodes = Reach::of(self.root.clone()).nodes();
+        nodes.pop();
+        nodes
+    }
+
+    /// Checks `at` may be a core scope of this layout: a strict ancestor of
+    /// the root.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::InvalidRequest`] for the root itself, a node below it, or a
+    /// node beside it.
+    pub fn admits_core(&self, at: &Namespace) -> Result<()> {
+        if at != &self.root && Reach::of(self.root.clone()).admits(at) {
+            Ok(())
+        } else {
+            Err(Error::InvalidRequest(format!(
+                "a core scope must be an ancestor of the layout root `{}`, `{at}` is not",
+                self.root
+            )))
+        }
     }
 
     /// The node `source`'s documents live at.
