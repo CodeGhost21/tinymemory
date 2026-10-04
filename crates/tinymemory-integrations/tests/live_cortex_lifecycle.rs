@@ -181,6 +181,13 @@ async fn live_core_scope_recall_and_promotion_respect_tenant_boundaries() {
         )
         .await
         .expect("promote into company scope");
+    let build = agent
+        .core_build(&company)
+        .expect("build job for configured company scope");
+    agent
+        .run_background(build)
+        .await
+        .expect("run the company-scope belief build");
     engine
         .store(StoreItem::learning(
             "Quasar holidays reveal the other tenant's private schedule",
