@@ -58,7 +58,7 @@ use tinymemory_tools::{
 };
 
 use agent::{ScriptedAgent, ms};
-use inspect::{Derived, Inspector};
+use inspect::{Captured, Derived, Inspector};
 use llm::Llm;
 use scenarios::{MAIN, Probe, Scenario, Step, Via};
 use score::{Latency, ProbeResult, Totals, grade, score};
@@ -133,6 +133,8 @@ struct Synthesis {
     built: usize,
     ms: f64,
     derived: Vec<Derived>,
+    /// Every fact, belief and conflict CortexDB holds for the scenario.
+    captured: Captured,
 }
 
 /// One scenario's results.
@@ -190,6 +192,10 @@ async fn main() -> Result<(), Error> {
             ..RecallPolicy::default()
         },
     };
+    let usage_before = match &eval.inspector {
+        Some(inspector) => Some(inspector.usage().await?),
+        None => None,
+    };
     let mut timings = Timings::default();
     let mut reports = Vec::new();
     for scenario in scenarios::all() {
@@ -215,6 +221,17 @@ async fn main() -> Result<(), Error> {
     }
 
     print_summary(&args.label, &reports, &timings);
+    let usage = match (&eval.inspector, usage_before) {
+        (Some(inspector), Some(before)) => Some(inspector.usage().await?.since(before)),
+        _ => None,
+    };
+    if let Some(usage) = usage {
+        println!(
+            "\n## Model usage\n\nCortexDB's models: {} calls, {} tokens, ${:.2} as its routers \
+             price them (excludes the `--llm` answers).",
+            usage.calls, usage.tokens, usage.cost_usd
+        );
+    }
     if let Some(path) = &args.json {
         if let Some(dir) = std::path::Path::new(path).parent() {
             std::fs::create_dir_all(dir)?;
@@ -225,6 +242,7 @@ async fn main() -> Result<(), Error> {
             "run": run,
             "scenarios": reports,
             "timings": timings,
+            "usage": usage,
         });
         std::fs::write(path, serde_json::to_string_pretty(&out)?)?;
         println!("\nwrote {path}");
@@ -397,11 +415,16 @@ impl Eval {
             for tenant in tenants(scenario) {
                 let layout = layout(run, scenario.name, tenant)?;
                 let node = layout.root().to_string();
-                for scope in inspector.scopes(&node).await? {
+                let scopes = inspector.scopes(&node).await?;
+                for scope in &scopes {
                     synthesis
                         .derived
-                        .push(inspector.derived(&scope, &questions).await?);
+                        .push(inspector.derived(scope, &questions).await?);
                 }
+                let captured = inspector.captured(&scopes).await?;
+                synthesis.captured.facts.extend(captured.facts);
+                synthesis.captured.beliefs.extend(captured.beliefs);
+                synthesis.captured.conflicts.extend(captured.conflicts);
             }
         }
         let beliefs: usize = synthesis.derived.iter().map(|d| d.beliefs).sum();
@@ -411,9 +434,29 @@ impl Eval {
              recall finds {facts} facts, {beliefs} beliefs",
             synthesis.outcomes, synthesis.scopes, synthesis.ms, synthesis.built
         );
+        if self.inspector.is_some() {
+            let held = &synthesis.captured;
+            println!(
+                "   captured {} facts, {} beliefs, {} conflicts",
+                held.facts.len(),
+                held.beliefs.len(),
+                held.conflicts.len()
+            );
+            for conflict in &held.conflicts {
+                println!("     conflict {conflict}");
+            }
+        }
 
         for probe in &scenario.probes {
-            probes.push(self.probe(scenario, probe, "synthesis", timings).await?);
+            let mut result = self.probe(scenario, probe, "synthesis", timings).await?;
+            if self.inspector.is_some() && !probe.expect.is_empty() {
+                let held = &synthesis.captured;
+                result.captured = Some(
+                    probe.expect.iter().all(|needle| held.mentions(needle))
+                        || probe.accept.iter().any(|needle| held.mentions(needle)),
+                );
+            }
+            probes.push(result);
         }
 
         if std::env::var("CORTEX_DB_KEEP").is_err() {

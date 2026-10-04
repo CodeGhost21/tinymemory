@@ -46,6 +46,9 @@ pub(crate) struct ProbeResult {
     /// The `--llm` model's answer from the same pack.
     pub(crate) llm_answer: Option<String>,
     pub(crate) llm_ok: Option<bool>,
+    /// Synthesis phase on CortexDB: whether a fact or belief CortexDB
+    /// derived holds the expected answer, whether or not the pack shows it.
+    pub(crate) captured: Option<bool>,
     pub(crate) ms: f64,
     pub(crate) tokens: usize,
     pub(crate) units: usize,
@@ -132,6 +135,7 @@ pub(crate) fn score(
         answer_ok,
         llm_answer: None,
         llm_ok: None,
+        captured: None,
         ms,
         tokens,
         units: units.len(),
@@ -162,6 +166,8 @@ pub(crate) struct Totals {
     pub(crate) answers_ok: usize,
     pub(crate) llm_scored: usize,
     pub(crate) llm_ok: usize,
+    pub(crate) captured_checked: usize,
+    pub(crate) captured: usize,
     pub(crate) contradictions: usize,
     pub(crate) fresh_first: usize,
     pub(crate) leak_checks: usize,
@@ -180,6 +186,10 @@ impl Totals {
                 totals.hits += usize::from(hit);
                 reciprocal += result.rank.map_or(0.0, |rank| 1.0 / rank as f64);
                 totals.answers_ok += usize::from(result.answer_ok == Some(true));
+                if let Some(held) = result.captured {
+                    totals.captured_checked += 1;
+                    totals.captured += usize::from(held);
+                }
                 if let Some(ok) = result.llm_ok {
                     totals.llm_scored += 1;
                     totals.llm_ok += usize::from(ok);
