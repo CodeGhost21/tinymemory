@@ -7,6 +7,7 @@
 //! | --- | --- | --- |
 //! | [`cortex`], [`registry`], [`config`] | `cortex` (default) | The CortexDB engine over its two wires, and building one from configuration |
 //! | `documents` | `documents`, `documents-office` | Format sniffing and conversion to markdown, emitting `StoreItem::Document` |
+//! | `brain` | `brain` | Converting files into the brain documents `tinymemory_tools::Brain` ingests, by source type |
 //! | `sources` | `sources`, `sources-network` | Readers turning folders, files, links, GitHub, RSS, Composio payloads and conversations into `StoreItem`s |
 //! | `safety` | `safety` | Secret and PII scrubbing for a `StoreItem` before it is stored |
 //! | `import` | `legacy-import` | Migrating a legacy v1 (embedded TinyCortex) workspace into any engine |
@@ -43,6 +44,8 @@ pub mod cortex;
 #[cfg(feature = "cortex")]
 pub mod registry;
 
+#[cfg(feature = "brain")]
+pub mod brain;
 #[cfg(feature = "documents")]
 pub mod documents;
 #[cfg(feature = "legacy-import")]

@@ -27,6 +27,11 @@ thiserror = { version = "2", optional = true }
 # decision.
 log = { version = "0.4", optional = true }
 
+# --- brain ---
+# `brain::brain_document` builds the `BrainDocument` the tools crate's
+# `Brain` ingests; the brain layout itself lives there.
+tinymemory-tools = { path = "../tinymemory-tools", optional = true }
+
 # --- cortex ---
 # CortexDB speaks HTTP/JSON. `stream` is for `bytes_stream()`: response bodies
 # are read against a byte cap rather than buffered whole, because the endpoint
@@ -81,7 +86,8 @@ rusqlite = { version = "0.40", features = ["bundled"], optional = true }
 # The behavioural suite every engine must pass, run over both CortexDB wires'
 # doubles, and the reference engine the import driver is tested against.
 tinymemory-api = { path = "../tinymemory-api", features = ["conformance"] }
-# `tests/live_cortexdb.rs` compiles `context.md` from a live server.
+# `tests/live_cortexdb.rs` compiles `context.md` from a live server, and the
+# agent lifecycle runs over the CortexDB doubles.
 tinymemory-tools = { path = "../tinymemory-tools" }
 # The CortexDB and TinyHumans doubles are real HTTP servers on loopback.
 axum = "0.8"
@@ -107,6 +113,9 @@ documents = ["dep:async-trait", "dep:serde", "dep:serde_json", "dep:thiserror"]
 # host to prepend to its `ConverterChain`. Off by default because a PDF parser
 # and a spreadsheet reader are real weight.
 documents-office = ["documents", "dep:pdf-extract", "dep:calamine", "dep:quick-xml", "dep:zip"]
+# `brain`: converting raw files into `tinymemory_tools::BrainDocument`s
+# placed under the source type their format implies.
+brain = ["documents", "dep:tinymemory-tools"]
 # `sources`: readers that turn folders, files and conversations into
 # `StoreItem`s, and the Composio payload normalisers. Links no HTTP stack.
 sources = ["documents", "dep:schemars", "dep:regex", "dep:walkdir", "dep:chrono", "dep:log", "dep:tracing"]
@@ -119,7 +128,7 @@ safety = ["dep:regex", "dep:serde_json", "dep:log"]
 # into any engine, resumably.
 legacy-import = ["dep:rusqlite", "dep:serde", "dep:serde_json", "dep:thiserror"]
 # Every integration.
-full = ["cortex", "documents-office", "sources-network", "safety", "legacy-import"]
+full = ["cortex", "documents-office", "brain", "sources-network", "safety", "legacy-import"]
 
 [[example]]
 name = "basic"
