@@ -417,7 +417,7 @@ async fn company() -> (Arc<ReferenceEngine>, AgentMemory) {
         ("root", "Every agent answers in English"),
         (
             "ws:acme/team:other",
-            "The other team's launch codename is Kestrel",
+            "The other team closes for the holidays on Monday",
         ),
         ("ws:acme/team:hive", "The hive ships on Mondays"),
     ] {
@@ -447,6 +447,7 @@ fn acme() -> Namespace {
 async fn a_core_scope_adds_its_section_after_learnings() {
     let (_, memory) = company().await;
     let without = memory.recall("").await.unwrap().markdown;
+    assert_eq!(without, "# Memory\n\n## Learnings\n\n- The hive ships on Mondays");
     assert!(!without.contains("holidays"), "{without}");
 
     let memory = memory
