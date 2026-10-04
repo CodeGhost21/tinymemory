@@ -12,6 +12,11 @@
 //! Both declare [`tinymemory_api::FetchMode::Hybrid`] only: CortexDB's
 //! recall body has no keyword/vector switch (see [`cortexdb_descriptor`]).
 //!
+//! Hosts normally build an engine through [`crate::registry::build_engine`] or
+//! [`crate::config::MemoryConfig::build`] rather than naming
+//! [`CortexEngine`]. Errors are the contract's [`tinymemory_api::Error`]; see
+//! [`error_code`] and [`is_insufficient_credits`] for hosted failures.
+//!
 //! # Storage layout
 //!
 //! Items live in one scope per kind under the TinyMemory root:
@@ -22,8 +27,9 @@
 //! kind, text and full metadata, and each event carries lookup labels (digests
 //! of the item id and of the exact-match metadata fields) so reads can narrow
 //! server-side before the full [`tinymemory_api::MetaFilter`] is applied
-//! client-side. The crate's `README.md` describes the layout and every engine
-//! behaviour it is shaped around.
+//! client-side. This module's `README.md` summarises the layout and every
+//! engine behaviour it is shaped around; `docs/architecture/cortex.md`,
+//! `cortex-wire.md` and `cortex-flows.md` give the full reference.
 //!
 //! # Example
 //!

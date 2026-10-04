@@ -1,6 +1,6 @@
 //! The engine's errors are the contract's errors.
 //!
-//! This crate does not define a parallel `Error`. Every public operation is a
+//! This module does not define a parallel `Error`. Every public operation is a
 //! [`tinymemory_api::MemoryEngine`] method, and those return
 //! [`tinymemory_api::Error`]; a second enum would only be converted into it at
 //! every boundary and would invite variants the host cannot act on. So the

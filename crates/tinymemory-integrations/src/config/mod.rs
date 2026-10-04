@@ -1,8 +1,22 @@
 //! [`MemoryConfig`]: which engine a host uses and how each is reached.
 //!
 //! The config holds no credential. A host keeps its keys in its own secret
-//! store and hands one to [`crate::build_engine`] as an
-//! [`crate::EngineCredential`], so a config file can be shared or logged.
+//! store and hands one to [`crate::registry::build_engine`] as an
+//! [`crate::registry::EngineCredential`], so a config file can be shared or
+//! logged.
+//!
+//! The same shape is read from TOML or JSON:
+//!
+//! ```toml
+//! engine = "cortexdb"
+//!
+//! [engines.cortexdb]
+//! endpoint = "https://cortex.example.com"
+//! ```
+//!
+//! `engines` is optional, an engine with no entry uses its defaults, and a
+//! blank or absent `endpoint` means the engine's default endpoint. Unknown
+//! fields are ignored when reading.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -18,7 +32,7 @@ pub const DEFAULT_ENGINE: &str = crate::cortex::TINYHUMANS_ENGINE_ID;
 /// Which engine a host uses, and per-engine settings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemoryConfig {
-    /// The selected engine's id (see [`crate::list_engines`]).
+    /// The selected engine's id (see [`crate::registry::list_engines`]).
     pub engine: String,
     /// Settings per engine id. An engine with no entry uses its defaults.
     #[serde(default)]
