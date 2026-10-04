@@ -49,6 +49,8 @@ server you started by hand (which uses the compose file's own project on
   the document; `recall` (CortexDB's answer route) answers with citations;
   `tinymemory_context::compile` builds a `context.md` that carries the
   learning; and a filter `forget` removes all three.
+- With `documents-office`, a generated DOCX is converted by `OfficeConverter`,
+  stored through the CortexDB engine, and listed back with its extracted text.
 
 OpenHuman runs its own end-to-end test against this harness through the real
 core binary (`scripts/test-memory-cortexdb-live.sh` in that repository).

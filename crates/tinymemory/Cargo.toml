@@ -38,7 +38,10 @@ toml = "1"
 serde_json = "1"
 # The registry tests implement `BearerSource`.
 async-trait = "0.1"
-tokio = { version = "1", features = ["macros", "rt"] }
+tokio = { version = "1", features = ["macros", "rt", "time"] }
+# The live Office pipeline test converts a real OOXML archive and stores the
+# resulting document through the CortexDB engine.
+zip = { version = "8", default-features = false, features = ["deflate"] }
 
 # One feature per optional crate, all additive and none on by default: naming
 # no feature gets the contract, the registry and the CortexDB engines.
@@ -46,6 +49,9 @@ tokio = { version = "1", features = ["macros", "rt"] }
 default = []
 # Format sniffing and conversion to markdown (`tinymemory::documents`).
 documents = ["dep:tinymemory-documents"]
+# `OfficeConverter`: PDF, DOCX, PPTX and XLSX to markdown in-process, for a
+# host to prepend to its `ConverterChain`. Implies `documents`.
+documents-office = ["documents", "tinymemory-documents/office"]
 # Source readers that emit `StoreItem`s (`tinymemory::sources`).
 sources = ["dep:tinymemory-sources"]
 # The network readers in `sources` (GitHub, RSS, web pages, URL fetch).
@@ -61,7 +67,7 @@ legacy-import = ["import"]
 # The behavioural suite and reference engine (`tinymemory::conformance`).
 conformance = ["dep:tinymemory-conformance"]
 # Everything.
-full = ["documents", "sources-network", "safety", "context", "legacy-import", "conformance"]
+full = ["documents", "documents-office", "sources-network", "safety", "context", "legacy-import", "conformance"]
 
 [lints.rust]
 unsafe_code = "forbid"
