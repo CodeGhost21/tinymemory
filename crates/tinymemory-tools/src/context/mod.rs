@@ -7,13 +7,24 @@
 //! and most confident first, and renders a markdown document with frontmatter
 //! recording `generated_at`, `engine`, `tokens` and `refs`.
 //!
+//! The document is `---` frontmatter, a `# Context` heading, one `## <heading>`
+//! section per brief that cited something, and a `## Learnings` bullet list.
+//! `tokens` in the frontmatter is the document's own estimate, frontmatter
+//! included, and `refs` lists every item the document cites in order of first
+//! citation. [`ContextSpec::reach`] confines every brief's recall and the
+//! learnings listing to one agent's part of the memory tree.
+//!
 //! Rules, from the spec:
 //!
 //! - The whole document fits `budget_tokens`, estimated at four characters
 //!   per token ([`estimate_tokens`]). Briefs keep their order; learnings are
-//!   trimmed first, then the last brief shrinks and is dropped.
-//! - An engine with nothing stored yields an empty document, not an error.
-//! - A brief that fails is skipped and logged; it does not fail the document.
+//!   trimmed first (one line at a time from the end), then the last brief
+//!   shrinks and is dropped once too little of it is left.
+//! - An engine with nothing stored yields an empty document, not an error. So
+//!   does a budget too small for anything to survive trimming.
+//! - A brief that fails, or cites nothing, is skipped (a failure is logged); a
+//!   failed learnings listing leaves the learnings out. Neither fails the
+//!   document. The only error is an invalid spec ([`ContextSpec::validate`]).
 //!
 //! # Example
 //!
