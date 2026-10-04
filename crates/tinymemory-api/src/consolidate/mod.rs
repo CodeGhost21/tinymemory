@@ -6,8 +6,9 @@
 //! so the contract only lets a host *ask* for it:
 //! [`MemoryEngine::consolidate`](crate::MemoryEngine::consolidate) names a
 //! [`ConsolidateRequest`] (which part of the tree, which kinds) and returns as
-//! soon as the engine has taken the job. What it builds comes back through
-//! ordinary reads.
+//! soon as the engine has taken the job, or once a quick build is done. What
+//! it builds comes back through the engine's reads (on CortexDB, the derived
+//! layers its answer route reads).
 //!
 //! An engine says how it consolidates in
 //! [`EngineDescriptor::consolidation`](crate::EngineDescriptor::consolidation):

@@ -78,7 +78,8 @@ by default, or a host node such as `team:acme`.
   for a belief build and returns as soon as the job is taken.
   - The default refuses with `Unsupported`.
   - The receipt status is one of `Started`, `Scheduled` or `Completed`, and
-    the receipt names any job handles and the number of scopes covered.
+    the receipt names any job handles, the number of scopes covered and,
+    for a completed build that reports it, the beliefs `built`.
 - **`EngineDescriptor::consolidation`** declares how the engine consolidates:
   `None`, `OnDemand` or `Scheduled`.
 - **Conformance** adds two checks:
@@ -163,8 +164,9 @@ skipped, engine }`.
   - `store_with(Accepted)` writes without `?wait=indexed` and skips the
     visibility waits.
   - `consolidate` posts `{ "scope": … }` to `v1/beliefs/build` once per scope
-    that is held in reach and admitted, and answers `Started` with any job
-    handles.
+    that is held in reach and admitted. The server builds within the
+    request, so the receipt is `Completed` with the beliefs `built`; an
+    answer that names a job instead makes it `Started` with the handles.
 - **CortexDB, TinyHumans wire:** declares `Scheduled` and sends nothing.
 
 ## Invariants

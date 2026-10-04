@@ -41,7 +41,8 @@ From `tinymemory_integrations::cortex`:
 
 Beyond the contract's reads and writes, the engine consolidates: Direct
 posts `v1/beliefs/build` once per held scope a `ConsolidateRequest` admits
-(`engine/consolidate.rs`, declared `Consolidation::OnDemand`); hosted
+(`engine/consolidate.rs`, declared `Consolidation::OnDemand`) and reports the
+beliefs built, since the server builds within the request; hosted
 declares `Consolidation::Scheduled` and sends nothing.
 
 A host usually goes through the registry instead of naming the engine:

@@ -202,10 +202,25 @@ request per scope, in order:
 { "scope": "app:tinymemory/source:pdf/app:documents" }
 ```
 
-CortexDB queues the build and answers at once. Any job handle in the answer
-(`job_id`, `build_id` or `id`) is collected into the receipt, which reports
-`Started`. Each build is sent once and never retried: a host can always ask
-again. The TinyHumans backend has no such route; its descriptor declares
+CortexDB v0.10 builds within the request, from the facts its enrichment has
+already extracted, and answers with what it built:
+
+```json
+{ "built": 2, "items": [ … ], "facts_scanned": 4, "events_scanned": 4,
+  "reasons": { "no_subject_or_predicate": 2 } }
+```
+
+When every answer carries `built`, the receipt is `Completed` with the counts
+summed in `built`. An answer naming a job instead (`job_id`, `build_id` or
+`id`) means the build was queued: the receipt is `Started` with the handles.
+A build takes seconds per scope with a real model (8–30 s for a whole
+scenario in [the eval](../evals/agent-memory.md)), so it belongs off the turn.
+Each build is sent once and never retried: a host can always ask again.
+
+The beliefs land in recall's derived layers. The answer route reads them, so
+a `SectionQuery::Answer` section (a compaction summary, a `context.md` brief)
+can use them. Fetch ranks stored items only, so a fetched section never
+shows a belief. The TinyHumans backend has no such route; its descriptor declares
 `Consolidation::Scheduled`, and `consolidate` sends nothing.
 
 ### Health

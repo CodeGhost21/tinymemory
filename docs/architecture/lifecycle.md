@@ -104,13 +104,19 @@ What a build does depends on the engine's `consolidation`:
 | Engine | `consolidation` | `run_background(BuildBeliefs)` |
 | --- | --- | --- |
 | Reference | `OnDemand` | distils one `Fact` per item at once → `Done` |
-| CortexDB direct | `OnDemand` | `POST v1/beliefs/build` per held scope → `Started` |
+| CortexDB direct | `OnDemand` | `POST v1/beliefs/build` per held scope, built within the request → `Done` |
 | CortexDB via TinyHumans | `Scheduled` | nothing sent → `Scheduled` |
 | an engine without it | `None` | `Skipped { reason }` |
 
-Built beliefs come back through ordinary reads. On CortexDB they come
-through recall's `facts` and `beliefs` layers, which the Learnings and Brain
-sections already fetch.
+Built beliefs come back through ordinary reads, but not every read:
+
+- On the reference engine they are `Learning` items, so the Learnings
+  section shows them.
+- On CortexDB they live in recall's `facts` and `beliefs` layers. The
+  answer route reads those, so answered sections (a compaction summary, a
+  `context.md` brief) can draw on them. Fetch ranks stored items only, so
+  the fetched sections of a pre-turn pack never show a belief. The
+  [eval](../evals/agent-memory.md#synthesis) measures this.
 
 ## Compaction and session start
 
