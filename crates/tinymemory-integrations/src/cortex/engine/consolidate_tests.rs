@@ -97,7 +97,11 @@ async fn builds_every_held_scope_in_reach_and_nothing_else() {
         .await
         .unwrap();
     assert_eq!(whole.scopes, 3, "every document scope below the root");
-    assert_eq!(whole.built, Some(3), "the counts of every scope, summed");
+    assert_eq!(
+        whole.built,
+        Some(2),
+        "the counts of every scope, summed; the pdf scope was built already"
+    );
     assert_eq!(state.seen.lock().unwrap().builds.len(), 4);
 }
 
