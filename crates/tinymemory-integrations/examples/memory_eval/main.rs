@@ -595,10 +595,11 @@ fn pack(pack: ContextPack) -> (String, usize) {
 /// One accuracy row.
 fn row(name: &str, phase: &str, t: &Totals) -> String {
     format!(
-        "| {name} | {phase} | {} | {} | {} | {:.2} | {} | {} |",
+        "| {name} | {phase} | {} | {} | {} | {} | {:.2} | {} | {} |",
         Totals::pct(t.hits, t.scored),
         Totals::pct(t.answers_ok, t.scored),
         Totals::pct(t.llm_ok, t.llm_scored),
+        Totals::pct(t.captured, t.captured_checked),
         t.mrr,
         Totals::pct(t.fresh_first, t.contradictions),
         if t.leak_checks == 0 {
@@ -613,9 +614,9 @@ fn print_summary(label: &str, reports: &[ScenarioReport], timings: &Timings) {
     let phases = ["recall", "synthesis"];
     println!("\n## Accuracy (`{label}`)\n");
     println!(
-        "| Scenario | Phase | Pack hit | Extractive answer | Model answer | MRR | Fresh first | Leaks |"
+        "| Scenario | Phase | Pack hit | Extractive answer | Model answer | Captured | MRR | Fresh first | Leaks |"
     );
-    println!("| --- | --- | --- | --- | --- | --- | --- | --- |");
+    println!("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
     let all: Vec<&ProbeResult> = reports.iter().flat_map(|r| &r.probes).collect();
     for report in reports {
         for phase in phases {
@@ -630,9 +631,9 @@ fn print_summary(label: &str, reports: &[ScenarioReport], timings: &Timings) {
 
     println!("\n## By question style\n");
     println!(
-        "| Style | Phase | Pack hit | Extractive answer | Model answer | MRR | Fresh first | Leaks |"
+        "| Style | Phase | Pack hit | Extractive answer | Model answer | Captured | MRR | Fresh first | Leaks |"
     );
-    println!("| --- | --- | --- | --- | --- | --- | --- | --- |");
+    println!("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
     for style in ["lexical", "paraphrase"] {
         for phase in phases {
             let t = Totals::of(
