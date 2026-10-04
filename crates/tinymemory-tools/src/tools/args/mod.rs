@@ -110,11 +110,6 @@ impl<'a> Args<'a> {
         Ok(element)
     }
 
-    /// The tool these arguments belong to.
-    pub(crate) fn tool(&self) -> &'static str {
-        self.tool
-    }
-
     /// Whether `key` is present and not `null`.
     pub(crate) fn has(&self, key: &str) -> bool {
         self.get(key).is_some()
