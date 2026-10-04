@@ -62,12 +62,6 @@ impl CortexEngine {
                 .await?;
             jobs.extend(job_id(&answer));
         }
-        log::debug!(
-            "[cortex] beliefs build requested reach={} scopes={} jobs={}",
-            req.reach.at,
-            scopes.len(),
-            jobs.len()
-        );
         Ok(ConsolidateReceipt {
             status: ConsolidateStatus::Started,
             jobs,
