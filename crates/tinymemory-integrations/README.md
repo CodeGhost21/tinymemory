@@ -102,10 +102,10 @@ and each converts into the contract error with `From`.
 
 Unit tests sit beside their modules in `mod_tests.rs` files. `tests/` holds
 the integration tests: `reader_dispatch` (sources), `legacy_import`,
-`documents_office`, `feature_surface` (every feature composing), and the live
-suites `live_cortexdb` and `office_live`, which need a reachable CortexDB and
-credentials from the environment and are named `live_*` so they are easy to
-exclude.
+`documents_office`, `feature_surface` (every feature composing), and the live suites
+`live_cortexdb` and `office_live`. The live suites skip themselves unless
+`TINYMEMORY_LIVE_CORTEXDB_URL` names a CortexDB server; `scripts/cortexdb-live.sh`
+boots the pinned harness in `integration/cortexdb/` and runs them against it.
 
 ## Architecture
 
