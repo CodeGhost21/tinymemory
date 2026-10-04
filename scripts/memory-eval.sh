@@ -21,7 +21,7 @@ port="${CORTEXDB_PORT:-3145}"
 label="${LABEL:-cortex-$models}"
 export CORTEXDB_PORT="$port"
 url="http://127.0.0.1:$port"
-compose=(docker compose --project-name "tinymemory-eval-$models" -f "$root/integration/cortexdb/docker-compose.yml")
+compose=(docker compose --project-name "tinymemory-eval-$models-$port" -f "$root/integration/cortexdb/docker-compose.yml")
 
 case "$models" in
   mock) ;;
