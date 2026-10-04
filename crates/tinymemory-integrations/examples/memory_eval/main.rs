@@ -128,6 +128,8 @@ struct Synthesis {
     jobs: usize,
     outcomes: BTreeMap<String, usize>,
     scopes: usize,
+    /// Beliefs the builds reported building.
+    built: usize,
     ms: f64,
     derived: Vec<Derived>,
 }
@@ -381,10 +383,15 @@ impl Eval {
                 JobOutcome::Skipped { .. } => "skipped",
             };
             *synthesis.outcomes.entry(outcome.to_string()).or_default() += 1;
-            synthesis.scopes += report.consolidation.map_or(0, |receipt| receipt.scopes);
+            if let Some(receipt) = report.consolidation {
+                synthesis.scopes += receipt.scopes;
+                synthesis.built += receipt.built.unwrap_or_default();
+            }
         }
         synthesis.ms = ms(started);
         timings.add("synthesis (all builds)", synthesis.ms);
+        let questions: Vec<&str> = scenario.probes.iter().map(|p| p.question).collect();
+        let questions = questions.join(" ");
         if let Some(inspector) = &self.inspector {
             for tenant in tenants(scenario) {
                 let layout = layout(run, scenario.name, tenant)?;
@@ -392,15 +399,16 @@ impl Eval {
                 for scope in inspector.scopes(&node).await? {
                     synthesis
                         .derived
-                        .push(inspector.derived(&scope, scenario.about).await?);
+                        .push(inspector.derived(&scope, &questions).await?);
                 }
             }
         }
         let beliefs: usize = synthesis.derived.iter().map(|d| d.beliefs).sum();
         let facts: usize = synthesis.derived.iter().map(|d| d.facts).sum();
         println!(
-            "   synthesis {:?} over {} scopes in {:.0} ms; derived {facts} facts, {beliefs} beliefs",
-            synthesis.outcomes, synthesis.scopes, synthesis.ms
+            "   synthesis {:?} over {} scopes in {:.0} ms: {} beliefs built; \
+             recall finds {facts} facts, {beliefs} beliefs",
+            synthesis.outcomes, synthesis.scopes, synthesis.ms, synthesis.built
         );
 
         for probe in &scenario.probes {
