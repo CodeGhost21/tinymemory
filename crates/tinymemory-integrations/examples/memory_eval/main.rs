@@ -72,6 +72,10 @@ const WINDOW: u32 = 8;
 /// The longest a scenario's writes may take to become visible.
 const SETTLE_TIMEOUT: Duration = Duration::from_secs(90);
 
+/// Consecutive empty, quiet polls of the enrichment queue (3 s apart) that
+/// count as drained.
+const DRAINED_POLLS: u32 = 4;
+
 /// The command line.
 struct Args {
     engine: String,
@@ -382,10 +386,17 @@ impl Eval {
         if let Some(inspector) = &self.inspector {
             let started = Instant::now();
             let cap = Duration::from_secs(self.enrich_wait);
-            // Give the queue a moment to take the last writes, then drain.
-            tokio::time::sleep(Duration::from_secs(2)).await;
-            while inspector.enrichment_pending().await? > 0 && started.elapsed() < cap {
-                tokio::time::sleep(Duration::from_secs(2)).await;
+            // Drained means empty with nothing newly queued for a few polls
+            // in a row: the queue empties between batches while later
+            // writes are still being taken in.
+            let mut quiet = 0;
+            let mut last_queued = None;
+            while quiet < DRAINED_POLLS && started.elapsed() < cap {
+                tokio::time::sleep(Duration::from_secs(3)).await;
+                let (pending, queued) = inspector.enrichment().await?;
+                let settled = pending == 0 && last_queued == Some(queued);
+                quiet = if settled { quiet + 1 } else { 0 };
+                last_queued = Some(queued);
             }
             let waited = ms(started);
             timings.add("enrichment (queue drained)", waited);
