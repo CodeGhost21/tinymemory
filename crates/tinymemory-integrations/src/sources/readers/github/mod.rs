@@ -1,9 +1,12 @@
 //! GitHub repo source reader.
 //!
 //! Pulls **project activity** (commits, issues, PRs) from a GitHub
-//! repository — not source code. Uses the `gh` CLI when available for
-//! authenticated, higher-rate-limit access; falls back to the public
-//! GitHub REST API for unauthenticated reads.
+//! repository — not source code. Commits are read from a local bare clone
+//! under `<workspace>/git_cache/` (`git` must be on `PATH`), falling back to
+//! the API when the clone fails. Issues and pull requests, and that fallback,
+//! go through the `gh` CLI when it is available (authenticated, higher rate
+//! limit) and otherwise the public, unauthenticated GitHub REST API.
+//! `gh_available` is probed once per process.
 //!
 //! ## Module layout
 //!
@@ -72,7 +75,9 @@ async fn gh_available() -> bool {
 }
 
 /// Reader for a GitHub repository source: lists and fetches commits, issues
-/// and pull requests via the REST API, and file content via a shallow clone.
+/// and pull requests. Item ids are `commit:<sha>`, `issue:<n>` and `pr:<n>`.
+/// Commits come from a local bare clone with an API fallback; issues and pull
+/// requests come from `gh api` or the REST API.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct GithubReader;
 
