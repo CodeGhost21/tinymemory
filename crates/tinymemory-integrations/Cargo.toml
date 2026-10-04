@@ -125,5 +125,21 @@ legacy-import = ["dep:rusqlite", "dep:serde", "dep:serde_json", "dep:thiserror"]
 # Every integration.
 full = ["cortex", "documents-office", "sources-network", "safety", "legacy-import"]
 
+[[example]]
+name = "basic"
+required-features = ["cortex"]
+
+[[test]]
+name = "live_cortexdb"
+required-features = ["cortex"]
+
+[[test]]
+name = "legacy_import"
+required-features = ["legacy-import"]
+
+[[test]]
+name = "reader_dispatch"
+required-features = ["sources"]
+
 [lints]
 workspace = true
