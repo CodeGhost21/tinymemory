@@ -8,7 +8,7 @@
 //! when the [`tinymemory_api::MetaFilter`] has a labelled field. The events
 //! are decoded back to items, the full filter is applied, repeats of an item
 //! are dropped keeping its best rank, and the scopes are interleaved rank by
-//! rank. CortexDB reports no per-hit score, so the score is the rank's,
+//! rank. The scopes are read a few at a time, in order. CortexDB reports no per-hit score, so the score is the rank's,
 //! `1 / (1 + rank)`. A conversation hit carries the whole conversation's
 //! text, assembled from all its turns.
 //!
@@ -19,6 +19,7 @@
 
 use std::collections::HashSet;
 
+use futures::{StreamExt, TryStreamExt, stream};
 use serde_json::{Value, json};
 use tinymemory_api::{FetchPage, FetchRequest, Hit, ItemKind, MetaFilter};
 
@@ -26,13 +27,18 @@ use super::CortexEngine;
 use super::cursor::{self, FetchCursor};
 use super::items::{hit, keeps};
 use crate::cortex::envelope::{Envelope, decode_event, labels, rebuild};
-use crate::cortex::error::Result;
+use crate::cortex::error::{Error, Result};
 
 /// The cursor tag of a fetch.
 const TAG: char = 'f';
 
 /// Events one recall pack may hold. Bounds how deep fetch pages can go.
 const MAX_PACK_EVENTS: usize = 1000;
+
+/// Recall packs read at once when a filter spans several scopes. Each is one
+/// query embedding and one ranking on the server; reading them one after
+/// the other made a turn's latency grow with the number of scopes.
+const PACKS_AT_ONCE: usize = 4;
 
 /// Raw events asked for per wanted hit: a conversation contributes several
 /// turns, and the client-side filter drops some.
@@ -80,12 +86,17 @@ impl CortexEngine {
             .saturating_add(1)
             .saturating_mul(EVENTS_PER_HIT)
             .min(MAX_PACK_EVENTS);
-        let mut per_scope = Vec::new();
-        for scope in self.scopes_for(&req.filter).await? {
-            let body = recall_body(&scope.path, &req.query, events, &req.filter);
-            let pack = self.log.recall(&body).await?;
-            per_scope.push(ranked(&pack, Some(scope.kind), &req.filter));
-        }
+        let scopes = self.scopes_for(&req.filter).await?;
+        let req = &req;
+        let per_scope: Vec<Vec<Envelope>> = stream::iter(scopes)
+            .map(|scope| async move {
+                let body = recall_body(&scope.path, &req.query, events, &req.filter);
+                let pack = self.log.recall(&body).await?;
+                Ok::<_, Error>(ranked(&pack, Some(scope.kind), &req.filter))
+            })
+            .buffered(PACKS_AT_ONCE)
+            .try_collect()
+            .await?;
         let merged = interleave(per_scope);
         let more = merged.len() > end;
         let page: Vec<(usize, Envelope)> = merged

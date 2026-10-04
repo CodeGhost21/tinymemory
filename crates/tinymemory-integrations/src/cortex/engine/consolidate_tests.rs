@@ -42,7 +42,10 @@ fn a_build_that_reports_its_count_completed() {
 
 #[test]
 fn a_queued_build_started_with_its_handles() {
-    let answers = [json!({ "built": 1 }), json!({ "status": "queued", "job_id": "j9" })];
+    let answers = [
+        json!({ "built": 1 }),
+        json!({ "status": "queued", "job_id": "j9" }),
+    ];
     let queued = receipt(&answers, 2);
     assert_eq!(queued.status, ConsolidateStatus::Started);
     assert_eq!(queued.jobs, ["j9"]);
