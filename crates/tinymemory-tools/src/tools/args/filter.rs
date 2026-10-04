@@ -7,7 +7,7 @@
 use chrono::{DateTime, Utc};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
-use tinymemory_api::{Error, Facet, FetchMode, ItemKind, MetaFilter, Result, SourceKind};
+use tinymemory_api::{Facet, FetchMode, ItemKind, MetaFilter, Result, SourceKind};
 
 use super::Args;
 use crate::tools::spec::schema::{EXPLORE_FACETS, FILTER_FIELDS};
@@ -16,7 +16,7 @@ use crate::tools::spec::schema::{EXPLORE_FACETS, FILTER_FIELDS};
 ///
 /// # Errors
 ///
-/// [`Error::InvalidRequest`] naming the offending `filter.*` field.
+/// [`tinymemory_api::Error::InvalidRequest`] naming the offending `filter.*` field.
 pub(crate) fn meta_filter(args: &Args<'_>, key: &str) -> Result<MetaFilter> {
     let Some(filter) = args.object(key, "filter.", &FILTER_FIELDS)? else {
         return Ok(MetaFilter::default());
@@ -42,7 +42,7 @@ pub(crate) fn meta_filter(args: &Args<'_>, key: &str) -> Result<MetaFilter> {
 ///
 /// # Errors
 ///
-/// [`Error::InvalidRequest`] for a missing value or one outside the list.
+/// [`tinymemory_api::Error::InvalidRequest`] for a missing value or one outside the list.
 pub(crate) fn facet(args: &Args<'_>, key: &str) -> Result<Facet> {
     let name = args.required_string(key)?;
     if !EXPLORE_FACETS.contains(&name.as_str()) {
@@ -58,7 +58,7 @@ pub(crate) fn facet(args: &Args<'_>, key: &str) -> Result<Facet> {
 ///
 /// # Errors
 ///
-/// [`Error::InvalidRequest`] for a value that is not one of `modes`.
+/// [`tinymemory_api::Error::InvalidRequest`] for a value that is not one of `modes`.
 pub(crate) fn fetch_mode(
     args: &Args<'_>,
     key: &str,
@@ -101,10 +101,6 @@ fn timestamp(args: &Args<'_>, key: &str) -> Result<Option<DateTime<Utc>>> {
         })
         .transpose()
 }
-
-/// Kept so the error type is named where every function here returns it.
-#[allow(dead_code, reason = "documents the error every reader here returns")]
-type _Error = Error;
 
 #[cfg(test)]
 #[path = "filter_tests.rs"]
