@@ -13,7 +13,7 @@
 //! [`EngineDescriptor::consolidation`](crate::EngineDescriptor::consolidation):
 //!
 //! - [`Consolidation::None`] — it does not; `consolidate` fails
-//!   [`Error::Unsupported`](crate::Error::Unsupported).
+//!   [`Error::Unsupported`].
 //! - [`Consolidation::OnDemand`] — `consolidate` starts (or runs) a build and
 //!   answers [`ConsolidateStatus::Started`] or
 //!   [`ConsolidateStatus::Completed`].
