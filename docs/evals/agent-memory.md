@@ -34,7 +34,7 @@ TinyMemory branch `agent-memory` · answer model `openai/gpt-4.1-mini`
   6500". Now that turns carry their dates, the model picks the current
   value every time.
 - **Synthesis runs but does not reach the pre-turn pack.** CortexDB builds
-  281 beliefs, but fetched sections only show stored items. The 2-probe
+  281 beliefs, but fetched sections only show stored items. The 1-probe
   gain after synthesis comes from the answer route (compaction) and from
   enrichment having had more time.
 - **The hot path is fast where it can be.** `post_turn` is a few
@@ -114,7 +114,7 @@ extracts no facts to build from. A build is seconds per scope, so it must
 never run on a turn. The library returns it as a `BackgroundJob`.
 
 What changed after synthesis: pack hits went from 36 to 37 and model
-answers from 35 to 37. The gains are in `restart_recall` and `compaction`,
+answers from 35 to 36. The gains are in `restart_recall` and `compaction`,
 both helped by more enrichment time and by the answer route, which reads
 the derived layers. The fetched sections of a pre-turn pack (Learnings,
 Brain, history, team) never show a belief. `CortexEngine::fetch` decodes
@@ -140,8 +140,10 @@ hot path. This is the largest gap the eval found; see
   about 2 ms.
 - The read half of `pre_turn` asks CortexDB for one recall pack per scope.
   Each pack embeds the query, which with real models is an OpenRouter round
-  trip (about 300–1000 ms). Repeated questions hit CortexDB's cache, so
-  the probe p50 is 13 ms.
+  trip (about 300–1000 ms). Probes, by contrast, ran at 13 ms p50. Half
+  of them repeat a question already asked in the first phase, which points
+  to an embedding cache on the server. This run did not confirm the
+  cause.
 - On `cortex-mock` (no network models) `pre_turn` is 13 ms p50 and 260 ms
   p95. The p95 is the first read under a new root, which discovers its
   scopes.
