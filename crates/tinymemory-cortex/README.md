@@ -102,24 +102,26 @@ as prefixes, so they cannot be labelled and are filtered only client-side.
   page boundaries. A conversation is emitted once, on the page holding its
   turn 0, with its text assembled from all its turns (one label lookup per
   page). Scores are `0`.
-- **Fetch (hybrid).** One recall per admitted kind scope with
+- **Fetch (hybrid).** One recall per scope read with
   `budgets.per_layer_limits.events`. Events are decoded to items and the full
-  filter is applied. Each item is kept once, at its best rank, and kinds are
+  filter is applied. Each item is kept once, at its best rank, and scopes are
   interleaved rank by rank. The score is `1/(1+rank)`, because CortexDB
   reports none. Conversation hits carry the whole conversation. The cursor is
   an offset into the merged ranking; the next page asks again with a larger
   budget, capped at 1000 events.
-- **Recall.** If exactly one kind is admitted, one pack is built over that
-  kind's scope. Otherwise the pack is built over `app:tinymemory` with
-  `view: "descend"`. The answer route is then called **once** with
-  `use_pack_id`. Hosted omits a null `answer_instructions`, because its schema
+- **Recall.** One scope read: one pack over it. An unscoped read over several
+  scopes: one pack over `app:tinymemory` with `view: "descend"`. A reach over
+  several scopes: one pack per scope (four at a time), exact, and the answer
+  comes from the pack holding the most admitted events. The answer route is
+  called **once** with `use_pack_id`. Hosted omits a null `answer_instructions`, because its schema
   is strict; Direct sends `null`. Citations come from the pack's
-  `layers.events`, decoded, filtered, one per item, capped at `limit`, with
+  `layers.events`, decoded, filtered (reach included), one per item, the most
+  specific node's first, capped at `limit`, with
   `score: None`. `model` is `diagnostics.answer_model`. A pack with no
   decodable events still returns the answer, with no citations.
-- **Forget.** `Ids` looks the items' labels up in each kind scope. `Filter`
-  (which must be non-empty) walks the admitted scopes and matches the full
-  filter. Either way the matched events are then removed with
+- **Forget.** `Ids` looks the items' labels up in every scope the engine
+  holds. `Filter` (which must be non-empty) walks the scopes it reads and
+  matches the full filter. Either way the matched events are then removed with
   `selector.memory_ids`, in batches of 100. An empty selector is never sent,
   and neither is `confirm_all`. `forgotten` counts items.
 - **Health.** Direct probes `GET v1/admin/health`. Hosted lists
