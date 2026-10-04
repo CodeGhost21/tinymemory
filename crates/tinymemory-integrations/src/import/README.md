@@ -1,12 +1,15 @@
-# tinymemory-import
+# import
 
-Reads a legacy (v1, embedded TinyCortex) workspace and yields TinyMemory v2
+The `import` module of `tinymemory-integrations` (feature `legacy-import`):
+reads a legacy (v1, embedded TinyCortex) workspace and yields TinyMemory v2
 `StoreItem`s, resumably. The v1 engine that wrote the store is not linked: the
 importer reads its SQLite files directly with `rusqlite`, opened read-only, and
 chunk bodies with `std::fs`. It never writes to the legacy workspace.
 
-The facade exposes this crate behind its `legacy-import` feature. The crate
-itself has no features: being the legacy reader is its whole job.
+The module has no sub-features: being the legacy reader is its whole job. It
+needs only `rusqlite` (bundled SQLite), `serde`, `serde_json` and `thiserror`.
+Architecture overview:
+[`docs/architecture/integrations.md`](../../../../docs/architecture/integrations.md).
 
 ## Surface
 

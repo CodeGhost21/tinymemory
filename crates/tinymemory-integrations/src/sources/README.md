@@ -4,7 +4,9 @@
 readers that turn a source into `StoreItem`s — a folder, a single file, a web
 page, a GitHub repository, an RSS feed, a Composio toolkit payload, or the
 host's local conversation threads. Conversion to markdown and language
-detection come from the sibling `documents` module.
+detection come from the sibling [`documents`](../documents/README.md) module.
+Architecture overview:
+[`docs/architecture/integrations.md`](../../../../docs/architecture/integrations.md).
 
 Where a host stores its configured sources, and how it edits them, is the
 host's business: this module reads a `MemorySourceEntry` it is handed and
@@ -19,8 +21,8 @@ checks it with `MemorySourceEntry::validate`, nothing more.
 | `fetch` | one URL into a `RawDocument` or a link item (`sources-network`); the RSS and web-page readers fetch through it with their own body caps |
 | `fetch::ssrf` | the SSRF guard: scheme and host policy, one address classifier for literal and resolved addresses, a public-only DNS resolver, per-hop redirect checks, and a capped body reader |
 | `items` | reader output to `StoreItem`s with `MemoryMeta` filled per kind; `collect_items` drives a reader end to end |
-| `composio` | toolkit normalisers (Gmail, Slack, GitHub, Linear, Notion, ClickUp), the `fields::pick_str` lookup they share, and `payload_items` |
-| `error` | the crate `Error`, mapped onto `tinymemory_api::Error` |
+| `composio` | toolkit normalisers (Gmail, Slack, GitHub, Linear, Notion, ClickUp), the `fields::pick_str` lookup they share, `normalise_payload` and `payload_items`. `readers::composio::ComposioReader` is only a placeholder reader |
+| `error` | the module `Error`, mapped onto `tinymemory_api::Error` |
 
 ## Kinds and metadata
 
@@ -50,8 +52,8 @@ the process working directory.
 
 `readers::reader_for` hands out only the local readers (folder, file,
 conversation), which are safe to drive on a timer. Network readers are
-constructed explicitly, or through `reader_for_request` for an explicit user
-request. Scheduling, credentials, OAuth and egress budgets stay with the host.
+constructed explicitly, or through `reader_for_request` (feature
+`sources-network`) for an explicit user request. Scheduling, credentials, OAuth and egress budgets stay with the host.
 
 ## Fetching
 
@@ -61,7 +63,10 @@ SSRF guard. A hostname is checked as text (private and reserved IP literals,
 are checked again by the client's resolver, which pins the connection to an
 address it has vetted, and every redirect hop is re-checked. Bodies are read
 against a cap while streaming: 32 MiB for `fetch_url`, 10 MiB for a web page,
-5 MiB for a feed. Failures are typed — `Invalid` for a refused or malformed
+5 MiB for a feed. The client sends the user agent `openhuman`, times out after
+20 seconds, and allows only `http(s)`. An IPv6 literal URL is always refused,
+even a public address (the bracketed host fails the IP parse and falls into the
+single-label rule): fail closed. Failures are typed — `Invalid` for a refused or malformed
 URL, `Unreachable`, `Upstream` for a failure status, `TooLarge`.
 
 Page titles and feed text are decoded with the `documents::html` helpers, so
@@ -69,7 +74,7 @@ named and numeric entities decode the same way everywhere.
 
 ## Features
 
-- `sources` — the local readers, `items`, `composio` and `types`. Links no
-  HTTP stack.
+- `sources` — the local readers, `items`, `composio` and `types`; implies
+  `documents`. Links no HTTP stack.
 - `sources-network` — adds the GitHub, RSS and web-page readers, `fetch`, and
   the SSRF guard.
