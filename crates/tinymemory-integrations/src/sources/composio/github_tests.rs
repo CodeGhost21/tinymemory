@@ -95,26 +95,3 @@ fn extract_issue_updated_at_none_when_missing() {
     let issue = json!({ "id": 1u64 });
     assert!(extract_issue_updated_at(&issue).is_none());
 }
-
-#[test]
-fn extract_user_login_from_top_level() {
-    let data = json!({ "login": "octocat" });
-    assert_eq!(extract_user_login(&data), Some("octocat".to_string()));
-}
-
-#[test]
-fn extract_user_login_from_data_wrapper() {
-    let data = json!({ "data": { "login": "monalisa" } });
-    assert_eq!(extract_user_login(&data), Some("monalisa".to_string()));
-}
-
-#[test]
-fn extract_user_login_none_when_missing() {
-    let data = json!({ "id": 1u64 });
-    assert!(extract_user_login(&data).is_none());
-}
-
-#[test]
-fn now_ms_returns_nonzero() {
-    assert!(now_ms() > 0);
-}

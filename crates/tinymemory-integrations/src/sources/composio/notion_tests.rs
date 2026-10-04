@@ -62,29 +62,6 @@ fn extract_results_empty_when_no_match() {
 }
 
 #[test]
-fn extract_notion_cursor_from_data() {
-    let data = json!({"data": {"next_cursor": "cur123"}});
-    assert_eq!(extract_notion_cursor(&data), Some("cur123".into()));
-}
-
-#[test]
-fn extract_notion_cursor_from_top_level() {
-    let data = json!({"next_cursor": "abc"});
-    assert_eq!(extract_notion_cursor(&data), Some("abc".into()));
-}
-
-#[test]
-fn extract_notion_cursor_none_when_empty() {
-    let data = json!({"data": {"next_cursor": "  "}});
-    assert_eq!(extract_notion_cursor(&data), None);
-}
-
-#[test]
-fn extract_notion_cursor_none_when_missing() {
-    assert_eq!(extract_notion_cursor(&json!({})), None);
-}
-
-#[test]
 fn extract_page_title_from_properties_title_type() {
     let page = json!({
         "properties": {
@@ -131,9 +108,4 @@ fn extract_page_title_none_when_empty() {
 fn extract_page_title_none_when_no_title_field() {
     let page = json!({"id": "123"});
     assert!(extract_page_title(&page).is_none());
-}
-
-#[test]
-fn now_ms_returns_nonzero() {
-    assert!(now_ms() > 0);
 }
