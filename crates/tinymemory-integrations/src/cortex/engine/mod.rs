@@ -105,6 +105,28 @@ impl CortexEngine {
         )
     }
 
+    /// The same engine, sending `headers` on every request: fixed,
+    /// non-credential headers such as a host's product attribution
+    /// (`x-sdk-name`). Later calls replace earlier ones.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Config`] for an invalid header name or value, or a header the
+    /// transport sets itself (`Authorization`, `Idempotency-Key`, the actor
+    /// header, `Host`, `Cookie`, …).
+    pub fn with_default_headers<K, V>(
+        mut self,
+        headers: impl IntoIterator<Item = (K, V)>,
+    ) -> Result<Self>
+    where
+        K: AsRef<str>,
+        V: AsRef<str>,
+    {
+        let map = crate::cortex::transport::default_headers(headers)?;
+        self.log.client.set_default_headers(map);
+        Ok(self)
+    }
+
     /// Which HTTP surface this engine talks to.
     #[must_use]
     pub fn wire(&self) -> CortexWire {

@@ -76,6 +76,14 @@ let config: MemoryConfig = serde_json::from_value(serde_json::json!({
 let engine = config.build(EngineCredential::Static(key))?;
 ```
 
+A host that must attribute its requests (the TinyHumans backend expects an
+`x-sdk-name` header naming the product) fixes them per engine, in
+configuration (`"engines": { "tinyhumans": { "headers": { "x-sdk-name":
+"my-product" } } }`) or with `CortexEngine::with_default_headers`. They ride
+every request; the transport refuses `Authorization`, `Idempotency-Key`, the
+actor header and the headers the HTTP stack sets, so the credential stays
+the `EngineCredential`'s alone.
+
 | Engine id | Where it runs | Consolidation (belief builds) |
 | --- | --- | --- |
 | `cortexdb` | a CortexDB server, `v1/*` routes | on demand: `v1/beliefs/build`, built within the request |

@@ -203,6 +203,13 @@ These were measured against a live CortexDB by the v1 adapter. The doubles in
 
 ## Transport
 
+- A host may fix non-credential headers on every request
+  (`CortexEngine::with_default_headers`, or `EngineSettings::headers` through
+  the registry), such as the `x-sdk-name` attribution the TinyHumans backend
+  expects. Reserved headers (`Authorization`, `Proxy-Authorization`, `Cookie`,
+  `Host`, `Content-Length`, `Idempotency-Key`, `X-Cortex-Actor`) are refused
+  with `Error::Config`, and no refusal echoes a value.
+
 - Credentialed cleartext endpoints that are not loopback are refused with
   `Error::Config`.
 - The bearer is resolved on every attempt and sent in a header marked

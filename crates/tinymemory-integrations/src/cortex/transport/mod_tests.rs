@@ -312,3 +312,40 @@ async fn the_hosted_wire_sends_no_actor() {
         "the backend names the actor"
     );
 }
+
+#[test]
+fn fixed_headers_refuse_reserved_and_malformed_entries() {
+    let map = default_headers([("x-sdk-name", "openhuman"), ("X-Product", "desktop")]).unwrap();
+    assert_eq!(map.get("x-sdk-name").unwrap(), "openhuman");
+    for reserved in [
+        "authorization",
+        "Proxy-Authorization",
+        "cookie",
+        "host",
+        "Idempotency-Key",
+        "x-cortex-actor",
+    ] {
+        assert!(
+            matches!(default_headers([(reserved, "v")]), Err(Error::Config(_))),
+            "{reserved} must be refused"
+        );
+    }
+    assert!(default_headers([("bad name", "v")]).is_err());
+    let bad_value = default_headers([("x-sdk-name", "a\r\nX-Injected: 1")])
+        .expect_err("a CR/LF value is refused");
+    assert!(!bad_value.to_string().contains("Injected"));
+}
+
+#[tokio::test]
+async fn fixed_headers_ride_every_request_beside_the_credential() {
+    let mut c = client("https://example.test");
+    c.set_default_headers(default_headers([("x-sdk-name", "openhuman")]).unwrap());
+    let request = c
+        .request(Method::GET, "v1/events")
+        .await
+        .unwrap()
+        .build()
+        .unwrap();
+    assert_eq!(request.headers().get("x-sdk-name").unwrap(), "openhuman");
+    assert!(request.headers().get(AUTHORIZATION).unwrap().is_sensitive());
+}

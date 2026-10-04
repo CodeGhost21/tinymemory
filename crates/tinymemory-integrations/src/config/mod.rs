@@ -72,6 +72,11 @@ pub struct EngineSettings {
     /// The engine's base URL; `None` uses the engine's default endpoint.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub endpoint: Option<String>,
+    /// Fixed headers sent on every request, such as the host's product
+    /// attribution (`x-sdk-name`). Never a credential: the transport refuses
+    /// `Authorization` and the other headers it sets itself.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub headers: BTreeMap<String, String>,
 }
 
 #[cfg(test)]

@@ -7,6 +7,7 @@ use super::*;
 fn settings(endpoint: Option<&str>) -> EngineSettings {
     EngineSettings {
         endpoint: endpoint.map(str::to_string),
+        ..EngineSettings::default()
     }
 }
 
@@ -141,4 +142,33 @@ fn credential_debug_never_shows_the_token() {
         format!("{:?}", EngineCredential::default()),
         "EngineCredential::None"
     );
+}
+
+#[test]
+fn fixed_headers_are_applied_and_a_credential_header_is_refused() {
+    let mut with_headers = settings(Some("https://cortex.example.test"));
+    with_headers
+        .headers
+        .insert("x-sdk-name".to_string(), "openhuman".to_string());
+    assert!(
+        build_engine(
+            CORTEXDB_ENGINE_ID,
+            &with_headers,
+            EngineCredential::Static("ctx_key".to_string())
+        )
+        .is_ok()
+    );
+
+    with_headers
+        .headers
+        .insert("Authorization".to_string(), "Bearer smuggled".to_string());
+    let refused = build_engine(
+        CORTEXDB_ENGINE_ID,
+        &with_headers,
+        EngineCredential::Static("ctx_key".to_string()),
+    )
+    .err()
+    .expect("a credential header is refused");
+    assert!(matches!(refused, Error::Config(_)), "{refused:?}");
+    assert!(!refused.to_string().contains("smuggled"));
 }
