@@ -91,3 +91,46 @@ async fn a_repeat_inside_a_batch_and_mixed_kinds_are_handled() {
         );
     }
 }
+
+#[tokio::test]
+async fn a_single_store_is_listed_and_settled_on_return_like_a_batch_of_one() {
+    for (engine, state) in both().await {
+        let wire = engine.wire();
+        let receipt = engine.store(doc("single settled note")).await.unwrap();
+        assert!(!receipt.replayed, "{wire:?}");
+        assert_eq!(
+            receipt.id.as_str(),
+            doc("single settled note").fingerprint(),
+            "{wire:?}"
+        );
+        let listed = engine
+            .list(ListRequest::new(MetaFilter::default(), 10))
+            .await
+            .unwrap();
+        assert_eq!(listed.items.len(), 1, "{wire:?}: listed on return");
+        let probed = state
+            .seen
+            .lock()
+            .unwrap()
+            .recalls
+            .iter()
+            .filter(|body| {
+                body["query"]
+                    .as_str()
+                    .is_some_and(|q| q.contains("single settled note"))
+            })
+            .count();
+        assert!(probed >= 1, "{wire:?}: a single store waits for ranked recall");
+        assert!(
+            engine.store(doc("single settled note")).await.unwrap().replayed,
+            "{wire:?}"
+        );
+        assert!(
+            matches!(
+                engine.store(doc("   ")).await,
+                Err(crate::cortex::Error::InvalidRequest(_))
+            ),
+            "{wire:?}"
+        );
+    }
+}
