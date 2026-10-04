@@ -82,11 +82,22 @@ by default, or a host node such as `team:acme`.
     for a completed build that reports it, the beliefs `built`.
 - **`EngineDescriptor::consolidation`** declares how the engine consolidates:
   `None`, `OnDemand` or `Scheduled`.
+- **`MemoryEngine::beliefs(BeliefsRequest { reach, query, limit })`** reads
+  the beliefs an engine built and keeps apart from its stored items. With a
+  query they are ranked for it; without one, the most confident come first,
+  then the newest.
+  - Each is a `Learning` hit tagged `BELIEF_TAG` (`"belief"`) at the node of
+    its sources.
+  - A belief is not a stored item: it cannot be listed, fetched or
+    forgotten by id. Forgetting its sources removes it.
+  - The default holds none. An engine whose beliefs are ordinary learning
+    items (the reference engine) keeps it.
 - **Conformance** adds two checks:
   - `store_with`: a visible store is listed on return and replays; an
     accepted store answers with the item's own id.
   - `consolidate`: a malformed request is refused, and the answer matches
-    what the descriptor promises.
+    what the descriptor promises. `beliefs` refuses a zero limit, and every
+    belief it returns is a tagged learning within the reach asked for.
 - **`ReferenceEngine`** consolidates on demand and deterministically: one
   `Fact` per document or conversation, tagged `consolidated`.
 
@@ -110,6 +121,16 @@ skipped, engine }`.
   `skipped` and never fails the pack. The only error is an invalid request.
 - **Deduplication.** An item is listed once, in its first (highest-priority)
   section. An answer citing an item does not hide it.
+- **Beliefs are learnings.** A fetched or latest section that reads
+  learnings also reads the engine's beliefs in its reach, concurrently, for
+  the same query. They are interleaved with the stored learnings rank by
+  rank, stored learnings first at each rank.
+  - The section's filter applies to beliefs too.
+  - A failed belief read leaves the section to its stored learnings.
+  - Answered sections read none, because the engine's answer draws on its
+    beliefs itself.
+  - So on CortexDB, what a build produced reaches every pack's Learnings
+    section: in `pre_turn`, `start_session`, compaction and `context.md`.
 - **Exclusions:**
   - `exclude_ids` drops named items, such as the turn just logged.
   - `exclude_thread { thread_id, from_turn }` drops the turns still in the

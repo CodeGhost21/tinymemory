@@ -217,10 +217,32 @@ A build takes seconds per scope with a real model (8–30 s for a whole
 scenario in [the eval](../evals/agent-memory.md)), so it belongs off the turn.
 Each build is sent once and never retried: a host can always ask again.
 
-The beliefs land in recall's derived layers. The answer route reads them, so
-a `SectionQuery::Answer` section (a compaction summary, a `context.md` brief)
-can use them. Fetch ranks stored items only, so a fetched section never
-shows a belief. The TinyHumans backend has no such route; its descriptor declares
+The beliefs land in a derived layer, read by `beliefs`
+(`engine/beliefs.rs`):
+
+- **With a query:** one recall per scope held in reach, with a budget for
+  the `beliefs` layer only:
+
+  ```json
+  { "scope": "…", "query": "…",
+    "budgets": { "per_layer_limits": { "events": 0, "facts": 0, "episodes": 0,
+                                       "understanding": 0, "beliefs": 8 } } }
+  ```
+
+- **Without one:** `GET v1/beliefs?scope=…&limit=…` per scope, ordered most
+  confident and then newest. The hosted wire has no listing and answers
+  none.
+- **Each belief** (`{id, scope, claim: {subject, predicate, object},
+  stance, confidence, valid_from}`) becomes a `Learning` hit:
+  - its text is `subject predicate object`, with the predicate's
+    underscores as spaces;
+  - it is tagged `belief`, at its scope's node;
+  - only `supported` and `contested` stances are read, and a contested
+    belief says so.
+
+The answer route reads the same layer, so a `SectionQuery::Answer` section
+(a compaction summary, a `context.md` brief) uses beliefs as well. Fetch
+and list are unchanged: they decode only this crate's events. The TinyHumans backend has no such route; its descriptor declares
 `Consolidation::Scheduled`, and `consolidate` sends nothing.
 
 ### Health

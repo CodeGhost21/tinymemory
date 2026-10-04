@@ -110,15 +110,20 @@ What a build does depends on the engine's `consolidation`:
 | CortexDB via TinyHumans | `Scheduled` | nothing sent → `Scheduled` |
 | an engine without it | `None` | `Skipped { reason }` |
 
-Built beliefs come back through ordinary reads, but not every read:
+Built beliefs reach the Learnings section of every pack:
 
 - On the reference engine they are `Learning` items, so the Learnings
-  section shows them.
-- On CortexDB they live in recall's `facts` and `beliefs` layers. The
-  answer route reads those, so answered sections (a compaction summary, a
-  `context.md` brief) can draw on them. Fetch ranks stored items only, so
-  the fetched sections of a pre-turn pack never show a belief. The
-  [eval](../evals/agent-memory.md#synthesis) measures this.
+  section lists them like any other.
+- On CortexDB they live in a derived layer, which fetch and list (stored
+  items only) never return. Holistic recall therefore asks
+  `MemoryEngine::beliefs` alongside every section that reads learnings, and
+  interleaves the beliefs with the stored learnings:
+  - with the pack's query, it reads each scope's `beliefs` recall layer;
+  - without one (a cold `start_session`, `context.md`), it reads the
+    `v1/beliefs` listing.
+
+  Answered sections, such as a compaction summary or a `context.md` brief,
+  also draw on beliefs through CortexDB's answer route.
 
 ## Compaction and session start
 
