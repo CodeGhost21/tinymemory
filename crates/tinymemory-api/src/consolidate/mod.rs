@@ -120,6 +120,10 @@ pub struct ConsolidateReceipt {
     pub jobs: Vec<String>,
     /// How many engine-side scopes (nodes × kinds) the request covered.
     pub scopes: usize,
+    /// How many beliefs the build produced, when it ran within the call and
+    /// the engine reports the count.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub built: Option<usize>,
 }
 
 impl ConsolidateReceipt {
@@ -130,6 +134,7 @@ impl ConsolidateReceipt {
             status: ConsolidateStatus::Scheduled,
             jobs: Vec::new(),
             scopes: 0,
+            built: None,
         }
     }
 }

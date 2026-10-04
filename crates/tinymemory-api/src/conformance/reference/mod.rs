@@ -214,6 +214,7 @@ impl MemoryEngine for ReferenceEngine {
             }
         }
         let scopes = nodes.len() * req.admitted_kinds().len();
+        let built = beliefs.len();
         for belief in beliefs {
             let id = belief.fingerprint();
             if !items.iter().any(|held| held.fingerprint() == id) {
@@ -224,6 +225,7 @@ impl MemoryEngine for ReferenceEngine {
             status: ConsolidateStatus::Completed,
             jobs: Vec::new(),
             scopes,
+            built: Some(built),
         })
     }
 

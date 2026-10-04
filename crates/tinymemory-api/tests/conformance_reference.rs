@@ -145,6 +145,7 @@ impl MemoryEngine for Faulty {
                 status: ConsolidateStatus::Completed,
                 jobs: Vec::new(),
                 scopes: 1,
+                built: Some(1),
             }),
             _ => self.inner.consolidate(req).await,
         }
