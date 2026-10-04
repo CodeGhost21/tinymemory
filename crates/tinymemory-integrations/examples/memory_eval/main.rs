@@ -23,8 +23,9 @@
 //! - `--engine reference|cortex`: the default is `cortex` when
 //!   `CORTEX_DB_URL` is set, and `reference` otherwise.
 //! - `--only <scenario>[,<scenario>…]`: run only these scenarios.
-//! - `--enrich-wait <secs>`: how long to let CortexDB extract facts before
-//!   the belief build (default 20 against CortexDB, 0 otherwise).
+//! - `--enrich-wait <secs>`: the longest to wait for CortexDB's enrichment
+//!   queue (fact extraction) to drain before the belief build (default 600
+//!   against CortexDB, 0 otherwise). With a real model it takes minutes.
 //! - `--json <path>`: write every probe, pack included, as JSON.
 //! - `--label <name>`: name the run in the report.
 //! - `--llm`: also have a model answer every probe from its pack (see
@@ -166,7 +167,7 @@ async fn main() -> Result<(), Error> {
     };
     let enrich_wait = args
         .enrich_wait
-        .unwrap_or(if inspector.is_some() { 20 } else { 0 });
+        .unwrap_or(if inspector.is_some() { 600 } else { 0 });
     let llm = if args.llm {
         Some(Llm::from_env()?)
     } else {
@@ -378,8 +379,17 @@ impl Eval {
 
         // Synthesis: the jobs the writes handed back, then one build per tenant
         // over its whole tree.
-        if self.enrich_wait > 0 {
-            tokio::time::sleep(Duration::from_secs(self.enrich_wait)).await;
+        if let Some(inspector) = &self.inspector {
+            let started = Instant::now();
+            let cap = Duration::from_secs(self.enrich_wait);
+            // Give the queue a moment to take the last writes, then drain.
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            while inspector.enrichment_pending().await? > 0 && started.elapsed() < cap {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
+            let waited = ms(started);
+            timings.add("enrichment (queue drained)", waited);
+            println!("   enrichment drained in {:.0} s", waited / 1e3);
         }
         for tenant in tenants(scenario) {
             let root = layout(run, scenario.name, tenant)?.root().clone();

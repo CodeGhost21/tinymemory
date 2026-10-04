@@ -226,6 +226,15 @@ impl Inspector {
         Ok(captured)
     }
 
+    /// Enrichment jobs (fact extraction) not yet done.
+    pub(crate) async fn enrichment_pending(&self) -> Result<u64, reqwest::Error> {
+        let report = self.get("v1/admin/usage", &[]).await?;
+        Ok(report
+            .pointer("/enrichment_backlog/jobs_pending")
+            .and_then(Value::as_u64)
+            .unwrap_or_default())
+    }
+
     /// The models' usage so far.
     pub(crate) async fn usage(&self) -> Result<Usage, reqwest::Error> {
         let report = self.get("v1/admin/usage", &[]).await?;
