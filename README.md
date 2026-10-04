@@ -161,8 +161,8 @@ register it in `registry`.
 ## Migrating from v1
 
 A v1 (embedded TinyCortex) workspace is read in place and copied into any
-engine, resumably. Persist the checkpoint the callback hands you and pass it
-back on the next run:
+engine, resumably. `migrate` takes the checkpoint of an earlier run (`None` to
+start from the beginning) and returns where it got to:
 
 ```rust,ignore
 use tinymemory_integrations::import::{LegacyWorkspace, migrate};
@@ -171,7 +171,8 @@ let report = migrate(engine.as_ref(), LegacyWorkspace::open(path)?, None).await?
 println!("stored {}, replayed {}", report.stored, report.replayed);
 ```
 
-Use `migrate_with` to receive each committed `Checkpoint` as it happens. The
+Use `migrate_with` to receive each committed `Checkpoint` as it happens, so a
+host can persist it. The
 legacy workspace is opened read-only, and re-running never duplicates. Needs
 the `legacy-import` feature. See
 [`docs/architecture/integrations.md`](docs/architecture/integrations.md#legacy-v1-import).
