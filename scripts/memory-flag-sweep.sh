@@ -46,6 +46,7 @@ cargo build --quiet -p tinymemory-integrations --features full --example memory_
 # Runs `profile`, repeat `n`, on `port`.
 run_one() {
   local profile="$1" n="$2" port="$3"
+  shift 3
   local label="flags-$profile-r$n"
   (
     # Sourced as well as passed to Compose: the profile may set what the
@@ -57,6 +58,16 @@ run_one() {
     CORTEX_FLAGS_FILE="$flags/$profile.env" CORTEXDB_PORT="$port" LABEL="$label" \
       OUT_DIR="$out" "$root/scripts/memory-eval.sh" "$@"
   ) >"$out/$label.log" 2>&1
+}
+
+# The next port nothing answers on, from `$1` up.
+free_port() {
+  local port="$1"
+  while curl --silent --max-time 1 "http://127.0.0.1:$port/" >/dev/null 2>&1 ||
+    (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; do
+    port=$((port + 1))
+  done
+  echo "$port"
 }
 
 jobs_run=()
@@ -76,6 +87,7 @@ for profile in "${profiles[@]}"; do
   fi
   for n in $(seq 1 "$repeat"); do
     label="flags-$profile-r$n"
+    port="$(free_port "$port")"
     echo "run  $label on :$port"
     (run_one "$profile" "$n" "$port" "$@" && echo "done $label" || {
       echo "FAIL $label (see $out/$label.log)"
