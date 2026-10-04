@@ -1,3 +1,6 @@
+//! Tests for the local bare-clone helpers: `git log` arguments, cache
+//! lifecycle, and process failures.
+
 use super::*;
 
 use std::process::Command;

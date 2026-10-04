@@ -1,3 +1,6 @@
+//! Tests for the RSS/Atom reader: the cached list-then-read flow, URL
+//! refusal, and the feed parser.
+
 use super::*;
 
 use crate::sources::readers::SourceReader;

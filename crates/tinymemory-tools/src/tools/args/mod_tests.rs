@@ -120,3 +120,21 @@ fn an_array_element_that_is_not_an_object_is_refused() {
         .unwrap_err();
     assert!(message(error).contains("`turns` must hold only objects"));
 }
+
+#[test]
+fn a_host_fixed_key_is_found_at_any_depth() {
+    let value = json!({ "conversation": { "turns": [{ "role": "user", "reach": "x" }] } });
+    let error = Args::parse("memory_store", &value, &["conversation"]).unwrap_err();
+    let text = message(error);
+    assert!(
+        text.contains("`conversation.turns[].reach` is fixed by the host"),
+        "{text}"
+    );
+
+    let value = json!({ "unknown": { "namespace": "root" } });
+    let text = message(Args::parse("memory_get", &value, &["ids"]).unwrap_err());
+    assert!(
+        text.contains("`unknown.namespace` is fixed by the host"),
+        "{text}"
+    );
+}

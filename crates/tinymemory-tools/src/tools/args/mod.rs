@@ -3,9 +3,9 @@
 //! [`Args`] wraps one JSON object and refuses, with
 //! [`tinymemory_api::Error::InvalidRequest`] naming the tool and the field:
 //!
-//! - a `namespace` or `reach` key at any level, with a message saying the host
-//!   fixes it (a model that tries to pick a namespace is told so, not quietly
-//!   ignored);
+//! - a `namespace` or `reach` key anywhere in the arguments, nested objects
+//!   and arrays included, with a message saying the host fixes it (a model
+//!   that tries to pick a namespace is told so, not quietly ignored);
 //! - any other key the tool's schema does not list;
 //! - a value of the wrong type or out of range.
 //!
@@ -52,6 +52,12 @@ impl<'a> Args<'a> {
             path: "",
             map,
         };
+        if let Some(path) = host_fixed_key(value, "") {
+            return Err(invalid(
+                tool,
+                &format!("`{path}` is fixed by the host and cannot be passed to a memory tool"),
+            ));
+        }
         args.check_keys(allowed)?;
         Ok(args)
     }
@@ -232,6 +238,25 @@ impl<'a> Args<'a> {
             return Err(self.field_error(key, "is not an argument of this tool"));
         }
         Ok(())
+    }
+}
+
+/// The path of the first host-fixed key anywhere in `value`, searched depth
+/// first, so a `namespace` is refused even under a key the tool would
+/// otherwise reject as unknown.
+fn host_fixed_key(value: &Value, path: &str) -> Option<String> {
+    match value {
+        Value::Object(map) => map.iter().find_map(|(key, nested)| {
+            if HOST_FIXED.contains(&key.as_str()) {
+                Some(format!("{path}{key}"))
+            } else {
+                host_fixed_key(nested, &format!("{path}{key}."))
+            }
+        }),
+        Value::Array(values) => values.iter().find_map(|nested| {
+            host_fixed_key(nested, &format!("{}[].", path.trim_end_matches('.')))
+        }),
+        _ => None,
     }
 }
 

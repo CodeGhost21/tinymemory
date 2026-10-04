@@ -1,3 +1,6 @@
+//! Tests for the GitHub reader: orchestration over cached clones and the
+//! test transport, commit queries and merging, and URL and item-id parsing.
+
 use super::*;
 use crate::sources::readers::SourceReader;
 

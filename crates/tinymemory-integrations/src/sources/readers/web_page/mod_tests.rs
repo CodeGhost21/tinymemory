@@ -1,3 +1,6 @@
+//! Tests for the web-page reader: listing, URL refusal, and the simple CSS
+//! selector extraction.
+
 use super::*;
 
 fn web_source(url: Option<&str>, selector: Option<&str>) -> MemorySourceEntry {
