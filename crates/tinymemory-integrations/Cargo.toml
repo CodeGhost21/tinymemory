@@ -135,6 +135,11 @@ name = "basic"
 required-features = ["cortex"]
 
 [[example]]
+name = "memory_eval"
+path = "examples/memory_eval/main.rs"
+required-features = ["cortex", "brain"]
+
+[[example]]
 name = "cortex_agent"
 required-features = ["cortex", "brain", "documents-office"]
 
