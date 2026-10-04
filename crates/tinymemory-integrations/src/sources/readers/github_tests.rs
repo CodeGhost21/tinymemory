@@ -1,5 +1,4 @@
 use super::*;
-use crate::sources::raw_kind::RawKind;
 use crate::sources::readers::SourceReader;
 
 fn github_source(url: Option<&str>) -> MemorySourceEntry {
@@ -612,28 +611,6 @@ fn item_kind_rejects_invalid() {
 }
 
 #[test]
-fn repo_archive_source_id_slugs_to_repo_folder() {
-    // `github.com/<owner>/<repo>` → slugify → `github-com-<owner>-<repo>`.
-    assert_eq!(
-        repo_archive_source_id("https://github.com/tinyhumansai/openhuman").as_deref(),
-        Some("github.com/tinyhumansai/openhuman")
-    );
-    assert!(repo_archive_source_id("not-a-url").is_none());
-}
-
-#[test]
-fn chunk_source_id_is_clean_and_per_item() {
-    assert_eq!(
-        chunk_source_id("https://github.com/org/repo", "commit:abc123").as_deref(),
-        Some("github:org/repo:commit:abc123")
-    );
-    assert_eq!(
-        chunk_source_id("https://github.com/org/repo", "pr:42").as_deref(),
-        Some("github:org/repo:pr:42")
-    );
-}
-
-#[test]
 fn unique_handles_dedups_and_skips_unknown() {
     assert_eq!(
         unique_handles(["alice", "bob", "alice", "unknown", ""].into_iter()),
@@ -641,21 +618,4 @@ fn unique_handles_dedups_and_skips_unknown() {
     );
     assert_eq!(unique_handles(["unknown", ""].into_iter()), "none");
     assert_eq!(unique_handles(std::iter::empty()), "none");
-}
-
-#[test]
-fn raw_archive_coords_maps_kind_and_uid() {
-    assert_eq!(
-        raw_archive_coords("commit:deadbeef"),
-        Some((RawKind::Commit, "deadbeef".to_string()))
-    );
-    assert_eq!(
-        raw_archive_coords("issue:7"),
-        Some((RawKind::Issue, "7".to_string()))
-    );
-    assert_eq!(
-        raw_archive_coords("pr:99"),
-        Some((RawKind::PullRequest, "99".to_string()))
-    );
-    assert!(raw_archive_coords("bogus:1").is_none());
 }

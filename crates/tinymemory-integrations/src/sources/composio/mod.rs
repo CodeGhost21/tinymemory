@@ -25,8 +25,6 @@
 //! alongside, so ordering and identity stay UTC-based.
 
 pub mod clickup;
-pub mod email_clean;
-pub mod email_markdown;
 pub mod github;
 pub mod gmail_post_process;
 pub mod helpers;

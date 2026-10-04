@@ -66,7 +66,6 @@ pub mod error;
 #[cfg(feature = "sources-network")]
 pub mod fetch;
 pub mod items;
-pub mod raw_kind;
 pub mod readers;
 pub mod reconcile;
 pub mod registry;
