@@ -143,6 +143,10 @@ name = "live_cortexdb"
 required-features = ["cortex"]
 
 [[test]]
+name = "live_cortex_lifecycle"
+required-features = ["cortex", "brain"]
+
+[[test]]
 name = "office_live"
 required-features = ["documents-office", "cortex"]
 
