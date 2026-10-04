@@ -1,0 +1,97 @@
+# Evals
+
+Accuracy and latency measurements of TinyMemory against real engines, with
+the method and the results of each recorded run. Tests prove behaviour; evals
+measure how well that behaviour serves an agent.
+
+| Eval | What it measures | Latest run |
+| --- | --- | --- |
+| [Agent memory](agent-memory.md) | The lifecycle (`pre_turn`, `post_turn`, `start_session`, compaction, belief builds) across nine scenarios | 2026-10-04, CortexDB v0.10.4 |
+
+## The agent memory eval
+
+The harness is the `memory_eval` example in
+`crates/tinymemory-integrations/examples/memory_eval/`:
+
+| File | Role |
+| --- | --- |
+| `main.rs` | Runs each scenario: writes, settle, probe, synthesise, probe again, forget |
+| `agent.rs` | The scripted agent: real lifecycle calls, scripted tool calls, an extractive "model" |
+| `scenarios.rs` | The nine scenarios and their probes |
+| `score.rs` | Scoring a pack against a probe, totals and latency percentiles |
+| `inspect.rs` | Reads CortexDB's derived layers (facts, beliefs) straight off the wire |
+| `llm.rs` | The optional model that answers each probe from its pack (`--llm`) |
+
+### Running it
+
+```sh
+# Offline, on the reference engine: seconds, no network.
+cargo run -p tinymemory-integrations --features full --example memory_eval
+
+# A throwaway CortexDB with deterministic mock models (needs Docker).
+./scripts/memory-eval.sh
+
+# The same with real models through OpenRouter (needs OPENROUTER_API_KEY;
+# a few cents per run), and a model answering every probe.
+MODELS=openrouter ./scripts/memory-eval.sh --llm
+```
+
+The script prints the report and writes `target/memory-eval/<label>.md` and
+`.json`. The JSON holds every probe's pack, so a miss can be read in full.
+
+Flags (after `--`): `--engine reference|cortex`, `--only <scenario>`,
+`--enrich-wait <secs>`, `--json <path>`, `--label <name>` and `--llm`. With
+`CORTEX_DB_KEEP=1` the run's data is left in place for inspection.
+
+### How a scenario runs
+
+1. **Write.** Brain documents go in through `Brain::ingest`. Each scripted
+   conversation runs through a `ScriptedAgent`, one exchange at a time:
+   - `pre_turn` logs the user's turn and recalls a pack, with the last 8
+     turns of the thread treated as still in the prompt;
+   - the agent "calls" its scripted tools and writes their results into its
+     reply (memory keeps only a call's name and id, so a result left out of
+     the reply is lost);
+   - `post_turn` logs the reply with its tool calls.
+
+   Turns carry timestamps: each thread starts on its scenario day, and turns
+   are a minute apart.
+2. **Settle.** Wait until every write is listed (writes are `Accepted`, not
+   indexed).
+3. **Probe** (phase `recall`). Each probe asks a question through one
+   lifecycle call: a new thread's `pre_turn`, `start_session`,
+   `recall_for_compaction`, or the next `pre_turn` of a long thread. Each
+   pack is then scored.
+4. **Synthesise.** Wait for CortexDB's enrichment (`--enrich-wait`, 20 s by
+   default), then run every job the writes handed back, plus one
+   `BuildBeliefs` over each tenant's whole tree.
+5. **Probe again** (phase `synthesis`), then forget everything.
+
+### Metrics
+
+Every check is a case-insensitive substring match on the pack's markdown.
+
+| Metric | Meaning |
+| --- | --- |
+| Pack hit | Every expected string is in the pack |
+| MRR | Mean of 1 / (position of the first expected string). Positions count bullets and prose paragraphs in reading order |
+| Extractive answer | The scripted agent's answer (the pack line sharing the most words with the question) holds every expected string and no superseded one |
+| Model answer | With `--llm`, a model answering from the pack alone (temperature 0, `openai/gpt-4.1-mini` by default) is graded the same way |
+| Fresh first | Over probes whose fact changed: the current value is present and comes before every superseded one |
+| Leaks | Probes whose pack holds a forbidden string (another tenant's data, or turns still in the prompt), over the probes that check |
+
+Probes are tagged **lexical** when the question shares its key words with
+the stored text, and **paraphrase** when only meaning connects them. The
+extractive answer cannot answer a paraphrase by construction, so compare
+the model answer there.
+
+### Caveats
+
+- The mock models (`integration/cortexdb/mock_inference.py`) embed by
+  hashing and extract nothing. Against them CortexDB ranks only by keyword,
+  and synthesis builds nothing. They measure wiring and latency, not
+  quality.
+- 38 scored probes is a smoke-sized sample: one probe is about 3 points.
+  Read a difference of a probe or two as noise.
+- Latency runs against a local Docker server. The real-model numbers include
+  OpenRouter round trips for every query embedding.
