@@ -134,7 +134,10 @@ pub(crate) fn run(paths: &[String]) -> Result<(), Error> {
         let profile = &mut profiles[at];
         profile.runs += 1;
         for kpi in run.kpis {
-            if !order.iter().any(|k| k.group == kpi.group && k.name == kpi.name) {
+            if !order
+                .iter()
+                .any(|k| k.group == kpi.group && k.name == kpi.name)
+            {
                 order.push(kpi.clone());
             }
             if let Some(value) = kpi.value {

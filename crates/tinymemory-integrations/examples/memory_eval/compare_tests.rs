@@ -39,7 +39,10 @@ fn a_single_run_needs_more_than_the_floor_to_move() {
     // A latency needs a quarter, and at least 5 ms.
     assert_eq!(judge(100.0, 80.0, 0.0, Unit::Ms, Better::Lower), Move::Same);
     assert_eq!(judge(4.0, 1.0, 0.0, Unit::Ms, Better::Lower), Move::Same);
-    assert_eq!(judge(100.0, 70.0, 0.0, Unit::Ms, Better::Lower), Move::Better);
+    assert_eq!(
+        judge(100.0, 70.0, 0.0, Unit::Ms, Better::Lower),
+        Move::Better
+    );
 }
 
 #[test]

@@ -92,7 +92,8 @@ impl Kpi {
 
     /// The value as a table cell.
     pub(crate) fn cell(&self) -> String {
-        self.value.map_or_else(|| "–".to_string(), |v| format(v, self.unit))
+        self.value
+            .map_or_else(|| "–".to_string(), |v| format(v, self.unit))
     }
 }
 
@@ -400,7 +401,9 @@ pub(crate) fn compute(
         Kpi::new(
             "cost",
             "per correct answer",
-            spent.filter(|_| correct > 0).map(|usd| usd / correct as f64),
+            spent
+                .filter(|_| correct > 0)
+                .map(|usd| usd / correct as f64),
             Unit::Usd,
             Lower,
         ),
