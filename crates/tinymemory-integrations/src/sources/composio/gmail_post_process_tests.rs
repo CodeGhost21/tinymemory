@@ -190,14 +190,14 @@ fn empty_markdown_formatted_falls_through_to_message_text() {
     assert!(md.contains("real body"));
 }
 
-// ── split_response_markdown_per_message ─────────────────────────────────
+// ── split_response_markdown_per_message_with_hint ───────────────────────
 
 #[test]
 fn split_response_markdown_uses_horizontal_rule_marker() {
     // The confirmed backend marker is `\n---\n`. Three messages →
     // expect three slices when there's no preamble.
     let md = "## Alice's update\n\nbody A with https://gh.io/abc\n---\n## Bob's reply\n\nbody B\n---\n## Carol\n\nbody C";
-    let slices = super::split_response_markdown_per_message(md, 3).unwrap();
+    let slices = super::split_response_markdown_per_message_with_hint(md, 3, None).unwrap();
     assert_eq!(slices.len(), 3);
     assert!(slices[0].contains("Alice's update"));
     assert!(slices[1].contains("Bob's reply"));
@@ -213,7 +213,7 @@ fn split_response_markdown_drops_preamble() {
     // When a preamble like `# Inbox` precedes the first marker, we
     // see N+1 parts after split — the preamble must be dropped.
     let md = "# Inbox (2 messages)\n---\n## A\n\nbody A\n---\n## B\n\nbody B";
-    let slices = super::split_response_markdown_per_message(md, 2).unwrap();
+    let slices = super::split_response_markdown_per_message_with_hint(md, 2, None).unwrap();
     assert_eq!(slices.len(), 2);
     assert!(slices[0].contains("body A"));
     assert!(slices[1].contains("body B"));
@@ -226,7 +226,7 @@ fn split_response_markdown_drops_preamble() {
 fn split_response_markdown_falls_back_to_h2_marker() {
     // No `---` rules — backend used h2 headings as boundaries.
     let md = "## Alice\n\nbody A\n\n## Bob\n\nbody B";
-    let slices = super::split_response_markdown_per_message(md, 2).unwrap();
+    let slices = super::split_response_markdown_per_message_with_hint(md, 2, None).unwrap();
     assert_eq!(slices.len(), 2);
     assert!(slices[0].contains("body A"));
     assert!(slices[1].contains("body B"));
@@ -235,13 +235,13 @@ fn split_response_markdown_falls_back_to_h2_marker() {
 #[test]
 fn split_response_markdown_returns_none_on_count_mismatch() {
     let md = "## only one section here";
-    assert!(super::split_response_markdown_per_message(md, 3).is_none());
+    assert!(super::split_response_markdown_per_message_with_hint(md, 3, None).is_none());
 }
 
 #[test]
 fn split_response_markdown_single_message_returns_whole_input() {
     let md = "## solo\n\nthe whole body";
-    let slices = super::split_response_markdown_per_message(md, 1).unwrap();
+    let slices = super::split_response_markdown_per_message_with_hint(md, 1, None).unwrap();
     assert_eq!(slices, vec![md.to_string()]);
 }
 
