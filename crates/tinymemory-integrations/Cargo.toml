@@ -130,6 +130,10 @@ name = "live_cortexdb"
 required-features = ["cortex"]
 
 [[test]]
+name = "office_live"
+required-features = ["documents-office", "cortex"]
+
+[[test]]
 name = "legacy_import"
 required-features = ["legacy-import"]
 
