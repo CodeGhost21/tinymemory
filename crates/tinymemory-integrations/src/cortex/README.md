@@ -1,8 +1,9 @@
-# tinymemory-cortex
+# cortex
 
-The CortexDB memory engine for TinyMemory v2. One type, `CortexEngine`,
-implements `tinymemory_api::MemoryEngine` over CortexDB's append-only event
-log on two wires:
+The CortexDB memory engine for TinyMemory v2, the `cortex` module of
+`tinymemory-integrations` (feature `cortex`, on by default). One type,
+`CortexEngine`, implements `tinymemory_api::MemoryEngine` over CortexDB's
+append-only event log on two wires:
 
 | Engine id | Constructor | Wire | Auth | Default endpoint |
 | --- | --- | --- | --- | --- |
@@ -14,7 +15,21 @@ accepts only `scope`, `query`, `budgets`, `view`, `include`, `temporal` and
 `filters`, with no keyword/vector switch. `Keyword` and `Vector` fail with
 `Error::Unsupported` before any request.
 
+This README is the short in-tree summary. The full reference is under
+[`docs/architecture/`](../../../../docs/architecture/):
+
+- [`cortex.md`](../../../../docs/architecture/cortex.md): surface, credentials,
+  transport, failure mapping, endpoint security, the registry and `MemoryConfig`;
+- [`cortex-wire.md`](../../../../docs/architecture/cortex-wire.md): every endpoint
+  and its shapes, scope layout, the v2 envelope, lookup labels;
+- [`cortex-flows.md`](../../../../docs/architecture/cortex-flows.md): step-by-step
+  store, list, fetch, recall, forget, get, discovery;
+- [`testing.md`](../../../../docs/architecture/testing.md): the doubles, the
+  conformance suite and the live tests.
+
 ## Public surface
+
+From `tinymemory_integrations::cortex`:
 
 - `CortexEngine::{new, direct, tinyhumans, wire}` (requests time out after 60s)
 - `CortexWire { Direct, TinyHumans }`, `CortexCredential { Static, Dynamic }`
@@ -23,6 +38,28 @@ accepts only `scope`, `query`, `budgets`, `view`, `include`, `temporal` and
   `TINYHUMANS_API_ENDPOINT`, `cortexdb_descriptor()`, `tinyhumans_descriptor()`
 - `Error`/`Result` (the contract's own `tinymemory_api::Error`),
   `error_code`, `is_insufficient_credits`
+
+A host usually goes through the registry instead of naming the engine:
+`tinymemory_integrations::{MemoryConfig, EngineCredential, build_engine,
+list_engines}` (modules `config` and `registry`).
+
+## Module layout
+
+```text
+cortex/
+├── mod.rs          crate-facing docs and the public re-exports
+├── credential/     CortexCredential, BearerSource, StaticBearer
+├── descriptor/     the two registrations, CortexWire and its route table
+├── engine/         CortexEngine and one file per operation:
+│                   store, list, fetch, recall, forget, items (get), scopes, cursor
+├── envelope/       the v2 event envelope, scope paths, lookup labels, rebuild
+├── log/            the event log: write, read (list, scopes, recall, answer),
+│                   visibility waits, forget
+├── transport/      HttpClient: timeouts, retries, byte caps, failure mapping,
+│                   the actor header
+├── error/          the contract's Error, error_code, is_insufficient_credits
+└── testing/        loopback doubles of both wires (cfg(test) only)
+```
 
 ## Storage layout
 
@@ -39,8 +76,8 @@ The hosted backend also re-roots every scope under the caller's tenant.
 node and inherited ancestors are known; a subtree reach or an unscoped read
 discovers the nodes below from the registered scopes (`v1/scopes/list`,
 `memory/scopes`). Every read names its scopes exactly; server-side traversal
-(`holistic`, `descend`) is used only for an unscoped multi-scope recall, so
-one agent's read never reaches a sibling's scope.
+(`view: "descend"`) is used only for an unscoped multi-scope recall, so one
+agent's read never reaches a sibling's scope.
 
 Namespace segments use CortexDB's built-in `agent`, `team`, `user`, `ws` and
 `project` types, and the root and kind segments its `app` type. From v0.10 a
@@ -85,40 +122,43 @@ as prefixes, so they cannot be labelled and are filtered only client-side.
 
 ## Operations
 
-- **Store.** The item id is `StoreItem::fingerprint()`. The item's events are
-  looked up by its label first. If all of them are already there, the store is
-  a replay (`replayed: true`) and nothing is written. If only some turns of a
-  conversation are present (an earlier store failed part-way), only the
-  missing turns are written. Direct writes `v1/experience?wait=indexed`, or for
-  a conversation `v1/experience/bulk?wait=indexed` with `ordering:
-  strict_temporal`. Hosted writes one event at a time, in order. Every write
-  uses a fresh `idempotency_key`, never a content-derived one, because
-  CortexDB keeps a forgotten event's key and would swallow a re-store. The
-  write then waits for its last event to be readable (see below).
+- **Store.** `store` is `store_items(vec![item])`, so a single store and
+  `store_many` share **one** path and one set of guarantees. The item id is
+  `StoreItem::fingerprint()`. Each scope's items are looked up by label first:
+  if all of an item's events are there, it is a replay (`replayed: true`) and
+  nothing is written; if only some turns of a conversation are present (an
+  earlier store failed part-way), only the missing turns are written. Direct
+  writes `v1/experience?wait=indexed`, or `v1/experience/bulk?wait=indexed`
+  with `ordering: strict_temporal` when an item has two or more events due.
+  Hosted writes one event at a time, in order. Every write uses a fresh
+  `idempotency_key`, never a content-derived one, because CortexDB keeps a
+  forgotten event's key and would swallow a re-store. Then one listing wait per
+  scope written (for its last event) and one ranked-recall wait (best-effort)
+  for the final event.
 - **List.** Pages the scopes read (kind order, then namespace), newest first.
-  The opaque cursor holds the scope's path (so a scope created between pages
-  cannot shift the listing), the engine cursor, the offset into that page and the
-  last event id, which is enough to drop the engine's duplicate copies across
-  page boundaries. A conversation is emitted once, on the page holding its
-  turn 0, with its text assembled from all its turns (one label lookup per
-  page). Scores are `0`.
+  The opaque cursor holds the scope's path, the engine cursor, the offset into
+  that page and the last event id, which is enough to drop the engine's
+  duplicate copies across page boundaries. A conversation is emitted once, on
+  the page holding its turn 0, with its text assembled from all its turns.
+  Scores are `0`.
 - **Fetch (hybrid).** One recall per scope read with
   `budgets.per_layer_limits.events`. Events are decoded to items and the full
   filter is applied. Each item is kept once, at its best rank, and scopes are
   interleaved rank by rank. The score is `1/(1+rank)`, because CortexDB
-  reports none. Conversation hits carry the whole conversation. The cursor is
-  an offset into the merged ranking; the next page asks again with a larger
-  budget, capped at 1000 events.
+  reports none. The cursor is an offset into the merged ranking; the next page
+  asks again with a larger budget, capped at 1000 events.
 - **Recall.** One scope read: one pack over it. An unscoped read over several
   scopes: one pack over `app:tinymemory` with `view: "descend"`. A reach over
   several scopes: one pack per scope (four at a time), exact, and the answer
   comes from the pack holding the most admitted events. The answer route is
-  called **once** with `use_pack_id`. Hosted omits a null `answer_instructions`, because its schema
-  is strict; Direct sends `null`. Citations come from the pack's
-  `layers.events`, decoded, filtered (reach included), one per item, the most
-  specific node's first, capped at `limit`, with
-  `score: None`. `model` is `diagnostics.answer_model`. A pack with no
-  decodable events still returns the answer, with no citations.
+  called **once** with `use_pack_id`. Hosted omits a null
+  `answer_instructions`, because its schema is strict; Direct sends `null`.
+  Citations come from the packs' decoded events, filtered (reach included),
+  one per item, the most specific node's first, capped at `limit`, with
+  `score: None`. `model` is `diagnostics.answer_model`.
+- **Get.** Overridden: by the items' id labels, one lookup per scope read,
+  rather than a scan.
+- **Explore.** Not overridden: the contract's default pages through `list`.
 - **Forget.** `Ids` looks the items' labels up in every scope the engine
   holds. `Filter` (which must be non-empty) walks the scopes it reads and
   matches the full filter. Either way the matched events are then removed with
@@ -129,10 +169,10 @@ as prefixes, so they cannot be labelled and are filtered only client-side.
   and any other failure to `Down`. The reason keeps the message head and
   withholds the backend's own text.
 
-## Engine behaviours this crate is shaped around
+## Engine behaviours this module is shaped around
 
 These were measured against a live CortexDB by the v1 adapter. The doubles in
-`src/testing/` reproduce all of them.
+`testing/` reproduce all of them.
 
 - **Append-only.** There is no update route. Forget removes events but not
   their idempotency records.
@@ -178,6 +218,8 @@ These were measured against a live CortexDB by the v1 adapter. The doubles in
 
 ## Tests
 
-`cargo test -p tinymemory-cortex` runs the unit tests and the shared
-`tinymemory-conformance` suite against both wires, through loopback doubles
-with short test-only timeouts.
+`cargo test -p tinymemory-integrations` runs the unit tests and the shared
+`tinymemory_api::conformance` suite against both wires, through loopback
+doubles with short test-only timeouts. `tests/live_cortexdb.rs` runs against
+a real server when `TINYMEMORY_LIVE_CORTEXDB_URL` is set. See
+[`testing.md`](../../../../docs/architecture/testing.md).
