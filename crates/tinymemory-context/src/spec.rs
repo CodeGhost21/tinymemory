@@ -1,7 +1,7 @@
 //! What a context document contains: [`ContextSpec`] and its [`Brief`]s.
 
 use serde::{Deserialize, Serialize};
-use tinymemory_api::MetaFilter;
+use tinymemory_api::{MetaFilter, Reach};
 
 use crate::error::{Error, Result};
 
@@ -21,6 +21,11 @@ pub struct ContextSpec {
     pub briefs: Vec<Brief>,
     /// The most learnings listed after the briefs.
     pub learnings_limit: usize,
+    /// Whose memory the document is about: every brief and the learnings
+    /// read only within this reach (an agent's own node and the nodes it
+    /// inherits). `None` reads every namespace.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reach: Option<Reach>,
 }
 
 impl Default for ContextSpec {
@@ -30,6 +35,7 @@ impl Default for ContextSpec {
             budget_tokens: DEFAULT_BUDGET_TOKENS,
             briefs: Brief::defaults(),
             learnings_limit: DEFAULT_LEARNINGS_LIMIT,
+            reach: None,
         }
     }
 }

@@ -10,7 +10,9 @@ mod render;
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use tinymemory_api::{Hit, ItemId, ItemKind, ListRequest, MemoryEngine, MetaFilter, RecallRequest};
+use tinymemory_api::{
+    Hit, ItemId, ItemKind, ListRequest, MemoryEngine, MetaFilter, Reach, RecallRequest,
+};
 
 use crate::error::Result;
 use crate::spec::ContextSpec;
@@ -114,9 +116,13 @@ pub async fn compile(engine: &dyn MemoryEngine, spec: &ContextSpec) -> Result<Co
 async fn gather_briefs(engine: &dyn MemoryEngine, spec: &ContextSpec) -> Vec<BriefSection> {
     let mut sections = Vec::with_capacity(spec.briefs.len());
     for brief in &spec.briefs {
+        let mut filter = brief.filter.clone();
+        if spec.reach.is_some() {
+            filter.reach = spec.reach.clone();
+        }
         let request = RecallRequest {
             question: brief.question.clone(),
-            filter: brief.filter.clone(),
+            filter,
             limit: BRIEF_CITATIONS,
             instructions: Some(BRIEF_INSTRUCTIONS.to_string()),
         };
@@ -143,14 +149,22 @@ async fn gather_briefs(engine: &dyn MemoryEngine, spec: &ContextSpec) -> Vec<Bri
     sections
 }
 
-async fn gather_learnings(engine: &dyn MemoryEngine, limit: usize) -> Vec<LearningLine> {
+async fn gather_learnings(
+    engine: &dyn MemoryEngine,
+    limit: usize,
+    reach: Option<&Reach>,
+) -> Vec<LearningLine> {
     if limit == 0 {
         return Vec::new();
     }
     let mut all: Vec<Hit> = Vec::new();
     let mut cursor: Option<String> = None;
     for _ in 0..LEARNINGS_MAX_PAGES {
-        let mut request = ListRequest::new(MetaFilter::kinds([ItemKind::Learning]), LEARNINGS_PAGE);
+        let filter = MetaFilter {
+            reach: reach.cloned(),
+            ..MetaFilter::kinds([ItemKind::Learning])
+        };
+        let mut request = ListRequest::new(filter, LEARNINGS_PAGE);
         request.cursor = cursor.take();
         match engine.list(request).await {
             Ok(page) => {
