@@ -108,7 +108,78 @@ means within noise, and `Δ` means a KPI with no better direction changed.
 
 ## Results
 
-RESULTS_PENDING
+**Status (2026-10-04, CortexDB `v0.10.4`):** the harness is done and
+checked on mock models across every profile. The real-model sweep is still
+to run. The OpenRouter key it ran on reached its daily spending limit
+partway through, and every run after that failed on its writes. What follows
+is one real-model baseline run and the mock sweep. Rerun the sweep after the
+limit resets:
+
+```sh
+MODELS=openrouter REPEAT=2 PARALLEL=4 ./scripts/memory-flag-sweep.sh -- --llm
+```
+
+It needs about $16 for 16 profiles × 2 repeats. The script checks the key
+can cover it before starting.
+
+### Real-model baseline (one run)
+
+OpenRouter: `openai/text-embedding-3-large` embeddings, and
+`openai/gpt-4.1-mini` for extraction, enrichment, CortexDB answers and the
+`--llm` answerer. 52 scored probes per phase.
+
+| Group | KPI | Value |
+| --- | --- | --- |
+| accuracy | pack hit (before / after synthesis) | 96% / 96% |
+| accuracy | model answer | 87% |
+| accuracy | captured (answer derived as a fact or belief) | 100% |
+| accuracy | leaks | 0 |
+| learning | lesson in pack / answered / captured | 86% / 71% / 100% |
+| learning | synthesis gain | +0 pp |
+| learning | beliefs held / not supported / mean confidence | 160 / 1 / 0.99 |
+| surprise | surprise in pack / MRR / answered | 100% / 0.67 / 100% |
+| conflicts | planted conflicts flagged | **0%** (0 conflicts raised anywhere) |
+| conflicts | disagreement in pack / fresh first | 100% / 57% |
+| cost | CortexDB models | **$0.43** (1,577 calls, 1.39M tokens) |
+| cost | answerer | $0.02 |
+| cost | per correct answer | $0.010 |
+| latency | `pre_turn` p50 / p95 | 1.1 s / 1.5 s |
+
+What it shows before any flag changes:
+
+- **Enrichment is most of the cost.** Of $0.43, enrichment (fact
+  extraction) is $0.29 (67%), belief building $0.07, fact maintenance
+  $0.03, and embeddings, recall and answers about $0.01–0.02 each. A flag
+  that does not change enrichment can save at most a third.
+- **Learning is captured but not surfaced.** Every lesson becomes a fact or
+  belief (100% captured), yet only 71% of lessons are answered from the
+  pack, and belief building adds nothing to the pack (+0 pp). Beliefs do
+  not reach `pre_turn`'s fetched sections. That is TinyMemory's recall
+  path, not a CortexDB flag.
+- **CortexDB raises no conflicts in its default mode.** With
+  `CORTEX_BITEMPORAL_MODE=shadow`, the planted refund disagreement (five
+  vs ten business days) raises no conflict record. The pack still shows
+  both sides, because both raw events are in it. `bitemporal-enforce` is
+  the profile that tests whether enforcing changes this.
+- **Superseded values still often come first** (57% fresh first). The
+  answering model picks the current value from the dates, as the agent
+  memory eval found.
+
+### Mock sweep (all profiles, one run each)
+
+Every profile booted, ran all twelve scenarios and compared, except
+`rerank-cohere`, which has no `COHERE_API_KEY`. The sweep also found two
+things:
+
+- `bitemporal-off` makes `v1/conflicts` answer 503. The eval now reads that
+  as no conflicts instead of failing.
+- The mock models extract nothing, so flags have nothing to act on. Yet
+  single runs still moved by 2–4 probes against the baseline (−6 pp pack
+  hit under `salience-high`, ±14–29 pp on the 7-probe fresh-first rate).
+  That spread is timing: what is indexed when a probe runs. So **a single
+  run cannot attribute a change of a few probes to a flag**. The
+  comparison now never counts one probe flipping as a move, and the sweep
+  takes `REPEAT` so each profile's own spread sets its noise band.
 
 ## Caveats
 
