@@ -354,11 +354,13 @@ async fn build_beliefs(
     if let Some(refused) = refuse_scope(&state, scope) {
         return refused;
     }
-    let mut seen = state.seen.lock().unwrap();
-    seen.builds.push(body.clone());
-    let job = format!("build-{}", seen.builds.len());
-    drop(seen);
-    ok(&state, 202, json!({ "status": "queued", "job_id": job }))
+    state.seen.lock().unwrap().builds.push(body.clone());
+    // CortexDB v0.10 builds within the request and reports the count.
+    ok(
+        &state,
+        200,
+        json!({ "built": 1, "items": [], "facts_scanned": 1, "events_scanned": 1 }),
+    )
 }
 
 /// CortexDB's own routes.

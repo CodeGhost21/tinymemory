@@ -1,13 +1,19 @@
 //! Consolidate: CortexDB's on-demand belief build.
 //!
 //! **Direct.** CortexDB builds a scope's beliefs at `v1/beliefs/build`, one
-//! scope per request (`{"scope": "<path>"}`), and answers once the build is
-//! queued. A [`ConsolidateRequest`] covers a reach and some kinds, so the
-//! engine first finds the kind scopes in reach that CortexDB actually holds
-//! (`v1/scopes/list`, see `scopes::held`) and asks for each, in order. The
-//! receipt is [`ConsolidateStatus::Started`] with whatever job handles the
-//! answers carried. What gets built surfaces through recall's derived
-//! layers (`facts`, `beliefs`), which fetch and recall already read.
+//! scope per request (`{"scope": "<path>"}`). A [`ConsolidateRequest`] covers
+//! a reach and some kinds, so the engine first finds the kind scopes in reach
+//! that CortexDB actually holds (`v1/scopes/list`, see `scopes::held`) and
+//! asks for each, in order.
+//!
+//! CortexDB v0.10 builds within the request, from the facts it has already
+//! extracted, and answers with the count (`{"built": 2, "items": [...]}`):
+//! the receipt is then [`ConsolidateStatus::Completed`] with the summed
+//! count. An answer that names a job instead (`job_id`, `build_id` or `id`)
+//! means the build was queued, and the receipt is
+//! [`ConsolidateStatus::Started`] with the handles. What gets built lands in
+//! recall's derived layers (`facts`, `beliefs`); the answer route reads them,
+//! fetch does not (it ranks stored items only).
 //!
 //! Every build is sent once: a build is not idempotent work to repeat on a
 //! timeout, and the host can always ask again. A failure part way leaves the
@@ -40,6 +46,28 @@ pub(super) fn job_id(answer: &Value) -> Option<String> {
         })
 }
 
+/// The receipt for the answers of builds over `scopes` scopes: completed
+/// when every answer reports what it built, started when any was queued.
+pub(super) fn receipt(answers: &[Value], scopes: usize) -> ConsolidateReceipt {
+    let jobs: Vec<String> = answers.iter().filter_map(job_id).collect();
+    let counts: Vec<usize> = answers
+        .iter()
+        .filter_map(|answer| answer.get("built")?.as_u64())
+        .filter_map(|built| usize::try_from(built).ok())
+        .collect();
+    let completed = jobs.is_empty() && counts.len() == answers.len();
+    ConsolidateReceipt {
+        status: if completed {
+            ConsolidateStatus::Completed
+        } else {
+            ConsolidateStatus::Started
+        },
+        jobs,
+        scopes,
+        built: completed.then(|| counts.iter().sum()),
+    }
+}
+
 impl CortexEngine {
     /// See the module docs.
     pub(super) async fn build_beliefs(
@@ -52,7 +80,7 @@ impl CortexEngine {
             return Ok(ConsolidateReceipt::scheduled());
         }
         let scopes = self.held(&req.reach, &req.admitted_kinds()).await?;
-        let mut jobs = Vec::new();
+        let mut answers = Vec::new();
         for scope in &scopes {
             let body = json!({ "scope": scope.path });
             let answer = self
@@ -65,13 +93,9 @@ impl CortexEngine {
                     Attempts::Once,
                 )
                 .await?;
-            jobs.extend(job_id(&answer));
+            answers.push(answer);
         }
-        Ok(ConsolidateReceipt {
-            status: ConsolidateStatus::Started,
-            jobs,
-            scopes: scopes.len(),
-        })
+        Ok(receipt(&answers, scopes.len()))
     }
 }
 
