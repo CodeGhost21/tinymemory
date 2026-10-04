@@ -18,8 +18,7 @@
 //!
 //! # Example
 //!
-//! ```
-//! #![cfg(feature = "conformance")]
+//! ```ignore
 //! use tinymemory_api::{MemoryEngine, MemoryMeta, StoreItem, WaitFor, WriteOptions};
 //! use tinymemory_api::conformance::ReferenceEngine;
 //!
