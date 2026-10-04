@@ -123,7 +123,7 @@ Under `documents-office`, `OfficeConverter` is pure Rust (`pdf-extract`, `zip` +
 | PDF | text layer only (a scanned PDF is refused as having no text) | page text, whitespace-normalised |
 | DOCX | `word/document.xml` | one paragraph per `w:p` |
 | PPTX | `ppt/slides/slideN.xml` | slides in numeric order |
-| XLSX | `calamine` | one `sheet | cell | cell` line per non-empty row |
+| XLSX | `calamine` | one `sheet \| cell \| cell` line per non-empty row |
 
 It refuses hostile input: an archive whose declared uncompressed size exceeds
 `MAX_DECOMPRESSED_BYTES` (64 MiB), each entry read being capped as well, and a
