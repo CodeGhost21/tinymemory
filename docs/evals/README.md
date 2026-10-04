@@ -70,9 +70,17 @@ Flags (after `--`): `--engine reference|cortex`, `--only <scenario>`,
    lifecycle call: a new thread's `pre_turn`, `start_session`,
    `recall_for_compaction`, or the next `pre_turn` of a long thread. Each
    pack is then scored.
-4. **Synthesise.** Wait for CortexDB's enrichment (`--enrich-wait`, 20 s by
-   default), then run every job the writes handed back, plus one
-   `BuildBeliefs` over each tenant's whole tree.
+4. **Synthesise.** Wait until CortexDB's enrichment queue (fact extraction)
+   drains, at most `--enrich-wait` seconds (600 by default). With a real
+   model this takes about two minutes per scenario, and beliefs are built
+   from extracted facts, so building any sooner builds from nothing. Then
+   run every job the writes handed back, plus one `BuildBeliefs` over each
+   tenant's whole tree. Recorded runs before 2026-10-04 15:00 UTC waited a
+   fixed 20 s instead.
+   - CortexDB's extraction needs a model that returns JSON within a small
+     token limit. A model whose reasoning cannot be turned off
+     (`z-ai/glm-5.3-flash`) spends the limit thinking and extracts
+     nothing; `z-ai/glm-4.7-flash` works.
 5. **Probe again** (phase `synthesis`), then forget everything.
 
 ### Metrics
