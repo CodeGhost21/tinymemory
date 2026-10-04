@@ -26,12 +26,24 @@ accepts only `scope`, `query`, `budgets`, `view`, `include`, `temporal` and
 
 ## Storage layout
 
-**Scopes.** One per item kind under the TinyMemory root:
-`app:tinymemory/app:documents`, `app:tinymemory/app:conversations`,
-`app:tinymemory/app:learnings`. The hosted backend also re-roots every scope under
-the caller's tenant. `MetaFilter.kinds` picks the scopes read.
+**Scopes.** One per item kind per namespace node, under the TinyMemory root:
 
-Every segment uses CortexDB's built-in `app` scope type. From v0.10 a
+```text
+app:tinymemory/app:{documents,conversations,learnings}                  the root node
+app:tinymemory/agent:researcher/app:{documents,conversations,learnings} an agent
+app:tinymemory/team:acme/agent:writer/app:learnings                     a team member
+```
+
+The hosted backend also re-roots every scope under the caller's tenant.
+`MetaFilter.kinds` and `MetaFilter.reach` pick the scopes read: a reach's own
+node and inherited ancestors are known; a subtree reach or an unscoped read
+discovers the nodes below from the registered scopes (`v1/scopes/list`,
+`memory/scopes`). Every read names its scopes exactly; server-side traversal
+(`holistic`, `descend`) is used only for an unscoped multi-scope recall, so
+one agent's read never reaches a sibling's scope.
+
+Namespace segments use CortexDB's built-in `agent`, `team`, `user`, `ws` and
+`project` types, and the root and kind segments its `app` type. From v0.10 a
 deployment admits only the scope types in its policy's `allowed_scope_types`
 (`org, dept, team, app, user, agent, service, ws, project, global, system,
 source` in every shipped preset) and refuses any other with `422
@@ -83,8 +95,9 @@ as prefixes, so they cannot be labelled and are filtered only client-side.
   uses a fresh `idempotency_key`, never a content-derived one, because
   CortexDB keeps a forgotten event's key and would swallow a re-store. The
   write then waits for its last event to be readable (see below).
-- **List.** Pages the admitted kind scopes in order, newest first. The opaque
-  cursor holds the scope, the engine cursor, the offset into that page and the
+- **List.** Pages the scopes read (kind order, then namespace), newest first.
+  The opaque cursor holds the scope's path (so a scope created between pages
+  cannot shift the listing), the engine cursor, the offset into that page and the
   last event id, which is enough to drop the engine's duplicate copies across
   page boundaries. A conversation is emitted once, on the page holding its
   turn 0, with its text assembled from all its turns (one label lookup per
