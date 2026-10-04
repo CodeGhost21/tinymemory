@@ -49,6 +49,7 @@
 //! ```
 
 pub mod context;
+pub mod recall;
 pub mod tools;
 
 pub use tools::{
