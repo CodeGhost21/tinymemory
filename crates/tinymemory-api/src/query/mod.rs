@@ -127,6 +127,19 @@ pub struct FetchRequest {
     /// Continue from a previous page.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    /// Also return up to this many beliefs from what the fetch read, in
+    /// [`FetchPage::beliefs`]: the beliefs an engine keeps apart from its
+    /// items (see [`crate::MemoryEngine::beliefs`]), ranked for the same
+    /// query, from the same reads. `0`, the default, asks for none; an
+    /// engine that keeps no beliefs apart returns none.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub beliefs: usize,
+}
+
+/// Whether `n` is zero (serde's skip test).
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde passes a reference.
+fn is_zero(n: &usize) -> bool {
+    *n == 0
 }
 
 impl FetchRequest {
@@ -139,6 +152,7 @@ impl FetchRequest {
             filter: MetaFilter::default(),
             limit,
             cursor: None,
+            beliefs: 0,
         }
     }
 
@@ -162,6 +176,11 @@ pub struct FetchPage {
     /// end.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_cursor: Option<String>,
+    /// The beliefs [`FetchRequest::beliefs`] asked for, best first: learning
+    /// hits tagged [`crate::BELIEF_TAG`] within the filter's reach. Not
+    /// items of the page, and not paged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub beliefs: Vec<Hit>,
 }
 
 /// One stored item as a read returns it.

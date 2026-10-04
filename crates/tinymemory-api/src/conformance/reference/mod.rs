@@ -170,7 +170,11 @@ impl MemoryEngine for ReferenceEngine {
         req.validate()?;
         let hits = self.ranked(&req.query, req.mode, &req.filter)?;
         let (hits, next_cursor) = page(hits, req.cursor.as_deref(), req.limit)?;
-        Ok(FetchPage { hits, next_cursor })
+        Ok(FetchPage {
+            hits,
+            next_cursor,
+            beliefs: Vec::new(),
+        })
     }
 
     async fn store(&self, item: StoreItem) -> Result<StoreReceipt> {
