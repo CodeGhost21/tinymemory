@@ -94,7 +94,10 @@ where
         let name = name.as_ref().trim();
         let parsed = HeaderName::from_bytes(name.as_bytes())
             .map_err(|_| Error::Config(format!("`{name}` is not a valid header name")))?;
-        if RESERVED_HEADERS.contains(&parsed.as_str()) {
+        if RESERVED_HEADERS
+            .iter()
+            .any(|reserved| reserved.eq_ignore_ascii_case(parsed.as_str()))
+        {
             return Err(Error::Config(format!(
                 "`{name}` is set by the memory transport and cannot be fixed"
             )));
