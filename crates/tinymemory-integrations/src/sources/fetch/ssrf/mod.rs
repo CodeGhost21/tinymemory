@@ -1,7 +1,9 @@
 //! Shared SSRF guard and fetch hygiene for the network source readers.
 //!
-//! The web-page and RSS readers both fetch user-configured URLs, so they share
-//! the policy in this module.
+//! [`super::fetch_url`] and the web-page and RSS readers built on it all fetch
+//! user-configured URLs, so they share the policy in this module. It is public
+//! so a host fetching a user-supplied URL by other means applies the same
+//! policy rather than a second, weaker one.
 //!
 //! The hostname *text* check (`is_blocked_host`) rejects private IP literals
 //! (including their IPv4-mapped IPv6 forms, e.g. `::ffff:127.0.0.1`),
@@ -18,7 +20,7 @@
 //! hostile or gigantic page/feed cannot OOM the process before the size check
 //! runs.
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
 use futures::stream::StreamExt;
@@ -124,54 +126,58 @@ fn box_err(
     Box::new(e)
 }
 
-/// Whether `ip` is a globally routable address — the resolved-address half of
-/// the SSRF guard. Mirrors the literal/name policy in `is_blocked_host`:
-/// loopback, private, link-local, unique-local, multicast, broadcast,
-/// unspecified, and documentation/reserved ranges are not fetchable.
+/// Whether `ip` is a globally routable address — the one address classifier
+/// behind both halves of the SSRF guard (literal hosts in `is_blocked_host`
+/// and resolved addresses in `PublicOnlyResolver`).
+///
+/// Not fetchable: loopback, private, link-local, unspecified, CGNAT
+/// (`100.64.0.0/10`), IETF protocol assignments (`192.0.0.0/24`), multicast,
+/// broadcast, documentation (`192.0.2.0/24`, `198.51.100.0/24`,
+/// `203.0.113.0/24`, `2001:db8::/32`), benchmarking (`198.18.0.0/15`),
+/// reserved (`240.0.0.0/4`), and IPv6 unique-local (`fc00::/7`) and
+/// link-local (`fe80::/10`). An IPv6 address carrying an IPv4 one — mapped
+/// (`::ffff:a.b.c.d`) or the deprecated compatible form (`::a.b.c.d`) — is
+/// judged by its IPv4 part, so a mapped loopback stays blocked.
 fn is_public_ip(ip: IpAddr) -> bool {
     match ip {
-        IpAddr::V4(v4) => is_public_ipv4(v4),
-        IpAddr::V6(v6) => is_public_ipv6(v6),
+        IpAddr::V4(v4) => {
+            let o = v4.octets();
+            !(v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_multicast()
+                || v4.is_broadcast()
+                || (o[0] == 100 && o[1] & 0xc0 == 0x40)
+                || (o[0] == 192 && o[1] == 0)
+                || (o[0] == 198 && o[1] == 51 && o[2] == 100)
+                || (o[0] == 203 && o[1] == 0 && o[2] == 113)
+                || (o[0] == 198 && o[1] & 0xfe == 18)
+                || o[0] >= 240)
+        }
+        IpAddr::V6(v6) => {
+            if v6.is_loopback() || v6.is_unspecified() || v6.is_multicast() {
+                return false;
+            }
+            let o = v6.octets();
+            if (o[0] & 0xfe == 0xfc)
+                || (o[0] == 0xfe && o[1] & 0xc0 == 0x80)
+                || (o[0] == 0x20 && o[1] == 0x01 && o[2] == 0x0d && o[3] == 0xb8)
+            {
+                return false;
+            }
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return is_public_ip(IpAddr::V4(v4));
+            }
+            // `to_ipv4_mapped` answers `None` for the compatible form, so
+            // without this `::127.0.0.1` would read as public. `::` and `::1`
+            // were judged as themselves above.
+            if o[..12].iter().all(|byte| *byte == 0) {
+                return is_public_ip(IpAddr::V4(Ipv4Addr::new(o[12], o[13], o[14], o[15])));
+            }
+            true
+        }
     }
-}
-
-fn is_public_ipv4(ip: Ipv4Addr) -> bool {
-    if is_private_ipv4(ip) || ip.is_multicast() || ip.is_broadcast() {
-        return false;
-    }
-    let o = ip.octets();
-    // Documentation (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24),
-    // benchmarking (198.18.0.0/15), and reserved (240.0.0.0/4) ranges are not
-    // globally routable.
-    !((o[0] == 192 && o[1] == 0 && o[2] == 2)
-        || (o[0] == 198 && o[1] == 51 && o[2] == 100)
-        || (o[0] == 203 && o[1] == 0 && o[2] == 113)
-        || (o[0] == 198 && o[1] == 18)
-        || o[0] >= 240)
-}
-
-fn is_public_ipv6(ip: Ipv6Addr) -> bool {
-    if is_private_ipv6(ip) || ip.is_multicast() {
-        return false;
-    }
-    let o = ip.octets();
-    // Documentation prefix 2001:db8::/32.
-    if o[0] == 0x20 && o[1] == 0x01 && o[2] == 0x0d && o[3] == 0xb8 {
-        return false;
-    }
-    // IPv4-mapped (`::ffff:a.b.c.d`) delegate to the embedded IPv4, so a
-    // mapped loopback/private address stays blocked.
-    if let Some(v4) = ip.to_ipv4_mapped() {
-        return is_public_ipv4(v4);
-    }
-    // The deprecated IPv4-compatible form (`::a.b.c.d`) carries an IPv4
-    // address too, and `to_ipv4_mapped` answers `None` for it — so without
-    // this, `::127.0.0.1` and `::169.254.169.254` read as public. `::` and
-    // `::1` are judged as themselves above, before this reading applies.
-    if o[..12].iter().all(|byte| *byte == 0) {
-        return is_public_ipv4(Ipv4Addr::new(o[12], o[13], o[14], o[15]));
-    }
-    true
 }
 
 /// Whether a URL may be fetched: `http(s)` scheme against a public host.
@@ -196,45 +202,17 @@ fn is_blocked_host(host: &str) -> bool {
     if host.is_empty() {
         return true;
     }
-    if let Ok(ip) = host.parse::<std::net::Ipv4Addr>() {
-        // Use the same public-address classification as the resolved-address
-        // guard (and the IPv6 literal branch) so reserved/multicast/broadcast/
-        // documentation/benchmarking literals are rejected too. A literal never
-        // goes through DNS resolution, so the `PublicOnlyResolver` never sees
-        // it — this text check is the only line of defense for it.
-        return !is_public_ipv4(ip);
-    }
-    if let Ok(ip) = host.parse::<std::net::Ipv6Addr>() {
-        // Use the same public-address classification as the resolved-address
-        // guard so an IPv4-mapped literal (`::ffff:127.0.0.1`,
-        // `::ffff:10.0.0.1`) is rejected like its bare IPv4 counterpart. A
-        // literal never goes through DNS resolution, so the `PublicOnlyResolver`
-        // never sees it — this text check is the only line of defense for it.
-        return !is_public_ipv6(ip);
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        // A literal never goes through DNS resolution, so `PublicOnlyResolver`
+        // never sees it — this text check is its only line of defense, and it
+        // uses the same classification as the resolver.
+        return !is_public_ip(ip);
     }
     if host == "localhost" || host.ends_with(".local") || host.ends_with(".internal") {
         return true;
     }
     // A single-label name is an internal-service name, not a public domain.
     !host.contains('.')
-}
-
-fn is_private_ipv4(ip: std::net::Ipv4Addr) -> bool {
-    if ip.is_loopback() || ip.is_private() || ip.is_link_local() || ip.is_unspecified() {
-        return true;
-    }
-    let o = ip.octets();
-    // 100.64.0.0/10 CGNAT and 192.0.0.0/24 (IETF protocol assignments).
-    (o[0] == 100 && o[1] & 0xc0 == 0x40) || (o[0] == 192 && o[1] == 0)
-}
-
-fn is_private_ipv6(ip: std::net::Ipv6Addr) -> bool {
-    if ip.is_loopback() || ip.is_unspecified() {
-        return true;
-    }
-    let o = ip.octets();
-    // Unique-local fc00::/7 and link-local fe80::/10.
-    (o[0] == 0xfc || o[0] == 0xfd) || (o[0] == 0xfe && o[1] & 0xc0 == 0x80)
 }
 
 #[cfg(test)]
