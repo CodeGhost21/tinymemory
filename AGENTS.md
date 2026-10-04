@@ -11,18 +11,27 @@ no longer applies rather than leaving it to rot.
 
 This is a Cargo **workspace** with a virtual root: there is no root package,
 and every crate lives in its own directory under `crates/`, named for the
-package it holds. `members` is the glob `crates/*`, so a new crate joins the
-workspace by existing. `crates/tinymemory` is the facade a host depends on;
-`crates/tinymemory-api` is the contract; `crates/tinymemory-cortex` is the
-CortexDB engine; the rest are subsystems, each reachable from the facade by a
-feature named after it. The accepted behaviour is
-[`docs/specs/memory-v2.md`](docs/specs/memory-v2.md).
+package it holds. There are exactly three, one per part of the memory layer:
+
+- `crates/tinymemory-api` — the **core contract**: `MemoryEngine`, items,
+  metadata, namespaces, errors, and (feature `conformance`) the suite every
+  engine must pass. No I/O.
+- `crates/tinymemory-tools` — the **agent tool spec**: `MemoryTools` over any
+  engine, and the `context.md` compiler.
+- `crates/tinymemory-integrations` — the **integrations**: the CortexDB engine
+  and its registry, documents, sources, safety and the legacy v1 import, each
+  a module behind a feature.
+
+Shared package metadata, the version and the lint table live in the root
+`Cargo.toml` (`[workspace.package]`, `[workspace.lints]`). The accepted
+behaviour is [`docs/specs/memory-v2.md`](docs/specs/memory-v2.md); how it is
+built is in [`docs/architecture/`](docs/architecture/README.md).
 
 See [`README.md`](README.md) for the full layout and the feature table.
 
 ```text
 crates/<package>/
-├── Cargo.toml          # one package; `[lints]` opted into per crate
+├── Cargo.toml          # one package; `[lints] workspace = true`
 ├── README.md           # required of complex crates: design, surface, caveats
 └── src/
     ├── lib.rs          # crate docs + the entire public re-export surface
@@ -39,10 +48,11 @@ docs/
 └── adr/                # immutable architecture decision records
 ```
 
-A new crate goes in `crates/<package>/`, and a package that is not an engine
-or a subsystem of the memory layer probably does not belong here at all. Reach
-it from the facade by adding an optional dependency and a feature of the same
-name, so a host keeps taking one dependency and stating what it wants.
+Do not add a fourth crate. New contract surface goes in `tinymemory-api`, a new
+agent-facing tool in `tinymemory-tools`, and anything that talks to the outside
+world (a new engine, reader or converter) becomes a module of
+`tinymemory-integrations` behind a feature named after it, with its
+dependencies optional and enabled only by that feature.
 
 Each feature area belongs in a focused module directory under the crate's
 `src/`. A module root explains the module, wires its pieces together, and
@@ -83,7 +93,7 @@ Supporting commands:
 
 - `cargo fmt --all` — format before committing.
 - `cargo test <filter>` — run a focused subset while iterating.
-- `cargo run -p tinymemory --example basic` — run the bundled example. The
+- `cargo run -p tinymemory-integrations --example basic` — run the bundled example. The
   `-p` is required: the workspace root is virtual, so cargo cannot infer which
   package an example belongs to.
 - `cargo doc --no-deps --all-features` — build the rustdoc CI also builds with
@@ -222,7 +232,8 @@ explicitly declined with a reason.
 Releases run from `.github/workflows/release.yml` via a manual
 `workflow_dispatch` with a `patch` / `minor` / `major` bump. The workflow
 re-runs formatting, clippy, tests, and rustdoc, computes the next version,
-updates `crates/tinymemory/Cargo.toml` and `Cargo.lock`, commits and tags
+updates `[workspace.package] version` in the root `Cargo.toml` and
+`Cargo.lock`, commits and tags
 `vX.Y.Z`, pushes both, and creates a GitHub release for the tag. There are no
 binary artifacts.
 
@@ -231,7 +242,7 @@ take this repository by git or path, pinned to a tag.
 
 Consequently:
 
-- Do not hand-edit the `version` field in `crates/tinymemory/Cargo.toml`; the
+- Do not hand-edit `[workspace.package] version` in the root `Cargo.toml`; the
   release workflow owns it.
 - Follow semantic versioning. Any change to the public surface that is not
   purely additive is a breaking change and needs a major bump.
