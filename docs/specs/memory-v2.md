@@ -284,6 +284,10 @@ section, persisted by the host) makes import resumable. Behind `legacy-import`.
 - `store_many` storing in order, listing every item on return, replaying a
   repeated batch, and refusing an empty one;
 - fetch filtering by every meta field;
+- namespaces: each reach (inherited, exact, subtree) listing exactly its
+  nodes and never a sibling's, `get` and `fetch` honouring the reach, the
+  same text at two nodes being two items, the namespace facet counting each
+  node, and a forget scoped to one node removing only it;
 - forget by id and by filter;
 - refusing an empty filter;
 - `Unsupported` for undeclared modes;
