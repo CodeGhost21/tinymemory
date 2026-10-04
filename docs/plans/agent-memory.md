@@ -75,7 +75,12 @@ cargo test --all-features
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
 cargo run -p tinymemory-tools --example agent_loop
 ./scripts/cortexdb-live.sh   # needs Docker
+./scripts/memory-eval.sh --llm                     # accuracy and latency eval
+MODELS=openrouter ./scripts/memory-eval.sh --llm   # with real models
 ```
+
+The eval's method and recorded results are in
+[`../evals/`](../evals/README.md).
 
 ## Checklist
 
@@ -86,3 +91,4 @@ cargo run -p tinymemory-tools --example agent_loop
 - [x] Integrations brain helper, doubles test, live test
 - [x] Examples
 - [x] Docs
+- [x] Eval: scripted agent, nine scenarios, results in `docs/evals/`
