@@ -3,9 +3,8 @@
 //! into [`StoreItem`](tinymemory_api::StoreItem)s.
 //!
 //! - **Configuration** — what a source *is* ([`MemorySourceEntry`], keyed by
-//!   [`SourceKind`]), its partial updates ([`MemorySourcePatch`]), field rules
-//!   ([`validation`]), the host's persisted registry ([`SourceRegistry`]) and
-//!   Composio reconciliation ([`reconcile`]).
+//!   [`SourceKind`], checked by [`MemorySourceEntry::validate`]). Where the
+//!   host stores its sources, and how it edits them, is the host's business.
 //! - **Readers** — [`readers::SourceReader`] lists a source's items and reads
 //!   one. Local readers (folder, file, conversation) are always compiled; the
 //!   network readers (GitHub, RSS, web page) and `fetch` sit behind the
@@ -67,19 +66,11 @@ pub mod error;
 pub mod fetch;
 pub mod items;
 pub mod readers;
-pub mod reconcile;
-pub mod registry;
 pub mod types;
-pub mod validation;
 
 /// Largest file a folder or file source will read.
 pub const FOLDER_FILE_SIZE_CAP_BYTES: u64 = 10 * 1024 * 1024;
 
 pub use error::{Error, Result};
 pub use items::{Collected, collect_items, content_item, conversation_item, file_item};
-pub use registry::{
-    ComposioUpsertTarget, SourceRegistry, apply_kind_defaults, memory_sync_defaults_for_toolkit,
-};
-pub use types::{
-    ContentType, MemorySourceEntry, MemorySourcePatch, SourceContent, SourceItem, SourceKind,
-};
+pub use types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
