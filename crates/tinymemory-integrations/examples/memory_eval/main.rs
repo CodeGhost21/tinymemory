@@ -343,7 +343,12 @@ async fn run_scenario(
 
     let mut probes = Vec::new();
     for probe in &scenario.probes {
-        probes.push(run_probe(engine, llm, run, scenario, probe, "recall", &policy, timings).await?);
+        probes.push(
+            run_probe(
+                engine, llm, run, scenario, probe, "recall", &policy, timings,
+            )
+            .await?,
+        );
     }
 
     // Synthesis: the jobs the writes handed back, then one build per tenant
@@ -395,7 +400,19 @@ async fn run_scenario(
     );
 
     for probe in &scenario.probes {
-        probes.push(run_probe(engine, llm, run, scenario, probe, "synthesis", &policy, timings).await?);
+        probes.push(
+            run_probe(
+                engine,
+                llm,
+                run,
+                scenario,
+                probe,
+                "synthesis",
+                &policy,
+                timings,
+            )
+            .await?,
+        );
     }
 
     if std::env::var("CORTEX_DB_KEEP").is_err() {
@@ -526,57 +543,56 @@ async fn run_probe(
     Ok(result)
 }
 
+/// One accuracy row.
+fn row(name: &str, phase: &str, t: &Totals) -> String {
+    format!(
+        "| {name} | {phase} | {} | {} | {} | {:.2} | {} | {} |",
+        Totals::pct(t.hits, t.scored),
+        Totals::pct(t.answers_ok, t.scored),
+        Totals::pct(t.llm_ok, t.llm_scored),
+        t.mrr,
+        Totals::pct(t.fresh_first, t.contradictions),
+        if t.leak_checks == 0 {
+            "–".to_string()
+        } else {
+            format!("{}/{}", t.leaks, t.leak_checks)
+        },
+    )
+}
+
 fn print_summary(label: &str, reports: &[ScenarioReport], timings: &Timings) {
+    let phases = ["recall", "synthesis"];
     println!("\n## Accuracy (`{label}`)\n");
-    println!("| Scenario | Phase | Pack hit | Answer | MRR | Fresh first | Leaks |");
-    println!("| --- | --- | --- | --- | --- | --- | --- |");
+    println!(
+        "| Scenario | Phase | Pack hit | Extractive answer | Model answer | MRR | Fresh first | Leaks |"
+    );
+    println!("| --- | --- | --- | --- | --- | --- | --- | --- |");
     let all: Vec<&ProbeResult> = reports.iter().flat_map(|r| &r.probes).collect();
     for report in reports {
-        for phase in ["recall", "synthesis"] {
+        for phase in phases {
             let t = Totals::of(report.probes.iter().filter(|p| p.phase == phase));
-            println!(
-                "| {} | {phase} | {} | {} | {:.2} | {} | {} |",
-                report.name,
-                Totals::pct(t.hits, t.scored),
-                Totals::pct(t.answers_ok, t.scored),
-                t.mrr,
-                Totals::pct(t.fresh_first, t.contradictions),
-                if t.leak_checks == 0 {
-                    "–".to_string()
-                } else {
-                    format!("{}/{}", t.leaks, t.leak_checks)
-                },
-            );
+            println!("{}", row(report.name, phase, &t));
         }
     }
-    for phase in ["recall", "synthesis"] {
+    for phase in phases {
         let t = Totals::of(all.iter().copied().filter(|p| p.phase == phase));
-        println!(
-            "| **all** | {phase} | {} | {} | {:.2} | {} | {}/{} |",
-            Totals::pct(t.hits, t.scored),
-            Totals::pct(t.answers_ok, t.scored),
-            t.mrr,
-            Totals::pct(t.fresh_first, t.contradictions),
-            t.leaks,
-            t.leak_checks,
-        );
+        println!("{}", row("**all**", phase, &t));
     }
 
-    println!("\n## By question style (recall phase)\n");
-    println!("| Style | Pack hit | Answer | MRR |");
-    println!("| --- | --- | --- | --- |");
+    println!("\n## By question style\n");
+    println!(
+        "| Style | Phase | Pack hit | Extractive answer | Model answer | MRR | Fresh first | Leaks |"
+    );
+    println!("| --- | --- | --- | --- | --- | --- | --- | --- |");
     for style in ["lexical", "paraphrase"] {
-        let t = Totals::of(
-            all.iter()
-                .copied()
-                .filter(|p| p.phase == "recall" && p.style == style),
-        );
-        println!(
-            "| {style} | {} | {} | {:.2} |",
-            Totals::pct(t.hits, t.scored),
-            Totals::pct(t.answers_ok, t.scored),
-            t.mrr
-        );
+        for phase in phases {
+            let t = Totals::of(
+                all.iter()
+                    .copied()
+                    .filter(|p| p.phase == phase && p.style == style),
+            );
+            println!("{}", row(style, phase, &t));
+        }
     }
 
     println!("\n## Latency (ms)\n");
@@ -590,13 +606,17 @@ fn print_summary(label: &str, reports: &[ScenarioReport], timings: &Timings) {
         );
     }
 
-    println!("\n## Misses (recall phase)\n");
+    println!("\n## Misses\n");
     for result in all.iter().filter(|p| {
-        p.phase == "recall"
-            && (p.hit == Some(false) || p.answer_ok == Some(false) || p.leak || p.stale_first)
+        p.hit == Some(false)
+            || p.answer_ok == Some(false)
+            || p.llm_ok == Some(false)
+            || p.leak
+            || p.stale_first
     }) {
         println!(
-            "- {}/{} ({}, {}): hit {:?}, rank {:?}, stale first {}, leak {}; answered {:?}",
+            "- {} {}/{} ({}, {}): hit {:?}, rank {:?}, stale first {}, leak {}; extractive {:?}; model {:?}",
+            result.phase,
             result.scenario,
             result.id,
             result.via,
@@ -608,7 +628,8 @@ fn print_summary(label: &str, reports: &[ScenarioReport], timings: &Timings) {
             result
                 .answer
                 .as_deref()
-                .map(|a| a.chars().take(100).collect::<String>()),
+                .map(|a| a.chars().take(90).collect::<String>()),
+            result.llm_answer,
         );
     }
 }

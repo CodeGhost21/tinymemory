@@ -144,7 +144,10 @@ pub(crate) fn grade(probe: &Probe, answer: Option<&str>) -> Option<bool> {
     (!probe.expect.is_empty()).then(|| {
         answer.is_some_and(|text| {
             let text = text.to_lowercase();
-            probe.expect.iter().all(|e| text.contains(&e.to_lowercase()))
+            probe
+                .expect
+                .iter()
+                .all(|e| text.contains(&e.to_lowercase()))
                 && !probe.stale.iter().any(|s| text.contains(&s.to_lowercase()))
         })
     })
