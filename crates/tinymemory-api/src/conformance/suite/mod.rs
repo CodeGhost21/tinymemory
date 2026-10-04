@@ -21,10 +21,10 @@
 //!    metadata field selects exactly the item carrying it (and `list` agrees).
 //! 9. `unsupported_modes` — every undeclared fetch mode fails `Unsupported`.
 //! 10. `namespaces` — items at the root, two sibling agents and a sub-agent:
-//!    each reach (own and inherited, exact, subtree) lists exactly its nodes,
-//!    never a sibling's; `get` and `fetch` honour the reach; the same text in
-//!    two namespaces is two items; the namespace facet counts each node; and
-//!    a forget scoped to one node removes only it.
+//!     each reach (own and inherited, exact, subtree) lists exactly its nodes,
+//!     never a sibling's; `get` and `fetch` honour the reach; the same text in
+//!     two namespaces is two items; the namespace facet counts each node; and
+//!     a forget scoped to one node removes only it.
 //! 11. `empty_forget` — a forget with no ids or an empty filter is refused and
 //!     removes nothing.
 //! 12. `forget_by_id` and `forget_by_filter` — forgotten items stop listing and
