@@ -50,25 +50,6 @@ pub fn extract_page_markdown(data: &Value) -> Option<String> {
     None
 }
 
-/// Extract the Notion pagination cursor (for `start_cursor` on the
-/// next request).
-pub fn extract_notion_cursor(data: &Value) -> Option<String> {
-    let candidates = [
-        data.pointer("/data/next_cursor"),
-        data.pointer("/next_cursor"),
-        data.pointer("/data/data/next_cursor"),
-    ];
-    for cand in candidates.into_iter().flatten() {
-        if let Some(s) = cand.as_str() {
-            let trimmed = s.trim();
-            if !trimmed.is_empty() {
-                return Some(trimmed.to_string());
-            }
-        }
-    }
-    None
-}
-
 /// Try to extract a human-readable title from a Notion page object.
 ///
 /// Notion pages store the title in `properties.title` or
@@ -100,19 +81,6 @@ pub fn extract_page_title(page: &Value) -> Option<String> {
 
     // Fallback: top-level "title" field (some Composio shapes).
     pick_str(page, &["title", "data.title", "name", "data.name"])
-}
-
-/// Milliseconds since the Unix epoch.
-///
-/// The one clock read in this crate. Notion payloads carry no ingestion
-/// timestamp, so the normaliser stamps one; everything else here is a function
-/// of its input alone.
-pub fn now_ms() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
 }
 
 #[cfg(test)]
