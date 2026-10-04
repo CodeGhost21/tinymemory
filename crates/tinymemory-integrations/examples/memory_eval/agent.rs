@@ -135,13 +135,16 @@ fn reply(pack: &ContextPack, text: &str, tools: &[ToolStep]) -> String {
     if text.trim_end().ends_with('?') {
         lines.push(match answer(&pack.markdown, text) {
             Some(line) => format!("Going by memory: {line}"),
-            None => "I don't have that in memory.".to_string(),
+            None => NOT_IN_MEMORY.to_string(),
         });
     } else if lines.is_empty() {
         lines.push("Noted.".to_string());
     }
     lines.join("\n")
 }
+
+/// The agent's reply when nothing in the pack answers.
+const NOT_IN_MEMORY: &str = "I don't have that in memory.";
 
 /// Words too common to tell two lines apart.
 const STOPWORDS: [&str; 42] = [
@@ -160,23 +163,26 @@ fn words(text: &str) -> Vec<String> {
 }
 
 /// The pack line the agent would answer `question` with: the bullet sharing
-/// the most content words with it (earlier sections win ties), skipping the
-/// agent's own non-answers and lines that only repeat a question.
+/// the most content words with it (earlier sections win ties), skipping
+/// lines that only repeat a question and ignoring the agent's own
+/// non-answers.
 pub(crate) fn answer(markdown: &str, question: &str) -> Option<String> {
     let wanted = words(question);
-    let mut best: Option<(usize, &str)> = None;
+    let mut best: Option<(usize, String)> = None;
     for line in markdown.lines().filter_map(|line| line.strip_prefix("- ")) {
         let body = line.trim();
-        if body.ends_with('?') || body.contains("I don't have that in memory") {
+        if body.ends_with('?') {
             continue;
         }
+        let body = body.replace(NOT_IN_MEMORY, "");
+        let body = body.trim();
         let held = words(body);
         let overlap = wanted.iter().filter(|word| held.contains(word)).count();
         if overlap > 0 && best.is_none_or(|(score, _)| overlap > score) {
-            best = Some((overlap, body));
+            best = Some((overlap, body.to_string()));
         }
     }
-    best.map(|(_, line)| line.to_string())
+    best.map(|(_, line)| line)
 }
 
 /// Milliseconds since `started`.
