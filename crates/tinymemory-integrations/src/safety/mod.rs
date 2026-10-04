@@ -13,8 +13,9 @@
 //! The exhaustive multilingual national-ID PII module ([`pii`]) runs as part
 //! of [`sanitize_text`]. The write-rejection boundary ([`has_likely_pii`])
 //! stays stricter than content scrubbing: formatted national IDs are rejected,
-//! while phone/email-like text is scrubbed from content without rejecting
-//! every write that mentions them.
+//! while phone-like text is scrubbed from content without rejecting every
+//! write that mentions it. Email addresses are only detected
+//! ([`has_likely_email`]), never redacted from content.
 //!
 //! Before the shape regexes, [`sanitize_text`] redacts the value after a
 //! credential *marker* — a one-time-secret URL's `/secret/<key>` and a `Bearer`
