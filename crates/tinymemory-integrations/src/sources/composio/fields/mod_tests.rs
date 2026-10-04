@@ -1,4 +1,4 @@
-//! Tests for the shared normaliser helpers.
+//! Tests for the shared Composio field lookup.
 
 use super::*;
 use serde_json::json;
@@ -24,9 +24,9 @@ fn pick_str_respects_path_order() {
     assert_eq!(pick_str(&v, &["b", "a"]), Some("second".into()));
 }
 
-/// The drift guard for the divergence documented on [`pick_str`]. If this
-/// ever starts returning `Some("42")`, someone has re-pointed the
-/// normalisers at `common::pick_str` and changed their output.
+/// The drift guard for the behaviour documented on [`pick_str`]. If this
+/// ever starts returning `Some("42")`, the normalisers' emitted ids have
+/// changed.
 #[test]
 fn pick_str_rejects_non_string_values() {
     let v = json!({"count": 42, "flag": true, "empty": "", "whitespace": "   "});

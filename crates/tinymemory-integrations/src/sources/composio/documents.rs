@@ -12,7 +12,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use serde_json::Value;
 use tinymemory_api::{DocumentBody, MemoryMeta, SourceKind, StoreItem};
 
-use super::helpers::pick_str;
+use super::fields::pick_str;
 use super::{clickup, github, gmail_post_process, linear, notion};
 
 /// One record of a Composio payload, normalised: an email, a message, an

@@ -8,7 +8,7 @@
 
 use serde_json::Value;
 
-use super::helpers::pick_str;
+use super::fields::pick_str;
 
 /// Walk the Composio response envelope for GitHub search issue results.
 ///
