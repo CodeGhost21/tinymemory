@@ -4,7 +4,9 @@
 //! Threads are JSON files under `<workspace>/threads/`, shaped
 //! `{ title, messages: [{ role, content, created_at? }] }`. As a
 //! [`SourceContent`] a thread renders to markdown; as a store item it becomes
-//! a [`StoreItem::Conversation`] with one [`Turn`] per non-empty message.
+//! a [`StoreItem::Conversation`] with one [`Turn`] per non-empty message whose
+//! role is known (`user`, `assistant`, `system`, `tool` and their usual aliases);
+//! a message with any other role is skipped.
 //!
 //! Safety: `item_id` is rejected if it contains path separators or `..`, and the
 //! resolved file is re-checked for containment within the threads directory.
