@@ -141,3 +141,53 @@ async fn a_malformed_request_is_refused() {
     assert!(matches!(error, Error::InvalidRequest(_)), "{error:?}");
     assert!(state.requests().is_empty());
 }
+
+#[tokio::test]
+async fn a_fetch_reads_beliefs_from_its_own_recall_packs() {
+    let (endpoint, state) = direct_double().await;
+    let engine = direct_engine(&endpoint);
+    let node = Namespace::agent("coder-42");
+    engine
+        .store(StoreItem::document(
+            "In this repo always use pnpm.",
+            MemoryMeta {
+                namespace: node.clone(),
+                ..MemoryMeta::default()
+            },
+        ))
+        .await
+        .unwrap();
+    engine
+        .consolidate(tinymemory_api::ConsolidateRequest::new(Reach::exact(
+            node.clone(),
+        )))
+        .await
+        .unwrap();
+    let before = state.seen.lock().unwrap().recalls.len();
+    let mut request =
+        tinymemory_api::FetchRequest::new("pnpm", tinymemory_api::FetchMode::Hybrid, 5);
+    request.filter.reach = Some(Reach::exact(node.clone()));
+    request.filter.kinds = vec![ItemKind::Document];
+    request.beliefs = 3;
+    let page = engine.fetch(request).await.unwrap();
+    assert_eq!(page.hits.len(), 1, "the document itself");
+    assert_eq!(page.beliefs.len(), 1, "{:?}", page.beliefs);
+    assert_eq!(
+        page.beliefs[0].text,
+        "user said In this repo always use pnpm."
+    );
+    let recalls = state.seen.lock().unwrap().recalls[before..].to_vec();
+    assert_eq!(
+        recalls.len(),
+        1,
+        "one pack for the one scope, beliefs included"
+    );
+    assert_eq!(recalls[0]["budgets"]["per_layer_limits"]["beliefs"], 3);
+
+    let mut plain = tinymemory_api::FetchRequest::new("pnpm", tinymemory_api::FetchMode::Hybrid, 5);
+    plain.filter.reach = Some(Reach::exact(node));
+    let page = engine.fetch(plain).await.unwrap();
+    assert!(page.beliefs.is_empty(), "no beliefs unless asked");
+    let last = state.seen.lock().unwrap().recalls.last().cloned().unwrap();
+    assert!(last["budgets"]["per_layer_limits"].get("beliefs").is_none());
+}
