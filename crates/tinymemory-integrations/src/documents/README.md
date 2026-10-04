@@ -99,6 +99,8 @@ success.
 
 ## Features
 
+- `documents` — this module; depends only on `async-trait`, `serde`,
+  `serde_json` and `thiserror`.
 - `documents-office` — `OfficeConverter` (`pdf-extract`, `calamine`, `zip`,
   `quick-xml`). Off by default; it links a PDF parser and a spreadsheet reader
   a text-only host has no use for.
