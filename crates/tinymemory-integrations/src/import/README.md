@@ -17,7 +17,10 @@ itself has no features: being the legacy reader is its whole job.
 | `Items::with_page_size(n)` | Keys fetched per query (default `DEFAULT_PAGE_SIZE`, 256). Does not affect output. |
 | `ImportedItem { item, checkpoint }` | An item and the checkpoint to persist once it is stored. |
 | `Checkpoint` | Last yielded key per section; `to_json` / `from_json` for the host to persist. |
-| `Error` / `Result` | `NotFound`, `NotLegacy`, `Sqlite`, `Io`, `Json`. |
+| `migrate(engine, workspace, from)` | Copies every item after `from` into a `MemoryEngine`, in `store_many` batches; returns a `MigrationReport`. |
+| `migrate_with(engine, workspace, from, on_batch)` | `migrate`, calling `on_batch(&Checkpoint)` after each stored batch so the host can persist it. |
+| `MigrationReport { stored, replayed, batches, checkpoint }` | What a run did, and where to resume. |
+| `Error` / `Result` | `NotFound`, `NotLegacy`, `Sqlite`, `Io`, `Json`, `Engine { source, checkpoint }`; `Error::checkpoint()` reads the resume point. |
 
 ## Detection
 
@@ -144,3 +147,33 @@ not seen). The iterator fetches one page of keys per query, so memory is
 bounded by the page size and, for a conversation or chunk source, by that one
 thread or source. After an error it yields nothing more; resume from the last
 persisted checkpoint.
+
+## Migrating into an engine
+
+`migrate` is the whole backwards-compatibility path: open the v1 workspace,
+hand it to `migrate` with the engine built from the host's config (CortexDB,
+usually) and the checkpoint persisted by an earlier run, if any.
+
+```rust,ignore
+let workspace = LegacyWorkspace::open(path)?;
+let from = saved.map(|json| Checkpoint::from_json(&json)).transpose()?;
+let report = migrate_with(engine.as_ref(), workspace, from, |checkpoint| {
+    save(checkpoint.to_json());
+})
+.await?;
+```
+
+- Items are read in the order above and sent in batches of at most
+  `MAX_STORE_MANY` (100). After a batch is stored, its last item's checkpoint
+  is *committed*: passed to `on_batch` and kept as `report.checkpoint`.
+- An engine failure is `Error::Engine { source, checkpoint }`, with the last
+  committed checkpoint (or `from`, if no batch was stored). Resume by calling
+  `migrate` again with it. The failed batch may have stored a prefix of its
+  items; the engine answers those as replays, so a resumed or repeated run
+  never duplicates (a second full run reports every item as `replayed`).
+- A legacy read failure (`Sqlite`, `Io`) is returned as is. Every checkpoint
+  committed before it has been passed to `on_batch`; resuming from any of
+  them, or from the start, only replays.
+- The workspace is taken by value: its SQLite handle is not `Sync`, and owning
+  it keeps the returned future `Send`, so a long import can run on a spawned
+  task.
