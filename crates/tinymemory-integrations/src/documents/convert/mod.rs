@@ -27,10 +27,10 @@ mod types;
 
 use async_trait::async_trait;
 
-use crate::error::{Error, Result};
-use crate::format::DocumentFormat;
-use crate::html;
-use crate::language::language_for_path;
+use crate::documents::error::{Error, Result};
+use crate::documents::format::DocumentFormat;
+use crate::documents::html;
+use crate::documents::language::language_for_path;
 
 pub use types::{ConvertedDocument, MAX_DOCUMENT_BYTES, RawDocument};
 
@@ -103,7 +103,7 @@ pub fn markdown_from_text(text: &str, format: DocumentFormat) -> String {
 /// and source code.
 ///
 /// Everything it handles is already text, so the whole implementation is
-/// decoding plus, for HTML, [`crate::html::to_markdown`]. PDF and the Office
+/// decoding plus, for HTML, [`crate::documents::html::to_markdown`]. PDF and the Office
 /// formats are deliberately absent — see the module docs.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NativeConverter;

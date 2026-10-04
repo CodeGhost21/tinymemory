@@ -30,12 +30,12 @@
 //! ```no_run
 //! use std::sync::Arc;
 //! use tinymemory_api::{MemoryEngine, MemoryMeta, SourceKind, StoreItem};
-//! use tinymemory_cortex::{CortexCredential, CortexEngine, StaticBearer, CORTEX_API_ENDPOINT};
+//! use tinymemory_integrations::cortex::{CortexCredential, CortexEngine, StaticBearer, CORTEX_API_ENDPOINT};
 //!
-//! # async fn demo() -> tinymemory_cortex::Result<()> {
+//! # async fn demo() -> tinymemory_integrations::cortex::Result<()> {
 //! let direct = CortexEngine::direct(CORTEX_API_ENDPOINT, CortexCredential::api_key("ctx_..."))?;
 //! let hosted = CortexEngine::tinyhumans(
-//!     tinymemory_cortex::TINYHUMANS_API_ENDPOINT,
+//!     tinymemory_integrations::cortex::TINYHUMANS_API_ENDPOINT,
 //!     Arc::new(StaticBearer::new("tiny_live_...")),
 //! )?;
 //!

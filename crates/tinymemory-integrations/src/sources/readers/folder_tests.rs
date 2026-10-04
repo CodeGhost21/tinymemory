@@ -110,7 +110,7 @@ async fn list_items_skips_hidden_and_build_directories() {
             .await
             .unwrap_err();
         assert!(
-            matches!(error, crate::Error::Invalid(_)),
+            matches!(error, crate::sources::Error::Invalid(_)),
             "{hidden}: {error:?}"
         );
     }
@@ -319,7 +319,7 @@ async fn symlinks_cannot_escape_the_configured_folder() {
         .await
         .unwrap_err();
     assert!(
-        matches!(error, crate::Error::PathEscape(_)),
+        matches!(error, crate::sources::Error::PathEscape(_)),
         "got {error:?}"
     );
 }

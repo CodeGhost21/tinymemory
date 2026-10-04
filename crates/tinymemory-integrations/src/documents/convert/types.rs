@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::format::DocumentFormat;
+use crate::documents::format::DocumentFormat;
 
 /// Largest document intake will accept, in bytes.
 ///
@@ -95,7 +95,7 @@ pub struct ConvertedDocument {
     /// Format the source was detected as.
     pub format: DocumentFormat,
     /// Programming language, for [`DocumentFormat::Code`] whose filename named
-    /// one (see [`crate::language_for_path`]).
+    /// one (see [`crate::documents::language_for_path`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
     /// Size of the source document in bytes, before conversion.

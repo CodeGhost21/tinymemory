@@ -29,9 +29,9 @@
 use serde_json::{Value, json};
 
 use super::{Log, PAGE_SIZE};
-use crate::descriptor::{CortexWire, Route};
-use crate::error::{Error, Result};
-use crate::transport::{Attempts, fresh_idempotency_key};
+use crate::cortex::descriptor::{CortexWire, Route};
+use crate::cortex::error::{Error, Result};
+use crate::cortex::transport::{Attempts, fresh_idempotency_key};
 
 /// The last event of a write: what a wait for it needs.
 #[derive(Debug, Clone)]

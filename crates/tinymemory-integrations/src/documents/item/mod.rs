@@ -8,25 +8,25 @@
 //!
 //! The caller owns the metadata. Intake fills exactly one field, and only when
 //! the caller left it unset: [`MemoryMeta::language`], from the converter or
-//! from the file extension ([`crate::language_for_path`]). Provenance —
+//! from the file extension ([`crate::documents::language_for_path`]). Provenance —
 //! source, workspace, URL, observation time — is the caller's to state.
 
 use tinymemory_api::{DocumentBody, MemoryMeta, StoreItem};
 
-use crate::convert::{ConvertedDocument, DocumentConverter, RawDocument};
-use crate::error::Result;
-use crate::format::DocumentFormat;
-use crate::language::language_for_path;
+use crate::documents::convert::{ConvertedDocument, DocumentConverter, RawDocument};
+use crate::documents::error::Result;
+use crate::documents::format::DocumentFormat;
+use crate::documents::language::language_for_path;
 
 /// Convert `document` through `converter` and wrap the result as a
 /// [`StoreItem::Document`] carrying `meta`.
 ///
 /// # Errors
 ///
-/// Whatever the converter returns: [`crate::Error::Invalid`] for an empty or
-/// undecodable body, [`crate::Error::TooLarge`] over the size cap,
-/// [`crate::Error::UnsupportedFormat`] for a format nothing converts, and
-/// [`crate::Error::Converter`] for a converter's own failure.
+/// Whatever the converter returns: [`crate::documents::Error::Invalid`] for an empty or
+/// undecodable body, [`crate::documents::Error::TooLarge`] over the size cap,
+/// [`crate::documents::Error::UnsupportedFormat`] for a format nothing converts, and
+/// [`crate::documents::Error::Converter`] for a converter's own failure.
 pub async fn document_item(
     converter: &dyn DocumentConverter,
     document: &RawDocument,

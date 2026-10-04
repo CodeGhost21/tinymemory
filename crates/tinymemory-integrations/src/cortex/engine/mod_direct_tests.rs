@@ -2,7 +2,7 @@
 //! waits, forget selectors, the retry split and status mapping.
 
 use super::*;
-use crate::testing::{direct_double, direct_engine, sample_items, thread_meta};
+use crate::cortex::testing::{direct_double, direct_engine, sample_items, thread_meta};
 use std::sync::atomic::Ordering;
 use tinymemory_api::{MetaFilter, Role, Turn};
 
@@ -188,7 +188,7 @@ async fn statuses_map_onto_the_contract() {
             .await
             .unwrap_err();
         assert!(check(&error), "{code}: {error:?}");
-        assert!(!error.to_string().contains(crate::testing::TEST_TOKEN));
+        assert!(!error.to_string().contains(crate::cortex::testing::TEST_TOKEN));
     }
 }
 

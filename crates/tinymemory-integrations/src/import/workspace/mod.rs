@@ -21,9 +21,9 @@ use rusqlite::{Connection, OpenFlags};
 
 pub(crate) use schema::{ChunkStore, MemorySchema};
 
-use crate::checkpoint::Checkpoint;
-use crate::error::{Error, Result};
-use crate::items::Items;
+use crate::import::checkpoint::Checkpoint;
+use crate::import::error::{Error, Result};
+use crate::import::items::Items;
 
 /// A v1 TinyCortex workspace opened for import.
 #[derive(Debug)]

@@ -10,9 +10,9 @@ use rusqlite::params;
 use tinymemory_api::{StoreItem, Turn, TurnRange};
 
 use super::{Mark, Scanned, import_meta, sql_limit};
-use crate::convert;
-use crate::error::Result;
-use crate::workspace::LegacyWorkspace;
+use crate::import::convert;
+use crate::import::error::Result;
+use crate::import::workspace::LegacyWorkspace;
 
 /// The next page of threads after `after`.
 pub(super) fn page(

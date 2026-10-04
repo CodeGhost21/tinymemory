@@ -5,7 +5,7 @@
 
 use super::*;
 
-use crate::convert::ConverterChain;
+use crate::documents::convert::ConverterChain;
 
 /// A deflated zip archive of `(path, contents)` parts.
 fn package(parts: &[(&str, &str)]) -> Vec<u8> {

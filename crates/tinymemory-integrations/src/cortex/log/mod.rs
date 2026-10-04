@@ -41,7 +41,7 @@ pub(crate) use write::Written;
 
 use std::time::Duration;
 
-use crate::transport::HttpClient;
+use crate::cortex::transport::HttpClient;
 
 /// Events one listing page asks for. `limit` counts the engine's duplicate
 /// copies, so a page holds about half as many distinct events.
@@ -100,8 +100,8 @@ impl Log {
     /// The next poll gap after `current`.
     fn next_poll(&self, current: Duration) -> Duration {
         match self.client.wire() {
-            crate::CortexWire::Direct => current,
-            crate::CortexWire::TinyHumans => (current * 2).min(HOSTED_POLL_CEILING),
+            crate::cortex::CortexWire::Direct => current,
+            crate::cortex::CortexWire::TinyHumans => (current * 2).min(HOSTED_POLL_CEILING),
         }
     }
 }

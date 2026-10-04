@@ -3,12 +3,12 @@
 //! run the conformance suite, and compile a context from what is left.
 #![cfg(feature = "full")]
 
-use tinymemory::{LearningKind, MemoryEngine, MemoryMeta, StoreItem};
+use tinymemory_integrations::{LearningKind, MemoryEngine, MemoryMeta, StoreItem};
 
 #[tokio::test]
 async fn the_optional_crates_compose_through_the_facade() {
-    let engine = tinymemory::conformance::ReferenceEngine::new();
-    tinymemory::conformance::run(&engine)
+    let engine = tinymemory_api::conformance::ReferenceEngine::new();
+    tinymemory_api::conformance::run(&engine)
         .await
         .expect("the reference engine conforms");
 
@@ -18,11 +18,11 @@ async fn the_optional_crates_compose_through_the_facade() {
         0.8,
         MemoryMeta::default(),
     );
-    let scrubbed = tinymemory::safety::scrub_item(item);
+    let scrubbed = tinymemory_integrations::safety::scrub_item(item);
     assert!(scrubbed.report.changed());
     engine.store(scrubbed.value).await.expect("store");
 
-    let doc = tinymemory::context::compile(&engine, &tinymemory::context::ContextSpec::default())
+    let doc = tinymemory_tools::context::compile(&engine, &tinymemory_tools::context::ContextSpec::default())
         .await
         .expect("compile");
     assert!(doc.markdown.contains("## Learnings"));
@@ -33,9 +33,9 @@ async fn the_optional_crates_compose_through_the_facade() {
 #[test]
 fn the_reader_and_converter_crates_are_reachable() {
     assert_eq!(
-        tinymemory::documents::language_for_path("src/main.rs"),
+        tinymemory_integrations::documents::language_for_path("src/main.rs"),
         Some("rust")
     );
-    let _ = std::any::type_name::<tinymemory::import::Checkpoint>();
-    let _ = std::any::type_name::<tinymemory::sources::MemorySourceEntry>();
+    let _ = std::any::type_name::<tinymemory_integrations::import::Checkpoint>();
+    let _ = std::any::type_name::<tinymemory_integrations::sources::MemorySourceEntry>();
 }

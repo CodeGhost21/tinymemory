@@ -25,7 +25,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
-use crate::error::{Error, Result};
+use crate::sources::error::{Error, Result};
 
 use super::types::{MemorySourceEntry, MemorySourcePatch, SourceKind};
 

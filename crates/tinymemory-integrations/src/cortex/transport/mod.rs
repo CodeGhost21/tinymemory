@@ -7,7 +7,7 @@
 //!
 //! **Reads retry; writes do not.** Every call states its [`Attempts`]. A read
 //! (listing, recall) is retried up to three times with 250ms·2ⁿ backoff on
-//! [`crate::Error::Unavailable`]; a write is sent once, because a timeout on a
+//! [`crate::cortex::Error::Unavailable`]; a write is sent once, because a timeout on a
 //! write leaves whether it applied unknown. Hosted writes recover from that
 //! one level up, with an `Idempotency-Key` claim (see `log::write`).
 
@@ -21,9 +21,9 @@ use reqwest::header::{AUTHORIZATION, HeaderValue};
 use reqwest::{Method, RequestBuilder, Url};
 use serde_json::Value;
 
-use crate::credential::CortexCredential;
-use crate::descriptor::CortexWire;
-use crate::error::{Error, Result};
+use crate::cortex::credential::CortexCredential;
+use crate::cortex::descriptor::CortexWire;
+use crate::cortex::error::{Error, Result};
 
 pub(crate) use failure::health_reason;
 

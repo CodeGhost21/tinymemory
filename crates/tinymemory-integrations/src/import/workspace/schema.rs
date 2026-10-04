@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::Connection;
 
 use super::{is_not_a_database, open_read_only};
-use crate::error::Result;
+use crate::import::error::Result;
 
 /// Tables a v1 `memory.db` always has.
 const REQUIRED_TABLES: [&str; 3] = ["memory_docs", "episodic_log", "user_profile"];

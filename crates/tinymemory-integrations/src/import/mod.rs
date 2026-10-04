@@ -28,7 +28,7 @@
 //! # Example
 //!
 //! ```
-//! use tinymemory_import::{Checkpoint, LegacyWorkspace};
+//! use tinymemory_integrations::import::{Checkpoint, LegacyWorkspace};
 //! # let dir = tempfile::tempdir()?;
 //! # std::fs::create_dir_all(dir.path().join("memory"))?;
 //! # let db = rusqlite::Connection::open(dir.path().join("memory/memory.db"))?;

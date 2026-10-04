@@ -3,7 +3,7 @@
 //! Fetches a single URL and extracts its content. When a CSS `selector` is
 //! configured, only the text of matching elements is included (plain text);
 //! otherwise the whole page is converted to markdown through
-//! `tinymemory_documents::html::to_markdown`, keeping its headings, lists and
+//! `tinymemory_integrations::documents::html::to_markdown`, keeping its headings, lists and
 //! links.
 //!
 //! The fetch-side SSRF guard (scheme/host policy plus a DNS resolver that
@@ -17,8 +17,8 @@ use async_trait::async_trait;
 use super::ssrf::{build_client, is_url_allowed, read_body_capped};
 use types::SelectorSpec;
 
-use crate::error::{Error, Result};
-use crate::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
+use crate::sources::error::{Error, Result};
+use crate::sources::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
 
 use super::SourceReader;
 
@@ -120,13 +120,13 @@ impl WebPageReader {
         let bytes = read_body_capped(resp, MAX_BODY_BYTES).await?;
         let body = String::from_utf8_lossy(&bytes).into_owned();
 
-        let title = tinymemory_documents::html::extract_title(&body)
+        let title = crate::documents::html::extract_title(&body)
             .or_else(|| extract_title(&body))
             .unwrap_or_else(|| url.clone());
         let (extracted, content_type) = match source.selector.as_deref() {
             Some(selector) => (extract_by_selector(&body, selector), ContentType::Plaintext),
             None => (
-                tinymemory_documents::html::to_markdown(&body),
+                crate::documents::html::to_markdown(&body),
                 ContentType::Markdown,
             ),
         };

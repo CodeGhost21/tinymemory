@@ -16,8 +16,8 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 
-use crate::error::{Error, Result};
-use crate::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
+use crate::sources::error::{Error, Result};
+use crate::sources::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
 
 use super::ssrf::{build_client, is_url_allowed, read_body_capped};
 use super::SourceReader;

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
-    /// The path given to [`crate::LegacyWorkspace::open`] does not exist.
+    /// The path given to [`crate::import::LegacyWorkspace::open`] does not exist.
     #[error("no legacy workspace at {}", path.display())]
     NotFound {
         /// The path that was looked up.
@@ -32,7 +32,7 @@ pub enum Error {
         #[source]
         source: std::io::Error,
     },
-    /// A [`crate::Checkpoint`] could not be encoded or decoded as JSON.
+    /// A [`crate::import::Checkpoint`] could not be encoded or decoded as JSON.
     #[error("checkpoint json is invalid: {0}")]
     Json(#[from] serde_json::Error),
 }

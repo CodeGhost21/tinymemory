@@ -6,17 +6,17 @@
 //!
 //! [`FileReader::read_path`] reads a file with no configured source at all,
 //! for a host that was handed a path (a drag-and-drop, a CLI argument);
-//! [`crate::items::file_item`] turns that straight into a `StoreItem`.
+//! [`crate::sources::items::file_item`] turns that straight into a `StoreItem`.
 
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use tinymemory_api::StoreItem;
-use tinymemory_documents::DocumentConverter;
+use crate::documents::DocumentConverter;
 
-use crate::error::{Error, Result};
-use crate::items;
-use crate::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
+use crate::sources::error::{Error, Result};
+use crate::sources::items;
+use crate::sources::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
 
 use super::local_file::{modified_at, read_capped, resolve_base, LocalFile};
 use super::SourceReader;
@@ -48,7 +48,7 @@ impl FileReader {
     ///
     /// [`Error::NotFound`] for a missing file, [`Error::Invalid`] for a path
     /// that is not a regular file, [`Error::TooLarge`] for one over
-    /// [`crate::FOLDER_FILE_SIZE_CAP_BYTES`], and [`Error::Io`] for a read
+    /// [`crate::sources::FOLDER_FILE_SIZE_CAP_BYTES`], and [`Error::Io`] for a read
     /// failure.
     pub fn read_path(path: &Path) -> Result<LocalFile> {
         if !path.exists() {

@@ -14,9 +14,9 @@ mod profile;
 
 use tinymemory_api::{MemoryMeta, SourceKind, StoreItem};
 
-use crate::checkpoint::{Checkpoint, ChunkCursor};
-use crate::error::Result;
-use crate::workspace::LegacyWorkspace;
+use crate::import::checkpoint::{Checkpoint, ChunkCursor};
+use crate::import::error::Result;
+use crate::import::workspace::LegacyWorkspace;
 
 /// One import section, in the order [`ORDER`] walks them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

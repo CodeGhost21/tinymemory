@@ -10,9 +10,9 @@
 use serde_json::json;
 
 use super::Log;
-use crate::descriptor::{CortexWire, Route};
-use crate::error::{Error, Result};
-use crate::transport::Attempts;
+use crate::cortex::descriptor::{CortexWire, Route};
+use crate::cortex::error::{Error, Result};
+use crate::cortex::transport::Attempts;
 
 /// The most event ids one removal names, so each body stays small.
 pub(crate) const FORGET_BATCH: usize = 100;

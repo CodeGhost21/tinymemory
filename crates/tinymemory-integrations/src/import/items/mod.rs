@@ -14,10 +14,10 @@
 use std::collections::VecDeque;
 use std::iter::FusedIterator;
 
-use crate::checkpoint::{Checkpoint, ImportedItem};
-use crate::error::Result;
-use crate::sections::{ORDER, Scanned};
-use crate::workspace::LegacyWorkspace;
+use crate::import::checkpoint::{Checkpoint, ImportedItem};
+use crate::import::error::Result;
+use crate::import::sections::{ORDER, Scanned};
+use crate::import::workspace::LegacyWorkspace;
 
 /// Keys fetched per query unless [`Items::with_page_size`] says otherwise.
 pub const DEFAULT_PAGE_SIZE: usize = 256;

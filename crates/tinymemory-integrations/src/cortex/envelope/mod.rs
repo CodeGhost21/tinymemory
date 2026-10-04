@@ -50,7 +50,7 @@ use tinymemory_api::{
     DocumentBody, ItemKind, LearningKind, MemoryMeta, Namespace, Role, StoreItem, ToolCallRef,
 };
 
-use crate::error::{Error, Result};
+use crate::cortex::error::{Error, Result};
 
 pub(crate) use rebuild::{Decoded, decode_event, rebuild};
 
@@ -274,7 +274,7 @@ impl Envelope {
         json!({
             "scope": scope_path(&self.meta.namespace, self.kind),
             "modality": modality,
-            "idempotency_key": crate::transport::fresh_idempotency_key(),
+            "idempotency_key": crate::cortex::transport::fresh_idempotency_key(),
             "content": { "kind": "message", "role": role, "text": text },
             "context": Value::Object(context),
         })

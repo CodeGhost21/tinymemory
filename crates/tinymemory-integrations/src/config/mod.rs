@@ -13,7 +13,7 @@ use tinymemory_api::{MemoryEngine, Result};
 use crate::registry::{EngineCredential, build_engine};
 
 /// The engine a fresh config selects.
-pub const DEFAULT_ENGINE: &str = tinymemory_cortex::TINYHUMANS_ENGINE_ID;
+pub const DEFAULT_ENGINE: &str = crate::cortex::TINYHUMANS_ENGINE_ID;
 
 /// Which engine a host uses, and per-engine settings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

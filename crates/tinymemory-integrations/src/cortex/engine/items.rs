@@ -8,8 +8,8 @@ use tinymemory_api::{GetRequest, Hit, ItemId, ItemKind, MetaFilter, Namespace, S
 
 use super::CortexEngine;
 use super::scopes::KindScope;
-use crate::envelope::{Decoded, Envelope, decode_event, labels, rebuild};
-use crate::error::Result;
+use crate::cortex::envelope::{Decoded, Envelope, decode_event, labels, rebuild};
+use crate::cortex::error::Result;
 
 /// The kinds `filter` admits, in the fixed order
 /// [`ItemKind::ALL`] lists them.

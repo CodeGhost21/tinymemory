@@ -1,20 +1,20 @@
 use super::*;
 
-use crate::pii::redact_pii;
-use crate::pii::PII_AADHAAR;
-use crate::pii::PII_CC;
-use crate::pii::PII_CNPJ;
-use crate::pii::PII_CPF;
-use crate::pii::PII_CUIT;
-use crate::pii::PII_DNI;
-use crate::pii::PII_IBAN;
-use crate::pii::PII_MYNUM;
-use crate::pii::PII_NINO;
-use crate::pii::PII_PAN_IN;
-use crate::pii::PII_PHONE;
-use crate::pii::PII_RFC;
-use crate::pii::PII_RRN;
-use crate::pii::PII_SSN;
+use crate::safety::pii::redact_pii;
+use crate::safety::pii::PII_AADHAAR;
+use crate::safety::pii::PII_CC;
+use crate::safety::pii::PII_CNPJ;
+use crate::safety::pii::PII_CPF;
+use crate::safety::pii::PII_CUIT;
+use crate::safety::pii::PII_DNI;
+use crate::safety::pii::PII_IBAN;
+use crate::safety::pii::PII_MYNUM;
+use crate::safety::pii::PII_NINO;
+use crate::safety::pii::PII_PAN_IN;
+use crate::safety::pii::PII_PHONE;
+use crate::safety::pii::PII_RFC;
+use crate::safety::pii::PII_RRN;
+use crate::safety::pii::PII_SSN;
 #[test]
 fn sanitize_text_redacts_bearer_and_openai_key() {
     let input = "Authorization: Bearer abcdefghijklmnop and sk-1234567890123456789012345";

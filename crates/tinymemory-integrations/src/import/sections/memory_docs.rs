@@ -20,9 +20,9 @@ use serde_json::Value;
 use tinymemory_api::{DocumentBody, LearningKind, StoreItem};
 
 use super::{Mark, Scanned, import_meta, push_unique, sql_limit};
-use crate::convert;
-use crate::error::Result;
-use crate::workspace::LegacyWorkspace;
+use crate::import::convert;
+use crate::import::error::Result;
+use crate::import::workspace::LegacyWorkspace;
 
 /// v1 section prefixes whose `:` separator the sanitiser turned into `_`.
 const SECTION_PREFIXES: [&str; 9] = [

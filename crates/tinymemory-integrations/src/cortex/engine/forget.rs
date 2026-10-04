@@ -20,8 +20,8 @@ use tinymemory_api::{ForgetReport, ForgetTarget, MetaFilter};
 use super::CortexEngine;
 use super::items::keeps;
 use super::scopes::KindScope;
-use crate::envelope::{decode_event, labels};
-use crate::error::Result;
+use crate::cortex::envelope::{decode_event, labels};
+use crate::cortex::error::Result;
 
 impl CortexEngine {
     /// See the module docs.

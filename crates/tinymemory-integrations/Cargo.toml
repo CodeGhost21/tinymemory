@@ -70,6 +70,10 @@ walkdir = { version = "2", optional = true }
 chrono = { version = "0.4", features = ["clock", "serde"], optional = true }
 # Diagnostics on the network readers and the Gmail normaliser.
 tracing = { version = "0.1", optional = true }
+# The source registry is the host's `sources.toml`: it reads, mutates and
+# rewrites it, giving new sources and temp files a unique name.
+toml = { version = "1.1", optional = true }
+uuid = { version = "1", features = ["v4"], optional = true }
 
 # --- legacy-import ---
 # Read-only access to a v1 workspace's `memory/memory.db` and
@@ -91,7 +95,7 @@ tempfile = "3"
 # The format and office tests build their OOXML fixtures in code.
 zip = { version = "8", default-features = false, features = ["deflate"] }
 # `MemoryConfig` round-trips through the TOML a host stores it in.
-toml = "1"
+toml = "1.1"
 
 [features]
 # The CortexDB engine and the registry that builds it: what most hosts want.
@@ -109,7 +113,7 @@ documents = ["dep:async-trait", "dep:serde", "dep:serde_json", "dep:thiserror"]
 documents-office = ["documents", "dep:pdf-extract", "dep:calamine", "dep:quick-xml", "dep:zip"]
 # `sources`: readers that turn folders, files and conversations into
 # `StoreItem`s, and the Composio payload normalisers. Links no HTTP stack.
-sources = ["documents", "dep:schemars", "dep:regex", "dep:walkdir", "dep:chrono", "dep:log", "dep:tracing"]
+sources = ["documents", "dep:schemars", "dep:regex", "dep:walkdir", "dep:chrono", "dep:log", "dep:tracing", "dep:toml", "dep:uuid"]
 # The readers that fetch over the network — GitHub, RSS, web pages — and
 # `sources::fetch::fetch_url`, all behind the shared SSRF guard.
 sources-network = ["sources", "dep:reqwest", "dep:futures", "dep:tokio", "tokio/process", "tokio/io-util", "tokio/net"]

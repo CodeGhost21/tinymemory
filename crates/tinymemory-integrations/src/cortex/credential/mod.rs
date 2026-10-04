@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::error::Result;
+use crate::cortex::error::Result;
 
 /// A per-request source of bearer tokens.
 ///
@@ -23,7 +23,7 @@ use crate::error::Result;
 ///
 /// Implementations must not log or otherwise print the token they return, and
 /// should return an error (not an empty string) when no credential is
-/// available. The engine reports either as [`crate::Error::Unauthorized`]
+/// available. The engine reports either as [`crate::cortex::Error::Unauthorized`]
 /// without sending a request, and never stores the value past the request.
 #[async_trait]
 pub trait BearerSource: Send + Sync {

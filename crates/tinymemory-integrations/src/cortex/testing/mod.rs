@@ -22,7 +22,7 @@ pub(crate) use log::CortexLog;
 
 use tinymemory_api::{LearningKind, MemoryMeta, Role, SourceKind, StoreItem, Turn};
 
-use crate::{CortexCredential, CortexEngine, StaticBearer};
+use crate::cortex::{CortexCredential, CortexEngine, StaticBearer};
 
 /// The bearer the test engines send.
 pub(crate) const TEST_TOKEN: &str = "tiny_live_test";

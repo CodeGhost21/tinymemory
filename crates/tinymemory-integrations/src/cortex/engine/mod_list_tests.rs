@@ -2,7 +2,7 @@
 //! conversation once, and the page ceiling.
 
 use super::*;
-use crate::testing::{both, direct_engine, serve, thread_meta};
+use crate::cortex::testing::{both, direct_engine, serve, thread_meta};
 use std::collections::HashSet;
 use tinymemory_api::{ItemKind, MetaFilter, Role, Turn};
 
@@ -42,7 +42,7 @@ async fn paging_returns_every_item_exactly_once_despite_duplicate_copies() {
 #[tokio::test]
 async fn a_cursor_crosses_from_one_kind_scope_to_the_next() {
     for (engine, _state) in both().await {
-        for item in crate::testing::sample_items() {
+        for item in crate::cortex::testing::sample_items() {
             engine.store(item).await.unwrap();
         }
         let mut kinds = Vec::new();
@@ -92,7 +92,7 @@ async fn a_long_conversation_is_listed_once_with_every_turn() {
 #[tokio::test]
 async fn a_labelled_filter_narrows_server_side_and_is_rechecked() {
     for (engine, state) in both().await {
-        for item in crate::testing::sample_items() {
+        for item in crate::cortex::testing::sample_items() {
             engine.store(item).await.unwrap();
         }
         let mut filter = MetaFilter {
@@ -107,7 +107,7 @@ async fn a_labelled_filter_narrows_server_side_and_is_rechecked() {
         assert_eq!(page.items[0].kind, ItemKind::Learning);
         let thread_label = format!(
             "labels=tm%3At%3A{}",
-            crate::envelope::labels::digest("t-learn")
+            crate::cortex::envelope::labels::digest("t-learn")
         );
         assert!(
             state.requests().iter().any(|r| r.contains(&thread_label)),
@@ -124,7 +124,7 @@ async fn a_labelled_filter_narrows_server_side_and_is_rechecked() {
 
 #[tokio::test]
 async fn a_malformed_cursor_is_an_invalid_request() {
-    let (endpoint, _state) = crate::testing::direct_double().await;
+    let (endpoint, _state) = crate::cortex::testing::direct_double().await;
     let mut req = ListRequest::new(MetaFilter::default(), 3);
     req.cursor = Some("garbage".into());
     let error = direct_engine(&endpoint).list(req).await.unwrap_err();

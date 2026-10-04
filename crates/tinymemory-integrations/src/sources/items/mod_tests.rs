@@ -8,12 +8,12 @@ use std::fs;
 use async_trait::async_trait;
 use tempfile::TempDir;
 use tinymemory_api::{ItemKind, Role, SourceKind as Api, Turn};
-use tinymemory_documents::ConverterChain;
+use crate::documents::ConverterChain;
 
-use crate::readers::conversation::ConversationReader;
-use crate::readers::file::FileReader;
-use crate::readers::folder::FolderReader;
-use crate::types::SourceItem;
+use crate::sources::readers::conversation::ConversationReader;
+use crate::sources::readers::file::FileReader;
+use crate::sources::readers::folder::FolderReader;
+use crate::sources::types::SourceItem;
 
 fn entry(kind: SourceKind) -> MemorySourceEntry {
     MemorySourceEntry::new("src_test", kind, "Test")
@@ -373,7 +373,7 @@ async fn a_file_no_converter_handles_is_skipped_not_fatal() {
     assert_eq!(collected.skipped[0].id, "scan.pdf");
     assert!(matches!(
         collected.skipped[0].error,
-        Error::Document(tinymemory_documents::Error::UnsupportedFormat(_))
+        Error::Document(crate::documents::Error::UnsupportedFormat(_))
     ));
 }
 

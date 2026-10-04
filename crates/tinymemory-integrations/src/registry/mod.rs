@@ -15,7 +15,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 
 use tinymemory_api::{EngineDescriptor, Error, MemoryEngine, Result};
-use tinymemory_cortex::{
+use crate::cortex::{
     BearerSource, CORTEXDB_ENGINE_ID, CortexCredential, CortexEngine, StaticBearer,
     TINYHUMANS_ENGINE_ID,
 };
@@ -59,8 +59,8 @@ impl EngineCredential {
 #[must_use]
 pub fn list_engines() -> Vec<EngineDescriptor> {
     vec![
-        tinymemory_cortex::cortexdb_descriptor(),
-        tinymemory_cortex::tinyhumans_descriptor(),
+        crate::cortex::cortexdb_descriptor(),
+        crate::cortex::tinyhumans_descriptor(),
     ]
 }
 

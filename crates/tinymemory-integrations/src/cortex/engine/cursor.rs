@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Error, Result};
+use crate::cortex::error::{Error, Result};
 
 /// Where a listing stopped.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -8,7 +8,7 @@
 //! contract: do not rename one.
 //!
 //! Markdown, plain text and HTML are documents, not code, and map to `None`;
-//! [`crate::DocumentFormat`] has its own variants for them.
+//! [`crate::documents::DocumentFormat`] has its own variants for them.
 
 /// Files recognised by their whole name rather than an extension.
 ///
@@ -115,7 +115,7 @@ const EXTENSIONS: &[(&str, &str)] = &[
 /// text, HTML), for unknown extensions, and for names without one.
 ///
 /// ```
-/// use tinymemory_documents::language_for_path;
+/// use tinymemory_integrations::documents::language_for_path;
 ///
 /// assert_eq!(language_for_path("src/main.rs"), Some("rust"));
 /// assert_eq!(language_for_path("web/App.TSX"), Some("typescript"));

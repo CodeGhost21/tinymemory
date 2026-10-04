@@ -1,6 +1,6 @@
 //! Credential-marker rules: values that follow an unambiguous marker.
 //!
-//! The regex set in [`crate::sanitize_text`] recognises credentials by their
+//! The regex set in [`crate::safety::sanitize_text`] recognises credentials by their
 //! own shape — a vendor prefix, a JWT's three segments, eight or more token
 //! characters after `Bearer`. Two leaks get past shape alone, both measured in
 //! a live OpenCompany deployment where every operator message was remembered
@@ -35,11 +35,11 @@ const BEARER_MARKER: &str = "bearer ";
 ///
 /// The entry point for a host that scrubs plain text on its way into memory
 /// and wants exactly these two rules — without the PII pass and the broader
-/// token regexes of [`crate::sanitize_text`], which applies these rules too.
+/// token regexes of [`crate::safety::sanitize_text`], which applies these rules too.
 /// Text with neither marker is returned borrowed, without allocating.
 ///
 /// ```
-/// use tinymemory_safety::redact_credential_markers;
+/// use tinymemory_integrations::safety::redact_credential_markers;
 ///
 /// assert_eq!(
 ///     redact_credential_markers("open https://ots.example/secret/AbC123 now"),
@@ -59,7 +59,7 @@ pub fn redact_credential_markers(text: &str) -> Cow<'_, str> {
 }
 
 /// [`redact_credential_markers`] plus the number of values it replaced, for
-/// the [`crate::SanitizationReport`].
+/// the [`crate::safety::SanitizationReport`].
 pub(crate) fn redact_counted(text: &str) -> (Cow<'_, str>, usize) {
     if !text.contains(SECRET_URL_MARKER) && find_bearer_marker(text).is_none() {
         return (Cow::Borrowed(text), 0);

@@ -6,7 +6,7 @@ use super::*;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::testing::serve;
+use crate::cortex::testing::serve;
 use axum::Router;
 use axum::http::StatusCode;
 use axum::routing::any;

@@ -6,9 +6,9 @@ use reqwest::Method;
 use serde_json::Value;
 
 use super::{Log, MAX_PAGES, PAGE_SIZE};
-use crate::descriptor::Route;
-use crate::error::{Error, Result};
-use crate::transport::{Attempts, urlencode};
+use crate::cortex::descriptor::Route;
+use crate::cortex::error::{Error, Result};
+use crate::cortex::transport::{Attempts, urlencode};
 
 /// Most labels one listing names. Labels share one comma-separated
 /// parameter (the hosted backend refuses a repeated `labels=`), so this

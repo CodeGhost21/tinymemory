@@ -8,7 +8,7 @@
 use reqwest::StatusCode;
 use serde_json::Value;
 
-use crate::error::{Error, INSUFFICIENT_CREDITS_CODE};
+use crate::cortex::error::{Error, INSUFFICIENT_CREDITS_CODE};
 
 /// Longest excerpt of a backend's error text kept in a message.
 const MAX_DETAIL_CHARS: usize = 300;

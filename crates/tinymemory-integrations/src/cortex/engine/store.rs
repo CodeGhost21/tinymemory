@@ -21,9 +21,9 @@ use tinymemory_api::{ItemId, StoreItem, StoreReceipt, validate_many};
 
 use super::CortexEngine;
 use super::scopes::KindScope;
-use crate::envelope::Envelope;
-use crate::error::Result;
-use crate::log::Written;
+use crate::cortex::envelope::Envelope;
+use crate::cortex::error::Result;
+use crate::cortex::log::Written;
 
 impl CortexEngine {
     /// See the module docs.

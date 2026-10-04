@@ -3,9 +3,9 @@
 //! recovery, and riding out rate limits.
 
 use super::*;
-use crate::StaticBearer;
-use crate::error::{error_code, is_insufficient_credits};
-use crate::testing::{hosted_double, hosted_engine, sample_items, serve};
+use crate::cortex::StaticBearer;
+use crate::cortex::error::{error_code, is_insufficient_credits};
+use crate::cortex::testing::{hosted_double, hosted_engine, sample_items, serve};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tinymemory_api::{FetchMode, MetaFilter};
@@ -161,7 +161,7 @@ async fn a_402_is_insufficient_credits_and_codes_survive() {
     *state.fail_all.lock().unwrap() = Some((402, "USER_INSUFFICIENT_CREDITS"));
     let error = engine.store(sample_items().remove(0)).await.unwrap_err();
     assert!(is_insufficient_credits(&error), "{error:?}");
-    assert!(!error.to_string().contains(crate::testing::TEST_TOKEN));
+    assert!(!error.to_string().contains(crate::cortex::testing::TEST_TOKEN));
 
     *state.fail_all.lock().unwrap() = Some((400, "VALIDATION_ERROR"));
     let error = engine

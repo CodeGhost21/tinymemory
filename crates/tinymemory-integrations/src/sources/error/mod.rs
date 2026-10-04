@@ -48,7 +48,7 @@ pub enum Error {
     Json(#[from] serde_json::Error),
     /// Converting a body to markdown failed.
     #[error(transparent)]
-    Document(#[from] tinymemory_documents::Error),
+    Document(#[from] crate::documents::Error),
 }
 
 impl From<Error> for tinymemory_api::Error {

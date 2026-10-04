@@ -7,7 +7,7 @@
 
 use futures::StreamExt;
 
-use crate::error::{Error, Result};
+use crate::cortex::error::{Error, Result};
 
 /// Largest success body accepted. Far above any real page of events, far
 /// below a size that threatens a process.

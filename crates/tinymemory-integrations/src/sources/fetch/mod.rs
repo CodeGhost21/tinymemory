@@ -4,7 +4,7 @@
 //! metadata endpoint, `http://localhost:6379/` is somebody's Redis, and a
 //! hostname that resolves publicly on the first lookup can resolve to a private
 //! address on the second. Every fetch here goes through the same guard as the
-//! RSS and web-page readers ([`crate::readers::ssrf`]): a scheme and host
+//! RSS and web-page readers ([`crate::sources::readers::ssrf`]): a scheme and host
 //! policy, a resolver that pins connections to globally routable addresses,
 //! and per-hop redirect re-checks.
 //!
@@ -12,10 +12,10 @@
 //! URL, once, when asked. Conversion to markdown is `tinymemory-documents`'.
 
 use tinymemory_api::{MemoryMeta, SourceKind, StoreItem};
-use tinymemory_documents::{document_item, DocumentConverter, RawDocument, MAX_DOCUMENT_BYTES};
+use crate::documents::{document_item, DocumentConverter, RawDocument, MAX_DOCUMENT_BYTES};
 
-use crate::error::{Error, Result};
-use crate::readers::ssrf::{build_client, is_url_allowed, read_body_capped};
+use crate::sources::error::{Error, Result};
+use crate::sources::readers::ssrf::{build_client, is_url_allowed, read_body_capped};
 
 /// Fetch `url` and return its body as a [`RawDocument`].
 ///

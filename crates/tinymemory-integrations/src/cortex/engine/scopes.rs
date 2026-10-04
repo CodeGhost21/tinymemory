@@ -23,8 +23,8 @@ use tinymemory_api::{ItemKind, MetaFilter, Namespace, Reach};
 
 use super::CortexEngine;
 use super::items::admitted;
-use crate::envelope::{ROOT_SCOPE, parse_scope, scope_path};
-use crate::error::Result;
+use crate::cortex::envelope::{ROOT_SCOPE, parse_scope, scope_path};
+use crate::cortex::error::Result;
 
 /// One scope to read: a kind at a namespace node.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]

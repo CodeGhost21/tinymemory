@@ -29,9 +29,9 @@ use super::CortexEngine;
 use super::cursor::{self, ListCursor};
 use super::items::{hit, keeps};
 use super::scopes::KindScope;
-use crate::envelope::{Envelope, decode_event, labels, parse_scope, rebuild};
-use crate::error::{Error, Result};
-use crate::log::{MAX_PAGES, PAGE_SIZE};
+use crate::cortex::envelope::{Envelope, decode_event, labels, parse_scope, rebuild};
+use crate::cortex::error::{Error, Result};
+use crate::cortex::log::{MAX_PAGES, PAGE_SIZE};
 
 /// The cursor tag of a listing.
 const TAG: char = 'l';

@@ -6,7 +6,7 @@ use quick_xml::events::Event;
 use zip::ZipArchive;
 
 use super::{MAX_DECOMPRESSED_BYTES, unreadable};
-use crate::error::Result;
+use crate::documents::error::Result;
 
 /// The body text of a Word document.
 ///

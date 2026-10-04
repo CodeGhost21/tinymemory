@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::error::{Error, Result};
+use crate::sources::error::{Error, Result};
 
 use super::types::{MemorySourceEntry, SourceKind};
 

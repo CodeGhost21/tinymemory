@@ -9,9 +9,9 @@ use rusqlite::params;
 use tinymemory_api::{LearningKind, StoreItem};
 
 use super::{Mark, Scanned, import_meta, push_unique, sql_limit};
-use crate::convert;
-use crate::error::Result;
-use crate::workspace::LegacyWorkspace;
+use crate::import::convert;
+use crate::import::error::Result;
+use crate::import::workspace::LegacyWorkspace;
 
 /// One `user_profile` row.
 #[derive(Debug)]

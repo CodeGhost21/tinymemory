@@ -12,7 +12,7 @@
 //! slightly wrong emphasis, never wrong text. Pulling in a full DOM parser
 //! would cost this crate its "no heavy dependencies" position for output
 //! nobody renders. If a host needs fidelity beyond this, it supplies its own
-//! [`crate::convert::DocumentConverter`].
+//! [`crate::documents::convert::DocumentConverter`].
 //!
 //! Script and style bodies are removed before anything else, so their contents
 //! can never reach the output as text. `<title>` goes with them: it is document

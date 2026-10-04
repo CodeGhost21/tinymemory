@@ -14,7 +14,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use crate::types::{ContentType, SourceContent, SourceItem};
+use crate::sources::types::{ContentType, SourceContent, SourceItem};
 
 use super::parse_iso_ts;
 

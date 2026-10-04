@@ -23,8 +23,8 @@
 //!
 //! ```
 //! use tinymemory_api::{SourceKind as ApiKind, StoreItem};
-//! use tinymemory_documents::ConverterChain;
-//! use tinymemory_sources::{items, readers, MemorySourceEntry, SourceKind};
+//! use tinymemory_integrations::documents::ConverterChain;
+//! use tinymemory_integrations::sources::{items, readers, MemorySourceEntry, SourceKind};
 //!
 //! # let runtime = tokio::runtime::Builder::new_current_thread().build()?;
 //! # runtime.block_on(async {

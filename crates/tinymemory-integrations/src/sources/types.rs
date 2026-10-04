@@ -4,12 +4,12 @@
 //! configured source is a [`MemorySourceEntry`] persisted in `config.toml`
 //! under `[[memory_sources]]`. The [`SourceKind`] discriminator selects which
 //! kind-specific fields are required; required-field checks live in
-//! [`crate::validation`] and are surfaced via
+//! [`crate::sources::validation`] and are surfaced via
 //! [`MemorySourceEntry::validate`].
 //!
 //! Reader output contracts ([`SourceItem`], [`SourceContent`], [`ContentType`])
 //! are shared across every reader implementation so the host can ingest source
-//! payloads uniformly regardless of where they came from; [`crate::items`]
+//! payloads uniformly regardless of where they came from; [`crate::sources::items`]
 //! turns them into `StoreItem`s.
 //!
 //! Wire strings are snake_case and are part of the persisted contract — do not
@@ -18,7 +18,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Error, Result};
+use crate::sources::error::{Error, Result};
 
 pub(crate) fn default_true() -> bool {
     true
@@ -202,13 +202,13 @@ impl MemorySourceEntry {
 
     /// Validate required fields for this entry's [`SourceKind`].
     ///
-    /// Delegates to [`crate::validation::validate_entry`].
+    /// Delegates to [`crate::sources::validation::validate_entry`].
     ///
     /// # Errors
     ///
     /// [`Error::Invalid`] naming the first failing rule.
     pub fn validate(&self) -> Result<()> {
-        crate::validation::validate_entry(self)
+        crate::sources::validation::validate_entry(self)
     }
 }
 

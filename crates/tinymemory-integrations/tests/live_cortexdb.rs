@@ -20,8 +20,8 @@ use tinymemory_api::{
     MemoryMeta, MetaFilter, RecallRequest, Role, SourceKind, SourceRef, StoreItem, ToolCallRef,
     Turn,
 };
-use tinymemory_context::{ContextSpec, compile};
-use tinymemory_cortex::{CortexCredential, CortexEngine};
+use tinymemory_tools::context::{ContextSpec, compile};
+use tinymemory_integrations::cortex::{CortexCredential, CortexEngine};
 
 const DEFAULT_KEY: &str = "tinymemory-cortex-test";
 
@@ -76,7 +76,7 @@ async fn the_live_server_upholds_the_contract() {
         eprintln!("TINYMEMORY_LIVE_CORTEXDB_URL unset; skipping");
         return;
     };
-    tinymemory_conformance::run(&engine)
+    tinymemory_api::conformance::run(&engine)
         .await
         .expect("the live CortexDB conforms");
 }

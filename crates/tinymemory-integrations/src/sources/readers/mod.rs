@@ -25,7 +25,7 @@
 //!
 //! `composio` is represented by a placeholder reader
 //! ([`composio::ComposioReader`]): its data arrives through the credentialed
-//! provider pipeline, and [`crate::composio`] turns those payloads into items.
+//! provider pipeline, and [`crate::sources::composio`] turns those payloads into items.
 //!
 //! A host servicing an *explicit user request* (not a timer) that wants one
 //! reader for any kind uses `reader_for_request`.
@@ -43,7 +43,7 @@ pub mod rss;
 pub mod web_page;
 
 /// SSRF guard + fetch hygiene shared by the network readers and
-/// [`crate::fetch`]. See the `ssrf` module docs.
+/// [`crate::sources::fetch`]. See the `ssrf` module docs.
 ///
 /// Public so a host fetching a user-supplied URL by other means applies the
 /// same policy rather than a second, weaker one.
@@ -54,10 +54,10 @@ use std::path::Path;
 
 use async_trait::async_trait;
 use tinymemory_api::StoreItem;
-use tinymemory_documents::DocumentConverter;
+use crate::documents::DocumentConverter;
 
-use crate::error::Result;
-use crate::items;
+use crate::sources::error::Result;
+use crate::sources::items;
 
 use super::types::{MemorySourceEntry, SourceContent, SourceItem, SourceKind};
 
@@ -74,8 +74,8 @@ pub trait SourceReader: Send + Sync + std::fmt::Debug {
     ///
     /// # Errors
     ///
-    /// The reader's failure: missing configuration ([`crate::Error::Invalid`]),
-    /// a missing root ([`crate::Error::NotFound`]), or a network failure.
+    /// The reader's failure: missing configuration ([`crate::sources::Error::Invalid`]),
+    /// a missing root ([`crate::sources::Error::NotFound`]), or a network failure.
     async fn list_items(
         &self,
         source: &MemorySourceEntry,
@@ -86,8 +86,8 @@ pub trait SourceReader: Send + Sync + std::fmt::Debug {
     ///
     /// # Errors
     ///
-    /// The reader's failure: an unknown item ([`crate::Error::NotFound`]), a
-    /// path that escapes its root ([`crate::Error::PathEscape`]), a body over
+    /// The reader's failure: an unknown item ([`crate::sources::Error::NotFound`]), a
+    /// path that escapes its root ([`crate::sources::Error::PathEscape`]), a body over
     /// the size cap, or a network failure.
     async fn read_item(
         &self,
@@ -105,8 +105,8 @@ pub trait SourceReader: Send + Sync + std::fmt::Debug {
     ///
     /// # Errors
     ///
-    /// Whatever [`Self::read_item`] returns, plus [`crate::Error::Document`]
-    /// when conversion fails and [`crate::Error::Invalid`] for an item with no
+    /// Whatever [`Self::read_item`] returns, plus [`crate::sources::Error::Document`]
+    /// when conversion fails and [`crate::sources::Error::Invalid`] for an item with no
     /// text.
     async fn read_store_item(
         &self,

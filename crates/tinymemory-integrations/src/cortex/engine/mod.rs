@@ -29,11 +29,11 @@ use tinymemory_api::{
     StoreReceipt,
 };
 
-use crate::credential::{BearerSource, CortexCredential};
-use crate::descriptor::{CortexWire, Route};
-use crate::error::{Error, Result};
-use crate::log::Log;
-use crate::transport::{HttpClient, health_reason, urlencode};
+use crate::cortex::credential::{BearerSource, CortexCredential};
+use crate::cortex::descriptor::{CortexWire, Route};
+use crate::cortex::error::{Error, Result};
+use crate::cortex::log::Log;
+use crate::cortex::transport::{HttpClient, health_reason, urlencode};
 
 /// The scope prefix the hosted health probe lists under. The memory API
 /// refuses a prefix that is not `type:id` segments (a bare word is a 400, which
@@ -77,7 +77,7 @@ impl CortexEngine {
     }
 
     /// CortexDB's own `/v1/*` API at `endpoint` (for example
-    /// [`crate::CORTEX_API_ENDPOINT`]), registered as `cortexdb`.
+    /// [`crate::cortex::CORTEX_API_ENDPOINT`]), registered as `cortexdb`.
     ///
     /// # Errors
     ///
@@ -87,7 +87,7 @@ impl CortexEngine {
     }
 
     /// CortexDB behind the TinyHumans backend at `base_url` (for example
-    /// [`crate::TINYHUMANS_API_ENDPOINT`]), registered as `tinyhumans`.
+    /// [`crate::cortex::TINYHUMANS_API_ENDPOINT`]), registered as `tinyhumans`.
     /// `bearer` supplies the session JWT or `tiny_live_` API key and is
     /// consulted on every request, so a refreshed session is used at once.
     ///

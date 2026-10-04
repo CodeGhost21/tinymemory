@@ -12,7 +12,7 @@ pub enum Error {
     /// textual format, or a conversion that produced no text.
     #[error("invalid document: {0}")]
     Invalid(String),
-    /// The document is over [`crate::MAX_DOCUMENT_BYTES`].
+    /// The document is over [`crate::documents::MAX_DOCUMENT_BYTES`].
     #[error("document is {size} bytes, over the {limit}-byte intake limit")]
     TooLarge {
         /// The document's size in bytes.
@@ -26,7 +26,7 @@ pub enum Error {
     /// A converter claimed the format and then failed.
     #[error("converter {converter} failed: {message}")]
     Converter {
-        /// The converter's [`crate::DocumentConverter::name`].
+        /// The converter's [`crate::documents::DocumentConverter::name`].
         converter: String,
         /// What went wrong, as the converter reported it.
         message: String,

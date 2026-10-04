@@ -5,9 +5,9 @@
 use std::io::Write;
 use std::time::{Duration, Instant};
 
-use tinymemory::cortex::{CortexCredential, CortexEngine};
-use tinymemory::documents::{ConverterChain, OfficeConverter, RawDocument, document_item};
-use tinymemory::{
+use tinymemory_integrations::cortex::{CortexCredential, CortexEngine};
+use tinymemory_integrations::documents::{ConverterChain, OfficeConverter, RawDocument, document_item};
+use tinymemory_integrations::{
     ItemKind, ListRequest, MemoryEngine, MemoryMeta, MetaFilter, SourceKind, SourceRef,
 };
 

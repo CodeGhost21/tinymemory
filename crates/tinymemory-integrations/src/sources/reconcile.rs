@@ -5,10 +5,10 @@
 //! need its credentials, config file and write lock); the functions here are
 //! the decisions, with no I/O, so they are unit-tested directly.
 
-use crate::registry::{
+use crate::sources::registry::{
     apply_kind_defaults, memory_sync_defaults_for_toolkit, ComposioUpsertTarget,
 };
-use crate::types::{MemorySourceEntry, SourceKind};
+use crate::sources::types::{MemorySourceEntry, SourceKind};
 
 /// Build the `(toolkit, connection_id, label)` upsert target for one scanned
 /// Composio connection.

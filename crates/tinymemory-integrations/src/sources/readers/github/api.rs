@@ -12,7 +12,7 @@
 
 use std::collections::HashSet;
 
-use crate::types::{ContentType, SourceContent, SourceItem};
+use crate::sources::types::{ContentType, SourceContent, SourceItem};
 
 use super::types::GhCommit;
 use super::{parse_iso_ts, GH_CLI_TIMEOUT};

@@ -4,8 +4,8 @@ use super::*;
 
 use tinymemory_api::{ItemKind, SourceKind};
 
-use crate::convert::ConverterChain;
-use crate::error::Error;
+use crate::documents::convert::ConverterChain;
+use crate::documents::error::Error;
 
 fn parts(item: StoreItem) -> (Option<String>, String, Option<String>, MemoryMeta) {
     match item {

@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tinymemory::{BearerSource, EngineCredential, MemoryConfig, list_engines};
+use tinymemory_integrations::{BearerSource, EngineCredential, MemoryConfig, list_engines};
 
 /// A host's session store: the token is looked up on every request, so a
 /// refreshed session is picked up without rebuilding the engine.
@@ -20,7 +20,7 @@ struct Session;
 
 #[async_trait]
 impl BearerSource for Session {
-    async fn bearer(&self) -> tinymemory::Result<String> {
+    async fn bearer(&self) -> tinymemory_integrations::Result<String> {
         Ok("session-jwt-from-the-host".to_string())
     }
 }

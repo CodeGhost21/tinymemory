@@ -1,7 +1,7 @@
 //! Tests for required-field validation and the path-traversal guard.
 
 use super::*;
-use crate::types::SourceKind;
+use crate::sources::types::SourceKind;
 use std::fs;
 use tempfile::TempDir;
 

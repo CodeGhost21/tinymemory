@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::readers::SourceReader;
+use crate::sources::readers::SourceReader;
 
 fn cached_reader(url: &str) -> RssReader {
     RssReader {

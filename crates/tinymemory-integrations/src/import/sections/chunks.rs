@@ -18,10 +18,10 @@ use rusqlite::params;
 use tinymemory_api::{DocumentBody, Role, StoreItem, Turn, TurnRange};
 
 use super::{Mark, Scanned, import_meta, push_unique, sql_limit};
-use crate::checkpoint::ChunkCursor;
-use crate::convert;
-use crate::error::{Error, Result};
-use crate::workspace::{ChunkStore, LegacyWorkspace};
+use crate::import::checkpoint::ChunkCursor;
+use crate::import::convert;
+use crate::import::error::{Error, Result};
+use crate::import::workspace::{ChunkStore, LegacyWorkspace};
 
 /// One chunk with its body resolved.
 #[derive(Debug)]

@@ -1,15 +1,15 @@
 use super::*;
 use serde_json::json;
 
-use crate::pii::{redact_pii, PII_CC};
+use crate::safety::pii::{redact_pii, PII_CC};
 // `pii`'s internals (checksum validators, the normalization pass) are test-only
 // re-exports at the `pii` module level; pull them in here so the nested test
 // submodules below can reach them through their own `use super::*;`.
-use crate::pii::{
+use crate::safety::pii::{
     digits, scan_candidates, valid_cnpj, valid_cpf, valid_cuit, valid_dni_es, valid_iban,
     valid_luhn, valid_nie_es, valid_nino, valid_ssn, valid_verhoeff, NormalizedView,
 };
-use crate::{MAX_JSON_SANITIZE_DEPTH, REDACTED_PRIVATE_KEY, REDACTED_SECRET};
+use crate::safety::{MAX_JSON_SANITIZE_DEPTH, REDACTED_PRIVATE_KEY, REDACTED_SECRET};
 
 /// Assembled rather than written out so a repository secret scanner does
 /// not read the fixture as a real key block.
@@ -55,12 +55,12 @@ fn bare_card_gate_is_the_only_policy_difference() {
         "default policy must redact: {strict:?}"
     );
     assert_eq!(
-        crate::pii::redact_pii_with(&json, Policy::default()).value,
+        crate::safety::pii::redact_pii_with(&json, Policy::default()).value,
         strict.value
     );
     assert_eq!(Policy::default().bare_card, BareCardGate::LuhnOnly);
 
-    let corroborated = crate::pii::redact_pii_with(&json, Policy::corroborated());
+    let corroborated = crate::safety::pii::redact_pii_with(&json, Policy::corroborated());
     assert_eq!(
         corroborated.value, json,
         "corroborated policy keeps timestamps"
@@ -69,7 +69,7 @@ fn bare_card_gate_is_the_only_policy_difference() {
     // Real card, bare, real IIN: both policies redact.
     let visa = "4111111111111111";
     assert!(redact_pii(visa).value.contains(PII_CC));
-    assert!(crate::pii::redact_pii_with(visa, Policy::corroborated())
+    assert!(crate::safety::pii::redact_pii_with(visa, Policy::corroborated())
         .value
         .contains(PII_CC));
 

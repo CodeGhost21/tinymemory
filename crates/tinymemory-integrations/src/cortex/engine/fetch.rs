@@ -25,8 +25,8 @@ use tinymemory_api::{FetchPage, FetchRequest, Hit, ItemKind, MetaFilter};
 use super::CortexEngine;
 use super::cursor::{self, FetchCursor};
 use super::items::{hit, keeps};
-use crate::envelope::{Envelope, decode_event, labels, rebuild};
-use crate::error::Result;
+use crate::cortex::envelope::{Envelope, decode_event, labels, rebuild};
+use crate::cortex::error::Result;
 
 /// The cursor tag of a fetch.
 const TAG: char = 'f';

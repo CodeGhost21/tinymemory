@@ -38,7 +38,7 @@ fn every_variant_maps_onto_the_contract_error_a_host_can_act_on() {
             matches!(e, Api::Engine(_))
         }),
         (
-            Error::Document(tinymemory_documents::Error::UnsupportedFormat("pdf".into())),
+            Error::Document(crate::documents::Error::UnsupportedFormat("pdf".into())),
             |e| matches!(e, Api::Unsupported(_)),
         ),
     ];

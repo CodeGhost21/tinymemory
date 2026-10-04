@@ -2,7 +2,7 @@
 //!
 //! Every item a source produces names its reader in
 //! `meta.source = SourceRef { kind, id: Some(entry.id) }`, with the config kind
-//! mapped through [`SourceKind::api_kind`](crate::SourceKind::api_kind). The
+//! mapped through [`SourceKind::api_kind`](crate::sources::SourceKind::api_kind). The
 //! rest of the metadata depends on the kind:
 //!
 //! | Kind | Item | Metadata filled |
@@ -11,7 +11,7 @@
 //! | github | document | `repo` (`owner/name`), `commit` (commit items), `url` (issues and PRs), `observed_at` |
 //! | link | document | `url` |
 //! | rss | document | `url` (the entry's link), `observed_at` (published) |
-//! | composio | document | `tags = [toolkit]` (payloads: see [`crate::composio`]) |
+//! | composio | document | `tags = [toolkit]` (payloads: see [`crate::sources::composio`]) |
 //! | conversation | conversation | `workspace`, `thread_id`, `turns`, `observed_at` (last turn) |
 //!
 //! Every document body is markdown, converted through `tinymemory-documents`:
@@ -26,16 +26,16 @@ use std::path::Path;
 
 use chrono::{DateTime, TimeZone, Utc};
 use tinymemory_api::{DocumentBody, MemoryMeta, SourceRef, StoreItem, TurnRange};
-use tinymemory_documents::{
+use crate::documents::{
     document_item, language_for_path, markdown_from_text, DocumentConverter, DocumentFormat,
 };
 
-use crate::error::{Error, Result};
-use crate::readers::conversation::Thread;
-use crate::readers::file::FileReader;
-use crate::readers::local_file::LocalFile;
-use crate::readers::SourceReader;
-use crate::types::{ContentType, MemorySourceEntry, SourceContent, SourceKind};
+use crate::sources::error::{Error, Result};
+use crate::sources::readers::conversation::Thread;
+use crate::sources::readers::file::FileReader;
+use crate::sources::readers::local_file::LocalFile;
+use crate::sources::readers::SourceReader;
+use crate::sources::types::{ContentType, MemorySourceEntry, SourceContent, SourceKind};
 
 /// Metadata naming `entry` as the source: `source.kind` is the entry's kind
 /// mapped onto the contract, `source.id` its id. A Composio entry also gets

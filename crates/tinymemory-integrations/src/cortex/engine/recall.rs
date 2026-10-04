@@ -28,9 +28,9 @@ use tinymemory_api::{Citation, ItemId, RecallAnswer, RecallRequest};
 use super::CortexEngine;
 use super::fetch::{ranked, recall_body};
 use super::scopes::KindScope;
-use crate::descriptor::CortexWire;
-use crate::envelope::{Envelope, ROOT_SCOPE};
-use crate::error::{Error, Result};
+use crate::cortex::descriptor::CortexWire;
+use crate::cortex::envelope::{Envelope, ROOT_SCOPE};
+use crate::cortex::error::{Error, Result};
 
 /// Recall packs built at once when a reach spans several scopes.
 const PACKS_AT_ONCE: usize = 4;

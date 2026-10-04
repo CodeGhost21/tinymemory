@@ -2,7 +2,7 @@
 //! envelope.
 
 use super::*;
-use crate::error::{error_code, is_insufficient_credits};
+use crate::cortex::error::{error_code, is_insufficient_credits};
 
 #[test]
 fn a_rustls_handshake_abort_is_named_tls_not_connect() {

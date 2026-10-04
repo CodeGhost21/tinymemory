@@ -1,7 +1,7 @@
 //! A PDF's text layer.
 
 use super::unreadable;
-use crate::error::Result;
+use crate::documents::error::Result;
 
 /// Extracts a PDF's text layer, which may be empty.
 ///

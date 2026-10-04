@@ -3,7 +3,7 @@
 //! An import walks the legacy store in a fixed section order (documents,
 //! chunks, conversations, learnings, profile) and, within a section, by a
 //! stable key. A [`Checkpoint`] records the key of the last item yielded in
-//! each section; [`crate::LegacyWorkspace::items_from`] skips everything at or
+//! each section; [`crate::import::LegacyWorkspace::items_from`] skips everything at or
 //! before it. Every [`ImportedItem`] carries the checkpoint to persist once
 //! that item is stored, so a crash between two stores re-yields at most the
 //! one item that was not acknowledged, which the engine then treats as a
@@ -12,7 +12,7 @@
 use serde::{Deserialize, Serialize};
 use tinymemory_api::StoreItem;
 
-use crate::error::Result;
+use crate::import::error::Result;
 
 /// The last yielded key in each section of a legacy import.
 ///
@@ -50,7 +50,7 @@ impl Checkpoint {
     ///
     /// # Errors
     ///
-    /// [`crate::Error::Json`] if serialisation fails, which a checkpoint of
+    /// [`crate::import::Error::Json`] if serialisation fails, which a checkpoint of
     /// plain strings does not do in practice.
     pub fn to_json(&self) -> Result<String> {
         Ok(serde_json::to_string(self)?)
@@ -60,7 +60,7 @@ impl Checkpoint {
     ///
     /// # Errors
     ///
-    /// [`crate::Error::Json`] if `json` is not a checkpoint.
+    /// [`crate::import::Error::Json`] if `json` is not a checkpoint.
     pub fn from_json(json: &str) -> Result<Self> {
         Ok(serde_json::from_str(json)?)
     }

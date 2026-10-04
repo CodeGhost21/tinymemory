@@ -2,7 +2,7 @@
 //! probed for the last item only.
 
 use super::*;
-use crate::testing::both;
+use crate::cortex::testing::both;
 use tinymemory_api::{ListRequest, MemoryEngine, MemoryMeta, MetaFilter};
 
 fn doc(text: &str) -> StoreItem {
@@ -56,7 +56,7 @@ async fn an_empty_or_invalid_batch_is_refused() {
     for (engine, _state) in both().await {
         assert!(matches!(
             engine.store_many(Vec::new()).await,
-            Err(crate::Error::InvalidRequest(_))
+            Err(crate::cortex::Error::InvalidRequest(_))
         ));
         assert!(engine.store_many(vec![doc("   ")]).await.is_err());
     }

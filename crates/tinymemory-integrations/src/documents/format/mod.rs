@@ -29,9 +29,9 @@ pub enum DocumentFormat {
     /// HTML. Converted structurally — headings, lists, links, code.
     Html,
     /// Source code. Stored as written, never reflowed or HTML-converted; the
-    /// language comes from [`crate::language_for_path`].
+    /// language comes from [`crate::documents::language_for_path`].
     Code,
-    /// PDF. Needs a real extractor; see [`crate::convert::DocumentConverter`].
+    /// PDF. Needs a real extractor; see [`crate::documents::convert::DocumentConverter`].
     Pdf,
     /// Office Open XML word processing (`.docx`). Needs a real extractor.
     Docx,
@@ -204,12 +204,12 @@ impl DocumentFormat {
 
     /// Map a filename or path onto a format by its extension.
     ///
-    /// A name [`crate::language_for_path`] recognises as code is
+    /// A name [`crate::documents::language_for_path`] recognises as code is
     /// [`DocumentFormat::Code`]; that check runs first so `CMakeLists.txt` is
     /// code rather than plain text. HTML stays [`DocumentFormat::Html`].
     #[must_use]
     pub fn from_filename(filename: &str) -> Option<Self> {
-        if crate::language::language_for_path(filename).is_some() {
+        if crate::documents::language::language_for_path(filename).is_some() {
             return Some(Self::Code);
         }
         let extension = filename.rsplit_once('.')?.1.to_ascii_lowercase();

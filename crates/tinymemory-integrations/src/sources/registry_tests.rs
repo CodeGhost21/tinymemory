@@ -1,7 +1,7 @@
 //! Tests for the TOML-backed source registry.
 
 use super::*;
-use crate::types::SourceKind;
+use crate::sources::types::SourceKind;
 use tempfile::TempDir;
 
 fn registry() -> (TempDir, SourceRegistry) {

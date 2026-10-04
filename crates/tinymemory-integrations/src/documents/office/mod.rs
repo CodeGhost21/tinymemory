@@ -1,12 +1,12 @@
 //! PDF and Office Open XML conversion (the `office` feature).
 //!
-//! [`crate::convert::NativeConverter`] handles what is already text. This is
+//! [`crate::documents::convert::NativeConverter`] handles what is already text. This is
 //! the converter for the formats people actually drop into memory that are not
 //! — a contract PDF, a spec `.docx`, a pricing `.xlsx`, a deck — so a host
 //! does not have to bind an extractor of its own for them:
 //!
 //! ```
-//! use tinymemory_documents::{ConverterChain, OfficeConverter};
+//! use tinymemory_integrations::documents::{ConverterChain, OfficeConverter};
 //!
 //! let chain = ConverterChain::default().prepend(Box::new(OfficeConverter));
 //! ```
@@ -25,7 +25,7 @@
 //!
 //! ## Hostile input
 //!
-//! [`crate::convert::MAX_DOCUMENT_BYTES`] caps the *compressed* upload, but an
+//! [`crate::documents::convert::MAX_DOCUMENT_BYTES`] caps the *compressed* upload, but an
 //! Office file is a zip, and a small highly compressed part can expand without
 //! limit. Every archive is therefore refused when the uncompressed sizes its
 //! central directory declares sum past [`MAX_DECOMPRESSED_BYTES`] — checked
@@ -57,10 +57,10 @@ mod xlsx;
 use async_trait::async_trait;
 
 #[cfg(test)]
-use crate::convert::MAX_DOCUMENT_BYTES;
-use crate::convert::{ConvertedDocument, DocumentConverter, RawDocument, check_size};
-use crate::error::{Error, Result};
-use crate::format::DocumentFormat;
+use crate::documents::convert::MAX_DOCUMENT_BYTES;
+use crate::documents::convert::{ConvertedDocument, DocumentConverter, RawDocument, check_size};
+use crate::documents::error::{Error, Result};
+use crate::documents::format::DocumentFormat;
 
 /// The largest uncompressed size an Office archive may declare, in bytes,
 /// before it is refused as a likely zip bomb. See the module docs.
@@ -74,7 +74,7 @@ pub const MAX_SPREADSHEET_DENSE_CELLS: usize = 1_000_000;
 /// Converts PDF, DOCX, PPTX and XLSX documents to markdown, in-process.
 ///
 /// Claims exactly those four formats, so it composes with
-/// [`crate::convert::NativeConverter`] in a [`crate::convert::ConverterChain`]
+/// [`crate::documents::convert::NativeConverter`] in a [`crate::documents::convert::ConverterChain`]
 /// without shadowing it. A document whose text cannot be read — malformed,
 /// over a cap, or a scanned PDF with no text layer — is [`Error::Invalid`]
 /// saying which, never an empty document.
@@ -91,7 +91,7 @@ impl OfficeConverter {
     /// claim; [`Error::Invalid`] for an empty body, a document that cannot be
     /// read or exceeds a decoding cap, or one with no extractable text;
     /// [`Error::TooLarge`] for a body over
-    /// [`crate::convert::MAX_DOCUMENT_BYTES`].
+    /// [`crate::documents::convert::MAX_DOCUMENT_BYTES`].
     pub fn convert_blocking(&self, document: &RawDocument) -> Result<ConvertedDocument> {
         check_size(document)?;
         let format = document.format();

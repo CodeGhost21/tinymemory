@@ -1,7 +1,7 @@
 //! Round trips of every operation on both wires, through the doubles.
 
 use super::*;
-use crate::testing::{both, direct_engine, sample_items as items};
+use crate::cortex::testing::{both, direct_engine, sample_items as items};
 use std::sync::atomic::Ordering;
 use tinymemory_api::{FetchMode, ItemKind, MemoryMeta, MetaFilter};
 
@@ -225,7 +225,7 @@ async fn health_is_ok_degraded_or_down_with_a_redacted_reason() {
         };
         assert!(reason.contains("withheld"), "{reason}");
         assert!(!reason.contains("failed: UNAUTHORIZED"), "{reason}");
-        assert!(!reason.contains(crate::testing::TEST_TOKEN));
+        assert!(!reason.contains(crate::cortex::testing::TEST_TOKEN));
     }
 }
 
@@ -237,7 +237,7 @@ async fn a_pack_without_a_pack_id_or_answer_text_is_an_engine_error() {
         "/v1/recall",
         post(|| async { Json(serde_json::json!({ "layers": {} })) }),
     );
-    let endpoint = crate::testing::serve(app).await;
+    let endpoint = crate::cortex::testing::serve(app).await;
     let error = direct_engine(&endpoint)
         .recall(RecallRequest::new("q", 1))
         .await
@@ -257,7 +257,7 @@ fn debug_names_the_engine_but_never_the_credential() {
     let rendered = format!("{engine:?}");
     assert!(rendered.contains("cortexdb") && rendered.contains("db.example"));
     assert!(!rendered.contains("ctx_secret"));
-    assert_eq!(engine.descriptor().id, crate::CORTEXDB_ENGINE_ID);
+    assert_eq!(engine.descriptor().id, crate::cortex::CORTEXDB_ENGINE_ID);
     assert_eq!(engine.wire(), CortexWire::Direct);
 }
 

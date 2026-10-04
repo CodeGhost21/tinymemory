@@ -1,7 +1,7 @@
 //! Checkpoint encoding tests.
 
 use super::*;
-use crate::error::Error;
+use crate::import::error::Error;
 
 #[test]
 fn a_default_checkpoint_is_the_start() {

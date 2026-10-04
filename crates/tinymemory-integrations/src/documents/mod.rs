@@ -25,7 +25,7 @@
 //!
 //! ```
 //! use tinymemory_api::{DocumentBody, MemoryMeta, SourceKind, StoreItem};
-//! use tinymemory_documents::{ConverterChain, RawDocument, document_item};
+//! use tinymemory_integrations::documents::{ConverterChain, RawDocument, document_item};
 //!
 //! # let runtime = tokio::runtime::Builder::new_current_thread().build()?;
 //! # runtime.block_on(async {
@@ -40,7 +40,7 @@
 //! assert_eq!(title.as_deref(), Some("main.rs"));
 //! assert_eq!(body, DocumentBody::Text("fn main() {}\n".into()));
 //! assert_eq!(meta.language.as_deref(), Some("rust"));
-//! # Ok::<(), tinymemory_documents::Error>(())
+//! # Ok::<(), tinymemory_integrations::documents::Error>(())
 //! # })?;
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```

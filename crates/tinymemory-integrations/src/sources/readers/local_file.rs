@@ -8,10 +8,10 @@
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
-use tinymemory_documents::RawDocument;
+use crate::documents::RawDocument;
 
-use crate::error::{Error, Result};
-use crate::FOLDER_FILE_SIZE_CAP_BYTES;
+use crate::sources::error::{Error, Result};
+use crate::sources::FOLDER_FILE_SIZE_CAP_BYTES;
 
 /// A file read from disk, before any conversion.
 #[derive(Debug, Clone)]

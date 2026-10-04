@@ -8,7 +8,7 @@
 
 use serde::Deserialize;
 
-use crate::types::{ContentType, SourceContent, SourceItem};
+use crate::sources::types::{ContentType, SourceContent, SourceItem};
 
 use super::api::{fetch_all_pages, fetch_github, GH_MAX_PAGES, GH_PAGE_SIZE};
 use super::types::{CachedItem, GhIssue, GhPr, GhUser, IssueComment};

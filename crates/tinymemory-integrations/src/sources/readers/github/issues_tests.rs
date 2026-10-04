@@ -1,8 +1,8 @@
 //! Offline behavioral tests for issue and pull-request list/read orchestration.
 
 use super::*;
-use crate::readers::github::api::with_test_responses;
-use crate::readers::github::types::LIST_CACHE;
+use crate::sources::readers::github::api::with_test_responses;
+use crate::sources::readers::github::types::LIST_CACHE;
 
 fn issue_json(number: u64) -> serde_json::Value {
     serde_json::json!({

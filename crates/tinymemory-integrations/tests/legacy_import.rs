@@ -12,7 +12,7 @@ use support::{OLD_MEMORY_DDL, chunk, chunk_store, doc, facet, turn, workspace};
 use tinymemory_api::{
     DocumentBody, LearningKind, Role, SourceKind, StoreItem, ToolCallRef, TurnRange,
 };
-use tinymemory_import::{Checkpoint, ChunkCursor, Error, ImportedItem, LegacyWorkspace};
+use tinymemory_integrations::import::{Checkpoint, ChunkCursor, Error, ImportedItem, LegacyWorkspace};
 
 const T0: f64 = 1_700_000_000.0;
 

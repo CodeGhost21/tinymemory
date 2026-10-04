@@ -1,7 +1,7 @@
 //! Composio source reader — a placeholder over the provider pipeline.
 //!
 //! Composio data does not arrive item by item: the host runs toolkit actions
-//! with its credentials and hands the responses to [`crate::composio`], which
+//! with its credentials and hands the responses to [`crate::sources::composio`], which
 //! normalises them and maps them to `StoreItem`s. For a Composio source,
 //! `list_items` returns the connection as one sync target and `read_item`
 //! describes that pipeline. The reader exists so the registry can query every
@@ -12,8 +12,8 @@ use std::path::Path;
 use async_trait::async_trait;
 
 use super::SourceReader;
-use crate::error::Result;
-use crate::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
+use crate::sources::error::Result;
+use crate::sources::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
 
 /// Lists a Composio connection as a single sync target.
 ///

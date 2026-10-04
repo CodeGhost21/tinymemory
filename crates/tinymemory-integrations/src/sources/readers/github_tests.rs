@@ -1,6 +1,6 @@
 use super::*;
-use crate::raw_kind::RawKind;
-use crate::readers::SourceReader;
+use crate::sources::raw_kind::RawKind;
+use crate::sources::readers::SourceReader;
 
 fn github_source(url: Option<&str>) -> MemorySourceEntry {
     MemorySourceEntry {
@@ -497,7 +497,7 @@ async fn fetch_all_pages_stops_at_a_short_page() {
     // A short page (fewer than GH_PAGE_SIZE rows) is the last page; the walk
     // must not request page 2 after it.
     let mut requested: Vec<u32> = Vec::new();
-    let pages = crate::readers::github::api::collect_pages::<u64, _, _>("commits", 1000, |page| {
+    let pages = crate::sources::readers::github::api::collect_pages::<u64, _, _>("commits", 1000, |page| {
         requested.push(page);
         async move {
             // Page 1 is short (3 rows) — stop after it even though max is large.

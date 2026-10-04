@@ -144,7 +144,7 @@ async fn completed_response_maps_declared_oversize_to_budget_exceeded() {
 
 #[tokio::test]
 async fn a_link_item_refuses_a_private_target_before_fetching() {
-    let chain = tinymemory_documents::ConverterChain::default();
+    let chain = crate::documents::ConverterChain::default();
     let error = link_item("http://127.0.0.1/", Some("src_link".into()), &chain)
         .await
         .unwrap_err();

@@ -20,8 +20,8 @@
 use serde_json::{Value, json};
 
 use super::{Log, PAGE_SIZE};
-use crate::descriptor::CortexWire;
-use crate::error::{Error, Result};
+use crate::cortex::descriptor::CortexWire;
+use crate::cortex::error::{Error, Result};
 
 /// Longest query the settle probe sends: a distinctive prefix of the stored
 /// text matches better, and costs less, than a 64 KiB document.
