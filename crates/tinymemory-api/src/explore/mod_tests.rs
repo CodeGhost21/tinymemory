@@ -135,9 +135,48 @@ fn fixture() -> Vec<Hit> {
     ]
 }
 
+/// Every facet. [`exhaustive`] fails to compile when a facet is added and
+/// not listed here.
+const FACETS: [Facet; 14] = [
+    Facet::Kind,
+    Facet::Source,
+    Facet::SourceId,
+    Facet::Workspace,
+    Facet::Folder,
+    Facet::FilePath,
+    Facet::Language,
+    Facet::Repo,
+    Facet::Url,
+    Facet::Thread,
+    Facet::Agent,
+    Facet::ToolCall,
+    Facet::Tag,
+    Facet::Namespace,
+];
+
+fn exhaustive(facet: Facet) {
+    match facet {
+        Facet::Kind
+        | Facet::Source
+        | Facet::SourceId
+        | Facet::Workspace
+        | Facet::Folder
+        | Facet::FilePath
+        | Facet::Language
+        | Facet::Repo
+        | Facet::Url
+        | Facet::Thread
+        | Facet::Agent
+        | Facet::ToolCall
+        | Facet::Tag
+        | Facet::Namespace => {}
+    }
+}
+
 #[test]
 fn every_facet_round_trips_its_wire_name() {
-    for facet in Facet::ALL {
+    for facet in FACETS {
+        exhaustive(facet);
         let json = serde_json::to_value(facet).unwrap();
         assert_eq!(json, serde_json::json!(facet.as_str()));
         assert_eq!(serde_json::from_value::<Facet>(json).unwrap(), facet);
@@ -147,7 +186,7 @@ fn every_facet_round_trips_its_wire_name() {
 #[test]
 fn a_narrowed_filter_admits_exactly_the_items_with_that_value() {
     let items = fixture();
-    for facet in Facet::ALL {
+    for facet in FACETS {
         for item in &items {
             for value in facet.values(item.kind, &item.meta) {
                 let mut filter = MetaFilter::default();
