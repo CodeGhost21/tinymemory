@@ -251,8 +251,6 @@ fn debug_names_the_engine_but_never_the_credential() {
         "https://db.example",
         CortexCredential::api_key("ctx_secret"),
     )
-    .unwrap()
-    .with_request_timeout(Duration::from_secs(5))
     .unwrap();
     let rendered = format!("{engine:?}");
     assert!(rendered.contains("cortexdb") && rendered.contains("db.example"));

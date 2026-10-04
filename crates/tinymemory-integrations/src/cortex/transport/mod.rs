@@ -132,13 +132,6 @@ impl HttpClient {
         })
     }
 
-    /// Rebuilds the client with a different per-request deadline. A retrying
-    /// read can take about three times this plus 750ms of backoff.
-    pub(crate) fn set_timeout(&mut self, timeout: Duration) -> Result<()> {
-        self.inner = build_inner(timeout)?;
-        Ok(())
-    }
-
     /// The wire this client speaks.
     pub(crate) fn wire(&self) -> CortexWire {
         self.wire

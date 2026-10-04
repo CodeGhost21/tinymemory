@@ -16,13 +16,13 @@ accepts only `scope`, `query`, `budgets`, `view`, `include`, `temporal` and
 
 ## Public surface
 
-- `CortexEngine::{new, direct, tinyhumans, with_request_timeout, wire}`
+- `CortexEngine::{new, direct, tinyhumans, wire}` (requests time out after 60s)
 - `CortexWire { Direct, TinyHumans }`, `CortexCredential { Static, Dynamic }`
 - `BearerSource` (async `bearer()`), `StaticBearer` (redacted `Debug`)
 - `CORTEXDB_ENGINE_ID`, `TINYHUMANS_ENGINE_ID`, `CORTEX_API_ENDPOINT`,
   `TINYHUMANS_API_ENDPOINT`, `cortexdb_descriptor()`, `tinyhumans_descriptor()`
 - `Error`/`Result` (the contract's own `tinymemory_api::Error`),
-  `error_code`, `is_insufficient_credits`, `INSUFFICIENT_CREDITS_CODE`
+  `error_code`, `is_insufficient_credits`
 
 ## Storage layout
 

@@ -46,7 +46,7 @@ pub use tinymemory_api::Error;
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// The TinyHumans backend's code for an exhausted credit balance (HTTP 402).
-pub const INSUFFICIENT_CREDITS_CODE: &str = "USER_INSUFFICIENT_CREDITS";
+pub(crate) const INSUFFICIENT_CREDITS_CODE: &str = "USER_INSUFFICIENT_CREDITS";
 
 /// The message every variant carries.
 fn message_of(error: &Error) -> &str {

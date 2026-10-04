@@ -103,17 +103,6 @@ impl CortexEngine {
         )
     }
 
-    /// Rebuilds the transport with a different per-request deadline (60s by
-    /// default). A retrying read can take about three times this.
-    ///
-    /// # Errors
-    ///
-    /// [`Error::Config`] if the HTTP client cannot be rebuilt.
-    pub fn with_request_timeout(mut self, timeout: Duration) -> Result<Self> {
-        self.log.client.set_timeout(timeout)?;
-        Ok(self)
-    }
-
     /// Which HTTP surface this engine talks to.
     #[must_use]
     pub fn wire(&self) -> CortexWire {

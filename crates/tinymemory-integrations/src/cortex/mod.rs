@@ -68,4 +68,4 @@ pub use descriptor::{
     TINYHUMANS_ENGINE_ID, cortexdb_descriptor, tinyhumans_descriptor,
 };
 pub use engine::CortexEngine;
-pub use error::{Error, INSUFFICIENT_CREDITS_CODE, Result, error_code, is_insufficient_credits};
+pub use error::{Error, Result, error_code, is_insufficient_credits};
