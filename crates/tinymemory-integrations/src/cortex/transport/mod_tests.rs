@@ -332,8 +332,7 @@ fn fixed_headers_refuse_reserved_and_malformed_entries() {
     }
     assert!(default_headers([("bad name", "v")]).is_err());
     let bad_value = default_headers([("x-sdk-name", "a\r\nX-Injected: 1")])
-        .err()
-        .expect("a CR/LF value is refused");
+        .expect_err("a CR/LF value is refused");
     assert!(!bad_value.to_string().contains("Injected"));
 }
 
