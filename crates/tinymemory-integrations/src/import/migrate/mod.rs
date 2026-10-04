@@ -98,7 +98,7 @@ where
             .await
             .map_err(|source| Error::Engine {
                 source,
-                checkpoint: report.checkpoint.clone(),
+                checkpoint: Box::new(report.checkpoint.clone()),
             })?;
         let replayed = receipts.iter().filter(|receipt| receipt.replayed).count();
         report.replayed += replayed;

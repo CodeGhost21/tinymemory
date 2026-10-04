@@ -45,8 +45,9 @@ pub enum Error {
         /// The engine's own error.
         #[source]
         source: tinymemory_api::Error,
-        /// The last committed resume point.
-        checkpoint: Checkpoint,
+        /// The last committed resume point (boxed to keep every `Result`
+        /// of this crate small).
+        checkpoint: Box<Checkpoint>,
     },
 }
 
