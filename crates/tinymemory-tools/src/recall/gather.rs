@@ -231,10 +231,20 @@ async fn latest(
     Ok(all)
 }
 
-/// The text a hit's bullet shows: a titled document as `title: body` rather
-/// than its `# title` heading run into the body, and without the body's own
-/// copy of that heading when converted markdown repeats it.
+/// The text a hit's bullet shows:
+///
+/// - a titled document as `title: body` rather than its `# title` heading run
+///   into the body, and without the body's own copy of that heading when
+///   converted markdown repeats it;
+/// - a conversation led by when it was said (`[2026-09-15 09:01] user: …`),
+///   when the turn carries a time, so a reader can tell a value that was
+///   later corrected from the correction.
 fn bullet_text(hit: &Hit) -> String {
+    if hit.kind == ItemKind::Conversation
+        && let Some(at) = hit.meta.observed_at
+    {
+        return format!("[{}] {}", at.format("%Y-%m-%d %H:%M"), hit.text);
+    }
     if hit.kind == ItemKind::Document
         && let Some(rest) = hit.text.strip_prefix("# ")
         && let Some((title, body)) = rest.split_once("\n\n")

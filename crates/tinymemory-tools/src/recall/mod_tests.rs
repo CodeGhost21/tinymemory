@@ -346,3 +346,43 @@ async fn a_titled_document_is_one_readable_bullet() {
         "{md}"
     );
 }
+
+#[tokio::test]
+async fn a_timed_turn_is_led_by_when_it_was_said() {
+    let engine = ReferenceEngine::new();
+    let at = "2026-09-15T09:01:30Z".parse().unwrap();
+    for item in [
+        StoreItem::Conversation {
+            turns: vec![Turn::new(Role::User, "The budget is now 6500 dollars.")],
+            meta: MemoryMeta {
+                observed_at: Some(at),
+                ..MemoryMeta::default()
+            },
+        },
+        turn("t1", 0, "The budget is 5000 dollars."),
+    ] {
+        engine.store(item).await.unwrap();
+    }
+    let pack = holistic_recall(
+        &engine,
+        &HolisticRecall::new(
+            None,
+            vec![ScopeSection::latest(
+                "History",
+                MetaFilter::kinds([ItemKind::Conversation]),
+                5,
+            )],
+        ),
+    )
+    .await
+    .unwrap();
+    let md = &pack.markdown;
+    assert!(
+        md.contains("- [2026-09-15 09:01] user: The budget is now 6500 dollars.\n"),
+        "{md}"
+    );
+    assert!(
+        md.contains("- user: The budget is 5000 dollars.\n"),
+        "an untimed turn has no date: {md}"
+    );
+}
