@@ -159,9 +159,10 @@ impl MemoryEngine for CortexEngine {
 
     /// A batch of one (see `store`): listed and ranked on return.
     async fn store(&self, item: StoreItem) -> Result<StoreReceipt> {
-        self.store_items(vec![item]).await?.pop().ok_or_else(|| {
-            Error::Engine("a store of one item returned no receipt".to_string())
-        })
+        self.store_items(vec![item])
+            .await?
+            .pop()
+            .ok_or_else(|| Error::Engine("a store of one item returned no receipt".to_string()))
     }
 
     /// Ranked recall is awaited for the last item only (see `store`).

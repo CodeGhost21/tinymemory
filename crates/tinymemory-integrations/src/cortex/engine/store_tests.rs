@@ -120,9 +120,16 @@ async fn a_single_store_is_listed_and_settled_on_return_like_a_batch_of_one() {
                     .is_some_and(|q| q.contains("single settled note"))
             })
             .count();
-        assert!(probed >= 1, "{wire:?}: a single store waits for ranked recall");
         assert!(
-            engine.store(doc("single settled note")).await.unwrap().replayed,
+            probed >= 1,
+            "{wire:?}: a single store waits for ranked recall"
+        );
+        assert!(
+            engine
+                .store(doc("single settled note"))
+                .await
+                .unwrap()
+                .replayed,
             "{wire:?}"
         );
         assert!(
