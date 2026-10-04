@@ -11,6 +11,8 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 compose=(docker compose --project-name tinymemory-cortexdb-test -f "$root/integration/cortexdb/docker-compose.yml")
 port="${CORTEXDB_PORT:-3142}"
+# Compose reads the published port from the environment.
+export CORTEXDB_PORT="$port"
 url="http://127.0.0.1:$port"
 
 # A test run owns its own Compose project and tears it down with its volumes,
