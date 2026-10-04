@@ -1,6 +1,10 @@
-//! Store: replay detection, then the item's missing events, then the wait.
+//! Store: replay detection, then the items' missing events, then the wait.
 //!
-//! The item id is the item's fingerprint, so the engine first looks up the
+//! `store` is `store_many` of one item: there is one path, so a single store
+//! gets exactly the batch's guarantees (listed on return, and ranked recall
+//! awaited for its final event).
+//!
+//! An item id is the item's fingerprint, so the engine first looks up the
 //! events already carrying that id's label in the item's scope (its kind at
 //! its namespace node):
 //!
@@ -22,13 +26,16 @@ use tinymemory_api::{ItemId, StoreItem, StoreReceipt, validate_many};
 use super::CortexEngine;
 use super::scopes::KindScope;
 use crate::cortex::envelope::Envelope;
-use crate::cortex::error::Result;
+use crate::cortex::error::{Error, Result};
 use crate::cortex::log::Written;
 
 impl CortexEngine {
-    /// See the module docs.
+    /// `store`: a batch of one, so it waits exactly as the batch's final
+    /// item does.
     pub(super) async fn store_item(&self, item: StoreItem) -> Result<StoreReceipt> {
-        self.store_one(item).await
+        self.store_items(vec![item]).await?.pop().ok_or_else(|| {
+            Error::Engine("a store of one item returned no receipt".to_string())
+        })
     }
 
     /// `store_many`, paying per batch rather than per item:
@@ -94,37 +101,6 @@ impl CortexEngine {
                 .await?;
         }
         Ok(receipts)
-    }
-
-    async fn store_one(&self, item: StoreItem) -> Result<StoreReceipt> {
-        item.validate()?;
-        let id = item.fingerprint();
-        let envelopes = Envelope::for_item(&item, &id)?;
-        let scope = KindScope::new(item.meta().namespace.clone(), item.kind());
-        let held = self
-            .item_events(&scope, std::slice::from_ref(&id))
-            .await?
-            .remove(&id)
-            .unwrap_or_default();
-        let present: HashSet<Option<u32>> = held
-            .iter()
-            .map(|decoded| decoded.envelope.turn.as_ref().map(|turn| turn.index))
-            .collect();
-        let mut requests = Vec::new();
-        for envelope in &envelopes {
-            if present.contains(&envelope.turn.as_ref().map(|turn| turn.index)) {
-                continue;
-            }
-            requests.push(envelope.request(&envelope.encode()?));
-        }
-        let replayed = requests.is_empty();
-        if !replayed {
-            self.log.append(&requests).await?;
-        }
-        Ok(StoreReceipt {
-            id: ItemId::new(id),
-            replayed,
-        })
     }
 }
 

@@ -68,21 +68,11 @@ fn receipt(answer: &Value) -> Result<String> {
 }
 
 impl Log {
-    /// Appends `requests` (one item's events, in order) and waits until the
-    /// last is readable. The log is ordered, so the last event being listed
-    /// implies the earlier ones are: one wait, not one per event. A bulk
-    /// store uses [`Log::write`] and [`Log::await_written`] instead, to wait
-    /// once per scope for a whole batch.
-    pub(crate) async fn append(&self, requests: &[Value]) -> Result<()> {
-        match self.write(requests).await? {
-            Some(written) => self.await_written(&written, true).await,
-            None => Ok(()),
-        }
-    }
-
     /// Writes `requests` (one item's events, in order) without waiting, and
-    /// names the last event so a caller can wait for it, or for a later one
-    /// in the same scope, which implies it.
+    /// names the last event so a caller can wait for it with
+    /// [`Log::await_written`], or for a later one in the same scope, which
+    /// implies it: the log is ordered, so the last event being listed implies
+    /// the earlier ones are.
     pub(crate) async fn write(&self, requests: &[Value]) -> Result<Option<Written>> {
         let Some(last) = requests.last() else {
             return Ok(None);
