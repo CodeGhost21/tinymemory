@@ -588,7 +588,9 @@ async fn promote_rejects_a_conversation_and_an_unconfigured_node() {
     assert!(matches!(refused, Err(Error::InvalidRequest(_))));
 
     let learning_only = memory
-        .with_core(vec![CoreScope::new(acme(), "Company").kinds([ItemKind::Learning])])
+        .with_core(vec![
+            CoreScope::new(acme(), "Company").kinds([ItemKind::Learning]),
+        ])
         .unwrap();
     let document = StoreItem::document("x", MemoryMeta::default());
     assert!(matches!(
