@@ -57,4 +57,6 @@ pub use error::{Error, Result};
 #[cfg(feature = "cortex")]
 pub use config::{DEFAULT_ENGINE, EngineSettings, MemoryConfig};
 #[cfg(feature = "cortex")]
+pub use cortex::{BearerSource, StaticBearer};
+#[cfg(feature = "cortex")]
 pub use registry::{EngineCredential, build_engine, list_engines};
