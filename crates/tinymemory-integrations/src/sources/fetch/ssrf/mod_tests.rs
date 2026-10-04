@@ -1,3 +1,6 @@
+//! Tests for the SSRF guard: the address classifier, host and URL policy,
+//! the capped body reader and the hardened client.
+
 use super::*;
 
 async fn local_response(response: &'static [u8]) -> reqwest::Response {

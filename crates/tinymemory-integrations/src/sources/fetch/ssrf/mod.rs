@@ -219,5 +219,5 @@ fn is_blocked_host(host: &str) -> bool {
 }
 
 #[cfg(test)]
-#[path = "ssrf_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;

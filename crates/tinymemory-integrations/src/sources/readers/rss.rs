@@ -4,9 +4,9 @@
 //! source items. Uses a lightweight XML parser (`quick-xml` via
 //! manual parsing) to avoid pulling in heavy feed crates.
 //!
-//! Fetches go through the shared `ssrf` guard (scheme/host policy, a DNS
-//! resolver that pins connections to globally routable addresses, and
-//! per-hop redirect re-checks), and the parsed feed is cached briefly so a
+//! Fetches go through `sources::fetch` and its SSRF guard (scheme/host
+//! policy, a DNS resolver that pins connections to globally routable
+//! addresses, and per-hop redirect re-checks), and the parsed feed is cached briefly so a
 //! list-then-read sync pass downloads it once rather than once per entry.
 
 mod types;
@@ -22,7 +22,7 @@ use crate::sources::types::{
 };
 
 use super::SourceReader;
-use super::ssrf::{build_client, is_url_allowed, read_body_capped};
+use crate::sources::fetch::fetch_url_capped;
 use types::{FeedCache, FeedEntry};
 
 const DEFAULT_MAX_ITEMS: u32 = 50;
@@ -57,7 +57,7 @@ impl RssReader {
     /// that is N+1 downloads of the same feed per sync (and a rate-limit
     /// risk against the feed host); the cache turns it into one fetch whose
     /// results are reused for the read phase.
-    async fn fetch_entries(&self, url: &str) -> std::result::Result<Vec<FeedEntry>, String> {
+    async fn fetch_entries(&self, url: &str) -> Result<Vec<FeedEntry>> {
         // Read the cache in a nested scope so the mutex guard is dropped before
         // the await below — the guard is not `Send`, and holding it across an
         // await would make the reader's async methods non-`Send`.
@@ -71,8 +71,12 @@ impl RssReader {
             }
         }
 
-        let body = fetch_url(url).await?;
-        let entries = parse_feed_full(&body)?;
+        // `fetch_url_capped` applies the SSRF guard and streams the body
+        // against the cap, so a pathological feed cannot exhaust memory.
+        let document = fetch_url_capped(url, MAX_FEED_BYTES).await?;
+        let body = String::from_utf8(document.bytes)
+            .map_err(|e| Error::Reader(format!("feed body is not valid UTF-8: {e}")))?;
+        let entries = parse_feed_full(&body).map_err(Error::Reader)?;
         *self.cache.lock().unwrap_or_else(|e| e.into_inner()) = Some(FeedCache {
             url: url.to_string(),
             fetched_at: Instant::now(),
@@ -99,32 +103,9 @@ impl SourceReader for RssReader {
     async fn list_items(
         &self,
         source: &MemorySourceEntry,
-        workspace: &std::path::Path,
-    ) -> Result<Vec<SourceItem>> {
-        self.list_items_inner(source, workspace)
-            .await
-            .map_err(Error::Reader)
-    }
-
-    async fn read_item(
-        &self,
-        source: &MemorySourceEntry,
-        item_id: &str,
-        workspace: &std::path::Path,
-    ) -> Result<SourceContent> {
-        self.read_item_inner(source, item_id, workspace)
-            .await
-            .map_err(Error::Reader)
-    }
-}
-
-impl RssReader {
-    async fn list_items_inner(
-        &self,
-        source: &MemorySourceEntry,
         _workspace: &std::path::Path,
-    ) -> std::result::Result<Vec<SourceItem>, String> {
-        let url = source.url.as_deref().ok_or("rss source requires a url")?;
+    ) -> Result<Vec<SourceItem>> {
+        let url = configured_url(source)?;
         let max_items = source.max_items.unwrap_or(DEFAULT_MAX_ITEMS) as usize;
 
         tracing::debug!(
@@ -148,13 +129,13 @@ impl RssReader {
             .collect())
     }
 
-    async fn read_item_inner(
+    async fn read_item(
         &self,
         source: &MemorySourceEntry,
         item_id: &str,
         _workspace: &std::path::Path,
-    ) -> std::result::Result<SourceContent, String> {
-        let url = source.url.as_deref().ok_or("rss source requires a url")?;
+    ) -> Result<SourceContent> {
+        let url = configured_url(source)?;
 
         tracing::debug!(
             host = %url_host(url),
@@ -166,7 +147,7 @@ impl RssReader {
         let entry = entries
             .into_iter()
             .find(|e| e.id == item_id)
-            .ok_or_else(|| format!("item '{item_id}' not found in feed"))?;
+            .ok_or_else(|| Error::NotFound(format!("item '{item_id}' not found in feed")))?;
 
         let content_type = if entry.body.contains('<') {
             ContentType::Html
@@ -185,6 +166,14 @@ impl RssReader {
             }),
         })
     }
+}
+
+/// The configured feed URL.
+fn configured_url(source: &MemorySourceEntry) -> Result<&str> {
+    source
+        .url
+        .as_deref()
+        .ok_or_else(|| Error::Invalid("rss source requires a url".to_string()))
 }
 
 /// Extract just the host portion of a URL for debug-log redaction so we
@@ -212,35 +201,6 @@ fn url_host(url: &str) -> String {
                 .unwrap_or(authority)
                 .to_string()
         })
-}
-
-async fn fetch_url(url: &str) -> std::result::Result<String, String> {
-    // SSRF guard: validate scheme and host, reject private/internal targets,
-    // and refuse redirects that would escape that policy.
-    let parsed = reqwest::Url::parse(url).map_err(|e| format!("invalid URL: {e}"))?;
-    if !is_url_allowed(&parsed) {
-        return Err(format!(
-            "rss source requires an http(s) URL to a public host, got: {}",
-            url.chars().take(64).collect::<String>()
-        ));
-    }
-
-    let client = build_client()?;
-    let resp = client
-        .get(parsed)
-        .header("User-Agent", "openhuman")
-        .send()
-        .await
-        .map_err(|e| format!("failed to fetch feed: {e}"))?;
-
-    if !resp.status().is_success() {
-        return Err(format!("feed returned {}", resp.status()));
-    }
-
-    // Stream the body with a cap so a pathological feed can't OOM us before
-    // the size check runs (`Content-Length` can be omitted or understated).
-    let bytes = read_body_capped(resp, MAX_FEED_BYTES).await?;
-    String::from_utf8(bytes).map_err(|e| format!("feed body is not valid UTF-8: {e}"))
 }
 
 fn parse_feed_full(xml: &str) -> std::result::Result<Vec<FeedEntry>, String> {
