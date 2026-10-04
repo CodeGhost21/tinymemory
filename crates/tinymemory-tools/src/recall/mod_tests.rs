@@ -336,7 +336,13 @@ async fn a_titled_document_is_one_readable_bullet() {
     .await
     .unwrap();
     let md = &pack.markdown;
-    assert!(md.contains("- Onboarding: Reply within four hours.\n"), "{md}");
+    assert!(
+        md.contains("- Onboarding: Reply within four hours.\n"),
+        "{md}"
+    );
     assert!(md.contains("- Refunds: Refunds take five days.\n"), "{md}");
-    assert!(md.contains("- Billing: # Billing disputes Go to finance.\n"), "{md}");
+    assert!(
+        md.contains("- Billing: # Billing disputes Go to finance.\n"),
+        "{md}"
+    );
 }
