@@ -34,6 +34,7 @@ pub(super) async fn section(
     request: &HolisticRecall,
     section: &ScopeSection,
 ) -> Gathered {
+    let want = wanted(request, section);
     let outcome = match &section.query {
         SectionQuery::Answer {
             question,
@@ -48,7 +49,7 @@ pub(super) async fn section(
                         "[recall] answer failed, fetching instead heading={:?} error={error}",
                         section.heading
                     );
-                    fetch(engine, &section.filter, question, section.limit).await
+                    fetch(engine, &section.filter, question, want).await
                 }
                 Err(error) => Err(error),
             }
@@ -56,12 +57,12 @@ pub(super) async fn section(
         SectionQuery::Fetch { query } => {
             match query.as_deref().or(request.query.as_deref()) {
                 Some(query) if !query.trim().is_empty() => {
-                    fetch(engine, &section.filter, query, section.limit).await
+                    fetch(engine, &section.filter, query, want).await
                 }
-                _ => latest(engine, &section.filter, section.limit).await,
+                _ => latest(engine, &section.filter, want).await,
             }
         }
-        SectionQuery::Latest => latest(engine, &section.filter, section.limit).await,
+        SectionQuery::Latest => latest(engine, &section.filter, want).await,
     };
     match outcome {
         Ok(hits) => lines(request, section, hits),
@@ -73,6 +74,18 @@ pub(super) async fn section(
             skipped(section, error.to_string())
         }
     }
+}
+
+/// How many hits to ask for so that `section.limit` survive the request's
+/// exclusions: one more per excluded id, and double when a whole thread
+/// window may be left out.
+fn wanted(request: &HolisticRecall, section: &ScopeSection) -> usize {
+    let window = if request.exclude_thread.is_some() {
+        section.limit
+    } else {
+        0
+    };
+    section.limit + request.exclude_ids.len() + window
 }
 
 fn skipped(section: &ScopeSection, reason: String) -> Gathered {
@@ -152,9 +165,8 @@ async fn fetch(
     let Some(mode) = preferred_mode(engine) else {
         return latest(engine, filter, limit).await;
     };
-    let mut request = FetchRequest::new(query, mode);
+    let mut request = FetchRequest::new(query, mode, limit);
     request.filter = filter.clone();
-    request.limit = limit;
     Ok(engine.fetch(request).await?.hits)
 }
 
@@ -183,7 +195,7 @@ async fn latest(
                 .total_cmp(&a.confidence.unwrap_or(0.0))
         })
     });
-    all.truncate(limit.max(all.len().min(limit)));
+    all.truncate(limit);
     Ok(all)
 }
 
