@@ -9,7 +9,8 @@
 //! A delta is called a move only when it is larger than the noise: the
 //! spread (max − min) the repeats of either profile show, and never less
 //! than a floor for a single run (3 points for a percentage, 0.03 for a
-//! score, 10% of the baseline otherwise). A move is marked `▲` when it is an
+//! score, 25% and at least 5 ms for a latency, 10% of the baseline
+//! otherwise). A move is marked `▲` when it is an
 //! improvement, `▼` when it is a regression, and `~` when it is within noise.
 
 use std::collections::BTreeMap;
@@ -73,7 +74,9 @@ fn floor(unit: Unit, baseline: f64) -> f64 {
     match unit {
         Unit::Pct | Unit::Points => 3.0,
         Unit::Score => 0.03,
-        Unit::Usd | Unit::Count | Unit::Ms => 0.1 * baseline.abs(),
+        Unit::Usd | Unit::Count => 0.1 * baseline.abs(),
+        // Wall-clock time jitters most: a quarter, and never under 5 ms.
+        Unit::Ms => (0.25 * baseline.abs()).max(5.0),
     }
 }
 
@@ -149,7 +152,7 @@ pub(crate) fn run(paths: &[String]) -> Result<(), Error> {
     println!("# CortexDB flag comparison\n");
     println!(
         "Deltas are against `{}`. ▲ better, ▼ worse, ~ within noise (the repeats' \
-         spread, at least 3 pp / 0.03 / 10%).\n",
+         spread, at least 3 pp / 0.03 / 25% of a latency / 10% otherwise).\n",
         baseline.name
     );
     println!("| Profile | Runs | Flags over the baseline |");
