@@ -49,11 +49,10 @@ pub fn base_meta(entry: &MemorySourceEntry) -> MemoryMeta {
         },
         ..MemoryMeta::default()
     };
-    if entry.kind == SourceKind::Composio {
-        if let Some(toolkit) = entry.toolkit.as_deref().filter(|t| !t.is_empty()) {
+    if entry.kind == SourceKind::Composio
+        && let Some(toolkit) = entry.toolkit.as_deref().filter(|t| !t.is_empty()) {
             meta.tags = vec![toolkit.to_string()];
         }
-    }
     meta
 }
 

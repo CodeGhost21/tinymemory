@@ -225,13 +225,12 @@ impl SourceRegistry {
         table.insert("memory_sources".to_string(), value);
         let text = toml::to_string_pretty(&table)
             .map_err(|e| registry_error("failed to serialize config", e))?;
-        if let Some(parent) = self.path.parent() {
-            if !parent.as_os_str().is_empty() {
+        if let Some(parent) = self.path.parent()
+            && !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(parent).map_err(|e| {
                     registry_error(format!("failed to create {}", parent.display()), e)
                 })?;
             }
-        }
         self.atomic_write(text.as_bytes())?;
         Ok(())
     }

@@ -61,11 +61,10 @@ impl RssReader {
         // await would make the reader's async methods non-`Send`.
         {
             let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(cached) = cache.as_ref() {
-                if cached.url == url && cached.fetched_at.elapsed() < FEED_CACHE_TTL {
+            if let Some(cached) = cache.as_ref()
+                && cached.url == url && cached.fetched_at.elapsed() < FEED_CACHE_TTL {
                     return Ok(cached.entries.clone());
                 }
-            }
         }
 
         let body = fetch_url(url).await?;

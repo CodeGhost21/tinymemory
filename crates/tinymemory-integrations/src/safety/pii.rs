@@ -30,6 +30,7 @@
 use regex::Regex;
 use std::sync::LazyLock;
 
+use super::pattern::literal;
 use super::{BareCardGate, Policy, SanitizationReport, Sanitized};
 
 mod checks;

@@ -291,12 +291,11 @@ fn find_next_element(
             continue;
         }
         let tag = &after[..tag_len];
-        if let Some(expected) = &spec.tag {
-            if !tag.eq_ignore_ascii_case(expected) {
+        if let Some(expected) = &spec.tag
+            && !tag.eq_ignore_ascii_case(expected) {
                 offset = abs + 1;
                 continue;
             }
-        }
 
         let gt = lower_html[abs..]
             .find('>')
@@ -304,12 +303,11 @@ fn find_next_element(
             .unwrap_or(lower_html.len());
         let open_tag = &lower_html[abs..gt];
         let orig_open_tag = &orig_html[abs..gt];
-        if let Some(expected_id) = &spec.id {
-            if attr_value(open_tag, orig_open_tag, "id").as_deref() != Some(expected_id.as_str()) {
+        if let Some(expected_id) = &spec.id
+            && attr_value(open_tag, orig_open_tag, "id").as_deref() != Some(expected_id.as_str()) {
                 offset = abs + 1;
                 continue;
             }
-        }
         if !spec.classes.is_empty() {
             let class_attr = attr_value(open_tag, orig_open_tag, "class").unwrap_or_default();
             let classes: std::collections::HashSet<&str> = class_attr.split_whitespace().collect();
@@ -368,11 +366,10 @@ fn attr_value(open_tag: &str, orig_open_tag: &str, name: &str) -> Option<String>
                 if let Some(end_rel) = v.find('"') {
                     return Some(orig_open_tag[value_abs + 1..value_abs + 1 + end_rel].to_string());
                 }
-            } else if let Some(v) = eq_trimmed.strip_prefix('\'') {
-                if let Some(end_rel) = v.find('\'') {
+            } else if let Some(v) = eq_trimmed.strip_prefix('\'')
+                && let Some(end_rel) = v.find('\'') {
                     return Some(orig_open_tag[value_abs + 1..value_abs + 1 + end_rel].to_string());
                 }
-            }
         }
         rest = trimmed;
         offset = eq_abs;

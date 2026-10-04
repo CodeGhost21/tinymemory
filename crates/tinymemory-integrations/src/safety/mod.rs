@@ -36,6 +36,7 @@
 use std::sync::LazyLock;
 
 use regex::Regex;
+use pattern::literal;
 use serde_json::Value;
 
 /// Exhaustive checksum-gated multilingual national-ID PII module. Content
@@ -50,6 +51,7 @@ mod item;
 
 /// One-time-secret URLs and `Bearer` values, including short ones.
 mod markers;
+mod pattern;
 
 pub use markers::redact_credential_markers;
 

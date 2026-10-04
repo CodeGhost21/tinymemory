@@ -223,8 +223,8 @@ pub fn split_response_markdown_per_message_with_hint(
         // pair fails, we treat the split as unreliable and try the
         // next pattern. Empty / null subjects skip validation (e.g.
         // notification mails where the subject is "").
-        if let Some(hints) = messages_hint {
-            if !validate_segments_against_hints(&segments, hints) {
+        if let Some(hints) = messages_hint
+            && !validate_segments_against_hints(&segments, hints) {
                 tracing::debug!(
                     expected = expected_count,
                     sep = sep,
@@ -232,7 +232,6 @@ pub fn split_response_markdown_per_message_with_hint(
                 );
                 continue;
             }
-        }
         return Some(segments);
     }
     None
@@ -436,11 +435,10 @@ fn pick_header(msg: &Map<String, Value>, name: &str) -> Option<Value> {
     let headers = msg.get("payload")?.get("headers")?.as_array()?;
     for h in headers {
         let hn = h.get("name").and_then(|v| v.as_str()).unwrap_or("");
-        if hn.eq_ignore_ascii_case(name) {
-            if let Some(v) = h.get("value").and_then(|v| v.as_str()) {
+        if hn.eq_ignore_ascii_case(name)
+            && let Some(v) = h.get("value").and_then(|v| v.as_str()) {
                 return Some(Value::String(v.to_string()));
             }
-        }
     }
     None
 }

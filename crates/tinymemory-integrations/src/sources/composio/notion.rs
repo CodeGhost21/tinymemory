@@ -41,11 +41,10 @@ pub fn extract_page_markdown(data: &Value) -> Option<String> {
         "/data/text",
     ];
     for p in PATHS {
-        if let Some(s) = data.pointer(p).and_then(Value::as_str) {
-            if !s.trim().is_empty() {
+        if let Some(s) = data.pointer(p).and_then(Value::as_str)
+            && !s.trim().is_empty() {
                 return Some(s.to_string());
             }
-        }
     }
     None
 }
@@ -82,8 +81,8 @@ pub fn extract_page_title(page: &Value) -> Option<String> {
         // Walk all properties looking for a "title" type field.
         if let Some(obj) = props.as_object() {
             for (_key, val) in obj {
-                if val.get("type").and_then(Value::as_str) == Some("title") {
-                    if let Some(arr) = val.get("title").and_then(Value::as_array) {
+                if val.get("type").and_then(Value::as_str) == Some("title")
+                    && let Some(arr) = val.get("title").and_then(Value::as_array) {
                         let text: String = arr
                             .iter()
                             .filter_map(|t| t.get("plain_text").and_then(Value::as_str))
@@ -93,7 +92,6 @@ pub fn extract_page_title(page: &Value) -> Option<String> {
                             return Some(text);
                         }
                     }
-                }
             }
         }
     }
