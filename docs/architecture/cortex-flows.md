@@ -16,12 +16,13 @@ request is sent. Read [the wire](cortex-wire.md) for what "scope", "label" and
 There is **one** path, so a single store gets exactly the batch's guarantees:
 listed on return, and ranked recall awaited for its final event.
 
-`store_many` first runs `validate_many` (a batch of 1 to `MAX_STORE_MANY`
+`store_many` first runs `validate_many` (a batch of 1 to `MAX_STORE_MANY` (100)
 valid items; an empty or oversized batch is `Error::InvalidRequest`). Then:
 
-1. **Fingerprint.** Each item's id is `StoreItem::fingerprint()`, a content
-   digest that includes the namespace, so the same text at two nodes is two
-   items.
+1. **Fingerprint.** Each item's id is `StoreItem::fingerprint()`, a digest of the
+   whole item, metadata and namespace included but `meta.observed_at` not, so
+   the same text at two nodes is two items and a re-sync that only restamps
+   `observed_at` is a replay.
 2. **Group** the items by scope (kind at namespace node).
 3. **Replay detection.** One id lookup per scope: the listing narrowed by the
    items' `tm:i:` labels (batches of up to 50 labels), each hit re-checked
