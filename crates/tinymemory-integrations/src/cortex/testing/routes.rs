@@ -368,7 +368,7 @@ async fn beliefs(
     State(state): State<Shared>,
     uri: Uri,
     headers: HeaderMap,
-    Query(query): Query<HashMap<String, String>>,
+    Query(query): Query<BTreeMap<String, String>>,
 ) -> Reply {
     if let Some(early) = gate(&state, "GET", &uri, &headers) {
         return early;
