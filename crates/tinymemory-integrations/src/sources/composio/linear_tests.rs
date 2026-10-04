@@ -91,9 +91,3 @@ fn extract_issue_updated_falls_back_to_snake_case() {
         Some("2026-01-15T08:30:00.000Z".to_string())
     );
 }
-
-// ── extract_viewer ───────────────────────────────────────────────
-
-// ── extract_pagination_cursor ────────────────────────────────────
-
-// ── now_ms ───────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
-//! Linear host normalization helpers — result extraction, issue-title extraction,
-//! viewer identity, cursor extraction, and time utilities.
+//! Linear host normalization helpers — result extraction and issue-title and
+//! timestamp extraction.
 //!
 //! Linear's GraphQL API (and therefore Composio's wrapping of it) returns
 //! connection-style lists (`{ nodes: [...], pageInfo: {...} }`) at the top

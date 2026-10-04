@@ -1,5 +1,5 @@
-//! ClickUp host normalization helpers — result extraction, task-title extraction,
-//! and time utilities.
+//! ClickUp host normalization helpers — result extraction and task-title and
+//! timestamp extraction.
 //!
 //! ClickUp's REST API (and therefore Composio's wrapping of it) returns
 //! task lists in a small handful of shapes depending on which endpoint
