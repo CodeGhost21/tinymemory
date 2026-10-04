@@ -19,7 +19,7 @@ const MIN_BRIEF_CHARS: usize = 40;
 const ELLIPSIS: char = '…';
 
 /// The estimated token count of `text`: four characters per token, rounded
-/// up — the estimate every budget in this crate uses.
+/// up — the estimate every context budget uses.
 pub fn estimate_tokens(text: &str) -> usize {
     text.chars().count().div_ceil(CHARS_PER_TOKEN)
 }

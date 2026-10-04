@@ -12,5 +12,5 @@ pub enum Error {
     InvalidSpec(String),
 }
 
-/// The crate-wide result alias.
+/// The context module's result alias.
 pub type Result<T> = std::result::Result<T, Error>;
