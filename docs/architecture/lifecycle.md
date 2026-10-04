@@ -126,10 +126,12 @@ Built beliefs come back through ordinary reads, but not every read:
   "Earlier in this thread", followed by the standard sections. Without a
   `focus`, each section shows its newest items.
 - **`recall_for_compaction`** answers "what was discussed, decided and left
-  open" over the thread, using recall (a model on engines that have one).
-  When the engine cannot answer, it fetches instead. The standard sections
-  follow, ranked for the focus or for the dropped turns' gist (their last
-  600 characters).
+  open" over the thread, using recall (a model on engines that have one),
+  from as many of the thread's turns as were dropped (at least the policy's
+  history limit, at most 24). When the engine cannot answer, it fetches
+  instead. The standard sections follow, ranked for the focus or for the
+  dropped turns' gist: the start of every dropped turn, oldest first, within
+  600 characters, so a fact stated early still steers the query.
 
 Neither call is on the hot path.
 
