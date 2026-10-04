@@ -67,6 +67,7 @@ fn pages_carry_a_cursor_only_when_there_is_more() {
     let more = FetchPage {
         hits: vec![sample_hit()],
         next_cursor: Some("1".into()),
+        beliefs: Vec::new(),
     };
     assert_eq!(fetch(&more)["next_cursor"], json!("1"));
     let end = ListPage {

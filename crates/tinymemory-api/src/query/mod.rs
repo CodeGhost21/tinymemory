@@ -137,7 +137,6 @@ pub struct FetchRequest {
 }
 
 /// Whether `n` is zero (serde's skip test).
-#[allow(clippy::trivially_copy_pass_by_ref)] // serde passes a reference.
 fn is_zero(n: &usize) -> bool {
     *n == 0
 }
