@@ -17,6 +17,10 @@ use tinymemory_tools::{
     MEMORY_STORE, MemoryTools, TOOL_NAMES,
 };
 
+#[allow(
+    clippy::unwrap_used,
+    reason = "a helper outside `#[test]` fails its test by panicking, as the tests do"
+)]
 fn ns(path: &str) -> Namespace {
     path.parse().unwrap()
 }
@@ -30,6 +34,10 @@ struct World {
 
 /// An engine holding one secret at the sibling, one note at the team node,
 /// and tools placed at `team:acme/agent:a`.
+#[allow(
+    clippy::unwrap_used,
+    reason = "a helper outside `#[test]` fails its test by panicking, as the tests do"
+)]
 async fn world() -> World {
     let engine = Arc::new(ReferenceEngine::new());
     let put = |text: &str, at: &str| {
@@ -57,6 +65,10 @@ async fn world() -> World {
     }
 }
 
+#[allow(
+    clippy::unwrap_used,
+    reason = "a helper outside `#[test]` fails its test by panicking, as the tests do"
+)]
 fn texts(items: &Value) -> Vec<String> {
     items
         .as_array()
@@ -72,6 +84,10 @@ fn texts(items: &Value) -> Vec<String> {
         .collect()
 }
 
+#[allow(
+    clippy::unwrap_used,
+    reason = "a helper outside `#[test]` fails its test by panicking, as the tests do"
+)]
 async fn held(engine: &ReferenceEngine) -> Vec<(String, Namespace)> {
     engine
         .list(ListRequest::new(MetaFilter::default(), 100))

@@ -19,11 +19,19 @@ fn tools() -> MemoryTools {
     MemoryTools::new(Arc::new(ReferenceEngine::new()))
 }
 
+#[allow(
+    clippy::unwrap_used,
+    reason = "a helper outside `#[test]` fails its test by panicking, as the tests do"
+)]
 async fn store(tools: &MemoryTools, args: Value) -> String {
     let receipt = tools.call(MEMORY_STORE, args).await.unwrap();
     receipt["id"].as_str().unwrap().to_string()
 }
 
+#[allow(
+    clippy::unwrap_used,
+    reason = "a helper outside `#[test]` fails its test by panicking, as the tests do"
+)]
 fn texts(items: &Value) -> Vec<String> {
     items
         .as_array()
