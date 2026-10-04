@@ -743,3 +743,220 @@ fn a_row_sqlite_cannot_decode_is_a_sqlite_error() {
     assert!(matches!(items.next(), Some(Err(Error::Sqlite(_)))));
     assert!(items.next().is_none());
 }
+
+// --- migrate: a v1 workspace into an engine, in resumable batches ---
+
+mod migration {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use tinymemory_api::conformance::ReferenceEngine;
+    use tinymemory_api::{
+        EngineDescriptor, EngineHealth, FetchPage, FetchRequest, ForgetReport, ForgetTarget,
+        ListPage, ListRequest, MAX_STORE_MANY, MemoryEngine, RecallAnswer, RecallRequest,
+        StoreItem, StoreReceipt, async_trait,
+    };
+    use tinymemory_integrations::import::{
+        Checkpoint, Error, LegacyWorkspace, MigrationReport, migrate, migrate_with,
+    };
+
+    use super::support::{doc, workspace};
+    use super::T0;
+
+    /// More documents than two full `store_many` batches hold.
+    const COUNT: usize = 2 * MAX_STORE_MANY + 50;
+
+    /// A workspace of `COUNT` documents, `d000` to `d249` in key order.
+    fn documents() -> (tempfile::TempDir, LegacyWorkspace) {
+        let (dir, conn) = workspace(super::support::MEMORY_DDL);
+        for index in 0..COUNT {
+            doc(
+                &conn,
+                &format!("d{index:03}"),
+                "document_notes",
+                None,
+                &format!("Note {index}"),
+                &format!("Body of note {index}."),
+                "[]",
+                "{}",
+                T0 + index as f64,
+            );
+        }
+        drop(conn);
+        let legacy = LegacyWorkspace::open(dir.path()).unwrap();
+        (dir, legacy)
+    }
+
+    fn key(checkpoint: &Checkpoint) -> Option<&str> {
+        checkpoint.documents.as_deref()
+    }
+
+    /// Delegates to a [`ReferenceEngine`], failing the `fail_on`th
+    /// `store_many` call (1-based) without storing anything.
+    struct FailingOn {
+        inner: ReferenceEngine,
+        fail_on: usize,
+        calls: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl MemoryEngine for FailingOn {
+        fn descriptor(&self) -> &EngineDescriptor {
+            self.inner.descriptor()
+        }
+        async fn health(&self) -> EngineHealth {
+            self.inner.health().await
+        }
+        async fn recall(&self, req: RecallRequest) -> tinymemory_api::Result<RecallAnswer> {
+            self.inner.recall(req).await
+        }
+        async fn fetch(&self, req: FetchRequest) -> tinymemory_api::Result<FetchPage> {
+            self.inner.fetch(req).await
+        }
+        async fn store(&self, item: StoreItem) -> tinymemory_api::Result<StoreReceipt> {
+            self.inner.store(item).await
+        }
+        async fn store_many(
+            &self,
+            items: Vec<StoreItem>,
+        ) -> tinymemory_api::Result<Vec<StoreReceipt>> {
+            if self.calls.fetch_add(1, Ordering::SeqCst) + 1 == self.fail_on {
+                return Err(tinymemory_api::Error::Unavailable("engine down".into()));
+            }
+            self.inner.store_many(items).await
+        }
+        async fn forget(&self, target: ForgetTarget) -> tinymemory_api::Result<ForgetReport> {
+            self.inner.forget(target).await
+        }
+        async fn list(&self, req: ListRequest) -> tinymemory_api::Result<ListPage> {
+            self.inner.list(req).await
+        }
+    }
+
+    #[tokio::test]
+    async fn a_full_migration_stores_every_item_in_bounded_batches() {
+        let (_dir, legacy) = documents();
+        let engine = ReferenceEngine::new();
+        let report = migrate(&engine, legacy, None).await.unwrap();
+        assert_eq!(
+            report,
+            MigrationReport {
+                stored: COUNT,
+                replayed: 0,
+                batches: 3,
+                checkpoint: Checkpoint {
+                    documents: Some("d249".into()),
+                    ..Checkpoint::default()
+                },
+            }
+        );
+        assert_eq!(engine.len(), COUNT);
+    }
+
+    #[tokio::test]
+    async fn a_second_run_is_all_replays() {
+        let (dir, legacy) = documents();
+        let engine = ReferenceEngine::new();
+        migrate(&engine, legacy, None).await.unwrap();
+        let again = migrate(&engine, LegacyWorkspace::open(dir.path()).unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!((again.stored, again.replayed), (0, COUNT));
+        assert_eq!(engine.len(), COUNT, "a re-run replays, it never duplicates");
+    }
+
+    #[tokio::test]
+    async fn resuming_from_a_checkpoint_stores_only_the_rest() {
+        let (_dir, legacy) = documents();
+        let mid = legacy.items().nth(149).unwrap().unwrap().checkpoint;
+        assert_eq!(key(&mid), Some("d149"));
+        let engine = ReferenceEngine::new();
+        let report = migrate(&engine, legacy, Some(mid)).await.unwrap();
+        assert_eq!((report.stored, report.batches), (COUNT - 150, 1));
+        assert_eq!(engine.len(), COUNT - 150);
+        assert_eq!(key(&report.checkpoint), Some("d249"));
+    }
+
+    #[tokio::test]
+    async fn the_callback_sees_each_committed_checkpoint_in_order() {
+        let (_dir, legacy) = documents();
+        let engine = ReferenceEngine::new();
+        let mut seen = Vec::new();
+        let report = migrate_with(&engine, legacy, None, |checkpoint: &Checkpoint| {
+            seen.push(checkpoint.clone());
+        })
+        .await
+        .unwrap();
+        let keys: Vec<Option<&str>> = seen.iter().map(key).collect();
+        assert_eq!(keys, [Some("d099"), Some("d199"), Some("d249")]);
+        assert_eq!(seen.last(), Some(&report.checkpoint));
+    }
+
+    #[tokio::test]
+    async fn an_engine_failure_carries_the_last_committed_checkpoint() {
+        let (dir, legacy) = documents();
+        let engine = FailingOn {
+            inner: ReferenceEngine::new(),
+            fail_on: 2,
+            calls: AtomicUsize::new(0),
+        };
+        let error = migrate(&engine, legacy, None).await.unwrap_err();
+        let checkpoint = error.checkpoint().cloned().unwrap();
+        assert_eq!(key(&checkpoint), Some("d099"));
+        match &error {
+            Error::Engine { source, .. } => {
+                assert!(matches!(source, tinymemory_api::Error::Unavailable(_)));
+            }
+            other => panic!("expected an engine error, got {other}"),
+        }
+        assert!(error.to_string().contains("engine down"), "{error}");
+        assert_eq!(engine.inner.len(), MAX_STORE_MANY);
+
+        let resumed = migrate(
+            &engine,
+            LegacyWorkspace::open(dir.path()).unwrap(),
+            Some(checkpoint),
+        )
+        .await
+        .unwrap();
+        assert_eq!((resumed.stored, resumed.replayed), (COUNT - MAX_STORE_MANY, 0));
+        assert_eq!(engine.inner.len(), COUNT);
+    }
+
+    #[tokio::test]
+    async fn an_engine_failure_on_the_first_batch_carries_the_starting_checkpoint() {
+        let (_dir, legacy) = documents();
+        let engine = FailingOn {
+            inner: ReferenceEngine::new(),
+            fail_on: 1,
+            calls: AtomicUsize::new(0),
+        };
+        let start = Checkpoint {
+            documents: Some("d009".into()),
+            ..Checkpoint::default()
+        };
+        let error = migrate(&engine, legacy, Some(start.clone()))
+            .await
+            .unwrap_err();
+        assert_eq!(error.checkpoint(), Some(&start));
+    }
+
+    #[tokio::test]
+    async fn an_empty_workspace_migrates_nothing() {
+        let (dir, conn) = workspace(super::support::MEMORY_DDL);
+        drop(conn);
+        let engine = ReferenceEngine::new();
+        let report = migrate(&engine, LegacyWorkspace::open(dir.path()).unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(report, MigrationReport::default());
+        assert_eq!(engine.len(), 0);
+    }
+
+    #[test]
+    fn a_migration_can_run_on_a_spawned_task() {
+        fn assert_send<T: Send>(_: &T) {}
+        let (_dir, legacy) = documents();
+        let engine = ReferenceEngine::new();
+        assert_send(&migrate(&engine, legacy, None));
+    }
+}
