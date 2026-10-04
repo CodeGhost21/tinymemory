@@ -1,0 +1,834 @@
+//! The scenarios: what gets written, then what gets asked.
+//!
+//! Each scenario runs below its own layout root, so scenarios never see each
+//! other. A `tenant` other than [`MAIN`] gets a sibling root, to check that
+//! one root never sees another's memory.
+//!
+//! Every probe states what a correct pack contains (`expect`), what it may
+//! hold but must not prefer (`stale`, superseded values), and what it must
+//! never hold (`forbidden`, another tenant's data or turns still in the
+//! prompt). Probes are tagged `Lexical` when the question shares its key
+//! words with the stored text, and `Paraphrase` when it does not, so keyword
+//! retrieval and semantic retrieval can be told apart.
+
+use tinymemory_api::LearningKind;
+use tinymemory_tools::BrainSource;
+
+use crate::agent::ToolStep;
+
+/// The default tenant.
+pub const MAIN: &str = "main";
+
+/// Something written before the probes run.
+pub enum Step {
+    /// A brain document.
+    Doc {
+        tenant: &'static str,
+        source: BrainSource,
+        title: &'static str,
+        text: &'static str,
+    },
+    /// A learning stored at the root.
+    Learning {
+        kind: LearningKind,
+        text: &'static str,
+        confidence: f32,
+    },
+    /// A thread of user turns, each with the tool calls the agent makes.
+    Chat {
+        tenant: &'static str,
+        agent: &'static str,
+        thread: &'static str,
+        /// Days after the run's epoch the thread starts: orders threads in
+        /// time.
+        day: i64,
+        turns: Vec<(String, Vec<ToolStep>)>,
+    },
+}
+
+/// How a probe reads memory.
+#[derive(Debug, Clone)]
+pub enum Via {
+    /// A new thread's first `pre_turn`.
+    Ask,
+    /// `start_session`, resuming `thread` (or none) for `focus` (or none).
+    Resume {
+        thread: Option<&'static str>,
+        focus: Option<&'static str>,
+    },
+    /// `recall_for_compaction` of `thread`, dropping `dropped`.
+    Compact {
+        thread: &'static str,
+        dropped: Vec<String>,
+    },
+    /// The next `pre_turn` of `thread` at `turn_index`, with the turns from
+    /// `in_prompt_from` still in the prompt.
+    Continue {
+        thread: &'static str,
+        turn_index: u32,
+        in_prompt_from: u32,
+    },
+}
+
+/// Whether a question shares its key words with the stored text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Style {
+    /// It does.
+    Lexical,
+    /// It does not: only meaning connects them.
+    Paraphrase,
+}
+
+/// One question and what a correct pack holds.
+#[derive(Debug, Clone)]
+pub struct Probe {
+    pub id: &'static str,
+    pub tenant: &'static str,
+    pub agent: &'static str,
+    pub via: Via,
+    pub question: &'static str,
+    pub style: Style,
+    pub expect: Vec<&'static str>,
+    pub stale: Vec<&'static str>,
+    pub forbidden: Vec<&'static str>,
+}
+
+impl Probe {
+    fn new(id: &'static str, agent: &'static str, question: &'static str, style: Style) -> Self {
+        Self {
+            id,
+            tenant: MAIN,
+            agent,
+            via: Via::Ask,
+            question,
+            style,
+            expect: Vec::new(),
+            stale: Vec::new(),
+            forbidden: Vec::new(),
+        }
+    }
+
+    fn expect(mut self, expect: &[&'static str]) -> Self {
+        self.expect = expect.to_vec();
+        self
+    }
+
+    fn stale(mut self, stale: &[&'static str]) -> Self {
+        self.stale = stale.to_vec();
+        self
+    }
+
+    fn forbid(mut self, forbidden: &[&'static str]) -> Self {
+        self.forbidden = forbidden.to_vec();
+        self
+    }
+
+    fn via(mut self, via: Via) -> Self {
+        self.via = via;
+        self
+    }
+
+    fn tenant(mut self, tenant: &'static str) -> Self {
+        self.tenant = tenant;
+        self
+    }
+}
+
+/// A named scenario.
+pub struct Scenario {
+    pub name: &'static str,
+    pub about: &'static str,
+    pub steps: Vec<Step>,
+    pub probes: Vec<Probe>,
+}
+
+/// Every scenario, in run order.
+pub fn all() -> Vec<Scenario> {
+    vec![
+        brain_lookup(),
+        restart_recall(),
+        contradictions(),
+        tool_heavy(),
+        team_handoff(),
+        compaction(),
+        isolation(),
+        needle_in_noise(),
+        learnings(),
+    ]
+}
+
+/// User turns with no tool calls.
+fn said(lines: &[&str]) -> Vec<(String, Vec<ToolStep>)> {
+    lines
+        .iter()
+        .map(|line| ((*line).to_string(), Vec::new()))
+        .collect()
+}
+
+/// A tool step.
+const fn tool(name: &'static str, result: &'static str) -> ToolStep {
+    ToolStep { name, result }
+}
+
+fn doc(source: BrainSource, title: &'static str, text: &'static str) -> Step {
+    Step::Doc {
+        tenant: MAIN,
+        source,
+        title,
+        text,
+    }
+}
+
+fn chat(
+    agent: &'static str,
+    thread: &'static str,
+    day: i64,
+    turns: Vec<(String, Vec<ToolStep>)>,
+) -> Step {
+    Step::Chat {
+        tenant: MAIN,
+        agent,
+        thread,
+        day,
+        turns,
+    }
+}
+
+fn brain_lookup() -> Scenario {
+    use Style::{Lexical, Paraphrase};
+    Scenario {
+        name: "brain_lookup",
+        about: "Company documents from six sources, asked about by an agent that never saw them",
+        steps: vec![
+            doc(
+                BrainSource::Pdf,
+                "Refund policy",
+                "Refunds settle within five business days of approval. Enterprise customers \
+                 get a dedicated support channel.",
+            ),
+            doc(
+                BrainSource::Markdown,
+                "On-call handbook",
+                "The on-call rotation hands over every Monday at 09:00 UTC. Pages that are not \
+                 acknowledged within 15 minutes escalate to the engineering manager.",
+            ),
+            doc(
+                BrainSource::Notion,
+                "Pricing FAQ",
+                "The Team plan costs 40 dollars per seat per month. Annual billing gets two \
+                 months free.",
+            ),
+            doc(
+                BrainSource::Github,
+                "deploy/README.md",
+                "Production deploys run from the release branch through the ship-it workflow. \
+                 Rollbacks use make rollback ENV=prod.",
+            ),
+            doc(
+                BrainSource::Web,
+                "Status page",
+                "Scheduled maintenance windows are on Sundays between 02:00 and 04:00 UTC.",
+            ),
+            doc(
+                BrainSource::Markdown,
+                "Security policy",
+                "Customer data must never leave the eu-central-1 region. Access keys rotate \
+                 every 90 days.",
+            ),
+        ],
+        probes: vec![
+            Probe::new(
+                "refund-days",
+                "support-01",
+                "How many business days do refunds take to settle?",
+                Lexical,
+            )
+            .expect(&["five business days"]),
+            Probe::new(
+                "refund-paraphrase",
+                "support-01",
+                "If we give money back to a customer, when does it land?",
+                Paraphrase,
+            )
+            .expect(&["five business days"]),
+            Probe::new(
+                "handover",
+                "support-01",
+                "When does the on-call rotation hand over?",
+                Lexical,
+            )
+            .expect(&["Monday at 09:00"]),
+            Probe::new(
+                "page-escalation",
+                "support-01",
+                "Who gets woken up if nobody answers an alert?",
+                Paraphrase,
+            )
+            .expect(&["engineering manager"]),
+            Probe::new(
+                "seat-price",
+                "support-01",
+                "How much does the Team plan cost per seat?",
+                Lexical,
+            )
+            .expect(&["40 dollars"]),
+            Probe::new(
+                "undo-release",
+                "support-01",
+                "How do I undo a bad release?",
+                Paraphrase,
+            )
+            .expect(&["make rollback"]),
+            Probe::new(
+                "maintenance",
+                "support-01",
+                "When are the scheduled maintenance windows?",
+                Lexical,
+            )
+            .expect(&["Sundays"]),
+            Probe::new(
+                "credential-rotation",
+                "support-01",
+                "How often must we change our credentials?",
+                Paraphrase,
+            )
+            .expect(&["90 days"]),
+        ],
+    }
+}
+
+fn restart_recall() -> Scenario {
+    use Style::{Lexical, Paraphrase};
+    Scenario {
+        name: "restart_recall",
+        about: "A user introduces themselves; the agent restarts and must remember them",
+        steps: vec![chat(
+            "assistant-01",
+            "intro",
+            0,
+            said(&[
+                "Hi, I'm Dana and I lead the payments team.",
+                "I'm based in Lisbon, so my timezone is WET.",
+                "I prefer answers as short bullet points, no long essays.",
+                "Our project codename is Bluefin.",
+                "We ship to production on Thursdays.",
+                "Thanks, that's all for now.",
+            ]),
+        )],
+        probes: vec![
+            Probe::new(
+                "resume-cold",
+                "assistant-01",
+                "What is the project codename?",
+                Lexical,
+            )
+            .via(Via::Resume {
+                thread: None,
+                focus: None,
+            })
+            .expect(&["Bluefin"]),
+            Probe::new(
+                "resume-focused",
+                "assistant-01",
+                "What is the user's timezone?",
+                Lexical,
+            )
+            .via(Via::Resume {
+                thread: None,
+                focus: Some("the user's timezone and location"),
+            })
+            .expect(&["WET"]),
+            Probe::new(
+                "name-team",
+                "assistant-01",
+                "What's my name, and which team do I lead?",
+                Lexical,
+            )
+            .expect(&["Dana", "payments"]),
+            Probe::new(
+                "timezone",
+                "assistant-01",
+                "Which time zone should meetings with me be scheduled in?",
+                Paraphrase,
+            )
+            .expect(&["WET"]),
+            Probe::new("codename", "assistant-01", "What's our project codename?", Lexical)
+                .expect(&["Bluefin"]),
+            Probe::new(
+                "release-day",
+                "assistant-01",
+                "Which weekday do our releases go out?",
+                Paraphrase,
+            )
+            .expect(&["Thursdays"]),
+            Probe::new(
+                "format",
+                "assistant-01",
+                "How should you format replies for me?",
+                Paraphrase,
+            )
+            .expect(&["bullet points"]),
+        ],
+    }
+}
+
+fn contradictions() -> Scenario {
+    use Style::{Lexical, Paraphrase};
+    Scenario {
+        name: "contradictions",
+        about: "Facts change across three sessions; the newest value must win",
+        steps: vec![
+            chat(
+                "ops-01",
+                "week-1",
+                0,
+                said(&[
+                    "Our production region is us-east-1.",
+                    "The monthly cloud budget is 5000 dollars.",
+                    "Standup is on Tuesdays at 10:00.",
+                    "The main database is Postgres 14.",
+                ]),
+            ),
+            chat(
+                "ops-01",
+                "week-2",
+                7,
+                said(&[
+                    "Update: we migrated the production region to eu-west-2 last night.",
+                    "Finance raised the monthly cloud budget to 8000 dollars.",
+                ]),
+            ),
+            chat(
+                "ops-01",
+                "week-3",
+                14,
+                said(&[
+                    "Standup moved to Thursdays at 10:00.",
+                    "Correction: the monthly cloud budget got cut back to 6500 dollars.",
+                ]),
+            ),
+        ],
+        probes: vec![
+            Probe::new(
+                "region",
+                "ops-01",
+                "Which production region are we in?",
+                Lexical,
+            )
+            .expect(&["eu-west-2"])
+            .stale(&["us-east-1"]),
+            Probe::new(
+                "budget",
+                "ops-01",
+                "What is the monthly cloud budget?",
+                Lexical,
+            )
+            .expect(&["6500"])
+            .stale(&["5000", "8000"]),
+            Probe::new("standup", "ops-01", "When is standup?", Lexical)
+                .expect(&["Thursdays"])
+                .stale(&["Tuesdays"]),
+            Probe::new(
+                "spend-limit",
+                "ops-01",
+                "How much can we spend on infrastructure each month?",
+                Paraphrase,
+            )
+            .expect(&["6500"])
+            .stale(&["5000", "8000"]),
+            Probe::new("database", "ops-01", "Which database do we run?", Lexical)
+                .expect(&["Postgres 14"]),
+            Probe::new(
+                "resume-latest",
+                "ops-01",
+                "What is the monthly cloud budget?",
+                Lexical,
+            )
+            .via(Via::Resume {
+                thread: None,
+                focus: None,
+            })
+            .expect(&["6500"])
+            .stale(&["5000", "8000"]),
+        ],
+    }
+}
+
+fn tool_heavy() -> Scenario {
+    use Style::{Lexical, Paraphrase};
+    let turns = vec![
+        (
+            "The checkout service is returning 500s, can you look?".to_string(),
+            vec![
+                tool(
+                    "search_logs",
+                    "error code E4031: connection pool exhausted in checkout-db",
+                ),
+                tool(
+                    "get_deploy_status",
+                    "checkout version 2.14.3 deployed 40 minutes ago by ci-bot",
+                ),
+                tool("get_metrics", "checkout p99 latency 2.8s, up from 180ms"),
+                tool("list_alerts", "2 firing: CheckoutErrorRate, DbPoolSaturation"),
+            ],
+        ),
+        (
+            "Which tests cover the connection pool?".to_string(),
+            vec![
+                tool(
+                    "grep_repo",
+                    "pool_size=10 set in services/checkout/config/db.toml",
+                ),
+                tool(
+                    "run_tests",
+                    "checkout::db: 3 passed, 1 failed: test_pool_saturation",
+                ),
+                tool("read_file", "db.toml: max_overflow=0, timeout=5s"),
+            ],
+        ),
+        (
+            "Roll it back please.".to_string(),
+            vec![
+                tool("rollback", "checkout rolled back to 2.14.2"),
+                tool("get_metrics", "checkout p99 back to 190ms"),
+                tool("create_ticket", "ticket OPS-7781 opened for pool sizing"),
+                tool("notify_channel", "posted incident summary to #checkout-oncall"),
+            ],
+        ),
+        (
+            "Find the commit that caused it.".to_string(),
+            vec![
+                tool(
+                    "git_log",
+                    "commit 9f2c1ab lowered pool_size from 50 to 10",
+                ),
+                tool("git_blame", "change authored by jmiller in PR 4412"),
+                tool("get_pr", "PR 4412 approved by one reviewer, merged Friday"),
+            ],
+        ),
+        ("Thanks, that's it.".to_string(), Vec::new()),
+    ];
+    Scenario {
+        name: "tool_heavy",
+        about: "An incident debugged through 17 tool calls; the facts live in tool results",
+        steps: vec![
+            chat("coder-42", "incident-1", 0, turns),
+            chat(
+                "coder-42",
+                "chores",
+                1,
+                said(&[
+                    "Bump the lint config to the new rules.",
+                    "Rename the billing module to invoicing.",
+                ]),
+            ),
+        ],
+        probes: vec![
+            Probe::new(
+                "error-code",
+                "coder-42",
+                "What error code did the checkout logs show?",
+                Lexical,
+            )
+            .expect(&["E4031"]),
+            Probe::new("failing-test", "coder-42", "Which test failed?", Lexical)
+                .expect(&["test_pool_saturation"]),
+            Probe::new(
+                "rollback-version",
+                "coder-42",
+                "Which version did checkout roll back to?",
+                Lexical,
+            )
+            .expect(&["2.14.2"]),
+            Probe::new(
+                "ticket",
+                "coder-42",
+                "What ticket tracks the pool sizing?",
+                Lexical,
+            )
+            .expect(&["OPS-7781"]),
+            Probe::new(
+                "culprit-commit",
+                "coder-42",
+                "Which change caused the outage?",
+                Paraphrase,
+            )
+            .expect(&["9f2c1ab"]),
+            Probe::new(
+                "who-to-ask",
+                "coder-42",
+                "Who should I talk to about the regression?",
+                Paraphrase,
+            )
+            .expect(&["jmiller"]),
+        ],
+    }
+}
+
+fn team_handoff() -> Scenario {
+    use Style::{Lexical, Paraphrase};
+    Scenario {
+        name: "team_handoff",
+        about: "Support learns of a bug; a coding agent must see it without being told",
+        steps: vec![chat(
+            "support-01",
+            "ticket-9",
+            0,
+            vec![
+                (
+                    "Customer Acme Corp reports duplicated invoices since Monday.".to_string(),
+                    vec![tool(
+                        "lookup_account",
+                        "Acme Corp is on the Enterprise plan, account id ACC-2209",
+                    )],
+                ),
+                (
+                    "They were charged twice for September.".to_string(),
+                    Vec::new(),
+                ),
+            ],
+        )],
+        probes: vec![
+            Probe::new(
+                "duplicate-invoices",
+                "coder-42",
+                "Is any customer reporting duplicated invoices?",
+                Lexical,
+            )
+            .expect(&["Acme"]),
+            Probe::new(
+                "account-id",
+                "coder-42",
+                "What is Acme Corp's account id?",
+                Lexical,
+            )
+            .expect(&["ACC-2209"]),
+            Probe::new(
+                "billed-twice",
+                "coder-42",
+                "Has anyone been billed two times for the same month?",
+                Paraphrase,
+            )
+            .expect(&["charged twice"]),
+        ],
+    }
+}
+
+/// The 16 filler turns of the compaction scenario, after its four facts.
+fn agenda() -> Vec<String> {
+    (1..=16)
+        .map(|n| format!("Next, agenda item {n}: assign an owner and a deadline for workstream {n}."))
+        .collect()
+}
+
+fn compaction() -> Scenario {
+    use Style::Lexical;
+    let facts = [
+        "The offsite is in Porto on 12 May.",
+        "The offsite budget is 20000 euros.",
+        "Catering is booked with Taberna Azul.",
+        "We need a vegetarian option for 9 people.",
+    ];
+    let mut turns = said(&facts);
+    turns.extend(agenda().into_iter().map(|line| (line, Vec::new())));
+    // 20 exchanges: turns 0..40. The first 4 exchanges are the facts.
+    let dropped: Vec<String> = facts
+        .iter()
+        .map(|fact| (*fact).to_string())
+        .chain(agenda().into_iter().take(8))
+        .collect();
+    Scenario {
+        name: "compaction",
+        about: "A 20-exchange planning thread whose early facts have left the prompt",
+        steps: vec![chat("planner-07", "offsite", 0, turns)],
+        probes: vec![
+            Probe::new(
+                "carry-over",
+                "planner-07",
+                "Where is the offsite and who caters it?",
+                Lexical,
+            )
+            .via(Via::Compact {
+                thread: "offsite",
+                dropped,
+            })
+            .expect(&["Porto", "Taberna Azul"]),
+            Probe::new(
+                "out-of-window",
+                "planner-07",
+                "How many vegetarian meals do we need?",
+                Lexical,
+            )
+            .via(Via::Continue {
+                thread: "offsite",
+                turn_index: 40,
+                in_prompt_from: 32,
+            })
+            .expect(&["9 people"])
+            // Turns 32..40 are agenda items 13 to 16: still in the prompt.
+            .forbid(&["agenda item 13", "agenda item 14", "agenda item 15", "agenda item 16"]),
+        ],
+    }
+}
+
+fn isolation() -> Scenario {
+    use Style::Lexical;
+    Scenario {
+        name: "isolation",
+        about: "Two tenants side by side: neither may see the other's brain or turns",
+        steps: vec![
+            Step::Doc {
+                tenant: "acme",
+                source: BrainSource::Markdown,
+                title: "M&A memo",
+                text: "The acquisition target is Zephyr Labs, under the code name Kestrel.",
+            },
+            Step::Chat {
+                tenant: "acme",
+                agent: "cfo-bot",
+                thread: "q3",
+                day: 0,
+                turns: said(&["Our Q3 revenue was 4.2 million dollars."]),
+            },
+            Step::Doc {
+                tenant: "globex",
+                source: BrainSource::Markdown,
+                title: "Office handbook",
+                text: "Lunch is served at noon in the atrium.",
+            },
+            Step::Chat {
+                tenant: "globex",
+                agent: "cfo-bot",
+                thread: "q3",
+                day: 0,
+                turns: said(&["Our Q3 revenue was strong this year."]),
+            },
+        ],
+        probes: vec![
+            Probe::new(
+                "own-tenant",
+                "cfo-bot",
+                "What is the acquisition target?",
+                Lexical,
+            )
+            .tenant("acme")
+            .expect(&["Zephyr"]),
+            Probe::new(
+                "other-tenant-brain",
+                "cfo-bot",
+                "What is the acquisition target?",
+                Lexical,
+            )
+            .tenant("globex")
+            .forbid(&["Zephyr", "Kestrel"]),
+            Probe::new(
+                "other-tenant-turns",
+                "cfo-bot",
+                "What was our Q3 revenue?",
+                Lexical,
+            )
+            .tenant("globex")
+            .expect(&["strong"])
+            .forbid(&["4.2 million"]),
+        ],
+    }
+}
+
+fn needle_in_noise() -> Scenario {
+    use Style::{Lexical, Paraphrase};
+    let topics = [
+        "resetting a password",
+        "exporting invoices to CSV",
+        "changing the billing email",
+        "adding a teammate",
+        "enabling two-factor login",
+        "downgrading a plan",
+    ];
+    let mut steps: Vec<Step> = (0..24)
+        .map(|n| {
+            let topic = topics[n % topics.len()];
+            Step::Chat {
+                tenant: MAIN,
+                agent: "support-02",
+                thread: Box::leak(format!("noise-{n}").into_boxed_str()),
+                day: 0,
+                turns: vec![(
+                    format!("Customer {} asked about {topic}; I sent the help article.", 100 + n),
+                    Vec::new(),
+                )],
+            }
+        })
+        .collect();
+    steps.insert(
+        12,
+        chat(
+            "support-02",
+            "vip",
+            0,
+            said(&["Heads up: the VIP account Orion Freight must always be routed to Priya."]),
+        ),
+    );
+    Scenario {
+        name: "needle_in_noise",
+        about: "One routing rule hidden among 24 routine support threads",
+        steps,
+        probes: vec![
+            Probe::new(
+                "needle",
+                "support-02",
+                "Who handles the Orion Freight account?",
+                Lexical,
+            )
+            .expect(&["Priya"]),
+            Probe::new(
+                "needle-paraphrase",
+                "support-02",
+                "Which teammate gets our big logistics client?",
+                Paraphrase,
+            )
+            .expect(&["Priya"]),
+        ],
+    }
+}
+
+fn learnings() -> Scenario {
+    use Style::{Lexical, Paraphrase};
+    Scenario {
+        name: "learnings",
+        about: "Explicit learnings must lead the pack, ahead of raw history",
+        steps: vec![
+            Step::Learning {
+                kind: LearningKind::Procedure,
+                text: "Always confirm the customer's plan before quoting a price.",
+                confidence: 0.9,
+            },
+            Step::Learning {
+                kind: LearningKind::Preference,
+                text: "The team prefers metric units in every report.",
+                confidence: 0.8,
+            },
+            chat(
+                "sales-03",
+                "quote-1",
+                0,
+                said(&["I quoted Initech 12 seats at the list price."]),
+            ),
+        ],
+        probes: vec![
+            Probe::new(
+                "quote-procedure",
+                "sales-03",
+                "Can you quote a price for 12 seats?",
+                Lexical,
+            )
+            .expect(&["confirm the customer's plan"]),
+            Probe::new(
+                "units",
+                "sales-03",
+                "Should the report use miles or kilometres?",
+                Paraphrase,
+            )
+            .expect(&["metric units"]),
+        ],
+    }
+}
