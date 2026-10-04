@@ -8,10 +8,11 @@
 //! - **Readers** — [`readers::SourceReader`] lists a source's items and reads
 //!   one. Local readers (folder, file, conversation) are always compiled; the
 //!   network readers (GitHub, RSS, web page) and `fetch` sit behind the
-//!   `network` feature, behind one SSRF guard (`readers::ssrf`).
+//!   `sources-network` feature; RSS and web pages fetch through `fetch`,
+//!   behind its one SSRF guard (`fetch::ssrf`).
 //! - **Items** — [`items`] maps reader output to `StoreItem`s with
 //!   [`MemoryMeta`](tinymemory_api::MemoryMeta) filled per kind; every text
-//!   body is converted to markdown through `tinymemory-documents`.
+//!   body is converted to markdown through [`crate::documents`].
 //! - **Composio** — [`composio`] normalises toolkit payloads (Gmail, Slack,
 //!   GitHub, Linear, Notion, ClickUp) and maps them to items.
 //!
@@ -56,9 +57,9 @@
 //!
 //! # Feature flags
 //!
-//! - `network` — the GitHub, RSS and web-page readers, `fetch`, and the
-//!   SSRF guard. Off by default, so a host that only reads local sources
-//!   links no HTTP stack.
+//! - `sources-network` — the GitHub, RSS and web-page readers, `fetch`, and
+//!   the SSRF guard. Without it, a host that only reads local sources links
+//!   no HTTP stack.
 
 pub mod composio;
 pub mod error;

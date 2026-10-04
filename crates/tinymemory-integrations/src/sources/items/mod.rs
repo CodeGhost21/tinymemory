@@ -14,7 +14,7 @@
 //! | composio | document | `tags = [toolkit]` (payloads: see [`crate::sources::composio`]) |
 //! | conversation | conversation | `workspace`, `thread_id`, `turns`, `observed_at` (last turn) |
 //!
-//! Every document body is markdown, converted through `tinymemory-documents`:
+//! Every document body is markdown, converted through `crate::documents`:
 //! local files through the host's [`DocumentConverter`] (so a bound PDF or
 //! DOCX converter applies), reader bodies through
 //! [`markdown_from_text`].
