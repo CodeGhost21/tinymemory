@@ -174,15 +174,7 @@ fn conversation(args: &Args<'_>, meta: MemoryMeta) -> Result<StoreItem> {
 }
 
 fn turn(conversation: &Args<'_>, value: &Value) -> Result<Turn> {
-    let wrapped = serde_json::json!({ "turn": value });
-    let Some(turn) = Args::parse(conversation.tool(), &wrapped, &["turn"])?.object(
-        "turn",
-        "conversation.turns[].",
-        &["role", "text"],
-    )?
-    else {
-        return Err(conversation.field_error("turns", "must hold only objects"));
-    };
+    let turn = conversation.element("turns", value, "conversation.turns[].", &["role", "text"])?;
     let role_name = turn.required_string("role")?;
     let role = role(&role_name)
         .ok_or_else(|| turn.field_error("role", &format!("must be one of {}", ROLES.join(", "))))?;

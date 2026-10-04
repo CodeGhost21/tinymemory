@@ -84,6 +84,32 @@ impl<'a> Args<'a> {
         }
     }
 
+    /// One element of the array at `key`, read as an object accepting only
+    /// `allowed` keys. `path` is how errors name its fields.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::InvalidRequest`] when the element is not an object, or its
+    /// keys break the rules [`Args::parse`] enforces.
+    pub(crate) fn element<'b>(
+        &self,
+        key: &str,
+        value: &'b Value,
+        path: &'b str,
+        allowed: &[&str],
+    ) -> Result<Args<'b>> {
+        let Value::Object(map) = value else {
+            return Err(self.field_error(key, "must hold only objects"));
+        };
+        let element = Args {
+            tool: self.tool,
+            path,
+            map,
+        };
+        element.check_keys(allowed)?;
+        Ok(element)
+    }
+
     /// The tool these arguments belong to.
     pub(crate) fn tool(&self) -> &'static str {
         self.tool
