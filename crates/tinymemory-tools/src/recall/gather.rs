@@ -7,13 +7,25 @@
 //! the items earlier sections already list, in section order, so an item is
 //! listed once — in its highest-priority section.
 //!
-//! **Beliefs.** A fetched or latest section that reads learnings also reads
-//! the engine's beliefs in its reach ([`MemoryEngine::beliefs`]),
-//! concurrently and for the same query, and interleaves them with the stored
-//! learnings rank by rank: to the reader a belief the engine built is a
-//! learning like any other. A belief read that fails leaves the section to
-//! its stored learnings. Answered sections read none: the engine's answer
-//! draws on its beliefs itself.
+//! **Beliefs.** To the reader a belief the engine built is a learning like
+//! any other, so a pack with a learnings section (a fetched or latest
+//! section that admits learnings) gathers the engine's beliefs into it:
+//!
+//! - every ranked section's fetch asks for beliefs too
+//!   ([`FetchRequest::beliefs`]), so they come from the reads the pack makes
+//!   anyway (on CortexDB, the same recall packs) — the brain, history and
+//!   team sections between them read every scope a belief can be built in;
+//! - a learnings section with no query (a cold session start) lists them
+//!   instead ([`MemoryEngine::beliefs`] without a query), alongside its own
+//!   read;
+//! - once every section is read, [`fold_beliefs`] merges what they returned,
+//!   each belief once, and interleaves it with each learnings section's
+//!   stored learnings rank by rank, stored learnings first, keeping only the
+//!   beliefs the section's filter admits.
+//!
+//! A belief read that fails leaves the learnings to the stored ones.
+//! Answered sections ask for none: the engine's answer draws on its beliefs
+//! itself.
 
 use std::collections::HashSet;
 
@@ -40,8 +52,14 @@ const LATEST_MAX_PAGES: usize = 50;
 pub(super) enum Gathered {
     /// An answer and its citations.
     Answered(Section, SectionHits),
-    /// Ranked or latest hits, before exclusions.
-    Hits(Vec<Hit>),
+    /// Ranked or latest hits, before exclusions, and the beliefs the read
+    /// returned beside them.
+    Hits {
+        /// The section's own hits.
+        hits: Vec<Hit>,
+        /// Beliefs for the pack's learnings, whichever section read them.
+        beliefs: Vec<Hit>,
+    },
     /// Nothing, and why.
     Skipped(SkippedSection),
 }
@@ -54,11 +72,13 @@ pub(super) enum Settled {
     Skipped(SkippedSection),
 }
 
-/// Fills `section` for `request`.
+/// Fills `section` for `request`, asking a ranked read for up to
+/// `beliefs` beliefs as well.
 pub(super) async fn section(
     engine: &dyn MemoryEngine,
     request: &HolisticRecall,
     section: &ScopeSection,
+    beliefs: usize,
 ) -> Gathered {
     let want = wanted(request, section);
     let outcome = match &section.query {
@@ -68,42 +88,30 @@ pub(super) async fn section(
             fallback_to_fetch,
         } => match answer(engine, section, question, instructions.clone()).await {
             Ok(Some(filled)) => return filled,
-            Ok(None) => Ok(Vec::new()),
+            Ok(None) => Ok((Vec::new(), Vec::new())),
             Err(error) if *fallback_to_fetch => {
                 log::debug!(
                     "[recall] answer failed, fetching instead heading={:?} error={error}",
                     section.heading
                 );
-                fetch(engine, &section.filter, question, want).await
+                fetch(engine, &section.filter, question, want, 0).await
             }
             Err(error) => Err(error),
         },
         SectionQuery::Fetch { query } => {
-            let query = query
+            match query
                 .as_deref()
                 .or(request.query.as_deref())
-                .filter(|query| !query.trim().is_empty());
-            with_beliefs(engine, section, query, want, async {
-                match query {
-                    Some(query) => fetch(engine, &section.filter, query, want).await,
-                    None => latest(engine, &section.filter, want).await,
-                }
-            })
-            .await
+                .filter(|query| !query.trim().is_empty())
+            {
+                Some(query) => fetch(engine, &section.filter, query, want, beliefs).await,
+                None => with_listed_beliefs(engine, section, want).await,
+            }
         }
-        SectionQuery::Latest => {
-            with_beliefs(
-                engine,
-                section,
-                None,
-                want,
-                latest(engine, &section.filter, want),
-            )
-            .await
-        }
+        SectionQuery::Latest => with_listed_beliefs(engine, section, want).await,
     };
     match outcome {
-        Ok(hits) => Gathered::Hits(hits),
+        Ok((hits, beliefs)) => Gathered::Hits { hits, beliefs },
         Err(error) => {
             log::warn!(
                 "[recall] section skipped heading={:?} error={error}",
@@ -203,42 +211,91 @@ fn preferred_mode(engine: &dyn MemoryEngine) -> Option<FetchMode> {
     }
 }
 
-/// `items`, read alongside the engine's beliefs when `section` reads
-/// learnings, the two interleaved rank by rank (stored learnings first at
-/// each rank).
-async fn with_beliefs(
+/// Whether `section` is a learnings section: one ranked or latest read
+/// that admits learnings, where the pack's beliefs go.
+pub(super) fn reads_learnings(section: &ScopeSection) -> bool {
+    !matches!(section.query, SectionQuery::Answer { .. })
+        && section.filter.admits_kind(ItemKind::Learning)
+}
+
+/// How many beliefs each ranked read asks for: what the first learnings
+/// section wants, or none when the pack has no learnings section.
+pub(super) fn belief_budget(request: &HolisticRecall) -> usize {
+    request
+        .sections
+        .iter()
+        .find(|section| reads_learnings(section))
+        .map_or(0, |section| wanted(request, section))
+}
+
+/// The newest hits of `section`, and, for a learnings section, the beliefs
+/// the engine lists in its reach (read concurrently; a failed listing
+/// leaves none).
+async fn with_listed_beliefs(
     engine: &dyn MemoryEngine,
     section: &ScopeSection,
-    query: Option<&str>,
     want: usize,
-    items: impl Future<Output = tinymemory_api::Result<Vec<Hit>>>,
-) -> tinymemory_api::Result<Vec<Hit>> {
-    if !section.filter.admits_kind(ItemKind::Learning) {
-        return items.await;
+) -> tinymemory_api::Result<(Vec<Hit>, Vec<Hit>)> {
+    if !reads_learnings(section) {
+        return Ok((latest(engine, &section.filter, want).await?, Vec::new()));
     }
     let reach = section
         .filter
         .reach
         .clone()
         .unwrap_or_else(|| Reach::subtree(Namespace::ROOT));
-    let mut request = BeliefsRequest::new(reach, want);
-    request.query = query.map(str::to_owned);
-    let (items, beliefs) = join(items, engine.beliefs(request)).await;
-    let items = items?;
-    let beliefs = match beliefs {
-        Ok(beliefs) => beliefs,
-        Err(error) => {
-            log::warn!(
-                "[recall] beliefs unavailable heading={:?} error={error}",
-                section.heading
-            );
-            return Ok(items);
+    let (hits, beliefs) = join(
+        latest(engine, &section.filter, want),
+        engine.beliefs(BeliefsRequest::new(reach, want)),
+    )
+    .await;
+    let beliefs = beliefs.unwrap_or_else(|error| {
+        log::warn!(
+            "[recall] beliefs unavailable heading={:?} error={error}",
+            section.heading
+        );
+        Vec::new()
+    });
+    Ok((hits?, beliefs))
+}
+
+/// Merges the beliefs every section returned (each once, in section order,
+/// rank by rank) into each learnings section's hits; see the module docs.
+pub(super) fn fold_beliefs(request: &HolisticRecall, gathered: &mut [Gathered]) {
+    let lists: Vec<Vec<Hit>> = gathered
+        .iter_mut()
+        .filter_map(|outcome| match outcome {
+            Gathered::Hits { beliefs, .. } => Some(std::mem::take(beliefs)),
+            _ => None,
+        })
+        .collect();
+    let longest = lists.iter().map(Vec::len).max().unwrap_or(0);
+    let mut seen = HashSet::new();
+    let mut beliefs = Vec::new();
+    for rank in 0..longest {
+        for list in &lists {
+            if let Some(belief) = list.get(rank)
+                && seen.insert(belief.id.clone())
+            {
+                beliefs.push(belief.clone());
+            }
         }
-    };
-    let beliefs = beliefs
-        .into_iter()
-        .filter(|belief| section.filter.matches(ItemKind::Learning, &belief.meta));
-    Ok(interleave(items, beliefs))
+    }
+    if beliefs.is_empty() {
+        return;
+    }
+    for (section, outcome) in request.sections.iter().zip(gathered.iter_mut()) {
+        if !reads_learnings(section) {
+            continue;
+        }
+        if let Gathered::Hits { hits, .. } = outcome {
+            let admitted = beliefs
+                .iter()
+                .filter(|belief| section.filter.matches(ItemKind::Learning, &belief.meta))
+                .cloned();
+            *hits = interleave(std::mem::take(hits), admitted);
+        }
+    }
 }
 
 /// `first` and `second` merged rank by rank, `first` leading at each rank.
@@ -261,13 +318,16 @@ async fn fetch(
     filter: &MetaFilter,
     query: &str,
     limit: usize,
-) -> tinymemory_api::Result<Vec<Hit>> {
+    beliefs: usize,
+) -> tinymemory_api::Result<(Vec<Hit>, Vec<Hit>)> {
     let Some(mode) = preferred_mode(engine) else {
-        return latest(engine, filter, limit).await;
+        return Ok((latest(engine, filter, limit).await?, Vec::new()));
     };
     let mut request = FetchRequest::new(query, mode, limit);
     request.filter = filter.clone();
-    Ok(engine.fetch(request).await?.hits)
+    request.beliefs = beliefs;
+    let page = engine.fetch(request).await?;
+    Ok((page.hits, page.beliefs))
 }
 
 /// The newest hits, then the most confident, then the latest turn; ties
@@ -351,7 +411,7 @@ pub(super) fn settle(
     let hits = match gathered {
         Gathered::Skipped(reason) => return Settled::Skipped(reason),
         Gathered::Answered(rendered, hits) => return Settled::Filled(rendered, hits),
-        Gathered::Hits(hits) => hits,
+        Gathered::Hits { hits, .. } => hits,
     };
     let kinds = &section.filter.kinds;
     let hits: Vec<Hit> = hits

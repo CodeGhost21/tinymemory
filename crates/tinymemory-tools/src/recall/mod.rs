@@ -101,13 +101,15 @@ pub(crate) async fn run(
     frontmatter: Option<Frontmatter<'_>>,
 ) -> Result<ContextPack> {
     request.validate()?;
-    let gathered = join_all(
+    let beliefs = gather::belief_budget(request);
+    let mut gathered = join_all(
         request
             .sections
             .iter()
-            .map(|section| gather::section(engine, request, section)),
+            .map(|section| gather::section(engine, request, section, beliefs)),
     )
     .await;
+    gather::fold_beliefs(request, &mut gathered);
     let mut sections = Vec::new();
     let mut rendered_from = Vec::new();
     let mut skipped = Vec::new();
