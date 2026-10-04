@@ -1,10 +1,7 @@
 //! Checksum and structural validators for PII candidates.
 
 pub(crate) fn digits(s: &str) -> Vec<u32> {
-    s.chars()
-        .filter(|c| c.is_ascii_digit())
-        .map(|c| c.to_digit(10).expect("ascii digit"))
-        .collect()
+    s.chars().filter_map(|c| c.to_digit(10)).collect()
 }
 
 pub(crate) fn valid_cpf(d: &[u32]) -> bool {
