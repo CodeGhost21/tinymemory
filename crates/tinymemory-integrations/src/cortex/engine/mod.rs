@@ -12,6 +12,7 @@
 //! - `forget` — look the items' events up, remove them by `memory_ids`;
 //! - `consolidate` — one `v1/beliefs/build` per held scope in reach.
 
+mod beliefs;
 mod consolidate;
 mod cursor;
 mod fetch;
@@ -26,7 +27,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use tinymemory_api::{
-    ConsolidateReceipt, ConsolidateRequest, EngineDescriptor, EngineHealth, FetchPage,
+    BeliefsRequest, ConsolidateReceipt, ConsolidateRequest, EngineDescriptor, EngineHealth, FetchPage,
     FetchRequest, ForgetReport, ForgetTarget, GetRequest, Hit, ListPage, ListRequest, MemoryEngine,
     RecallAnswer, RecallRequest, StoreItem, StoreReceipt, WaitFor, WriteOptions,
 };
@@ -183,6 +184,10 @@ impl MemoryEngine for CortexEngine {
     /// acknowledged as scheduled, with no request.
     async fn consolidate(&self, req: ConsolidateRequest) -> Result<ConsolidateReceipt> {
         self.build_beliefs(req).await
+    }
+
+    async fn beliefs(&self, req: BeliefsRequest) -> Result<Vec<Hit>> {
+        self.read_beliefs(req).await
     }
 }
 
