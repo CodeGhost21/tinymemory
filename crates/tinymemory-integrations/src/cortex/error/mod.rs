@@ -4,7 +4,7 @@
 //! [`tinymemory_api::MemoryEngine`] method, and those return
 //! [`tinymemory_api::Error`]; a second enum would only be converted into it at
 //! every boundary and would invite variants the host cannot act on. So the
-//! contract's enum is re-exported here as the crate-wide [`Error`], and
+//! contract's enum is re-exported here as [`Error`], and
 //! construction and configuration failures use [`Error::Config`].
 //!
 //! # How a CortexDB failure is classified
@@ -42,7 +42,7 @@
 
 pub use tinymemory_api::Error;
 
-/// The crate-wide result alias.
+/// The result alias for this module's operations.
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// The TinyHumans backend's code for an exhausted credit balance (HTTP 402).
