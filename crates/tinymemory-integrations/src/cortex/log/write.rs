@@ -2,7 +2,9 @@
 //!
 //! **Direct** sends one experience (`v1/experience?wait=indexed`) or, for a
 //! conversation, one ordered batch (`v1/experience/bulk?wait=indexed` with
-//! `ordering: strict_temporal`), once: a timeout on a write leaves whether it
+//! `ordering: strict_temporal`), once — without `?wait=indexed` when the
+//! caller only waits for acceptance ([`WaitFor::Accepted`]), so the server
+//! answers on capture: a timeout on a write leaves whether it
 //! applied unknown, and the store's replay check makes a retry by the caller
 //! safe.
 //!
@@ -27,6 +29,7 @@
 //! Either way the write then waits for its last event to be readable.
 
 use serde_json::{Value, json};
+use tinymemory_api::WaitFor;
 
 use super::{Log, PAGE_SIZE};
 use crate::cortex::descriptor::{CortexWire, Route};
@@ -73,12 +76,15 @@ impl Log {
     /// [`Log::await_written`], or for a later one in the same scope, which
     /// implies it: the log is ordered, so the last event being listed implies
     /// the earlier ones are.
-    pub(crate) async fn write(&self, requests: &[Value]) -> Result<Option<Written>> {
+    ///
+    /// `wait` decides only whether a Direct write asks the server to index
+    /// before answering; waiting for readability is the caller's step.
+    pub(crate) async fn write(&self, requests: &[Value], wait: WaitFor) -> Result<Option<Written>> {
         let Some(last) = requests.last() else {
             return Ok(None);
         };
         let event_id = match self.client.wire() {
-            CortexWire::Direct => self.append_direct(requests).await?,
+            CortexWire::Direct => self.append_direct(requests, wait).await?,
             CortexWire::TinyHumans => {
                 let mut event_id = String::new();
                 for request in requests {
@@ -114,17 +120,21 @@ impl Log {
 
     /// One Direct write of one event or one ordered batch; the last event's
     /// id.
-    async fn append_direct(&self, requests: &[Value]) -> Result<String> {
+    async fn append_direct(&self, requests: &[Value], wait: WaitFor) -> Result<String> {
         let wire = self.client.wire();
+        let query = match wait {
+            WaitFor::Visible => "?wait=indexed",
+            WaitFor::Accepted => "",
+        };
         if let [single] = requests {
-            let path = format!("{}?wait=indexed", wire.path(Route::Experience));
+            let path = format!("{}{query}", wire.path(Route::Experience));
             let answer = self
                 .client
                 .json(reqwest::Method::POST, &path, Some(single), Attempts::Once)
                 .await?;
             return receipt(&answer);
         }
-        let path = format!("{}?wait=indexed", wire.path(Route::Bulk));
+        let path = format!("{}{query}", wire.path(Route::Bulk));
         let body = json!({ "items": requests, "ordering": "strict_temporal" });
         let answer = self
             .client

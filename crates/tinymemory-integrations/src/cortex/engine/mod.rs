@@ -9,8 +9,10 @@
 //! - `list` — a cursor over the kind scopes' listings, each item once;
 //! - `fetch` — hybrid retrieval through recall packs, ranked by the engine;
 //! - `recall` — one pack, one answer, citations from the pack;
-//! - `forget` — look the items' events up, remove them by `memory_ids`.
+//! - `forget` — look the items' events up, remove them by `memory_ids`;
+//! - `consolidate` — one `v1/beliefs/build` per held scope in reach.
 
+mod consolidate;
 mod cursor;
 mod fetch;
 mod forget;
@@ -24,9 +26,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use tinymemory_api::{
-    EngineDescriptor, EngineHealth, FetchPage, FetchRequest, ForgetReport, ForgetTarget,
-    GetRequest, Hit, ListPage, ListRequest, MemoryEngine, RecallAnswer, RecallRequest, StoreItem,
-    StoreReceipt,
+    ConsolidateReceipt, ConsolidateRequest, EngineDescriptor, EngineHealth, FetchPage,
+    FetchRequest, ForgetReport, ForgetTarget, GetRequest, Hit, ListPage, ListRequest,
+    MemoryEngine, RecallAnswer, RecallRequest, StoreItem, StoreReceipt, WaitFor, WriteOptions,
 };
 
 use crate::cortex::credential::{BearerSource, CortexCredential};
@@ -147,7 +149,13 @@ impl MemoryEngine for CortexEngine {
 
     /// A batch of one (see `store`): listed and ranked on return.
     async fn store(&self, item: StoreItem) -> Result<StoreReceipt> {
-        self.store_items(vec![item])
+        self.store_with(item, WriteOptions::visible()).await
+    }
+
+    /// [`WaitFor::Accepted`] returns once CortexDB captured the events,
+    /// without `?wait=indexed` and without the visibility waits.
+    async fn store_with(&self, item: StoreItem, options: WriteOptions) -> Result<StoreReceipt> {
+        self.store_items(vec![item], options.wait)
             .await?
             .pop()
             .ok_or_else(|| Error::Engine("a store of one item returned no receipt".to_string()))
@@ -155,7 +163,7 @@ impl MemoryEngine for CortexEngine {
 
     /// Ranked recall is awaited for the last item only (see `store`).
     async fn store_many(&self, items: Vec<StoreItem>) -> Result<Vec<StoreReceipt>> {
-        self.store_items(items).await
+        self.store_items(items, WaitFor::Visible).await
     }
 
     async fn forget(&self, target: ForgetTarget) -> Result<ForgetReport> {
@@ -169,6 +177,12 @@ impl MemoryEngine for CortexEngine {
     /// By the items' id labels, one lookup per kind, rather than a scan.
     async fn get(&self, req: GetRequest) -> Result<Vec<Hit>> {
         self.get_items(req).await
+    }
+
+    /// Direct: one `v1/beliefs/build` per held scope in reach. Hosted:
+    /// acknowledged as scheduled, with no request.
+    async fn consolidate(&self, req: ConsolidateRequest) -> Result<ConsolidateReceipt> {
+        self.build_beliefs(req).await
     }
 }
 

@@ -114,12 +114,16 @@ impl CortexWire {
             (Self::Direct, Route::Answer) => "v1/answer",
             (Self::Direct, Route::Health) => "v1/admin/health",
             (Self::Direct, Route::Scopes) => "v1/scopes/list",
+            (Self::Direct, Route::BuildBeliefs) => "v1/beliefs/build",
             (Self::TinyHumans, Route::Experience | Route::Bulk) => "memory/experience",
             (Self::TinyHumans, Route::Events) => "memory/events",
             (Self::TinyHumans, Route::Recall) => "memory/recall",
             (Self::TinyHumans, Route::Forget) => "memory/forget",
             (Self::TinyHumans, Route::Answer) => "memory/answer",
             (Self::TinyHumans, Route::Health | Route::Scopes) => "memory/scopes",
+            // Never sent: the hosted descriptor declares scheduled
+            // consolidation, so `consolidate` makes no request there.
+            (Self::TinyHumans, Route::BuildBeliefs) => "memory/beliefs/build",
         }
     }
 }
@@ -143,6 +147,8 @@ pub(crate) enum Route {
     Health,
     /// List the caller's registered scopes under a prefix.
     Scopes,
+    /// Build one scope's beliefs on demand (Direct only).
+    BuildBeliefs,
 }
 
 #[cfg(test)]
