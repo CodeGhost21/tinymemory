@@ -35,10 +35,9 @@ async fn a_build_on_a_consolidating_engine_reports_its_receipt() {
     let report = runner(engine.clone()).run(job).await.unwrap();
     assert_eq!(report.job, "build_beliefs");
     assert_eq!(report.outcome, JobOutcome::Done);
-    assert_eq!(
-        report.consolidation.map(|receipt| receipt.status),
-        Some(ConsolidateStatus::Completed)
-    );
+    let receipt = report.consolidation.expect("a build reports its receipt");
+    assert_eq!(receipt.status, ConsolidateStatus::Completed);
+    assert_eq!(receipt.built, Some(1), "one belief from one document");
     let learnings = engine
         .list(ListRequest::new(
             MetaFilter::kinds([ItemKind::Learning]),
