@@ -1,8 +1,8 @@
 //! GitHub host normalization helpers — issue extraction and issue id, title and
 //! timestamp helpers.
 //!
-//! GitHub's REST API (proxied through Composio) returns search results and
-//! authenticated-user payloads in a small number of shapes. The functions here
+//! GitHub's REST API (proxied through Composio) returns search results in a
+//! small number of shapes. The functions here
 //! walk the union of common Composio envelope variants so the provider stays
 //! clean and branch-free.
 
