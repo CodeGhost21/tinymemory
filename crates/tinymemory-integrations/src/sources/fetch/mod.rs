@@ -3,10 +3,10 @@
 //! A URL a user types is an SSRF vector: `http://169.254.169.254/` is a cloud
 //! metadata endpoint, `http://localhost:6379/` is somebody's Redis, and a
 //! hostname that resolves publicly on the first lookup can resolve to a private
-//! address on the second. Every fetch here goes through the same guard as the
-//! RSS and web-page readers ([`crate::sources::readers::ssrf`]): a scheme and host
-//! policy, a resolver that pins connections to globally routable addresses,
-//! and per-hop redirect re-checks.
+//! address on the second. Every fetch goes through the guard in [`ssrf`]: a
+//! scheme and host policy, a resolver that pins connections to globally
+//! routable addresses, and per-hop redirect re-checks. The RSS and web-page
+//! readers fetch through here too, each with its own body cap.
 //!
 //! No scheduling, no retries, no credentials, no robots.txt: this fetches one
 //! URL, once, when asked. Conversion to markdown is `tinymemory-documents`'.
@@ -15,7 +15,9 @@ use crate::documents::{DocumentConverter, MAX_DOCUMENT_BYTES, RawDocument, docum
 use tinymemory_api::{MemoryMeta, SourceKind, StoreItem};
 
 use crate::sources::error::{Error, Result};
-use crate::sources::readers::ssrf::{build_client, is_url_allowed, read_body_capped};
+use ssrf::{build_client, is_url_allowed, read_body_capped};
+
+pub mod ssrf;
 
 /// Fetch `url` and return its body as a [`RawDocument`].
 ///
@@ -32,6 +34,16 @@ use crate::sources::readers::ssrf::{build_client, is_url_allowed, read_body_capp
 /// - [`Error::Upstream`] for a non-success status.
 /// - [`Error::TooLarge`] for a body over [`MAX_DOCUMENT_BYTES`].
 pub async fn fetch_url(url: &str) -> Result<RawDocument> {
+    fetch_url_capped(url, MAX_DOCUMENT_BYTES as u64).await
+}
+
+/// [`fetch_url`] with a caller-chosen body cap, for the readers whose sources
+/// warrant a tighter one than [`MAX_DOCUMENT_BYTES`].
+///
+/// # Errors
+///
+/// As [`fetch_url`], with [`Error::TooLarge`] for a body over `max_bytes`.
+pub(crate) async fn fetch_url_capped(url: &str, max_bytes: u64) -> Result<RawDocument> {
     let parsed = reqwest::Url::parse(url)
         .map_err(|error| Error::Invalid(format!("invalid url {url:?}: {error}")))?;
     if !is_url_allowed(&parsed) {
@@ -51,7 +63,7 @@ pub async fn fetch_url(url: &str) -> Result<RawDocument> {
         .await
         .map_err(|error| Error::Unreachable(format!("fetching {url:?}: {error}")))?;
 
-    response_to_document(url, parsed, response).await
+    response_to_document(url, parsed, response, max_bytes).await
 }
 
 /// Fetch `url`, convert it through `converter`, and wrap it as a
@@ -79,6 +91,7 @@ async fn response_to_document(
     url: &str,
     parsed: reqwest::Url,
     response: reqwest::Response,
+    max_bytes: u64,
 ) -> Result<RawDocument> {
     let status = response.status();
     if !status.is_success() {
@@ -95,7 +108,7 @@ async fn response_to_document(
 
     // The cap is applied while reading, not after: a body that would not fit is
     // one this process should never have finished buffering.
-    let bytes = read_body_capped(response, MAX_DOCUMENT_BYTES as u64)
+    let bytes = read_body_capped(response, max_bytes)
         .await
         .map_err(|error| read_error(url, &error))?;
 

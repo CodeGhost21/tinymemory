@@ -27,8 +27,9 @@ use futures::stream::StreamExt;
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 
 /// Build an HTTP client with a redirect policy that re-applies the SSRF
-/// host/scheme check to every redirect hop, and a DNS resolver that only
-/// yields globally routable addresses.
+/// host/scheme check to every redirect hop, a DNS resolver that only yields
+/// globally routable addresses, a 20-second timeout and the `openhuman`
+/// user agent the network readers have always sent.
 ///
 /// # Errors
 ///
@@ -36,6 +37,7 @@ use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 pub fn build_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
+        .user_agent("openhuman")
         .redirect(reqwest::redirect::Policy::custom(|attempt| {
             if is_url_allowed(attempt.url()) {
                 attempt.follow()

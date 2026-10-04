@@ -10,8 +10,8 @@
 //!
 //! The local kinds ([`folder::FolderReader`], [`file::FileReader`],
 //! [`conversation::ConversationReader`]) are always compiled. The network
-//! kinds (`github`, `rss`, `web_page`, plus `fetch`) sit
-//! behind the `network` feature. What this crate does **not** own is *when*
+//! kinds (`github`, `rss`, `web_page`) sit behind the `sources-network`
+//! feature; `rss` and `web_page` fetch through [`crate::sources::fetch`]. What this crate does **not** own is *when*
 //! a network read happens: scheduling, polling cadence, OAuth, credentials,
 //! and egress/cost budgeting stay with the host.
 //!
@@ -41,14 +41,6 @@ pub mod local_file;
 pub mod rss;
 #[cfg(feature = "sources-network")]
 pub mod web_page;
-
-/// SSRF guard + fetch hygiene shared by the network readers and
-/// [`crate::sources::fetch`]. See the `ssrf` module docs.
-///
-/// Public so a host fetching a user-supplied URL by other means applies the
-/// same policy rather than a second, weaker one.
-#[cfg(feature = "sources-network")]
-pub mod ssrf;
 
 use std::path::Path;
 

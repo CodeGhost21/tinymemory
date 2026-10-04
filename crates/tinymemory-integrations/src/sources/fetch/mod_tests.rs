@@ -87,7 +87,7 @@ async fn completed_response_preserves_body_type_origin_and_filename() {
     )
     .await;
     let url = reqwest::Url::parse("https://example.com/guides/readme.md").unwrap();
-    let document = response_to_document(url.as_str(), url.clone(), response)
+    let document = response_to_document(url.as_str(), url.clone(), response, MAX_DOCUMENT_BYTES as u64)
         .await
         .unwrap();
     assert_eq!(document.bytes, b"# title");
@@ -104,19 +104,19 @@ async fn completed_response_handles_status_empty_body_and_filename_absence() {
     let response =
         local_response(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n").await;
     let url = reqwest::Url::parse("https://example.com/unavailable").unwrap();
-    let error = response_to_document(url.as_str(), url.clone(), response)
+    let error = response_to_document(url.as_str(), url.clone(), response, MAX_DOCUMENT_BYTES as u64)
         .await
         .unwrap_err();
     assert!(matches!(error, Error::Upstream(_)));
 
     let response = local_response(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n").await;
-    let error = response_to_document(url.as_str(), url.clone(), response)
+    let error = response_to_document(url.as_str(), url.clone(), response, MAX_DOCUMENT_BYTES as u64)
         .await
         .unwrap_err();
     assert!(matches!(error, Error::Invalid(_)));
 
     let response = local_response(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\ntext").await;
-    let document = response_to_document(url.as_str(), url.clone(), response)
+    let document = response_to_document(url.as_str(), url.clone(), response, MAX_DOCUMENT_BYTES as u64)
         .await
         .unwrap();
     assert_eq!(document.bytes, b"text");
@@ -136,7 +136,7 @@ async fn completed_response_maps_declared_oversize_to_budget_exceeded() {
     )
     .await;
     let url = reqwest::Url::parse("https://example.com/huge.bin").unwrap();
-    let error = response_to_document(url.as_str(), url.clone(), response)
+    let error = response_to_document(url.as_str(), url.clone(), response, MAX_DOCUMENT_BYTES as u64)
         .await
         .unwrap_err();
     assert!(matches!(error, Error::TooLarge(_)));
