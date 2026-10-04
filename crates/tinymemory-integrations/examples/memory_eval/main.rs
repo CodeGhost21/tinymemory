@@ -176,6 +176,17 @@ async fn main() -> Result<(), Error> {
         llm.as_ref().map_or("none", |llm| llm.model.as_str()),
     );
 
+    let eval = Eval {
+        engine: engine.clone(),
+        inspector,
+        llm,
+        run,
+        enrich_wait,
+        policy: RecallPolicy {
+            build_beliefs_every: Some(4),
+            ..RecallPolicy::default()
+        },
+    };
     let mut timings = Timings::default();
     let mut reports = Vec::new();
     for scenario in scenarios::all() {
@@ -187,16 +198,7 @@ async fn main() -> Result<(), Error> {
             continue;
         }
         println!("== {}: {}", scenario.name, scenario.about);
-        let report = run_scenario(
-            &engine,
-            inspector.as_ref(),
-            llm.as_ref(),
-            run,
-            &scenario,
-            enrich_wait,
-            &mut timings,
-        )
-        .await?;
+        let report = eval.scenario(&scenario, &mut timings).await?;
         for phase in ["recall", "synthesis"] {
             let totals = Totals::of(report.probes.iter().filter(|p| p.phase == phase));
             println!(
@@ -249,298 +251,286 @@ fn tenants(scenario: &Scenario) -> Vec<&'static str> {
     tenants
 }
 
-async fn run_scenario(
-    engine: &Arc<dyn MemoryEngine>,
-    inspector: Option<&Inspector>,
-    llm: Option<&Llm>,
+/// One eval run: the engine, the optional helpers, and the settings every
+/// scenario shares.
+struct Eval {
+    engine: Arc<dyn MemoryEngine>,
+    inspector: Option<Inspector>,
+    llm: Option<Llm>,
     run: u64,
-    scenario: &Scenario,
     enrich_wait: u64,
-    timings: &mut Timings,
-) -> Result<ScenarioReport, Error> {
-    let policy = RecallPolicy {
-        build_beliefs_every: Some(4),
-        ..RecallPolicy::default()
-    };
-    let memory = |tenant: &str, agent: &str| -> Result<AgentMemory, Error> {
-        Ok(
-            AgentMemory::new(engine.clone(), layout(run, scenario.name, tenant)?, agent)?
-                .with_policy(policy.clone()),
-        )
-    };
-    let epoch = Utc
-        .with_ymd_and_hms(2026, 9, 1, 9, 0, 0)
-        .single()
-        .ok_or("a valid epoch")?;
+    policy: RecallPolicy,
+}
 
-    // Writes.
-    let mut jobs: Vec<BackgroundJob> = Vec::new();
-    let mut writes: BTreeMap<&'static str, usize> = BTreeMap::new();
-    let mut tool_calls = 0;
-    for step in &scenario.steps {
-        match step {
-            Step::Doc {
-                tenant,
-                source,
-                title,
-                text,
-            } => {
-                let brain = Brain::new(engine.clone(), layout(run, scenario.name, tenant)?);
-                let started = Instant::now();
-                let ingested = brain
-                    .ingest(BrainDocument::new(source.clone(), *text).titled(*title))
-                    .await?;
-                timings.add("brain ingest (visible)", ms(started));
-                jobs.push(ingested.job);
-                *writes.entry(tenant).or_default() += 1;
-            }
-            Step::Learning {
-                kind,
-                text,
-                confidence,
-            } => {
-                let layout = layout(run, scenario.name, MAIN)?;
-                let meta = MemoryMeta {
-                    namespace: layout.learnings().clone(),
-                    ..MemoryMeta::default()
-                };
-                engine
-                    .store(StoreItem::learning(*text, *kind, *confidence, meta))
-                    .await?;
-                *writes.entry(MAIN).or_default() += 1;
-            }
-            Step::Chat {
-                tenant,
-                agent,
-                thread,
-                day,
-                turns,
-            } => {
-                let mut scripted = ScriptedAgent::new(memory(tenant, agent)?, thread, WINDOW)
-                    .at(epoch + chrono::Duration::days(*day));
-                for (text, tools) in turns {
-                    let record = scripted.user(text, tools).await?;
-                    timings.add("pre_turn (log + recall)", record.pre_ms);
-                    timings.add("post_turn (log)", record.post_ms);
-                    if !record.logged {
-                        println!("   ! a turn of {thread} was not logged");
+impl Eval {
+    /// Writes `scenario`, probes it, synthesises, and probes it again.
+    async fn scenario(
+        &self,
+        scenario: &Scenario,
+        timings: &mut Timings,
+    ) -> Result<ScenarioReport, Error> {
+        let (engine, run, policy) = (&self.engine, self.run, &self.policy);
+        let memory = |tenant: &str, agent: &str| -> Result<AgentMemory, Error> {
+            Ok(
+                AgentMemory::new(engine.clone(), layout(run, scenario.name, tenant)?, agent)?
+                    .with_policy(policy.clone()),
+            )
+        };
+        let epoch = Utc
+            .with_ymd_and_hms(2026, 9, 1, 9, 0, 0)
+            .single()
+            .ok_or("a valid epoch")?;
+
+        // Writes.
+        let mut jobs: Vec<BackgroundJob> = Vec::new();
+        let mut writes: BTreeMap<&'static str, usize> = BTreeMap::new();
+        let mut tool_calls = 0;
+        for step in &scenario.steps {
+            match step {
+                Step::Doc {
+                    tenant,
+                    source,
+                    title,
+                    text,
+                } => {
+                    let brain = Brain::new(engine.clone(), layout(run, scenario.name, tenant)?);
+                    let started = Instant::now();
+                    let ingested = brain
+                        .ingest(BrainDocument::new(source.clone(), *text).titled(*title))
+                        .await?;
+                    timings.add("brain ingest (visible)", ms(started));
+                    jobs.push(ingested.job);
+                    *writes.entry(tenant).or_default() += 1;
+                }
+                Step::Learning {
+                    kind,
+                    text,
+                    confidence,
+                } => {
+                    let layout = layout(run, scenario.name, MAIN)?;
+                    let meta = MemoryMeta {
+                        namespace: layout.learnings().clone(),
+                        ..MemoryMeta::default()
+                    };
+                    engine
+                        .store(StoreItem::learning(*text, *kind, *confidence, meta))
+                        .await?;
+                    *writes.entry(MAIN).or_default() += 1;
+                }
+                Step::Chat {
+                    tenant,
+                    agent,
+                    thread,
+                    day,
+                    turns,
+                } => {
+                    let mut scripted = ScriptedAgent::new(memory(tenant, agent)?, thread, WINDOW)
+                        .at(epoch + chrono::Duration::days(*day));
+                    for (text, tools) in turns {
+                        let record = scripted.user(text, tools).await?;
+                        timings.add("pre_turn (log + recall)", record.pre_ms);
+                        timings.add("post_turn (log)", record.post_ms);
+                        if !record.logged {
+                            println!("   ! a turn of {thread} was not logged");
+                        }
+                        tool_calls += record.tool_calls;
+                        jobs.extend(record.jobs);
+                        *writes.entry(tenant).or_default() += 2;
                     }
-                    tool_calls += record.tool_calls;
-                    jobs.extend(record.jobs);
-                    *writes.entry(tenant).or_default() += 2;
                 }
             }
         }
-    }
 
-    // Settle: wait until every write is listed.
-    let started = Instant::now();
-    for (tenant, expected) in &writes {
-        settle(engine, &layout(run, scenario.name, tenant)?, *expected).await?;
-    }
-    let settle_ms = ms(started);
-    timings.add("settle (all writes listed)", settle_ms);
+        // Settle: wait until every write is listed.
+        let started = Instant::now();
+        for (tenant, expected) in &writes {
+            settle(engine, &layout(run, scenario.name, tenant)?, *expected).await?;
+        }
+        let settle_ms = ms(started);
+        timings.add("settle (all writes listed)", settle_ms);
 
-    let mut probes = Vec::new();
-    for probe in &scenario.probes {
-        probes.push(
-            run_probe(
-                engine, llm, run, scenario, probe, "recall", &policy, timings,
-            )
-            .await?,
-        );
-    }
+        let mut probes = Vec::new();
+        for probe in &scenario.probes {
+            probes.push(self.probe(scenario, probe, "recall", timings).await?);
+        }
 
-    // Synthesis: the jobs the writes handed back, then one build per tenant
-    // over its whole tree.
-    if enrich_wait > 0 {
-        tokio::time::sleep(Duration::from_secs(enrich_wait)).await;
-    }
-    for tenant in tenants(scenario) {
-        let root = layout(run, scenario.name, tenant)?.root().clone();
-        jobs.push(BackgroundJob::BuildBeliefs {
-            request: ConsolidateRequest::new(Reach::subtree(root)),
-        });
-    }
-    let runner = memory(MAIN, "eval")?.background();
-    let mut synthesis = Synthesis {
-        jobs: jobs.len(),
-        ..Synthesis::default()
-    };
-    let started = Instant::now();
-    for job in jobs {
-        let report = runner.run(job).await?;
-        let outcome = match &report.outcome {
-            JobOutcome::Done => "done",
-            JobOutcome::Started => "started",
-            JobOutcome::Scheduled => "scheduled",
-            JobOutcome::Skipped { .. } => "skipped",
+        // Synthesis: the jobs the writes handed back, then one build per tenant
+        // over its whole tree.
+        if self.enrich_wait > 0 {
+            tokio::time::sleep(Duration::from_secs(self.enrich_wait)).await;
+        }
+        for tenant in tenants(scenario) {
+            let root = layout(run, scenario.name, tenant)?.root().clone();
+            jobs.push(BackgroundJob::BuildBeliefs {
+                request: ConsolidateRequest::new(Reach::subtree(root)),
+            });
+        }
+        let runner = memory(MAIN, "eval")?.background();
+        let mut synthesis = Synthesis {
+            jobs: jobs.len(),
+            ..Synthesis::default()
         };
-        *synthesis.outcomes.entry(outcome.to_string()).or_default() += 1;
-        synthesis.scopes += report.consolidation.map_or(0, |receipt| receipt.scopes);
-    }
-    synthesis.ms = ms(started);
-    timings.add("synthesis (all builds)", synthesis.ms);
-    if let Some(inspector) = inspector {
-        for tenant in tenants(scenario) {
-            let layout = layout(run, scenario.name, tenant)?;
-            let node = layout.root().to_string();
-            for scope in inspector.scopes(&node).await? {
-                synthesis
-                    .derived
-                    .push(inspector.derived(&scope, scenario.about).await?);
+        let started = Instant::now();
+        for job in jobs {
+            let report = runner.run(job).await?;
+            let outcome = match &report.outcome {
+                JobOutcome::Done => "done",
+                JobOutcome::Started => "started",
+                JobOutcome::Scheduled => "scheduled",
+                JobOutcome::Skipped { .. } => "skipped",
+            };
+            *synthesis.outcomes.entry(outcome.to_string()).or_default() += 1;
+            synthesis.scopes += report.consolidation.map_or(0, |receipt| receipt.scopes);
+        }
+        synthesis.ms = ms(started);
+        timings.add("synthesis (all builds)", synthesis.ms);
+        if let Some(inspector) = &self.inspector {
+            for tenant in tenants(scenario) {
+                let layout = layout(run, scenario.name, tenant)?;
+                let node = layout.root().to_string();
+                for scope in inspector.scopes(&node).await? {
+                    synthesis
+                        .derived
+                        .push(inspector.derived(&scope, scenario.about).await?);
+                }
             }
         }
-    }
-    let beliefs: usize = synthesis.derived.iter().map(|d| d.beliefs).sum();
-    let facts: usize = synthesis.derived.iter().map(|d| d.facts).sum();
-    println!(
-        "   synthesis {:?} over {} scopes in {:.0} ms; derived {facts} facts, {beliefs} beliefs",
-        synthesis.outcomes, synthesis.scopes, synthesis.ms
-    );
-
-    for probe in &scenario.probes {
-        probes.push(
-            run_probe(
-                engine,
-                llm,
-                run,
-                scenario,
-                probe,
-                "synthesis",
-                &policy,
-                timings,
-            )
-            .await?,
+        let beliefs: usize = synthesis.derived.iter().map(|d| d.beliefs).sum();
+        let facts: usize = synthesis.derived.iter().map(|d| d.facts).sum();
+        println!(
+            "   synthesis {:?} over {} scopes in {:.0} ms; derived {facts} facts, {beliefs} beliefs",
+            synthesis.outcomes, synthesis.scopes, synthesis.ms
         );
-    }
 
-    if std::env::var("CORTEX_DB_KEEP").is_err() {
-        for tenant in tenants(scenario) {
-            engine
-                .forget(ForgetTarget::Filter(
-                    layout(run, scenario.name, tenant)?.holistic_filter(),
-                ))
-                .await?;
+        for probe in &scenario.probes {
+            probes.push(self.probe(scenario, probe, "synthesis", timings).await?);
         }
-    }
-    Ok(ScenarioReport {
-        name: scenario.name,
-        about: scenario.about,
-        writes: writes.values().sum(),
-        tool_calls,
-        settle_ms,
-        synthesis,
-        probes,
-    })
-}
 
-/// Waits until `layout` lists at least `expected` items.
-async fn settle(
-    engine: &Arc<dyn MemoryEngine>,
-    layout: &MemoryLayout,
-    expected: usize,
-) -> Result<(), Error> {
-    let started = Instant::now();
-    loop {
-        let mut listed = 0;
-        let mut cursor = None;
-        loop {
-            let mut req = ListRequest::new(layout.holistic_filter(), 100);
-            req.cursor = cursor;
-            let page = engine.list(req).await?;
-            listed += page.items.len();
-            cursor = page.next_cursor;
-            if cursor.is_none() {
-                break;
+        if std::env::var("CORTEX_DB_KEEP").is_err() {
+            for tenant in tenants(scenario) {
+                engine
+                    .forget(ForgetTarget::Filter(
+                        layout(run, scenario.name, tenant)?.holistic_filter(),
+                    ))
+                    .await?;
             }
         }
-        if listed >= expected {
-            return Ok(());
-        }
-        if started.elapsed() > SETTLE_TIMEOUT {
-            return Err(format!(
-                "only {listed} of {expected} writes visible under {}",
-                layout.root()
-            )
-            .into());
-        }
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        Ok(ScenarioReport {
+            name: scenario.name,
+            about: scenario.about,
+            writes: writes.values().sum(),
+            tool_calls,
+            settle_ms,
+            synthesis,
+            probes,
+        })
     }
-}
 
-#[allow(clippy::too_many_arguments)] // Each is one plain input of the probe.
-async fn run_probe(
-    engine: &Arc<dyn MemoryEngine>,
-    llm: Option<&Llm>,
-    run: u64,
-    scenario: &Scenario,
-    probe: &Probe,
-    phase: &'static str,
-    policy: &RecallPolicy,
-    timings: &mut Timings,
-) -> Result<ProbeResult, Error> {
-    let memory = AgentMemory::new(
-        engine.clone(),
-        layout(run, scenario.name, probe.tenant)?,
-        probe.agent,
-    )?
-    .with_policy(policy.clone());
-    let started = Instant::now();
-    let pack: ContextPack = match &probe.via {
-        Via::Ask => {
-            let thread = format!("probe-{}", probe.id);
-            memory
-                .pre_turn(PreTurn::new(thread, 0, probe.question))
-                .await?
-                .pack
+    /// Waits until `layout` lists at least `expected` items.
+    async fn settle(
+        engine: &Arc<dyn MemoryEngine>,
+        layout: &MemoryLayout,
+        expected: usize,
+    ) -> Result<(), Error> {
+        let started = Instant::now();
+        loop {
+            let mut listed = 0;
+            let mut cursor = None;
+            loop {
+                let mut req = ListRequest::new(layout.holistic_filter(), 100);
+                req.cursor = cursor;
+                let page = engine.list(req).await?;
+                listed += page.items.len();
+                cursor = page.next_cursor;
+                if cursor.is_none() {
+                    break;
+                }
+            }
+            if listed >= expected {
+                return Ok(());
+            }
+            if started.elapsed() > SETTLE_TIMEOUT {
+                return Err(format!(
+                    "only {listed} of {expected} writes visible under {}",
+                    layout.root()
+                )
+                .into());
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
         }
-        Via::Resume { thread, focus } => {
-            memory
-                .start_session(SessionStart {
-                    thread_id: thread.map(str::to_owned),
-                    focus: focus.map(str::to_owned),
-                })
-                .await?
-        }
-        Via::Compact { thread, dropped } => {
-            memory
-                .recall_for_compaction(Compaction {
-                    thread_id: (*thread).to_string(),
-                    dropped: dropped
-                        .iter()
-                        .map(|text| Turn::new(Role::User, text.as_str()))
-                        .collect(),
-                    focus: None,
-                })
-                .await?
-        }
-        Via::Continue {
-            thread,
-            turn_index,
-            in_prompt_from,
-        } => {
-            let mut pre = PreTurn::new(*thread, *turn_index, probe.question);
-            pre.in_prompt_from = *in_prompt_from;
-            memory.pre_turn(pre).await?.pack
-        }
-    };
-    let elapsed = ms(started);
-    let mut result = score(
-        scenario.name,
-        phase,
-        probe,
-        &pack.markdown,
-        pack.tokens,
-        elapsed,
-    );
-    if let Some(llm) = llm {
-        let answer = llm.answer(&pack.markdown, probe.question).await?;
-        result.llm_ok = grade(probe, Some(&answer));
-        result.llm_answer = Some(answer);
     }
-    timings.add(&format!("probe {}", result.via), elapsed);
-    Ok(result)
+
+    /// Reads `probe` the way it says and scores the pack.
+    async fn probe(
+        &self,
+        scenario: &Scenario,
+        probe: &Probe,
+        phase: &'static str,
+        timings: &mut Timings,
+    ) -> Result<ProbeResult, Error> {
+        let (engine, run, policy, llm) = (&self.engine, self.run, &self.policy, self.llm.as_ref());
+        let memory = AgentMemory::new(
+            engine.clone(),
+            layout(run, scenario.name, probe.tenant)?,
+            probe.agent,
+        )?
+        .with_policy(policy.clone());
+        let started = Instant::now();
+        let pack: ContextPack = match &probe.via {
+            Via::Ask => {
+                let thread = format!("probe-{}", probe.id);
+                memory
+                    .pre_turn(PreTurn::new(thread, 0, probe.question))
+                    .await?
+                    .pack
+            }
+            Via::Resume { thread, focus } => {
+                memory
+                    .start_session(SessionStart {
+                        thread_id: thread.map(str::to_owned),
+                        focus: focus.map(str::to_owned),
+                    })
+                    .await?
+            }
+            Via::Compact { thread, dropped } => {
+                memory
+                    .recall_for_compaction(Compaction {
+                        thread_id: (*thread).to_string(),
+                        dropped: dropped
+                            .iter()
+                            .map(|text| Turn::new(Role::User, text.as_str()))
+                            .collect(),
+                        focus: None,
+                    })
+                    .await?
+            }
+            Via::Continue {
+                thread,
+                turn_index,
+                in_prompt_from,
+            } => {
+                let mut pre = PreTurn::new(*thread, *turn_index, probe.question);
+                pre.in_prompt_from = *in_prompt_from;
+                memory.pre_turn(pre).await?.pack
+            }
+        };
+        let elapsed = ms(started);
+        let mut result = score(
+            scenario.name,
+            phase,
+            probe,
+            &pack.markdown,
+            pack.tokens,
+            elapsed,
+        );
+        if let Some(llm) = llm {
+            let answer = llm.answer(&pack.markdown, probe.question).await?;
+            result.llm_ok = grade(probe, Some(&answer));
+            result.llm_answer = Some(answer);
+        }
+        timings.add(&format!("probe {}", result.via), elapsed);
+        Ok(result)
+    }
 }
 
 /// One accuracy row.
