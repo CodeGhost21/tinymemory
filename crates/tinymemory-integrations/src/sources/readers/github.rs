@@ -8,7 +8,7 @@
 //! ## Module layout
 //!
 //! - [`self`] — [`GithubReader`] orchestration: item listing/reading, URL
-//!   parsing, raw-archive coordinates, shared utilities, and the cached
+//!   parsing, shared utilities, and the cached
 //!   `gh`-availability probe.
 //! - `types` — API response models and the `gh`-fallback list cache.
 //! - `git` — local bare-clone + `git log` / `git show` helpers.
@@ -29,7 +29,6 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use crate::sources::error::{Error, Result};
-use crate::sources::raw_kind::RawKind;
 use crate::sources::types::{MemorySourceEntry, SourceContent, SourceItem, SourceKind};
 
 use super::SourceReader;
@@ -98,48 +97,6 @@ pub(crate) fn parse_github_url(url: &str) -> std::result::Result<(String, String
         ));
     }
     Ok((parts[0].to_string(), parts[1].to_string()))
-}
-
-// ── Raw-archive coordinates ─────────────────────────────────────────
-
-/// Slugifiable raw-archive source id for a repo URL.
-///
-/// Returns `github.com/<owner>/<repo>`, which slugifies (via
-/// `slugify_source_id`) to `github-com-<owner>-<repo>` so a source's
-/// commits/issues/PRs land under
-/// `raw/github-com-<owner>-<repo>/{commits,issues,prs}/`.
-pub fn repo_archive_source_id(url: &str) -> Option<String> {
-    let (owner, repo) = parse_github_url(url).ok()?;
-    Some(format!("github.com/{owner}/{repo}"))
-}
-
-/// Chunk-store source id for a single repo item (dedup key).
-///
-/// `github:<owner>/<repo>:<item_id>` keeps per-item uniqueness for the
-/// `mem_tree_ingested_sources` dedup table while the separate
-/// [`repo_chunk_scope`] drives a shared directory.
-pub fn chunk_source_id(url: &str, item_id: &str) -> Option<String> {
-    let (owner, repo) = parse_github_url(url).ok()?;
-    Some(format!("github:{owner}/{repo}:{item_id}"))
-}
-
-/// Repo-scoped chunk path scope so all items from one repo share a
-/// single directory in the content store (e.g. `document/github-org-repo/`).
-pub fn repo_chunk_scope(url: &str) -> Option<String> {
-    let (owner, repo) = parse_github_url(url).ok()?;
-    Some(format!("github:{owner}/{repo}"))
-}
-
-/// Map a [`SourceItem`] id (`commit:<sha>`, `issue:<n>`, `pr:<n>`) to its
-/// raw-archive [`RawKind`] and the clean uid used as the filename suffix.
-pub fn raw_archive_coords(item_id: &str) -> Option<(RawKind, String)> {
-    let (kind, rest) = ItemKind::from_id(item_id)?;
-    let raw_kind = match kind {
-        ItemKind::Commit => RawKind::Commit,
-        ItemKind::Issue => RawKind::Issue,
-        ItemKind::PullRequest => RawKind::PullRequest,
-    };
-    Some((raw_kind, rest.to_string()))
 }
 
 // ── Reader implementation ───────────────────────────────────────────
