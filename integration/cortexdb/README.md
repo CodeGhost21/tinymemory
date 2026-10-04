@@ -1,9 +1,9 @@
 # Live CortexDB harness
 
 A real CortexDB server for the `cortexdb` engine's live tests
-(`crates/tinymemory-cortex/tests/live_cortexdb.rs`), so the wire is proven
+(`crates/tinymemory-integrations/tests/live_cortexdb.rs`), so the wire is proven
 against the server and not only against the HTTP doubles in
-`crates/tinymemory-cortex/src/testing/`.
+`crates/tinymemory-integrations/src/cortex/testing/`.
 
 ```sh
 ./scripts/cortexdb-live.sh                          # boot, test, tear down
@@ -16,7 +16,7 @@ Or by hand:
 ```sh
 docker compose -f integration/cortexdb/docker-compose.yml up -d --build
 TINYMEMORY_LIVE_CORTEXDB_URL=http://127.0.0.1:3141 \
-  cargo test -p tinymemory-cortex --test live_cortexdb
+  cargo test -p tinymemory-integrations --test live_cortexdb
 docker compose -f integration/cortexdb/docker-compose.yml down --volumes
 ```
 
@@ -42,12 +42,12 @@ server you started by hand (which uses the compose file's own project on
 
 ## What the tests prove
 
-- The shared conformance suite (`tinymemory_conformance::run`) passes against
+- The shared conformance suite (`tinymemory_api::conformance::run`) passes against
   the live server.
 - A document, a conversation with a tool call and a learning, each with its
   metadata, store and list back; metadata filters narrow; hybrid `fetch` finds
   the document; `recall` (CortexDB's answer route) answers with citations;
-  `tinymemory_context::compile` builds a `context.md` that carries the
+  `tinymemory_tools::context::compile` builds a `context.md` that carries the
   learning; and a filter `forget` removes all three.
 - With `documents-office`, a generated DOCX is converted by `OfficeConverter`,
   stored through the CortexDB engine, and listed back with its extracted text.
