@@ -144,103 +144,84 @@ pub struct Sanitized<T> {
 
 static BLOCK_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     vec![
-        Regex::new(
-            r"(?is)-----BEGIN(?: [A-Z]+)? PRIVATE KEY-----.*?-----END(?: [A-Z]+)? PRIVATE KEY-----",
-        )
-        .expect("valid private key block"),
-        Regex::new(r"(?is)-----BEGIN OPENSSH PRIVATE KEY-----.*?-----END OPENSSH PRIVATE KEY-----")
-            .expect("valid openssh private key block"),
-        Regex::new(
-            r"(?is)-----BEGIN PGP PRIVATE KEY BLOCK-----.*?-----END PGP PRIVATE KEY BLOCK-----",
-        )
-        .expect("valid pgp private key block"),
+        literal(r"(?is)-----BEGIN(?: [A-Z]+)? PRIVATE KEY-----.*?-----END(?: [A-Z]+)? PRIVATE KEY-----"),
+        literal(r"(?is)-----BEGIN OPENSSH PRIVATE KEY-----.*?-----END OPENSSH PRIVATE KEY-----"),
+        literal(r"(?is)-----BEGIN PGP PRIVATE KEY BLOCK-----.*?-----END PGP PRIVATE KEY BLOCK-----"),
     ]
 });
 
 static REDACTION_PATTERNS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
     vec![
         (
-            Regex::new(r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]{8,}").expect("valid bearer redaction"),
+            literal(r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]{8,}"),
             "${1}[REDACTED]",
         ),
         (
-            Regex::new(r#"(?i)(api[_-]?key\s*[=:\s]\s*["']?)[^\s"']+"#)
-                .expect("valid api key redaction"),
+            literal(r#"(?i)(api[_-]?key\s*[=:\s]\s*["']?)[^\s"']+"#),
             "${1}[REDACTED]",
         ),
         (
-            Regex::new(
-                r#"(?i)\b(token|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|secret)\b\s*[=:\s]\s*["']?[^\s"'&]+"#,
-            )
-            .expect("valid token redaction"),
+            literal(r#"(?i)\b(token|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|secret)\b\s*[=:\s]\s*["']?[^\s"'&]+"#),
             "[REDACTED]",
         ),
         (
-            Regex::new(r"\bsk-[A-Za-z0-9]{20,}\b").expect("valid openai key redaction"),
+            literal(r"\bsk-[A-Za-z0-9]{20,}\b"),
             "[REDACTED]",
         ),
         (
-            Regex::new(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b").expect("valid github token redaction"),
+            literal(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
             "[REDACTED]",
         ),
         (
-            Regex::new(r"\bAKIA[0-9A-Z]{16}\b").expect("valid aws key redaction"),
+            literal(r"\bAKIA[0-9A-Z]{16}\b"),
             "[REDACTED]",
         ),
         (
-            Regex::new(r"\bASIA[0-9A-Z]{16}\b").expect("valid aws sts key redaction"),
+            literal(r"\bASIA[0-9A-Z]{16}\b"),
             "[REDACTED]",
         ),
         (
-            Regex::new(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9._-]{8,}\.[A-Za-z0-9._-]{8,}\b")
-                .expect("valid jwt redaction"),
+            literal(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9._-]{8,}\.[A-Za-z0-9._-]{8,}\b"),
             "[REDACTED]",
         ),
         (
-            Regex::new(
-                r#"(?i)\b(access_token|refresh_token|id_token|authorization_code|code_verifier|code_challenge)\b\s*[=:\s]\s*["']?[^\s"'&]+"#,
-            )
-            .expect("valid oauth token redaction"),
+            literal(r#"(?i)\b(access_token|refresh_token|id_token|authorization_code|code_verifier|code_challenge)\b\s*[=:\s]\s*["']?[^\s"'&]+"#),
             "[REDACTED]",
         ),
         (
-            Regex::new(r"\bAIza[0-9A-Za-z\-_]{35}\b").expect("valid google api key redaction"),
+            literal(r"\bAIza[0-9A-Za-z\-_]{35}\b"),
             "[REDACTED]",
         ),
         (
-            Regex::new(r"\bsk-ant-[A-Za-z0-9\-_]{16,}\b").expect("valid anthropic key redaction"),
+            literal(r"\bsk-ant-[A-Za-z0-9\-_]{16,}\b"),
             "[REDACTED]",
         ),
         (
-            Regex::new(r"\bsk-(?:proj|org)-[A-Za-z0-9\-_]{12,}\b")
-                .expect("valid openai scoped key redaction"),
+            literal(r"\bsk-(?:proj|org)-[A-Za-z0-9\-_]{12,}\b"),
             "[REDACTED]",
         ),
         (
-            Regex::new(r"\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b")
-                .expect("valid stripe key redaction"),
+            literal(r"\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b"),
             "[REDACTED]",
         ),
         (
-            Regex::new(r"\bxox(?:a|b|p|s|r)-[A-Za-z0-9-]{10,}\b")
-                .expect("valid slack token redaction"),
+            literal(r"\bxox(?:a|b|p|s|r)-[A-Za-z0-9-]{10,}\b"),
             "[REDACTED]",
         ),
         (
-            Regex::new(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b").expect("valid github pat redaction"),
+            literal(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
             "[REDACTED]",
         ),
         (
-            Regex::new(r"\bglpat-[A-Za-z0-9\-_]{16,}\b").expect("valid gitlab pat redaction"),
+            literal(r"\bglpat-[A-Za-z0-9\-_]{16,}\b"),
             "[REDACTED]",
         ),
         (
-            Regex::new(r"\bnpm_[A-Za-z0-9]{20,}\b").expect("valid npm token redaction"),
+            literal(r"\bnpm_[A-Za-z0-9]{20,}\b"),
             "[REDACTED]",
         ),
         (
-            Regex::new(r"\bSG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}\b")
-                .expect("valid sendgrid key redaction"),
+            literal(r"\bSG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}\b"),
             "[REDACTED]",
         ),
     ]

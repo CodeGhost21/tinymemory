@@ -64,48 +64,46 @@ pub(crate) const PII_RRN: &str = "[REDACTED_PII_RRN]";
 
 // Brazilian CPF, formatted: NNN.NNN.NNN-NN
 static CPF_FMT_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\b\d{3}\.\d{3}\.\d{3}-\d{2}\b").expect("cpf fmt"));
+    LazyLock::new(|| literal(r"\b\d{3}\.\d{3}\.\d{3}-\d{2}\b"));
 // Brazilian CPF, bare: 11 consecutive digits. Checksum-gated; ~1% raw FP.
 static CPF_BARE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\b\d{11}\b").expect("cpf bare"));
+    LazyLock::new(|| literal(r"\b\d{11}\b"));
 
 // Brazilian CNPJ, formatted: NN.NNN.NNN/NNNN-NN
 static CNPJ_FMT_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\b\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}\b").expect("cnpj fmt"));
+    LazyLock::new(|| literal(r"\b\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}\b"));
 // Brazilian CNPJ, bare: 14 consecutive digits.
 static CNPJ_BARE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\b\d{14}\b").expect("cnpj bare"));
+    LazyLock::new(|| literal(r"\b\d{14}\b"));
 
 // Argentine CUIT/CUIL: NN-NNNNNNNN-N (formatted only — bare 11-digit with
 // single check digit has ~9% FP on random IDs, too noisy without context).
 static CUIT_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\b\d{2}-\d{8}-\d\b").expect("cuit"));
+    LazyLock::new(|| literal(r"\b\d{2}-\d{8}-\d\b"));
 
 // Mexican RFC: 3-4 letters (incl. Ñ &) + 6 digits + 3 alphanumeric homoclave.
 static RFC_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\b[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}\b").expect("rfc"));
+    LazyLock::new(|| literal(r"(?i)\b[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}\b"));
 
 // Japan My Number (12 digits) gated by a Japanese or English keyword within
 // ~30 chars. Bare 12-digit runs without keyword are too noisy.
 static MYNUM_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?:マイナンバー|個人番号|My\s?Number)[\s:はがを、.\-]{0,12}(\d{12})\b")
-        .expect("my number")
+    literal(r"(?:マイナンバー|個人番号|My\s?Number)[\s:はがを、.\-]{0,12}(\d{12})\b")
 });
 
 // E.164 phone: + followed by 7-15 digits, no separators.
 static PHONE_E164_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\+\d{7,15}\b").expect("e164"));
+    LazyLock::new(|| literal(r"\+\d{7,15}\b"));
 
 // NANP (US/Canada) formatted phone. Area code must start 2-9; first digit of
 // central-office code also 2-9 (real NANP rule).
 static PHONE_NANP_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\b(?:\+?1[\s.\-]?)?\(?([2-9]\d{2})\)?[\s.\-]?([2-9]\d{2})[\s.\-]?(\d{4})\b")
-        .expect("nanp phone")
+    literal(r"\b(?:\+?1[\s.\-]?)?\(?([2-9]\d{2})\)?[\s.\-]?([2-9]\d{2})[\s.\-]?(\d{4})\b")
 });
 
 // US SSN: NNN-NN-NNNN. Range filter applied below.
 static SSN_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\b\d{3}-\d{2}-\d{4}\b").expect("ssn"));
+    LazyLock::new(|| literal(r"\b\d{3}-\d{2}-\d{4}\b"));
 
 // Credit card: 13-19 digits with optional spaces/dashes every 4. Every match
 // is Luhn-gated; a match with no separators at all additionally needs
@@ -115,7 +113,7 @@ static SSN_RE: LazyLock<Regex> =
 // JSON envelopes at exactly that rate (opencompany#1201). Same split as
 // Aadhaar below: formatted keeps the checksum-only gate, bare needs more.
 static CC_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\b(?:\d[\s\-]?){13,19}\b").expect("credit card"));
+    LazyLock::new(|| literal(r"\b(?:\d[\s\-]?){13,19}\b"));
 
 // Card keyword corroborating a bare digit run. Three tiers, matched
 // case-insensitively:
@@ -136,45 +134,41 @@ static CC_RE: LazyLock<Regex> =
 //   directly attached: there `CC_RE`'s own leading `\b` already fails
 //   (CJK is `\w`), so the run is never a candidate in the first place.
 static CC_KEYWORD_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)(?:^|[\W_])(?:card|credit|debit|visa|mastercard|amex|american\s?express|discover|jcb|diners|unionpay|hipercard|rupay|cvv|cvc|cc|pan|tarjeta|cart[aã]o|carte|karte|карта|карты|карту|картой|карте|кредитка)(?:[\W_]|$)|(?i:cardnumber|creditcard|ccnum|cardno|pannumber|カード|信用卡|卡号|银行卡|카드)",
-    )
-    .expect("cc keyword")
+    literal(r"(?i)(?:^|[\W_])(?:card|credit|debit|visa|mastercard|amex|american\s?express|discover|jcb|diners|unionpay|hipercard|rupay|cvv|cvc|cc|pan|tarjeta|cart[aã]o|carte|karte|карта|карты|карту|картой|карте|кредитка)(?:[\W_]|$)|(?i:cardnumber|creditcard|ccnum|cardno|pannumber|カード|信用卡|卡号|银行卡|카드)")
 });
 
 // IBAN: 2 letter country code + 2 check digits + 11-30 alphanumeric.
 // Allow optional spaces every 4 chars (common human format).
 static IBAN_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\b[A-Z]{2}\d{2}(?:[\s]?[A-Z0-9]){11,30}\b").expect("iban"));
+    LazyLock::new(|| literal(r"\b[A-Z]{2}\d{2}(?:[\s]?[A-Z0-9]){11,30}\b"));
 
 // India Aadhaar: 4-4-4 digit groups (space or hyphen) OR contiguous 12 digits
 // gated by keyword. Verhoeff-checksum-gated when grouped, keyword-gated when
 // bare (Verhoeff alone has ~10% raw FP rate on random 12-digit runs).
 static AADHAAR_FMT_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\b\d{4}[\s\-]\d{4}[\s\-]\d{4}\b").expect("aadhaar formatted"));
+    LazyLock::new(|| literal(r"\b\d{4}[\s\-]\d{4}[\s\-]\d{4}\b"));
 static AADHAAR_KW_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(?:aadhaar|aadhar|आधार|uidai|uid)[\s:#\-no.]{0,10}(\d{12})\b")
-        .expect("aadhaar keyword")
+    literal(r"(?i)(?:aadhaar|aadhar|आधार|uidai|uid)[\s:#\-no.]{0,10}(\d{12})\b")
 });
 
 // India PAN: 5 letters, 4 digits, 1 letter. Very high signal — no checksum.
 static PAN_IN_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\b[A-Z]{5}\d{4}[A-Z]\b").expect("pan-in"));
+    LazyLock::new(|| literal(r"(?i)\b[A-Z]{5}\d{4}[A-Z]\b"));
 
 // UK NINO: 2 letters + 6 digits + suffix A/B/C/D.
 static NINO_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\b[A-Z]{2}\d{6}[A-D]\b").expect("nino"));
+    LazyLock::new(|| literal(r"(?i)\b[A-Z]{2}\d{6}[A-D]\b"));
 
 // Spain DNI: 8 digits + check letter. NIE: starts X/Y/Z, then 7 digits + letter.
-static DNI_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\b\d{8}[A-Z]\b").expect("dni"));
+static DNI_RE: LazyLock<Regex> = LazyLock::new(|| literal(r"(?i)\b\d{8}[A-Z]\b"));
 static NIE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\b[XYZ]\d{7}[A-Z]\b").expect("nie"));
+    LazyLock::new(|| literal(r"(?i)\b[XYZ]\d{7}[A-Z]\b"));
 
 // South Korea RRN: NNNNNN-CXXXXXX where C is gender/century digit (1-4).
 static RRN_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\b\d{6}-[1-4]\d{6}\b").expect("rrn"));
+    LazyLock::new(|| literal(r"\b\d{6}-[1-4]\d{6}\b"));
 static EMAIL_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b").expect("email"));
+    LazyLock::new(|| literal(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b"));
 
 // ---------- Byte-oriented candidate pre-filter ----------
 //
