@@ -339,6 +339,28 @@ async fn scopes(
     }
 }
 
+async fn build_beliefs(
+    State(state): State<Shared>,
+    uri: Uri,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Reply {
+    if let Some(early) = gate(&state, "POST", &uri, &headers) {
+        return early;
+    }
+    let Some(scope) = body["scope"].as_str().filter(|scope| !scope.is_empty()) else {
+        return fail(&state, 422, "VALIDATION_ERROR");
+    };
+    if let Some(refused) = refuse_scope(&state, scope) {
+        return refused;
+    }
+    let mut seen = state.seen.lock().unwrap();
+    seen.builds.push(body.clone());
+    let job = format!("build-{}", seen.builds.len());
+    drop(seen);
+    ok(&state, 202, json!({ "status": "queued", "job_id": job }))
+}
+
 /// CortexDB's own routes.
 pub(super) fn direct(state: Shared) -> Router {
     Router::new()
@@ -350,6 +372,7 @@ pub(super) fn direct(state: Shared) -> Router {
         .route("/v1/answer", post(answer))
         .route("/v1/admin/health", get(health))
         .route("/v1/scopes/list", get(scopes))
+        .route("/v1/beliefs/build", post(build_beliefs))
         .with_state(state)
 }
 
