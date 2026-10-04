@@ -1,0 +1,125 @@
+[package]
+name = "tinymemory-integrations"
+description = "TinyMemory integrations: the CortexDB engine, document conversion, source readers, safety scrubbing and the legacy v1 import"
+readme = "README.md"
+keywords = ["memory", "agent", "llm", "retrieval"]
+categories = ["database"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The contract every integration produces or implements: `MemoryEngine`,
+# `StoreItem`, `MemoryMeta` and the one `Error` each module's failures map to.
+tinymemory-api = { path = "../tinymemory-api" }
+# `MemoryEngine`, `BearerSource`, `DocumentConverter` and `SourceReader` are
+# object-safe async traits.
+async-trait = { version = "0.1", optional = true }
+# Every wire body, envelope, cursor, Composio payload and checkpoint is JSON.
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+# The typed errors of `documents`, `sources` and `import`.
+thiserror = { version = "2", optional = true }
+# Diagnostics: a skipped source item, a dropped Slack message, a scrubbing
+# decision.
+log = { version = "0.4", optional = true }
+
+# --- cortex ---
+# CortexDB speaks HTTP/JSON. `stream` is for `bytes_stream()`: response bodies
+# are read against a byte cap rather than buffered whole, because the endpoint
+# is operator-supplied and a broken or hostile one must not exhaust the host.
+# The network source readers share the same client stack.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"], optional = true }
+# Timers for read-retry backoff and visibility polling (cortex); process
+# spawning and DNS lookups for the GitHub reader and the SSRF resolver
+# (sources-network). reqwest already requires a tokio runtime, so this adds no
+# new runtime assumption.
+tokio = { version = "1", default-features = false, features = ["time"], optional = true }
+# `StreamExt` to read a capped body chunk by chunk.
+futures = { version = "0.3", optional = true }
+# Lookup labels are fixed-length SHA-256 digests of metadata values.
+sha2 = { version = "0.10", optional = true }
+
+# --- documents-office ---
+# Text out of the formats people actually drop into memory — a contract PDF, a
+# spec `.docx`, a pricing `.xlsx`, a deck. All pure Rust with no system
+# libraries. `pdf-extract` reads a PDF's text layer. `zip` + `quick-xml` are
+# the whole of `.docx` and `.pptx`, which are zip archives of XML. `.xlsx` is
+# not — shared-string tables and cell typing make hand-parsing it a liability —
+# so `calamine` reads that one. `zip` and `quick-xml` are the versions
+# `calamine` already links, so the graph carries one copy of each.
+pdf-extract = { version = "0.12", optional = true }
+calamine = { version = "0.36", optional = true }
+quick-xml = { version = "0.41", optional = true }
+zip = { version = "8", default-features = false, features = ["deflate"], optional = true }
+
+# --- sources ---
+# `MemorySourceEntry` and friends appear in generated schemas, same as the
+# contract crate's own types.
+schemars = { version = "1.2", optional = true }
+# The folder reader compiles a source's glob to a regex; safety's credential
+# and PII patterns are regexes too.
+regex = { version = "1.10", optional = true }
+# The folder reader walks the directory tree.
+walkdir = { version = "2", optional = true }
+# Timestamps: `MemoryMeta::observed_at`, file mtimes, feed and issue dates,
+# Gmail `Date:` headers.
+chrono = { version = "0.4", features = ["clock", "serde"], optional = true }
+# Diagnostics on the network readers and the Gmail normaliser.
+tracing = { version = "0.1", optional = true }
+
+# --- legacy-import ---
+# Read-only access to a v1 workspace's `memory/memory.db` and
+# `memory_tree/chunks.db`. Bundled so the importer does not depend on a system
+# SQLite.
+rusqlite = { version = "0.40", features = ["bundled"], optional = true }
+
+[dev-dependencies]
+# The behavioural suite every engine must pass, run over both CortexDB wires'
+# doubles, and the reference engine the import driver is tested against.
+tinymemory-api = { path = "../tinymemory-api", features = ["conformance"] }
+# `tests/live_cortexdb.rs` compiles `context.md` from a live server.
+tinymemory-tools = { path = "../tinymemory-tools" }
+# The CortexDB and TinyHumans doubles are real HTTP servers on loopback.
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "net", "io-util", "time"] }
+# Reader and import tests build throwaway folders and v1 workspaces.
+tempfile = "3"
+# The format and office tests build their OOXML fixtures in code.
+zip = { version = "8", default-features = false, features = ["deflate"] }
+# `MemoryConfig` round-trips through the TOML a host stores it in.
+toml = "1"
+
+[features]
+# The CortexDB engine and the registry that builds it: what most hosts want.
+default = ["cortex"]
+# `cortex::CortexEngine` over both wires (`cortexdb` direct `/v1/*`, and
+# `tinyhumans` behind the TinyHumans backend `/memory/*`), plus `registry`
+# (`list_engines`, `build_engine`) and `config` (`MemoryConfig`).
+cortex = ["dep:async-trait", "dep:serde", "dep:serde_json", "dep:reqwest", "dep:tokio", "dep:futures", "dep:sha2"]
+# `documents`: format sniffing and conversion to markdown, emitting
+# `StoreItem::Document`. Does no I/O.
+documents = ["dep:async-trait", "dep:serde", "dep:serde_json", "dep:thiserror"]
+# `documents::OfficeConverter`: PDF, DOCX, PPTX and XLSX to markdown, for a
+# host to prepend to its `ConverterChain`. Off by default because a PDF parser
+# and a spreadsheet reader are real weight.
+documents-office = ["documents", "dep:pdf-extract", "dep:calamine", "dep:quick-xml", "dep:zip"]
+# `sources`: readers that turn folders, files and conversations into
+# `StoreItem`s, and the Composio payload normalisers. Links no HTTP stack.
+sources = ["documents", "dep:schemars", "dep:regex", "dep:walkdir", "dep:chrono", "dep:log", "dep:tracing"]
+# The readers that fetch over the network — GitHub, RSS, web pages — and
+# `sources::fetch::fetch_url`, all behind the shared SSRF guard.
+sources-network = ["sources", "dep:reqwest", "dep:futures", "dep:tokio", "tokio/process", "tokio/io-util", "tokio/net"]
+# `safety`: secret and PII scrubbing for a `StoreItem` before it is stored.
+safety = ["dep:regex", "dep:serde_json", "dep:log"]
+# `import`: reads a legacy v1 (embedded TinyCortex) workspace and migrates it
+# into any engine, resumably.
+legacy-import = ["dep:rusqlite", "dep:serde", "dep:serde_json", "dep:thiserror"]
+# Every integration.
+full = ["cortex", "documents-office", "sources-network", "safety", "legacy-import"]
+
+[lints]
+workspace = true
