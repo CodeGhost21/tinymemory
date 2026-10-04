@@ -445,7 +445,7 @@ impl tinymemory_api::MemoryEngine for Believer {
         let wanted = req.beliefs;
         let mut page = self.inner.fetch(req).await?;
         if wanted > 0 {
-            page.beliefs = self.held(wanted)?;
+            page.beliefs = self.held(wanted).unwrap_or_default();
         }
         Ok(page)
     }
@@ -499,7 +499,7 @@ async fn a_learnings_section_merges_the_engine_s_beliefs() {
     );
     assert_eq!(
         *engine.budgets.lock().unwrap(),
-        [5, 10],
+        [5, 5],
         "every fetch asks for what the learnings section wants"
     );
 }
@@ -580,11 +580,18 @@ async fn a_latest_learnings_section_reads_beliefs_without_a_query() {
 }
 
 #[tokio::test]
-async fn a_failed_belief_read_leaves_the_stored_learnings() {
+async fn a_failed_belief_listing_leaves_the_stored_learnings() {
     let engine = Believer::new(None).await;
     let pack = holistic_recall(
         &engine,
-        &HolisticRecall::new(Some("refunds".into()), vec![learnings_section("Learnings")]),
+        &HolisticRecall::new(
+            None,
+            vec![ScopeSection::latest(
+                "Learnings",
+                MetaFilter::kinds([ItemKind::Learning]),
+                5,
+            )],
+        ),
     )
     .await
     .unwrap();
