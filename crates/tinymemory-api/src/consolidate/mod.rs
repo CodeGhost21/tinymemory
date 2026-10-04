@@ -41,7 +41,7 @@ pub enum Consolidation {
 }
 
 /// What to consolidate.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ConsolidateRequest {
     /// The part of the namespace tree to consolidate. A subtree reach
     /// consolidates every node below `at`.
