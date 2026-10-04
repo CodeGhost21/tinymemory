@@ -110,21 +110,6 @@ pub fn extract_issue_updated_at(issue: &Value) -> Option<String> {
     )
 }
 
-/// Extract the authenticated user's login handle from a
-/// `GITHUB_GET_THE_AUTHENTICATED_USER` response.
-pub fn extract_user_login(data: &Value) -> Option<String> {
-    pick_str(data, &["login", "data.login"])
-}
-
-/// Current wall-clock time in milliseconds since the UNIX epoch.
-pub fn now_ms() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
-
 #[cfg(test)]
 #[path = "github_tests.rs"]
 mod tests;
