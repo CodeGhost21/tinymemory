@@ -34,7 +34,7 @@
 mod args;
 mod read;
 mod render;
-pub mod spec;
+mod spec;
 mod write;
 
 use std::sync::Arc;
@@ -205,10 +205,7 @@ impl MemoryTools {
     /// - Whatever the engine returns for the request.
     pub async fn call(&self, name: &str, args: Value) -> Result<Value> {
         if !TOOL_NAMES.contains(&name) {
-            return Err(Error::InvalidRequest(format!(
-                "unknown memory tool `{name}`; expected one of {}",
-                TOOL_NAMES.join(", ")
-            )));
+            return Err(unknown_tool(name));
         }
         if spec::is_write_tool(name) && !self.scope.writes {
             return Err(Error::Unsupported(format!(
@@ -224,9 +221,17 @@ impl MemoryTools {
             MEMORY_GET => read::get(engine, scope, &args).await,
             MEMORY_EXPLORE => read::explore(engine, scope, &args).await,
             MEMORY_STORE => write::store(engine, scope, &args).await,
-            _ => write::forget(engine, scope, &args).await,
+            MEMORY_FORGET => write::forget(engine, scope, &args).await,
+            _ => Err(unknown_tool(name)),
         }
     }
+}
+
+fn unknown_tool(name: &str) -> Error {
+    Error::InvalidRequest(format!(
+        "unknown memory tool `{name}`; expected one of {}",
+        TOOL_NAMES.join(", ")
+    ))
 }
 
 #[cfg(test)]
