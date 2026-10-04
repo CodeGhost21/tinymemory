@@ -759,8 +759,8 @@ mod migration {
         Checkpoint, Error, LegacyWorkspace, MigrationReport, migrate, migrate_with,
     };
 
-    use super::support::{doc, workspace};
     use super::T0;
+    use super::support::{doc, workspace};
 
     /// More documents than two full `store_many` batches hold.
     const COUNT: usize = 2 * MAX_STORE_MANY + 50;
@@ -918,7 +918,10 @@ mod migration {
         )
         .await
         .unwrap();
-        assert_eq!((resumed.stored, resumed.replayed), (COUNT - MAX_STORE_MANY, 0));
+        assert_eq!(
+            (resumed.stored, resumed.replayed),
+            (COUNT - MAX_STORE_MANY, 0)
+        );
         assert_eq!(engine.inner.len(), COUNT);
     }
 

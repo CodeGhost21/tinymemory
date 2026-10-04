@@ -23,7 +23,10 @@
 //!
 //! Import is resumable: each [`ImportedItem`] carries the [`Checkpoint`] to
 //! persist once its item is stored, and [`LegacyWorkspace::items_from`]
-//! continues after it.
+//! continues after it. [`migrate`] (and [`migrate_with`], which reports each
+//! committed checkpoint) drives the whole copy into a
+//! [`tinymemory_api::MemoryEngine`] in `store_many` batches, and an engine
+//! failure carries the checkpoint to resume from.
 //!
 //! # Example
 //!
@@ -67,12 +70,14 @@ mod checkpoint;
 mod convert;
 mod error;
 mod items;
+mod migrate;
 mod sections;
 mod workspace;
 
 pub use checkpoint::{Checkpoint, ChunkCursor, ImportedItem};
 pub use error::{Error, Result};
 pub use items::{DEFAULT_PAGE_SIZE, Items};
+pub use migrate::{MigrationReport, migrate, migrate_with};
 pub use workspace::LegacyWorkspace;
 
 /// Re-exported so a host names the same item type the importer yields.

@@ -2,7 +2,10 @@
 
 use std::path::PathBuf;
 
-/// Everything that can go wrong opening or reading a legacy workspace.
+use crate::import::checkpoint::Checkpoint;
+
+/// Everything that can go wrong opening, reading or migrating a legacy
+/// workspace.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
@@ -35,6 +38,28 @@ pub enum Error {
     /// A [`crate::import::Checkpoint`] could not be encoded or decoded as JSON.
     #[error("checkpoint json is invalid: {0}")]
     Json(#[from] serde_json::Error),
+    /// The engine refused a batch during [`crate::import::migrate`].
+    /// Everything up to `checkpoint` is stored; resume from it.
+    #[error("migration stopped: the engine failed: {source}")]
+    Engine {
+        /// The engine's own error.
+        #[source]
+        source: tinymemory_api::Error,
+        /// The last committed resume point.
+        checkpoint: Checkpoint,
+    },
+}
+
+impl Error {
+    /// The checkpoint to resume a [`crate::import::migrate`] from, when the
+    /// error carries one ([`Error::Engine`]).
+    #[must_use]
+    pub fn checkpoint(&self) -> Option<&Checkpoint> {
+        match self {
+            Self::Engine { checkpoint, .. } => Some(checkpoint),
+            _ => None,
+        }
+    }
 }
 
 /// The crate-wide result.
