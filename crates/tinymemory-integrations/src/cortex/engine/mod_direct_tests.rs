@@ -207,3 +207,38 @@ async fn a_rejected_key_is_unauthorized() {
     assert!(matches!(error, Error::Unauthorized(_)), "{error:?}");
     assert!(error.to_string().contains("API key"), "{error}");
 }
+
+#[tokio::test]
+async fn an_accepted_write_neither_asks_for_indexing_nor_waits_to_be_listed() {
+    let (endpoint, state) = direct_double().await;
+    let engine = direct_engine(&endpoint);
+    let before = state.count("GET /v1/events");
+    // Listings never show the write: a visible store would time out here.
+    state.hide_listing_for.store(usize::MAX, Ordering::SeqCst);
+    let mut items = sample_items();
+    let conversation = items.remove(1);
+    let document = items.remove(0);
+    for item in [document, conversation] {
+        let receipt = engine
+            .with_test_timing(std::time::Duration::from_millis(50))
+            .store_with(item.clone(), tinymemory_api::WriteOptions::accepted())
+            .await
+            .unwrap();
+        assert_eq!(receipt.id.as_str(), item.fingerprint());
+    }
+    let requests = state.requests();
+    assert!(
+        requests.iter().any(|r| r == "POST /v1/experience"),
+        "{requests:?}"
+    );
+    assert!(
+        requests.iter().any(|r| r == "POST /v1/experience/bulk"),
+        "{requests:?}"
+    );
+    assert!(requests.iter().all(|r| !r.contains("wait=indexed")));
+    assert_eq!(
+        state.count("GET /v1/events") - before,
+        2,
+        "only the replay lookup, one per item: no visibility polling"
+    );
+}
