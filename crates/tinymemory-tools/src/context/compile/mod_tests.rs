@@ -5,7 +5,8 @@ use chrono::TimeZone;
 use tinymemory_api::conformance::ReferenceEngine;
 use tinymemory_api::{
     EngineDescriptor, EngineHealth, Error as ApiError, FetchPage, FetchRequest, ForgetReport,
-    ForgetTarget, LearningKind, ListPage, MemoryMeta, RecallAnswer, StoreItem, StoreReceipt,
+    ForgetTarget, LearningKind, ListPage, ListRequest, MemoryMeta, RecallAnswer, RecallRequest,
+    StoreItem, StoreReceipt,
 };
 
 use super::*;
