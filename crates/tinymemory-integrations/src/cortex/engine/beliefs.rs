@@ -25,10 +25,10 @@
 
 use std::collections::HashSet;
 
-use chrono::{DateTime, Utc};
 use futures::{StreamExt, TryStreamExt, stream};
 use reqwest::Method;
 use serde_json::{Value, json};
+use tinymemory_api::chrono::{DateTime, Utc};
 use tinymemory_api::{
     BELIEF_TAG, BeliefsRequest, Hit, ItemKind, LearningKind, MemoryMeta, MetaFilter, StoreItem,
 };
