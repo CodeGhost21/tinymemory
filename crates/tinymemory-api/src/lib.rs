@@ -9,6 +9,11 @@
 //! - **Store** — ingest a document, a conversation or a learning, each with
 //!   typed [`MemoryMeta`] ([`MemoryEngine::store`]).
 //!
+//! A live agent turn stores with [`MemoryEngine::store_with`] and
+//! [`WaitFor::Accepted`] so it never waits on indexing, and a host asks an
+//! engine to distil beliefs off the hot path with
+//! [`MemoryEngine::consolidate`] ([`consolidate`]).
+//!
 //! plus [`MemoryEngine::list`] and [`MemoryEngine::forget`] to page through
 //! and remove what was stored, and [`MemoryEngine::explore`] and
 //! [`MemoryEngine::get`] for explorers: counts of stored items per metadata
@@ -45,6 +50,7 @@
 
 #[cfg(feature = "conformance")]
 pub mod conformance;
+pub mod consolidate;
 pub mod engine;
 pub mod error;
 pub mod explore;
@@ -52,7 +58,9 @@ pub mod item;
 pub mod meta;
 pub mod namespace;
 pub mod query;
+pub mod write;
 
+pub use consolidate::{ConsolidateReceipt, ConsolidateRequest, ConsolidateStatus, Consolidation};
 pub use engine::{EngineDescriptor, EngineHealth, MAX_STORE_MANY, MemoryEngine, validate_many};
 pub use error::{Error, Result};
 pub use explore::{
@@ -66,6 +74,7 @@ pub use query::{
     Citation, FetchMode, FetchPage, FetchRequest, ForgetReport, ForgetTarget, Hit, ListPage,
     ListRequest, RecallAnswer, RecallRequest,
 };
+pub use write::{WaitFor, WriteOptions};
 
 /// Re-exported so engines and hosts name the same `async_trait` and `chrono`
 /// the contract was compiled with.

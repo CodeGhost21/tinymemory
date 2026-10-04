@@ -4,6 +4,7 @@
 use async_trait::async_trait;
 use serde::Serialize;
 
+use crate::consolidate::{ConsolidateReceipt, ConsolidateRequest, Consolidation};
 use crate::error::{Error, Result};
 use crate::explore::{ExplorePage, ExploreRequest, GetRequest, explore_by_listing, get_by_listing};
 use crate::item::{StoreItem, StoreReceipt};
@@ -11,6 +12,7 @@ use crate::query::{
     FetchMode, FetchPage, FetchRequest, ForgetReport, ForgetTarget, Hit, ListPage, ListRequest,
     RecallAnswer, RecallRequest,
 };
+use crate::write::WriteOptions;
 
 /// A memory engine: recall, fetch, store, forget and list over typed items.
 ///
@@ -47,6 +49,21 @@ pub trait MemoryEngine: Send + Sync {
     ///
     /// Invalid items, and the engine's own failures.
     async fn store(&self, item: StoreItem) -> Result<StoreReceipt>;
+
+    /// Stores one item, returning as soon as `options` allows (see
+    /// [`crate::write`]). With [`crate::WaitFor::Visible`] this is exactly
+    /// [`MemoryEngine::store`]; with [`crate::WaitFor::Accepted`] an engine
+    /// may return once the item is durably accepted, before it is readable.
+    ///
+    /// The default serves every option as `store`, which is always correct.
+    ///
+    /// # Errors
+    ///
+    /// As [`MemoryEngine::store`].
+    async fn store_with(&self, item: StoreItem, options: WriteOptions) -> Result<StoreReceipt> {
+        let _ = options;
+        self.store(item).await
+    }
 
     /// Stores several items, in order: bulk ingestion (imports, backfills,
     /// source syncs).
@@ -115,6 +132,26 @@ pub trait MemoryEngine: Send + Sync {
     async fn get(&self, req: GetRequest) -> Result<Vec<Hit>> {
         get_by_listing(self, req).await
     }
+
+    /// Asks the engine to distil what `req` covers into beliefs, returning
+    /// once the job is taken, not done (see [`crate::consolidate`]). What it
+    /// builds surfaces through ordinary reads.
+    ///
+    /// The default refuses: an engine declaring
+    /// [`Consolidation::OnDemand`] or [`Consolidation::Scheduled`] overrides
+    /// it.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Unsupported`] when the engine does not consolidate, invalid
+    /// requests, and the engine's own failures.
+    async fn consolidate(&self, req: ConsolidateRequest) -> Result<ConsolidateReceipt> {
+        req.validate()?;
+        Err(Error::Unsupported(format!(
+            "engine `{}` does not consolidate memory",
+            self.descriptor().id
+        )))
+    }
 }
 
 /// Most items one [`MemoryEngine::store_many`] call may take.
@@ -155,6 +192,9 @@ pub struct EngineDescriptor {
     pub default_endpoint: Option<&'static str>,
     /// The fetch modes the engine serves.
     pub fetch_modes: Vec<FetchMode>,
+    /// How the engine turns raw memory into beliefs (see
+    /// [`MemoryEngine::consolidate`]).
+    pub consolidation: Consolidation,
 }
 
 impl EngineDescriptor {
