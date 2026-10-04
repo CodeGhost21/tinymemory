@@ -482,6 +482,7 @@ async fn a_core_scope_never_reads_a_sibling_tenant() {
 #[tokio::test]
 async fn with_core_replaces_the_set_per_call() {
     let (_, memory) = company().await;
+    let without = memory.recall("").await.unwrap().markdown;
     let memory = memory
         .with_core(vec![CoreScope::new(acme(), "Company")])
         .unwrap();
