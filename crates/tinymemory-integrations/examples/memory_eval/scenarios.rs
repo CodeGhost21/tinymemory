@@ -927,8 +927,7 @@ fn learning_from_feedback() -> Scenario {
             )],
         ),
         (
-            "Don't run kubectl yourself. We always deploy with make ship ENV=staging."
-                .to_string(),
+            "Don't run kubectl yourself. We always deploy with make ship ENV=staging.".to_string(),
             Vec::new(),
         ),
         (
@@ -988,7 +987,12 @@ fn learning_from_feedback() -> Scenario {
                 Paraphrase,
             )
             .expect(&["ready for review"])
-            .accept(&["not as a draft", "never as a draft", "never as drafts", "not a draft"]),
+            .accept(&[
+                "not as a draft",
+                "never as a draft",
+                "never as drafts",
+                "not a draft",
+            ]),
         ],
     }
 }
@@ -1132,14 +1136,9 @@ fn conflicts() -> Scenario {
             .via(COLD_START)
             .expect(&["five", "ten"])
             .accept(&["conflict", "inconsistent", "disagree", "differ"]),
-            Probe::new(
-                "acme-plan",
-                "support-01",
-                "Which plan is Acme on?",
-                Lexical,
-            )
-            .expect(&["Team plan"])
-            .stale(&["Enterprise"]),
+            Probe::new("acme-plan", "support-01", "Which plan is Acme on?", Lexical)
+                .expect(&["Team plan"])
+                .stale(&["Enterprise"]),
             Probe::new(
                 "promise",
                 "support-01",

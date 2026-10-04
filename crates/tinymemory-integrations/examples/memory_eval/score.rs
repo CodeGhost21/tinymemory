@@ -59,6 +59,7 @@ pub(crate) fn via_name(via: &Via) -> &'static str {
         Via::Resume { .. } => "start_session",
         Via::Compact { .. } => "recall_for_compaction",
         Via::Continue { .. } => "pre_turn (in thread)",
+        Via::ContextDoc { .. } => "context.md",
     }
 }
 

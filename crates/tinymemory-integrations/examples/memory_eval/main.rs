@@ -22,7 +22,7 @@
 //!
 //! - `--engine reference|cortex`: the default is `cortex` when
 //!   `CORTEX_DB_URL` is set, and `reference` otherwise.
-//! - `--only <scenario>`: run one scenario.
+//! - `--only <scenario>[,<scenario>…]`: run only these scenarios.
 //! - `--enrich-wait <secs>`: how long to let CortexDB extract facts before
 //!   the belief build (default 20 against CortexDB, 0 otherwise).
 //! - `--json <path>`: write every probe, pack included, as JSON.
@@ -51,6 +51,7 @@ use tinymemory_api::{
     StoreItem, Turn,
 };
 use tinymemory_integrations::cortex::{CortexCredential, CortexEngine};
+use tinymemory_tools::context::{self, Brief, ContextSpec};
 use tinymemory_tools::{
     AgentMemory, BackgroundJob, Brain, BrainDocument, Compaction, ContextPack, JobOutcome,
     MemoryLayout, PreTurn, RecallPolicy, SessionStart,
@@ -195,7 +196,7 @@ async fn main() -> Result<(), Error> {
         if args
             .only
             .as_deref()
-            .is_some_and(|only| only != scenario.name)
+            .is_some_and(|only| !only.split(',').any(|name| name == scenario.name))
         {
             continue;
         }
@@ -481,23 +482,25 @@ impl Eval {
         )?
         .with_policy(policy.clone());
         let started = Instant::now();
-        let pack: ContextPack = match &probe.via {
+        let (markdown, tokens) = match &probe.via {
             Via::Ask => {
                 let thread = format!("probe-{}", probe.id);
-                memory
-                    .pre_turn(PreTurn::new(thread, 0, probe.question))
-                    .await?
-                    .pack
+                pack(
+                    memory
+                        .pre_turn(PreTurn::new(thread, 0, probe.question))
+                        .await?
+                        .pack,
+                )
             }
-            Via::Resume { thread, focus } => {
+            Via::Resume { thread, focus } => pack(
                 memory
                     .start_session(SessionStart {
                         thread_id: thread.map(str::to_owned),
                         focus: focus.map(str::to_owned),
                     })
-                    .await?
-            }
-            Via::Compact { thread, dropped } => {
+                    .await?,
+            ),
+            Via::Compact { thread, dropped } => pack(
                 memory
                     .recall_for_compaction(Compaction {
                         thread_id: (*thread).to_string(),
@@ -507,8 +510,8 @@ impl Eval {
                             .collect(),
                         focus: None,
                     })
-                    .await?
-            }
+                    .await?,
+            ),
             Via::Continue {
                 thread,
                 turn_index,
@@ -516,26 +519,34 @@ impl Eval {
             } => {
                 let mut pre = PreTurn::new(*thread, *turn_index, probe.question);
                 pre.in_prompt_from = *in_prompt_from;
-                memory.pre_turn(pre).await?.pack
+                pack(memory.pre_turn(pre).await?.pack)
+            }
+            Via::ContextDoc { heading } => {
+                let root = layout(run, scenario.name, probe.tenant)?.root().clone();
+                let spec = ContextSpec {
+                    briefs: vec![Brief::new(*heading, probe.question)],
+                    reach: Some(Reach::subtree(root)),
+                    ..ContextSpec::default()
+                };
+                let doc = context::compile(engine.as_ref(), &spec).await?;
+                (doc.markdown, doc.tokens)
             }
         };
         let elapsed = ms(started);
-        let mut result = score(
-            scenario.name,
-            phase,
-            probe,
-            &pack.markdown,
-            pack.tokens,
-            elapsed,
-        );
+        let mut result = score(scenario.name, phase, probe, &markdown, tokens, elapsed);
         if let Some(llm) = llm {
-            let answer = llm.answer(&pack.markdown, probe.question).await?;
+            let answer = llm.answer(&markdown, probe.question).await?;
             result.llm_ok = grade(probe, Some(&answer));
             result.llm_answer = Some(answer);
         }
         timings.add(&format!("probe {}", result.via), elapsed);
         Ok(result)
     }
+}
+
+/// A pack's markdown and token count.
+fn pack(pack: ContextPack) -> (String, usize) {
+    (pack.markdown, pack.tokens)
 }
 
 /// One accuracy row.
