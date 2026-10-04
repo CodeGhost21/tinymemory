@@ -63,7 +63,7 @@
 
 pub mod composio;
 pub mod error;
-#[cfg(feature = "network")]
+#[cfg(feature = "sources-network")]
 pub mod fetch;
 pub mod items;
 pub mod raw_kind;

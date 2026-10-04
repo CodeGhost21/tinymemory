@@ -34,12 +34,12 @@ pub mod composio;
 pub mod conversation;
 pub mod file;
 pub mod folder;
-#[cfg(feature = "network")]
+#[cfg(feature = "sources-network")]
 pub mod github;
 pub mod local_file;
-#[cfg(feature = "network")]
+#[cfg(feature = "sources-network")]
 pub mod rss;
-#[cfg(feature = "network")]
+#[cfg(feature = "sources-network")]
 pub mod web_page;
 
 /// SSRF guard + fetch hygiene shared by the network readers and
@@ -47,7 +47,7 @@ pub mod web_page;
 ///
 /// Public so a host fetching a user-supplied URL by other means applies the
 /// same policy rather than a second, weaker one.
-#[cfg(feature = "network")]
+#[cfg(feature = "sources-network")]
 pub mod ssrf;
 
 use std::path::Path;
@@ -160,7 +160,7 @@ pub fn reader_for(kind: &SourceKind) -> Option<Box<dyn SourceReader>> {
 /// already decided the fetch is allowed. **Do not reuse it from a polling
 /// loop**: the host stays in charge of egress, OAuth and cost budgeting by
 /// constructing a network reader deliberately there.
-#[cfg(feature = "network")]
+#[cfg(feature = "sources-network")]
 #[must_use]
 pub fn reader_for_request(kind: &SourceKind) -> Box<dyn SourceReader> {
     match kind {

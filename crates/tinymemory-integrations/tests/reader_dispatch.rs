@@ -27,7 +27,7 @@ fn timer_dispatch_constructs_only_readers_that_never_need_network() {
     }
 }
 
-#[cfg(feature = "network")]
+#[cfg(feature = "sources-network")]
 #[test]
 fn request_dispatch_hands_out_a_reader_for_every_kind() {
     use tinymemory_integrations::sources::readers::reader_for_request;

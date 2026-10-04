@@ -1593,30 +1593,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "tinymemory"
+name = "tinymemory-api"
 version = "1.22.4"
 dependencies = [
  "async-trait",
- "serde",
- "serde_json",
- "tinymemory-api",
- "tinymemory-conformance",
- "tinymemory-context",
- "tinymemory-cortex",
- "tinymemory-documents",
- "tinymemory-import",
- "tinymemory-safety",
- "tinymemory-sources",
- "tokio",
- "toml",
- "zip",
-]
-
-[[package]]
-name = "tinymemory-api"
-version = "2.0.0"
-dependencies = [
- "async-trait",
  "chrono",
  "serde",
  "serde_json",
@@ -1626,106 +1606,48 @@ dependencies = [
 ]
 
 [[package]]
-name = "tinymemory-conformance"
-version = "2.0.0"
-dependencies = [
- "async-trait",
- "thiserror",
- "tinymemory-api",
- "tokio",
-]
-
-[[package]]
-name = "tinymemory-context"
-version = "2.0.0"
-dependencies = [
- "async-trait",
- "chrono",
- "log",
- "serde",
- "thiserror",
- "tinymemory-api",
- "tinymemory-conformance",
- "tokio",
-]
-
-[[package]]
-name = "tinymemory-cortex"
-version = "2.0.0"
+name = "tinymemory-integrations"
+version = "1.22.4"
 dependencies = [
  "async-trait",
  "axum",
- "futures",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "tinymemory-api",
- "tinymemory-conformance",
- "tinymemory-context",
- "tokio",
-]
-
-[[package]]
-name = "tinymemory-documents"
-version = "0.1.0"
-dependencies = [
- "async-trait",
  "calamine",
- "pdf-extract",
- "quick-xml",
- "serde",
- "serde_json",
- "thiserror",
- "tinymemory-api",
- "tokio",
- "zip",
-]
-
-[[package]]
-name = "tinymemory-import"
-version = "0.1.0"
-dependencies = [
- "rusqlite",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "tinymemory-api",
-]
-
-[[package]]
-name = "tinymemory-safety"
-version = "0.1.0"
-dependencies = [
- "log",
- "regex",
- "serde_json",
- "tinymemory-api",
-]
-
-[[package]]
-name = "tinymemory-sources"
-version = "0.1.0"
-dependencies = [
- "async-trait",
  "chrono",
  "futures",
  "log",
+ "pdf-extract",
+ "quick-xml",
  "regex",
  "reqwest",
+ "rusqlite",
  "schemars",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror",
  "tinymemory-api",
- "tinymemory-documents",
+ "tinymemory-tools",
  "tokio",
  "toml",
  "tracing",
  "uuid",
  "walkdir",
+ "zip",
+]
+
+[[package]]
+name = "tinymemory-tools"
+version = "1.22.4"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "log",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tinymemory-api",
+ "tokio",
 ]
 
 [[package]]
