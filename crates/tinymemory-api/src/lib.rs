@@ -21,9 +21,9 @@
 //! [`EngineDescriptor`]; a fetch mode it does not list fails with
 //! [`Error::Unsupported`].
 //!
-//! This crate performs no I/O. Engines live in their own crates
-//! (`tinymemory-cortex`), and the `tinymemory` facade builds one from
-//! configuration.
+//! This crate performs no I/O. Engines live in `tinymemory-integrations`
+//! (the CortexDB engine, and the registry that builds one from
+//! configuration).
 //!
 //! # Example
 //!
@@ -43,6 +43,8 @@
 //! # Ok::<(), tinymemory_api::Error>(())
 //! ```
 
+#[cfg(feature = "conformance")]
+pub mod conformance;
 pub mod engine;
 pub mod error;
 pub mod explore;
@@ -53,7 +55,10 @@ pub mod query;
 
 pub use engine::{EngineDescriptor, EngineHealth, MAX_STORE_MANY, MemoryEngine, validate_many};
 pub use error::{Error, Result};
-pub use explore::{ExplorePage, ExploreRequest, Facet, FacetBucket, GetRequest};
+pub use explore::{
+    ExplorePage, ExploreRequest, Facet, FacetBucket, GetRequest, MAX_BUCKETS, MAX_GET_IDS,
+    MAX_SCAN_LIMIT,
+};
 pub use item::{DocumentBody, ItemId, ItemKind, LearningKind, Role, StoreItem, StoreReceipt, Turn};
 pub use meta::{MemoryMeta, MetaFilter, SourceKind, SourceRef, ToolCallRef, TurnRange};
 pub use namespace::{Namespace, Reach, Segment, SegmentKind};

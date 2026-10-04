@@ -1,15 +1,53 @@
 [workspace]
 resolver = "2"
-# Every crate in this repository lives under `crates/`, one directory per
-# package, each directory named for the package it holds. There is no root
-# package: the facade a host depends on is `crates/tinymemory`, the same as any
-# other member. Every member is also a default member, so the four contract
-# commands build and test all of them.
+# TinyMemory is three crates, one directory each under `crates/`:
+#
+# - `tinymemory-api`: the core contract (`MemoryEngine`, items, metadata,
+#   namespaces, errors) and, behind `conformance`, the suite every engine must
+#   pass.
+# - `tinymemory-tools`: the agent-facing tool spec over any engine, and the
+#   `context.md` compiler.
+# - `tinymemory-integrations`: everything that talks to the outside world —
+#   the CortexDB engine and its registry, document conversion, source readers,
+#   safety scrubbing and the legacy v1 import — each behind a feature.
 members = ["crates/*"]
 # `worktrees/` holds `git worktree` checkouts of this same repository. Each one
 # contains a full copy of this manifest and every crate under it, so without
 # this entry cargo walks into them and reports duplicate packages.
 exclude = ["worktrees"]
+
+# Shared by every crate. The release workflow bumps `version` here, so the
+# three crates always carry the same version and one tag names all of them.
+[workspace.package]
+version = "1.22.4"
+edition = "2024"
+rust-version = "1.96"
+license = "GPL-3.0-only"
+repository = "https://github.com/tinyhumansai/tinymemory"
+publish = false
+
+# One lint table for the whole workspace; each crate opts in with
+# `[lints] workspace = true`.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "warn"
+private_intra_doc_links = "warn"
 
 [profile.release]
 # Cross-crate optimization and smaller, faster binaries for release builds.

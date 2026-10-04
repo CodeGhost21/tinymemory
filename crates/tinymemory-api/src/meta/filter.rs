@@ -102,8 +102,7 @@ impl MetaFilter {
 
     /// Whether the filter's reach admits `namespace` (ignoring every other
     /// field).
-    #[must_use]
-    pub fn admits_namespace(&self, namespace: &Namespace) -> bool {
+    fn admits_namespace(&self, namespace: &Namespace) -> bool {
         self.reach
             .as_ref()
             .is_none_or(|reach| reach.admits(namespace))

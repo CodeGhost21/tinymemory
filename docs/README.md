@@ -10,11 +10,15 @@ where it cannot drift.
 ```text
 docs/
 ├── README.md      # this index
+├── architecture/  # how the code is built, one document per concern
 ├── specs/         # behavior and architecture specifications
 ├── plans/         # implementation plans derived from approved specs
 └── adr/           # architecture decision records, numbered and immutable
 ```
 
+- **[`architecture/`](architecture/README.md)** — the shape of the three crates:
+  the core contract, operation semantics, namespaces, the CortexDB engine, the
+  tools, the integrations and the test strategy.
 - **[`specs/`](specs/README.md)** — one file per feature, module, or subsystem,
   describing its behavior, public surface, invariants, and acceptance criteria.
 - **[`plans/`](plans/README.md)** — implementation-ordered, test-first steps for

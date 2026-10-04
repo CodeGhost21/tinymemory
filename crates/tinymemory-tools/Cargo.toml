@@ -1,0 +1,35 @@
+[package]
+name = "tinymemory-tools"
+description = "Agent-facing memory tools over any TinyMemory engine, and the context.md compiler"
+readme = "README.md"
+keywords = ["memory", "agent", "llm", "tools"]
+categories = ["database"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The engine every tool calls and the types its arguments and results map to.
+tinymemory-api = { path = "../tinymemory-api" }
+# Tool parameters are JSON Schema documents, and arguments and results are
+# JSON values, so a host can hand them to any tool runtime unchanged.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# `ContextDoc::generated_at` is stamped from the system clock.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+# A context brief whose recall fails is skipped and logged, not fatal.
+log = "0.4"
+# `context::Error`.
+thiserror = "2"
+
+[dev-dependencies]
+# Every tool and the context compiler run against the reference engine.
+tinymemory-api = { path = "../tinymemory-api", features = ["conformance"] }
+async-trait = "0.1"
+tokio = { version = "1", features = ["macros", "rt"] }
+
+[lints]
+workspace = true

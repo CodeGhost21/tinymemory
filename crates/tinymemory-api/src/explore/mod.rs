@@ -30,7 +30,7 @@ use crate::query::{Hit, ListRequest};
 pub const MAX_BUCKETS: usize = 500;
 
 /// Default for [`ExploreRequest::scan_limit`].
-pub const DEFAULT_SCAN_LIMIT: usize = 5_000;
+const DEFAULT_SCAN_LIMIT: usize = 5_000;
 
 /// Most items a listing-based explore reads.
 pub const MAX_SCAN_LIMIT: usize = 50_000;
@@ -71,31 +71,12 @@ pub enum Facet {
     ToolCall,
     /// One of `meta.tags`; an item with several tags counts in each.
     Tag,
-    /// `meta.namespace`: the memory node, [`crate::namespace::ROOT_LABEL`] for
-    /// the root.
-    /// Narrowing reads exactly that node.
+    /// `meta.namespace`: the memory node, `root` for the root. Narrowing
+    /// reads exactly that node.
     Namespace,
 }
 
 impl Facet {
-    /// Every facet, in declaration order.
-    pub const ALL: [Self; 14] = [
-        Self::Kind,
-        Self::Source,
-        Self::SourceId,
-        Self::Workspace,
-        Self::Folder,
-        Self::FilePath,
-        Self::Language,
-        Self::Repo,
-        Self::Url,
-        Self::Thread,
-        Self::Agent,
-        Self::ToolCall,
-        Self::Tag,
-        Self::Namespace,
-    ];
-
     /// The stable snake_case wire string.
     #[must_use]
     pub fn as_str(self) -> &'static str {
@@ -203,8 +184,8 @@ pub struct ExploreRequest {
     /// Most buckets to return, largest first; `1..=`[`MAX_BUCKETS`].
     pub limit: usize,
     /// Most items a listing-based engine reads before it stops and reports
-    /// [`ExplorePage::truncated`]; `1..=`[`MAX_SCAN_LIMIT`]. An engine that
-    /// aggregates server-side may ignore it.
+    /// [`ExplorePage::truncated`]; `1..=`[`MAX_SCAN_LIMIT`], 5,000 when
+    /// omitted. An engine that aggregates server-side may ignore it.
     #[serde(default = "default_scan_limit")]
     pub scan_limit: usize,
 }
@@ -350,10 +331,8 @@ pub async fn explore_by_listing<E: MemoryEngine + ?Sized>(
 }
 
 /// Builds an [`ExplorePage`] from per-value counts: largest first, ties by
-/// value, cut to `limit`. Public so an engine aggregating server-side
-/// shapes its answer identically.
-#[must_use]
-pub fn page_of(
+/// value, cut to `limit`.
+fn page_of(
     facet: Facet,
     counts: BTreeMap<String, u64>,
     limit: usize,

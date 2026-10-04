@@ -1,0 +1,690 @@
+[
+  {
+    "description": "Answer a question from long-term memory. Returns a synthesised answer and the memories it cites. Use this first when you need to know what is remembered about something.",
+    "name": "memory_recall",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "filter": {
+          "additionalProperties": false,
+          "description": "Narrows which memories are considered; every field set must match.",
+          "properties": {
+            "agent_id": {
+              "description": "Exact id of the agent that produced it.",
+              "type": "string"
+            },
+            "file_path": {
+              "description": "File path, exact or as a path prefix.",
+              "type": "string"
+            },
+            "folder": {
+              "description": "Folder, exact or as a path prefix.",
+              "type": "string"
+            },
+            "kinds": {
+              "description": "Only these kinds of memory; empty means all.",
+              "items": {
+                "enum": [
+                  "document",
+                  "conversation",
+                  "learning"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "observed_after": {
+              "description": "Only memories observed at or after this RFC 3339 time.",
+              "format": "date-time",
+              "type": "string"
+            },
+            "observed_before": {
+              "description": "Only memories observed before this RFC 3339 time.",
+              "format": "date-time",
+              "type": "string"
+            },
+            "repo": {
+              "description": "Exact repository, as `owner/name` or a URL.",
+              "type": "string"
+            },
+            "sources": {
+              "description": "Only memories from these kinds of source; empty means all.",
+              "items": {
+                "enum": [
+                  "folder",
+                  "file",
+                  "link",
+                  "github",
+                  "rss",
+                  "composio",
+                  "conversation",
+                  "agent",
+                  "import"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "tags_any": {
+              "description": "Only memories carrying at least one of these tags.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "thread_id": {
+              "description": "Exact conversation thread id.",
+              "type": "string"
+            },
+            "url": {
+              "description": "Exact URL the memory was read from.",
+              "type": "string"
+            },
+            "workspace": {
+              "description": "Exact workspace.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "instructions": {
+          "description": "Optional extra instructions for how to answer (length, format, focus).",
+          "type": "string"
+        },
+        "limit": {
+          "default": 10,
+          "description": "Most memories the answer may cite.",
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "question": {
+          "description": "The question to answer, in natural language.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "question"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Search long-term memory and return the raw matching memories, best first. Use it when you need the stored text itself rather than an answer. Pass `cursor` from a previous result to get the next page.",
+    "name": "memory_fetch",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "description": "The `next_cursor` of a previous result, to continue from it.",
+          "type": "string"
+        },
+        "filter": {
+          "additionalProperties": false,
+          "description": "Narrows which memories are considered; every field set must match.",
+          "properties": {
+            "agent_id": {
+              "description": "Exact id of the agent that produced it.",
+              "type": "string"
+            },
+            "file_path": {
+              "description": "File path, exact or as a path prefix.",
+              "type": "string"
+            },
+            "folder": {
+              "description": "Folder, exact or as a path prefix.",
+              "type": "string"
+            },
+            "kinds": {
+              "description": "Only these kinds of memory; empty means all.",
+              "items": {
+                "enum": [
+                  "document",
+                  "conversation",
+                  "learning"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "observed_after": {
+              "description": "Only memories observed at or after this RFC 3339 time.",
+              "format": "date-time",
+              "type": "string"
+            },
+            "observed_before": {
+              "description": "Only memories observed before this RFC 3339 time.",
+              "format": "date-time",
+              "type": "string"
+            },
+            "repo": {
+              "description": "Exact repository, as `owner/name` or a URL.",
+              "type": "string"
+            },
+            "sources": {
+              "description": "Only memories from these kinds of source; empty means all.",
+              "items": {
+                "enum": [
+                  "folder",
+                  "file",
+                  "link",
+                  "github",
+                  "rss",
+                  "composio",
+                  "conversation",
+                  "agent",
+                  "import"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "tags_any": {
+              "description": "Only memories carrying at least one of these tags.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "thread_id": {
+              "description": "Exact conversation thread id.",
+              "type": "string"
+            },
+            "url": {
+              "description": "Exact URL the memory was read from.",
+              "type": "string"
+            },
+            "workspace": {
+              "description": "Exact workspace.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "limit": {
+          "default": 10,
+          "description": "Most memories to return.",
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "mode": {
+          "default": "hybrid",
+          "description": "How to rank: `keyword` (lexical match), `vector` (meaning) or `hybrid` (both), as this memory offers them.",
+          "enum": [
+            "keyword",
+            "vector",
+            "hybrid"
+          ],
+          "type": "string"
+        },
+        "query": {
+          "description": "What to search for.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Page through stored memories without a query, optionally narrowed by a filter. Pass `cursor` from a previous result to get the next page.",
+    "name": "memory_list",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "description": "The `next_cursor` of a previous result, to continue from it.",
+          "type": "string"
+        },
+        "filter": {
+          "additionalProperties": false,
+          "description": "Narrows which memories are considered; every field set must match.",
+          "properties": {
+            "agent_id": {
+              "description": "Exact id of the agent that produced it.",
+              "type": "string"
+            },
+            "file_path": {
+              "description": "File path, exact or as a path prefix.",
+              "type": "string"
+            },
+            "folder": {
+              "description": "Folder, exact or as a path prefix.",
+              "type": "string"
+            },
+            "kinds": {
+              "description": "Only these kinds of memory; empty means all.",
+              "items": {
+                "enum": [
+                  "document",
+                  "conversation",
+                  "learning"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "observed_after": {
+              "description": "Only memories observed at or after this RFC 3339 time.",
+              "format": "date-time",
+              "type": "string"
+            },
+            "observed_before": {
+              "description": "Only memories observed before this RFC 3339 time.",
+              "format": "date-time",
+              "type": "string"
+            },
+            "repo": {
+              "description": "Exact repository, as `owner/name` or a URL.",
+              "type": "string"
+            },
+            "sources": {
+              "description": "Only memories from these kinds of source; empty means all.",
+              "items": {
+                "enum": [
+                  "folder",
+                  "file",
+                  "link",
+                  "github",
+                  "rss",
+                  "composio",
+                  "conversation",
+                  "agent",
+                  "import"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "tags_any": {
+              "description": "Only memories carrying at least one of these tags.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "thread_id": {
+              "description": "Exact conversation thread id.",
+              "type": "string"
+            },
+            "url": {
+              "description": "Exact URL the memory was read from.",
+              "type": "string"
+            },
+            "workspace": {
+              "description": "Exact workspace.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "limit": {
+          "default": 10,
+          "description": "Most memories to return.",
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "description": "Read memories whole by id (ids come from recall citations, fetch and list results). Ids that name nothing you can see are reported as missing.",
+    "name": "memory_get",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "ids": {
+          "description": "The ids of the memories to read.",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 200,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "ids"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Count stored memories per value of one facet (kind, source, folder, thread, tag, ...), largest first, to see what memory holds before narrowing a filter.",
+    "name": "memory_explore",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "facet": {
+          "description": "The dimension to group memories by.",
+          "enum": [
+            "kind",
+            "source",
+            "source_id",
+            "workspace",
+            "folder",
+            "file_path",
+            "language",
+            "repo",
+            "url",
+            "thread",
+            "agent",
+            "tool_call",
+            "tag"
+          ],
+          "type": "string"
+        },
+        "filter": {
+          "additionalProperties": false,
+          "description": "Narrows which memories are considered; every field set must match.",
+          "properties": {
+            "agent_id": {
+              "description": "Exact id of the agent that produced it.",
+              "type": "string"
+            },
+            "file_path": {
+              "description": "File path, exact or as a path prefix.",
+              "type": "string"
+            },
+            "folder": {
+              "description": "Folder, exact or as a path prefix.",
+              "type": "string"
+            },
+            "kinds": {
+              "description": "Only these kinds of memory; empty means all.",
+              "items": {
+                "enum": [
+                  "document",
+                  "conversation",
+                  "learning"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "observed_after": {
+              "description": "Only memories observed at or after this RFC 3339 time.",
+              "format": "date-time",
+              "type": "string"
+            },
+            "observed_before": {
+              "description": "Only memories observed before this RFC 3339 time.",
+              "format": "date-time",
+              "type": "string"
+            },
+            "repo": {
+              "description": "Exact repository, as `owner/name` or a URL.",
+              "type": "string"
+            },
+            "sources": {
+              "description": "Only memories from these kinds of source; empty means all.",
+              "items": {
+                "enum": [
+                  "folder",
+                  "file",
+                  "link",
+                  "github",
+                  "rss",
+                  "composio",
+                  "conversation",
+                  "agent",
+                  "import"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "tags_any": {
+              "description": "Only memories carrying at least one of these tags.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "thread_id": {
+              "description": "Exact conversation thread id.",
+              "type": "string"
+            },
+            "url": {
+              "description": "Exact URL the memory was read from.",
+              "type": "string"
+            },
+            "workspace": {
+              "description": "Exact workspace.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "limit": {
+          "default": 10,
+          "description": "Most values to return.",
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "facet"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Store one memory: exactly one of `learning` (a distilled statement worth remembering: a preference, fact, procedure or correction), `document` (a titled text) or `conversation` (ordered turns). Storing the same memory twice is harmless.",
+    "name": "memory_store",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation": {
+          "additionalProperties": false,
+          "description": "An exchange to remember.",
+          "properties": {
+            "turns": {
+              "description": "The turns, in order.",
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "role": {
+                    "description": "Who spoke.",
+                    "enum": [
+                      "user",
+                      "assistant",
+                      "system",
+                      "tool"
+                    ],
+                    "type": "string"
+                  },
+                  "text": {
+                    "description": "What was said.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "role",
+                  "text"
+                ],
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+            }
+          },
+          "required": [
+            "turns"
+          ],
+          "type": "object"
+        },
+        "document": {
+          "additionalProperties": false,
+          "description": "A text to remember whole.",
+          "properties": {
+            "text": {
+              "description": "The document's body, normally markdown.",
+              "type": "string"
+            },
+            "title": {
+              "description": "The document's title.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "type": "object"
+        },
+        "learning": {
+          "additionalProperties": false,
+          "description": "A distilled statement worth remembering.",
+          "properties": {
+            "confidence": {
+              "default": 0.800000011920929,
+              "description": "How sure you are, from 0 to 1.",
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            "evidence": {
+              "description": "What supports the statement.",
+              "type": "string"
+            },
+            "learning_kind": {
+              "default": "fact",
+              "description": "What kind of statement it is.",
+              "enum": [
+                "preference",
+                "fact",
+                "procedure",
+                "correction",
+                "other"
+              ],
+              "type": "string"
+            },
+            "text": {
+              "description": "The statement, self-contained and specific.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "type": "object"
+        },
+        "tags": {
+          "description": "Free-form tags to file the memory under.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "description": "Remove memories, either by `ids` or by a non-empty `filter` (never both). Ids you cannot see are skipped and reported.",
+    "name": "memory_forget",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "filter": {
+          "additionalProperties": false,
+          "description": "Remove every memory matching this filter; it must set at least one field.",
+          "properties": {
+            "agent_id": {
+              "description": "Exact id of the agent that produced it.",
+              "type": "string"
+            },
+            "file_path": {
+              "description": "File path, exact or as a path prefix.",
+              "type": "string"
+            },
+            "folder": {
+              "description": "Folder, exact or as a path prefix.",
+              "type": "string"
+            },
+            "kinds": {
+              "description": "Only these kinds of memory; empty means all.",
+              "items": {
+                "enum": [
+                  "document",
+                  "conversation",
+                  "learning"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "observed_after": {
+              "description": "Only memories observed at or after this RFC 3339 time.",
+              "format": "date-time",
+              "type": "string"
+            },
+            "observed_before": {
+              "description": "Only memories observed before this RFC 3339 time.",
+              "format": "date-time",
+              "type": "string"
+            },
+            "repo": {
+              "description": "Exact repository, as `owner/name` or a URL.",
+              "type": "string"
+            },
+            "sources": {
+              "description": "Only memories from these kinds of source; empty means all.",
+              "items": {
+                "enum": [
+                  "folder",
+                  "file",
+                  "link",
+                  "github",
+                  "rss",
+                  "composio",
+                  "conversation",
+                  "agent",
+                  "import"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "tags_any": {
+              "description": "Only memories carrying at least one of these tags.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "thread_id": {
+              "description": "Exact conversation thread id.",
+              "type": "string"
+            },
+            "url": {
+              "description": "Exact URL the memory was read from.",
+              "type": "string"
+            },
+            "workspace": {
+              "description": "Exact workspace.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "ids": {
+          "description": "The ids of the memories to remove.",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 200,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "type": "object"
+    }
+  }
+]

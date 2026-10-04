@@ -1,0 +1,456 @@
+//! Tests for the local folder reader.
+
+use super::*;
+
+use std::fs;
+use tempfile::TempDir;
+
+fn folder_source(path: &str) -> MemorySourceEntry {
+    MemorySourceEntry {
+        id: "src_folder".into(),
+        kind: SourceKind::Folder,
+        label: "Test folder".into(),
+        enabled: true,
+        toolkit: None,
+        connection_id: None,
+        path: Some(path.into()),
+        glob: None,
+        url: None,
+        branch: None,
+        paths: Vec::new(),
+        max_commits: None,
+        max_issues: None,
+        max_prs: None,
+        max_items: None,
+        selector: None,
+        max_tokens_per_sync: None,
+        max_cost_per_sync_usd: None,
+        sync_depth_days: None,
+    }
+}
+
+fn config() -> &'static std::path::Path {
+    std::path::Path::new("/unused")
+}
+
+#[test]
+fn glob_to_regex_matches_default_pattern() {
+    let re = glob_to_regex("**/*.md").unwrap();
+    assert!(re.is_match("note.md"));
+    assert!(re.is_match("sub/dir/note.md"));
+    assert!(!re.is_match("note.txt"));
+}
+
+#[test]
+fn glob_to_regex_single_star_excludes_separators() {
+    let re = glob_to_regex("*.md").unwrap();
+    assert!(re.is_match("note.md"));
+    assert!(!re.is_match("sub/note.md"));
+}
+
+#[tokio::test]
+async fn list_items_without_a_glob_takes_markdown_text_and_code() {
+    let tmp = TempDir::new().unwrap();
+    fs::write(tmp.path().join("note.md"), "# Hello").unwrap();
+    fs::write(tmp.path().join("data.txt"), "text").unwrap();
+    fs::write(tmp.path().join("main.rs"), "fn main() {}").unwrap();
+    fs::write(tmp.path().join("Dockerfile"), "FROM scratch").unwrap();
+    fs::write(tmp.path().join("photo.png"), [0x89, b'P', b'N', b'G']).unwrap();
+    fs::write(tmp.path().join("page.html"), "<p>x</p>").unwrap();
+
+    let source = folder_source(&tmp.path().to_string_lossy());
+    let reader = FolderReader;
+    let mut ids: Vec<String> = reader
+        .list_items(&source, config())
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|item| item.id)
+        .collect();
+    ids.sort();
+    assert_eq!(ids, ["Dockerfile", "data.txt", "main.rs", "note.md"]);
+}
+
+#[tokio::test]
+async fn list_items_skips_hidden_and_build_directories() {
+    let tmp = TempDir::new().unwrap();
+    for dir in [".git", "target/debug", "node_modules/pkg", ".hidden", "src"] {
+        fs::create_dir_all(tmp.path().join(dir)).unwrap();
+    }
+    fs::write(tmp.path().join(".git/config.toml"), "x").unwrap();
+    fs::write(tmp.path().join("target/debug/build.rs"), "x").unwrap();
+    fs::write(tmp.path().join("node_modules/pkg/index.js"), "x").unwrap();
+    fs::write(tmp.path().join(".hidden/notes.md"), "x").unwrap();
+    fs::write(tmp.path().join(".env.md"), "SECRET=1").unwrap();
+    fs::write(tmp.path().join("src/lib.rs"), "x").unwrap();
+
+    let mut source = folder_source(&tmp.path().to_string_lossy());
+    let ids: Vec<String> = FolderReader
+        .list_items(&source, config())
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|item| item.id)
+        .collect();
+    assert_eq!(ids, ["src/lib.rs"]);
+
+    // A glob does not reopen them, and neither does reading by id.
+    source.glob = Some("**/*".into());
+    let ids: Vec<String> = FolderReader
+        .list_items(&source, config())
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|item| item.id)
+        .collect();
+    assert_eq!(ids, ["src/lib.rs"]);
+    for hidden in [".git/config.toml", "node_modules/pkg/index.js", ".env.md"] {
+        let error = FolderReader
+            .read_item(&source, hidden, config())
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, crate::sources::Error::Invalid(_)),
+            "{hidden}: {error:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_hidden_folder_root_is_still_read() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().join(".notes");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("a.md"), "a").unwrap();
+    let source = folder_source(&root.to_string_lossy());
+    let items = FolderReader.list_items(&source, config()).await.unwrap();
+    assert_eq!(items.len(), 1);
+}
+
+#[test]
+fn default_candidates_are_markdown_text_and_code() {
+    for id in ["a.md", "b.txt", "src/c.py", "Makefile", "x.yaml"] {
+        assert!(is_default_candidate(id), "{id}");
+    }
+    for id in ["a.html", "b.pdf", "c.png", "README", "d.docx"] {
+        assert!(!is_default_candidate(id), "{id}");
+    }
+}
+
+#[tokio::test]
+async fn list_items_recurses_into_subdirectories() {
+    let tmp = TempDir::new().unwrap();
+    fs::create_dir_all(tmp.path().join("sub")).unwrap();
+    fs::write(tmp.path().join("top.md"), "a").unwrap();
+    fs::write(tmp.path().join("sub/nested.md"), "b").unwrap();
+
+    let source = folder_source(&tmp.path().to_string_lossy());
+    let reader = FolderReader;
+    let items = reader.list_items(&source, config()).await.unwrap();
+
+    let ids: Vec<&str> = items.iter().map(|i| i.id.as_str()).collect();
+    assert_eq!(items.len(), 2);
+    assert!(ids.contains(&"top.md"));
+    assert!(ids.contains(&"sub/nested.md"));
+}
+
+#[tokio::test]
+async fn read_item_returns_file_content() {
+    let tmp = TempDir::new().unwrap();
+    fs::write(tmp.path().join("test.md"), "# Test\nBody").unwrap();
+
+    let source = folder_source(&tmp.path().to_string_lossy());
+    let reader = FolderReader;
+    let content = reader
+        .read_item(&source, "test.md", config())
+        .await
+        .unwrap();
+
+    assert_eq!(content.body, "# Test\nBody");
+    assert_eq!(content.content_type, ContentType::Markdown);
+}
+
+#[tokio::test]
+async fn read_item_enforces_configured_glob() {
+    let tmp = TempDir::new().unwrap();
+    fs::create_dir_all(tmp.path().join("docs")).unwrap();
+    fs::write(tmp.path().join("docs/allowed.md"), "allowed").unwrap();
+    fs::write(tmp.path().join("docs/secret.env"), "secret").unwrap();
+    let mut source = folder_source(&tmp.path().to_string_lossy());
+    source.glob = Some("docs/**/*.md".into());
+    let reader = FolderReader;
+
+    assert!(
+        reader
+            .read_item(&source, "docs/allowed.md", config())
+            .await
+            .is_ok()
+    );
+    let err = reader
+        .read_item(&source, "docs/secret.env", config())
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("outside source glob"));
+}
+
+#[tokio::test]
+async fn read_item_prevents_path_traversal() {
+    let tmp = TempDir::new().unwrap();
+    fs::write(tmp.path().join("safe.md"), "ok").unwrap();
+
+    let source = folder_source(&tmp.path().to_string_lossy());
+    let reader = FolderReader;
+    let result = reader
+        .read_item(&source, "../../../etc/passwd", config())
+        .await;
+
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn list_items_nonexistent_folder_errors() {
+    let source = folder_source("/nonexistent/path/xyz");
+    let reader = FolderReader;
+    let result = reader.list_items(&source, config()).await;
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn read_item_missing_file_errors() {
+    let tmp = TempDir::new().unwrap();
+    let source = folder_source(&tmp.path().to_string_lossy());
+    let reader = FolderReader;
+    let result = reader.read_item(&source, "missing.md", config()).await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("not found"));
+}
+
+#[tokio::test]
+async fn folder_source_without_a_path_is_rejected_for_list_and_read() {
+    let mut source = folder_source("unused");
+    source.path = None;
+    let reader = FolderReader;
+
+    for error in [
+        reader.list_items(&source, config()).await.unwrap_err(),
+        reader
+            .read_item(&source, "note.md", config())
+            .await
+            .unwrap_err(),
+    ] {
+        assert!(error.to_string().contains("folder source requires a path"));
+    }
+}
+
+#[tokio::test]
+async fn oversized_files_are_not_listed_and_cannot_be_read() {
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("huge.md");
+    let file = fs::File::create(&path).unwrap();
+    file.set_len(FOLDER_FILE_SIZE_CAP_BYTES + 1).unwrap();
+    drop(file);
+    let source = folder_source(&tmp.path().to_string_lossy());
+    let reader = FolderReader;
+
+    assert!(
+        reader
+            .list_items(&source, config())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let error = reader
+        .read_item(&source, "huge.md", config())
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("file exceeds"));
+}
+
+#[tokio::test]
+async fn invalid_utf8_is_reported_instead_of_lossily_decoded() {
+    let tmp = TempDir::new().unwrap();
+    fs::write(tmp.path().join("binary.md"), [0xff, 0xfe, 0xfd]).unwrap();
+    let source = folder_source(&tmp.path().to_string_lossy());
+    let error = FolderReader
+        .read_item(&source, "binary.md", config())
+        .await
+        .unwrap_err();
+    assert!(error.to_string().to_ascii_lowercase().contains("utf-8"));
+}
+
+#[tokio::test]
+async fn content_type_follows_the_file_extension() {
+    let tmp = TempDir::new().unwrap();
+    for (name, expected) in [
+        ("page.html", ContentType::Html),
+        ("legacy.htm", ContentType::Html),
+        ("notes.txt", ContentType::Plaintext),
+    ] {
+        fs::write(tmp.path().join(name), "body").unwrap();
+        let mut source = folder_source(&tmp.path().to_string_lossy());
+        source.glob = Some("*".to_string());
+        let content = FolderReader
+            .read_item(&source, name, config())
+            .await
+            .unwrap();
+        assert_eq!(content.content_type, expected);
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn symlinks_cannot_escape_the_configured_folder() {
+    use std::os::unix::fs::symlink;
+
+    let base = TempDir::new().unwrap();
+    let outside = TempDir::new().unwrap();
+    fs::write(outside.path().join("secret.md"), "secret").unwrap();
+    symlink(
+        outside.path().join("secret.md"),
+        base.path().join("escape.md"),
+    )
+    .unwrap();
+    let source = folder_source(&base.path().to_string_lossy());
+    let reader = FolderReader;
+
+    assert!(
+        reader
+            .list_items(&source, config())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let error = reader
+        .read_item(&source, "escape.md", config())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(error, crate::sources::Error::PathEscape(_)),
+        "got {error:?}"
+    );
+}
+
+// ── openhuman#5830: relative paths resolve against the workspace ─────────────
+
+/// Build a workspace containing `relative_docs/note.md` and return both paths.
+///
+/// The subdirectory name is deliberately distinctive: a relative path is
+/// resolved against the process CWD before this fix, and the CWD under `cargo
+/// test` is the crate directory — a common name like `docs` could accidentally
+/// exist there and make the pre-fix run pass for the wrong reason.
+fn workspace_with_relative_folder() -> TempDir {
+    let tmp = TempDir::new().unwrap();
+    let nested = tmp.path().join("relative_docs");
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(nested.join("note.md"), "# note").unwrap();
+    tmp
+}
+
+/// A relative folder path must be anchored on the workspace, not on whatever
+/// directory the host process happens to have been started in.
+///
+/// This is openhuman#5830: the desktop app's CWD is the Tauri build directory,
+/// so a source configured as `docs` looked in `…/app/src-tauri/docs` and failed
+/// on every sync cycle, permanently, for a source that could work.
+#[tokio::test]
+async fn list_items_resolves_a_relative_path_against_the_workspace() {
+    let tmp = workspace_with_relative_folder();
+    let source = folder_source("relative_docs");
+    let reader = FolderReader;
+
+    let items = reader
+        .list_items(&source, tmp.path())
+        .await
+        .expect("a relative folder path must resolve against the workspace, not the process CWD");
+
+    assert_eq!(
+        items.len(),
+        1,
+        "the workspace-relative folder holds exactly one .md file"
+    );
+    assert_eq!(items[0].id, "note.md");
+}
+
+/// `read_item` must resolve by the same rule as `list_items`.
+///
+/// Fixing only the listing half would be worse than the original bug: the
+/// reader would walk the workspace and then read back from the CWD, so every
+/// item it just listed would fail to load.
+#[tokio::test]
+async fn read_item_resolves_a_relative_path_against_the_workspace() {
+    let tmp = workspace_with_relative_folder();
+    let source = folder_source("relative_docs");
+    let reader = FolderReader;
+
+    let content = reader
+        .read_item(&source, "note.md", tmp.path())
+        .await
+        .expect("read_item must resolve a relative path against the workspace, like list_items");
+
+    assert_eq!(content.body, "# note");
+}
+
+/// The error has to say **where the reader looked**, not only what it was
+/// configured with. `folder does not exist: docs` is what cost a source-read
+/// and an `lsof` of the running process to diagnose.
+#[tokio::test]
+async fn a_missing_relative_folder_error_names_the_resolved_path() {
+    let tmp = TempDir::new().unwrap();
+    let source = folder_source("relative_docs");
+    let reader = FolderReader;
+
+    let err = reader
+        .list_items(&source, tmp.path())
+        .await
+        .expect_err("a missing folder is still an error")
+        .to_string();
+
+    assert!(
+        err.contains("resolved to"),
+        "the error must name the resolved path, not only the configured one: {err}"
+    );
+    assert!(
+        err.contains(&tmp.path().join("relative_docs").display().to_string()),
+        "the resolved path must be the workspace-anchored one: {err}"
+    );
+}
+
+/// An absolute path keeps working exactly as before, and the workspace must not
+/// influence it — otherwise this fix would break every source already
+/// configured with an absolute path.
+#[tokio::test]
+async fn an_absolute_path_ignores_the_workspace() {
+    let tmp = TempDir::new().unwrap();
+    fs::write(tmp.path().join("note.md"), "# note").unwrap();
+    let source = folder_source(&tmp.path().to_string_lossy());
+    let reader = FolderReader;
+
+    // A workspace that does not exist and shares no prefix with the source: if
+    // the absolute path were being joined onto it, nothing would resolve.
+    let bogus_workspace = std::path::Path::new("/nonexistent/workspace/root");
+    let items = reader
+        .list_items(&source, bogus_workspace)
+        .await
+        .expect("an absolute folder path must resolve without consulting the workspace");
+
+    assert_eq!(items.len(), 1, "the absolute folder still lists its file");
+}
+
+/// For an absolute path the configured string *is* the resolved path, so the
+/// error must not echo it twice.
+#[tokio::test]
+async fn an_absolute_missing_folder_error_does_not_echo_itself() {
+    let source = folder_source("/nonexistent/path/xyz");
+    let reader = FolderReader;
+
+    let err = reader
+        .list_items(&source, std::path::Path::new("/some/workspace"))
+        .await
+        .expect_err("a missing folder is still an error")
+        .to_string();
+
+    assert!(
+        !err.contains("resolved to"),
+        "an absolute path is already resolved; the error must not repeat it: {err}"
+    );
+}
