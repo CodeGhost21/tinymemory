@@ -16,7 +16,11 @@
 # Reports, logs and summary.md land in OUT_DIR (target/memory-eval/flags).
 #
 # MODELS=openrouter spends money on every profile: measure the baseline's
-# cost first (its report ends with it) and multiply.
+# cost first (its report ends with it) and multiply. Before starting, the
+# sweep asks OpenRouter what the key has left and refuses when it cannot
+# cover COST_PER_RUN (default $0.50, the baseline with --llm on v0.10.4) for
+# every run: a key that runs dry mid-sweep answers 403, embeddings stop, and
+# every later run fails on its writes. FORCE=1 skips the check.
 
 set -euo pipefail
 
@@ -37,6 +41,29 @@ if [ ${#profiles[@]} -eq 0 ]; then
   for file in "$flags"/*.env; do
     profiles+=("$(basename "$file" .env)")
   done
+fi
+
+# Every run the sweep will make, skipped profiles left out.
+planned=0
+for profile in "${profiles[@]}"; do
+  needs="$(sed -n 's/^# requires: *//p' "$flags/$profile.env" 2>/dev/null)"
+  if [ -z "$needs" ] || [ -n "${!needs:-}" ]; then
+    planned=$((planned + repeat))
+  fi
+done
+if [ "${MODELS:-mock}" = openrouter ] && [ -z "${FORCE:-}" ]; then
+  : "${OPENROUTER_API_KEY:?MODELS=openrouter needs OPENROUTER_API_KEY}"
+  left="$(curl --silent --max-time 10 https://openrouter.ai/api/v1/key \
+    -H "Authorization: Bearer $OPENROUTER_API_KEY" |
+    sed -n 's/.*"limit_remaining":\([0-9.]*\).*/\1/p')"
+  need="$(awk -v n="$planned" -v c="${COST_PER_RUN:-0.5}" 'BEGIN { printf "%.2f", n * c }')"
+  # An empty answer means the key has no limit (or the check failed).
+  if [ -n "$left" ] && awk -v l="$left" -v n="$need" 'BEGIN { exit !(l < n) }'; then
+    echo "the key has \$$left left; $planned runs need about \$$need (COST_PER_RUN" \
+      "${COST_PER_RUN:-0.5}). Run fewer profiles, wait for the limit to reset, or set FORCE=1." >&2
+    exit 1
+  fi
+  echo "key has \$${left:-unlimited} left; $planned runs need about \$$need"
 fi
 
 mkdir -p "$out"
