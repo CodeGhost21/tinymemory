@@ -43,7 +43,10 @@ Beyond the contract's reads and writes, the engine consolidates: Direct
 posts `v1/beliefs/build` once per held scope a `ConsolidateRequest` admits
 (`engine/consolidate.rs`, declared `Consolidation::OnDemand`) and reports the
 beliefs built, since the server builds within the request; hosted
-declares `Consolidation::Scheduled` and sends nothing.
+declares `Consolidation::Scheduled` and sends nothing. What was built is
+read back by `beliefs` (`engine/beliefs.rs`): a `beliefs`-only recall per
+held scope for a query, or the `v1/beliefs` listing without one, each belief
+a `Learning` hit tagged `belief`. Fetch and list are unchanged.
 
 A host usually goes through the registry instead of naming the engine:
 `tinymemory_integrations::{MemoryConfig, EngineCredential, build_engine,
