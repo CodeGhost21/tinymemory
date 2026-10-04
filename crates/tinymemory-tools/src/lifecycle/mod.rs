@@ -15,7 +15,7 @@
 //! | off the turn | [`AgentMemory::run_background`] | the job |
 //!
 //! The hot path — `pre_turn` and `post_turn` — never waits for indexing and
-//! never runs a model: writes use [`WaitFor::Accepted`] and the pack is
+//! never runs a model: writes use [`tinymemory_api::WaitFor::Accepted`] and the pack is
 //! ranked retrieval ([`SectionQuery::Fetch`]). Logging runs concurrently
 //! with the read, and the pack never contains the turn being logged or the
 //! part of the thread still in the prompt.
