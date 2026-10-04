@@ -37,6 +37,7 @@ already needs):
 | `cortex` | `reqwest` (rustls TLS, streaming bodies), `tokio` (`time` only), `futures`, `sha2` |
 | `documents` | nothing beyond the small set above |
 | `documents-office` | `pdf-extract`, `calamine`, `quick-xml`, `zip` (all pure Rust, no system libraries) |
+| `brain` | `tinymemory-tools` (for `BrainDocument`; it adds only `futures`, `chrono`, `log`) |
 | `sources` | `schemars`, `regex`, `walkdir`, `chrono`, `log`, `tracing` |
 | `sources-network` | `reqwest`, `futures`, `tokio` with `process`, `io-util` and `net` (the GitHub reader runs `gh` and `git`; the SSRF resolver does DNS) |
 | `safety` | `regex`, `serde_json`, `log` |

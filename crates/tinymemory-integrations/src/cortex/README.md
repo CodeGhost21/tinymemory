@@ -39,6 +39,11 @@ From `tinymemory_integrations::cortex`:
 - `Error`/`Result` (the contract's own `tinymemory_api::Error`),
   `error_code`, `is_insufficient_credits`
 
+Beyond the contract's reads and writes, the engine consolidates: Direct
+posts `v1/beliefs/build` once per held scope a `ConsolidateRequest` admits
+(`engine/consolidate.rs`, declared `Consolidation::OnDemand`); hosted
+declares `Consolidation::Scheduled` and sends nothing.
+
 A host usually goes through the registry instead of naming the engine:
 `tinymemory_integrations::{MemoryConfig, EngineCredential, build_engine,
 list_engines}` (modules `config` and `registry`).
@@ -130,7 +135,9 @@ as prefixes, so they cannot be labelled and are filtered only client-side.
   earlier store failed part-way), only the missing turns are written. Direct
   writes `v1/experience?wait=indexed`, or `v1/experience/bulk?wait=indexed`
   with `ordering: strict_temporal` when an item has two or more events due.
-  Hosted writes one event at a time, in order. Every write uses a fresh
+  Hosted writes one event at a time, in order. `store_with` with
+  `WaitFor::Accepted` drops `?wait=indexed` and skips the waits below: the
+  agent lifecycle's live turns return once CortexDB captured them. Every write uses a fresh
   `idempotency_key`, never a content-derived one, because CortexDB keeps a
   forgotten event's key and would swallow a re-store. Then one listing wait per
   scope written (for its last event) and one ranked-recall wait (best-effort)

@@ -283,6 +283,10 @@ Names and schemas are frozen by a fixture test. See
 
 ## Context (`tinymemory-tools`, module `context`)
 
+`context.md` is now one preset of the holistic recall that the agent
+lifecycle is built on; see [agent-memory.md](agent-memory.md). Its output is
+unchanged.
+
 ```rust
 pub struct ContextSpec { pub budget_tokens: usize, pub briefs: Vec<Brief>, pub learnings_limit: usize }
 pub struct Brief { pub heading: String, pub question: String, pub filter: MetaFilter }

@@ -5,8 +5,8 @@ resolver = "2"
 # - `tinymemory-api`: the core contract (`MemoryEngine`, items, metadata,
 #   namespaces, errors) and, behind `conformance`, the suite every engine must
 #   pass.
-# - `tinymemory-tools`: the agent-facing tool spec over any engine, and the
-#   `context.md` compiler.
+# - `tinymemory-tools`: the agent-facing tool spec over any engine, holistic
+#   recall and the `context.md` compiler, and the agent memory lifecycle.
 # - `tinymemory-integrations`: everything that talks to the outside world —
 #   the CortexDB engine and its registry, document conversion, source readers,
 #   safety scrubbing and the legacy v1 import — each behind a feature.

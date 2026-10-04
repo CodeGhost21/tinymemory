@@ -20,7 +20,7 @@ to depend on.
 | Crate | Role | Why it is separate |
 | --- | --- | --- |
 | `tinymemory-api` | The **contract**: `MemoryEngine`, items, metadata, filters, namespaces, errors. With the `conformance` feature, the suite every engine must pass and an in-memory reference engine. | It performs no I/O and links no runtime, HTTP stack or storage engine, so an engine, a tool layer or a host can depend on it without inheriting anything else. |
-| `tinymemory-tools` | The **agent surface**: `MemoryTools` (seven model-callable tools with JSON Schemas and host-fixed scoping) and the `context.md` compiler. | It works over any `MemoryEngine`, has no tool-runtime dependency, and is where "a model must never choose whose memory it touches" is enforced. |
+| `tinymemory-tools` | The **agent surface**: `MemoryTools` (seven model-callable tools with JSON Schemas and host-fixed scoping), holistic recall and the `context.md` compiler, and the agent lifecycle — `AgentMemory`, `Brain`, `MemoryLayout`, background jobs (see [lifecycle.md](lifecycle.md)). | It works over any `MemoryEngine`, has no tool-runtime dependency, and is where "a model must never choose whose memory it touches" is enforced. |
 | `tinymemory-integrations` | Everything that touches the **outside world**: the CortexDB engine, the engine registry and `MemoryConfig`, document conversion, source readers, safety scrubbing and the legacy v1 import. | Each integration is a Cargo feature, so a host pays only for the ones it uses. |
 
 ## Dependency graph
@@ -51,7 +51,7 @@ alone, so the contract is the only coupling point.
 | Crate | Feature | Enables |
 | --- | --- | --- |
 | `tinymemory-api` | `conformance` | `conformance::run`, `conformance::ReferenceEngine`. No extra dependency. |
-| `tinymemory-tools` | (none) | `tools` and `context` are always built. |
+| `tinymemory-tools` | (none) | Every module (`tools`, `context`, `recall`, `layout`, `brain`, `lifecycle`, `background`) is always built. |
 | `tinymemory-integrations` | `cortex` (default) | `cortex::CortexEngine` (both wires), `registry` (`list_engines`, `build_engine`), `config` (`MemoryConfig`) |
 | | `documents` | Format sniffing and conversion to markdown |
 | | `documents-office` | PDF, DOCX, PPTX, XLSX conversion (implies `documents`) |

@@ -33,7 +33,9 @@ crates/
 │                             an in-memory reference engine
 ├── tinymemory-tools/         the agent surface over any engine: `MemoryTools` (seven
 │                             model-callable tools with JSON Schemas and host-fixed
-│                             scoping) and the `context.md` compiler
+│                             scoping), holistic recall and the `context.md` compiler,
+│                             and the agent lifecycle (`AgentMemory`, `Brain`,
+│                             `MemoryLayout`, background jobs)
 └── tinymemory-integrations/  everything that touches the outside world, one module
                               per feature: `cortex` (+ `registry`, `config`),
                               `documents`, `sources`, `safety`, `import`

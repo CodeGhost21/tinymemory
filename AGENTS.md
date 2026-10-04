@@ -17,7 +17,8 @@ package it holds. There are exactly three, one per part of the memory layer:
   metadata, namespaces, errors, and (feature `conformance`) the suite every
   engine must pass. No I/O.
 - `crates/tinymemory-tools` — the **agent tool spec**: `MemoryTools` over any
-  engine, and the `context.md` compiler.
+  engine, holistic recall and the `context.md` compiler, and the agent memory
+  lifecycle (`AgentMemory`, `Brain`, `MemoryLayout`, background jobs).
 - `crates/tinymemory-integrations` — the **integrations**: the CortexDB engine
   and its registry, documents, sources, safety and the legacy v1 import, each
   a module behind a feature.
