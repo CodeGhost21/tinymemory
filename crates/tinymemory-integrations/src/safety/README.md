@@ -9,6 +9,10 @@ expressions and checksums only, and makes no network calls.
 The usual call is [`scrub_item`] on each `StoreItem` just before
 `MemoryEngine::store`.
 
+Nothing calls it for you: no engine scrubs on its own, so the host runs it in
+the write pipeline (source, documents, safety, engine). See
+[`docs/architecture/integrations.md`](../../../../docs/architecture/integrations.md).
+
 ## Layout
 
 ```text
