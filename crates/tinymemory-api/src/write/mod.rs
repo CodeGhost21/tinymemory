@@ -34,7 +34,6 @@
 //!         Ok::<(), tinymemory_api::Error>(())
 //!     }).unwrap();
 //! }
-//! }
 //! ```
 
 use serde::{Deserialize, Serialize};
