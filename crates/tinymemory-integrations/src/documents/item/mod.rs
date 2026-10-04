@@ -4,7 +4,7 @@
 //! and what comes out is the item an engine stores — the markdown as
 //! [`DocumentBody::Text`], a title, the format's MIME type, and the caller's
 //! [`MemoryMeta`]. Where the item is stored is the host's decision, made by
-//! whichever engine it bound; this crate never writes.
+//! whichever engine it bound; this module never writes.
 //!
 //! The caller owns the metadata. Intake fills exactly one field, and only when
 //! the caller left it unset: [`MemoryMeta::language`], from the converter or

@@ -11,15 +11,15 @@
 //! 2. **Turn it into markdown.** [`DocumentConverter`] is the seam;
 //!    [`NativeConverter`] covers markdown, plain text, HTML and code with no
 //!    dependencies; a host binds its own for PDF and Office documents, or
-//!    prepends `OfficeConverter` (feature `office`) for PDF, DOCX, PPTX and
+//!    prepends `OfficeConverter` (feature `documents-office`) for PDF, DOCX, PPTX and
 //!    XLSX.
 //! 3. **Wrap it as an item.** [`document_item`] produces a
 //!    `StoreItem::Document` with the caller's
 //!    [`MemoryMeta`](tinymemory_api::MemoryMeta), filling `language` from the
 //!    file extension when the caller left it unset.
 //!
-//! This crate does no I/O. Reading files and fetching URLs belongs to
-//! `tinymemory-sources`, which depends on this crate for conversion.
+//! This module does no I/O. Reading files and fetching URLs belongs to
+//! the `sources` module, which depends on this one for conversion.
 //!
 //! # Example
 //!

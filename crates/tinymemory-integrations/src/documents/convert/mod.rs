@@ -7,13 +7,13 @@
 //!
 //! ## Why this is a trait
 //!
-//! Text, markdown and HTML convert with no dependencies, and this crate does
+//! Text, markdown and HTML convert with no dependencies, and this module does
 //! them ([`NativeConverter`]). PDF and the Office formats do not: they need a
 //! real extractor, and which extractor a deployment uses is its own decision —
 //! an in-process crate, a TinyBus module, a service. So conversion is a trait a
 //! host binds rather than a fixed table, and [`ConverterChain`] composes the
-//! native converter with whatever the host brings — including this crate's own
-//! `OfficeConverter` when the `office` feature is on.
+//! native converter with whatever the host brings — including this module's own
+//! `OfficeConverter` when the `documents-office` feature is on.
 //!
 //! Source code is textual too, and [`NativeConverter`] stores it exactly as
 //! written: reflowing it or running it through the HTML converter would change
@@ -99,7 +99,7 @@ pub fn markdown_from_text(text: &str, format: DocumentFormat) -> String {
     }
 }
 
-/// The formats this crate converts without help: markdown, plain text, HTML
+/// The formats this module converts without help: markdown, plain text, HTML
 /// and source code.
 ///
 /// Everything it handles is already text, so the whole implementation is

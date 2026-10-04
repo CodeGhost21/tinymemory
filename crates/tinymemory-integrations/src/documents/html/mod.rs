@@ -10,7 +10,7 @@
 //! Because the output is prose for a language model to read, and the failure
 //! modes of a tag-stream walk are all cosmetic: a malformed nesting produces
 //! slightly wrong emphasis, never wrong text. Pulling in a full DOM parser
-//! would cost this crate its "no heavy dependencies" position for output
+//! would cost this module its "no heavy dependencies" position for output
 //! nobody renders. If a host needs fidelity beyond this, it supplies its own
 //! [`crate::documents::convert::DocumentConverter`].
 //!

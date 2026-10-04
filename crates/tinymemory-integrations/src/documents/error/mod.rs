@@ -1,4 +1,4 @@
-//! The crate-wide error and result alias.
+//! The documents module's error and result alias.
 //!
 //! Every failure intake can have names what a caller can do about it: fix the
 //! input ([`Error::Invalid`]), send something smaller ([`Error::TooLarge`]),
@@ -46,7 +46,7 @@ impl From<Error> for tinymemory_api::Error {
     }
 }
 
-/// Result alias for this crate's fallible operations.
+/// Result alias for this module's fallible operations.
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(test)]

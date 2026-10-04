@@ -101,7 +101,7 @@ pub struct ConvertedDocument {
     /// Size of the source document in bytes, before conversion.
     pub source_bytes: usize,
     /// Anything else the converter learned — page counts, author, the
-    /// converter's own name. Open on purpose: this crate cannot know what a
+    /// converter's own name. Open on purpose: this module cannot know what a
     /// host's converter will find worth keeping.
     #[serde(default)]
     pub metadata: serde_json::Value,

@@ -1,4 +1,4 @@
-//! Tests for the crate error and its mapping onto the contract error.
+//! Tests for the module error and its mapping onto the contract error.
 
 use super::*;
 

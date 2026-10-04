@@ -1,4 +1,4 @@
-//! PDF and Office Open XML conversion (the `office` feature).
+//! PDF and Office Open XML conversion (the `documents-office` feature).
 //!
 //! [`crate::documents::convert::NativeConverter`] handles what is already text. This is
 //! the converter for the formats people actually drop into memory that are not
