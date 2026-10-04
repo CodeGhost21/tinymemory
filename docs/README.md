@@ -10,6 +10,7 @@ where it cannot drift.
 ```text
 docs/
 ├── README.md      # this index
+├── integration.md # how an agent host wires in the memory API
 ├── architecture/  # how the code is built, one document per concern
 ├── specs/         # behavior and architecture specifications
 ├── plans/         # implementation plans derived from approved specs
@@ -17,6 +18,9 @@ docs/
 └── adr/           # architecture decision records, numbered and immutable
 ```
 
+- **[`integration.md`](integration.md)** — for an agent host (OpenHuman or
+  any other): which calls to make around each turn, what they cost, the
+  rules that keep recall accurate, and how to bring your own engine.
 - **[`architecture/`](architecture/README.md)** — the shape of the three crates:
   the core contract, operation semantics, namespaces, the CortexDB engine, the
   tools, the integrations and the test strategy.

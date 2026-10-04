@@ -161,15 +161,30 @@ runs used the same scenarios without the model answerer.
 | Compaction's query was the last 600 characters of the dropped turns, so early facts never steered it, and the summary read only 6 turns | The gist samples the start of every dropped turn; the summary reads as many turns as were dropped (up to 24) | compaction pack hits 1/2 → 2/2 in the recall phase |
 | The docs said fetched sections show built beliefs | `lifecycle.md`, `cortex-wire.md` and `consolidate` docs now say where beliefs do and do not surface | — |
 
+## Beliefs in the pack
+
+Since this run, holistic recall merges the engine's beliefs into the
+Learnings section (see [`specs/agent-memory.md`](../specs/agent-memory.md)).
+On CortexDB they come from the recall packs fetch already builds: each
+scope's pack also budgets the `beliefs` layer. A cold `start_session`
+lists them instead.
+
+Measured on the mock-model harness, nine scenarios, back to back:
+
+| Build | `pre_turn` p50 / p95 |
+| --- | --- |
+| beliefs folded into fetch | 25.6 / 279.5 ms |
+| belief request switched off | 25.4 / 280.0 ms |
+
+A recall with a `beliefs` budget took 8 ms either way. Folding avoids what
+a separate belief read would cost with hosted embeddings: a second query
+embedding per scope. The real-model accuracy run with beliefs in the pack is
+pending (the OpenRouter workspace budget ran out on 2026-10-04).
+
 ## Follow-ups
 
-1. **Surface beliefs in the pre-turn pack.** This has the most upside.
-   CortexDB already returns `beliefs` and `facts` layers in the same recall
-   pack fetch requests. Mapping them to `Learning` hits for a Learnings
-   section would bring synthesis onto the hot path at no extra request.
-   That needs a decision on contract semantics: these hits are not stored
-   items, so they cannot be listed or forgotten by id. It belongs in a spec
-   change rather than a quiet engine tweak.
+1. **Surface beliefs in the pre-turn pack.** Done since this run: see
+   [beliefs in the pack](#beliefs-in-the-pack).
 2. **Keep tool results.** `ToolCallRef` keeps a name and an id, so a tool
    result survives only as prose in the reply (`tool_heavy/who-to-ask`). A
    `post_turn` that also stores results as `Role::Tool` turns would make

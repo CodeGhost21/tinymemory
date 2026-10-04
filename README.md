@@ -16,6 +16,8 @@ namespace tree that keeps one tenant's or agent's memory apart from another's.
 
 - **Specified behaviour:** [`docs/specs/memory-v2.md`](docs/specs/memory-v2.md)
   is the source of truth for what the system does and why.
+- **Integrating an agent:** [`docs/integration.md`](docs/integration.md) is
+  the guide for a host wiring its agent loop to the memory API.
 - **How it is built:** [`docs/architecture/README.md`](docs/architecture/README.md)
   has one page per concern: the contract, operations, namespaces, the CortexDB
   engine, the agent tools, the integrations and the test strategy.
