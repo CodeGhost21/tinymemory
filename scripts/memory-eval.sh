@@ -9,9 +9,13 @@
 #   KEEP=1 ./scripts/memory-eval.sh          # leave the server running
 #
 # MODELS=openrouter needs OPENROUTER_API_KEY. It sends the eval's synthetic
-# fixtures to OpenRouter for embeddings, extraction and answers, and costs a
-# few cents per run. Override the models with CORTEX_EMBEDDING_MODEL,
-# CORTEX_EXTRACTION_MODEL and CORTEX_ANSWER_MODEL.
+# fixtures to OpenRouter for embeddings, extraction and answers. It is not
+# cheap: CortexDB runs its extraction model over every stored event, again
+# during belief builds, so a full run makes many model calls. The report ends
+# with the usage CortexDB accounted for. Run one scenario first (--only) to
+# gauge the cost, and mind the key's spending limit: once it is hit, every
+# embedding fails and writes never become visible. Override the models with
+# CORTEX_EMBEDDING_MODEL, CORTEX_EXTRACTION_MODEL and CORTEX_ANSWER_MODEL.
 
 set -euo pipefail
 

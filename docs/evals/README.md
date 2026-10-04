@@ -31,10 +31,18 @@ cargo run -p tinymemory-integrations --features full --example memory_eval
 # A throwaway CortexDB with deterministic mock models (needs Docker).
 ./scripts/memory-eval.sh
 
-# The same with real models through OpenRouter (needs OPENROUTER_API_KEY;
-# a few cents per run), and a model answering every probe.
+# The same with real models through OpenRouter (needs OPENROUTER_API_KEY),
+# and a model answering every probe.
 MODELS=openrouter ./scripts/memory-eval.sh --llm
 ```
+
+**Cost.** Real models are not cheap here. CortexDB runs its extraction
+model over every stored event and again during belief builds. The report
+ends with the usage CortexDB accounted for (calls, tokens and dollars as its
+router prices them). Earlier runs did not record it, so their cost is
+unknown. Run one scenario first (`--only <name>`) to gauge it. When the key
+hits its spending limit, every embedding fails (`403 Key limit exceeded`)
+and the run stops at the settle step with "only 0 of N writes visible".
 
 The script prints the report and writes `target/memory-eval/<label>.md` and
 `.json`. The JSON holds every probe's pack, so a miss can be read in full.
