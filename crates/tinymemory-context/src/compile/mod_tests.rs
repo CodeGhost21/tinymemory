@@ -172,16 +172,23 @@ async fn a_reach_keeps_the_document_to_one_agent_s_memory() {
     }
     let spec = ContextSpec {
         briefs: vec![Brief::new("About the user", "habit")],
-        reach: Some(tinymemory_api::Reach::of(
-            tinymemory_api::Namespace::agent("researcher"),
-        )),
+        reach: Some(tinymemory_api::Reach::of(tinymemory_api::Namespace::agent(
+            "researcher",
+        ))),
         ..ContextSpec::default()
     };
     let doc = ContextCompiler::at(at())
         .compile(&engine, &spec)
         .await
         .unwrap();
-    assert!(doc.markdown.contains("- researcher habit"), "{}", doc.markdown);
-    assert!(doc.markdown.contains("- shared habit"), "the root is inherited");
+    assert!(
+        doc.markdown.contains("- researcher habit"),
+        "{}",
+        doc.markdown
+    );
+    assert!(
+        doc.markdown.contains("- shared habit"),
+        "the root is inherited"
+    );
     assert!(!doc.markdown.contains("writer habit"), "{}", doc.markdown);
 }
