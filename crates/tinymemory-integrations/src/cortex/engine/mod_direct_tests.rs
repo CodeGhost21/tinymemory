@@ -220,6 +220,7 @@ async fn an_accepted_write_neither_asks_for_indexing_nor_waits_to_be_listed() {
     let document = items.remove(0);
     for item in [document, conversation] {
         let receipt = engine
+            .clone()
             .with_test_timing(std::time::Duration::from_millis(50))
             .store_with(item.clone(), tinymemory_api::WriteOptions::accepted())
             .await
