@@ -10,7 +10,8 @@ The agent-facing side of TinyMemory, over any `tinymemory_api::MemoryEngine`:
 
 The crate has no tool-runtime dependency (no MCP, no `tinytools`). A host
 adapts `ToolSpec` to whatever runtime it uses; see
-[Adapting to a tool runtime](#adapting-to-a-tool-runtime).
+[Adapting to a tool runtime](#adapting-to-a-tool-runtime). The design is
+written up in [`docs/architecture/tools.md`](../../docs/architecture/tools.md).
 
 ## The tools
 
@@ -161,6 +162,19 @@ let output = match tools.call(&call.name, call.arguments).await {
 Build one `MemoryTools` per agent session from the session's identity, never
 from anything the model said. `specs()` is cheap; call it per session so a
 read-only or differently scoped agent sees only its own tools.
+
+## `context.md`
+
+`tinymemory_tools::context::compile(&engine, &ContextSpec::default())` recalls
+one question per `Brief` (four defaults: about the user, active work,
+preferences and standing instructions, recent important events), lists the
+stored learnings newest and most confident first, and renders markdown with
+`generated_at`, `engine`, `tokens` and `refs` frontmatter. The document fits
+`budget_tokens` (default 1,500, four characters per token): learnings are
+trimmed first, then the last brief. A failing brief is skipped and logged, and
+an empty engine yields an empty document. `ContextSpec::reach` confines the
+brief to one agent's part of the tree. Details:
+[`docs/architecture/tools.md`](../../docs/architecture/tools.md#contextmd).
 
 ## Layout
 

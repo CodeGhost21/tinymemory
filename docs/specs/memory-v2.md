@@ -17,32 +17,36 @@ things from memory, plus a way to choose who provides them:
 
 On top of the engine sits one engine-neutral product: **`context.md`**, a
 token-budgeted brief compiled from Recall and Fetch that a host injects at the
-start of a session.
+start of a session. A second, agent-facing surface, the memory **tools**, lets
+a model call the same operations under a scope the host fixes (see
+[Tools](#tools-tinymemory-tools)).
 
 ## Crates
 
+Three crates, one directory each under `crates/`. Their relationships are in
+[`docs/architecture/overview.md`](../architecture/overview.md).
+
 | Crate | Owns |
 | --- | --- |
-| `tinymemory-api` | The contract: `MemoryEngine`, request/response types, `MemoryMeta`, `MetaFilter`, `EngineDescriptor`, `Error`. No I/O. |
-| `tinymemory-cortex` | The CortexDB engine, registered twice: `cortexdb` (direct `/v1/*`, endpoint + key) and `tinyhumans` (CortexDB behind the TinyHumans backend `/memory/*`, host bearer). |
-| `tinymemory-documents` | Format sniffing and conversion to markdown (Markdown, plain text, HTML, code, PDF/DOCX via a host `DocumentConverter`). Emits `StoreItem::Document`. |
-| `tinymemory-sources` | Readers that turn a source into `StoreItem`s: folder, file, link (web page), GitHub repo, RSS, Composio toolkit payloads. Includes the SSRF guard. |
-| `tinymemory-safety` | Secret/PII scrubbing applied to every item before `store`. |
-| `tinymemory-context` | `ContextCompiler`: builds `context.md` from an engine. |
-| `tinymemory-import` | Reads a legacy (v1, embedded TinyCortex) workspace and yields `StoreItem`s. |
-| `tinymemory-conformance` | Behavioural suite every engine must pass, plus a reference in-memory engine. |
-| `tinymemory` | Facade: engine registry, `MemoryConfig`, `build_engine`, re-exports. One feature per optional crate. |
+| `tinymemory-api` | The contract: `MemoryEngine`, request/response types, `MemoryMeta`, `MetaFilter`, namespaces, `EngineDescriptor`, `Error`. No I/O. Feature `conformance`: the behavioural suite every engine must pass, plus a reference in-memory engine. |
+| `tinymemory-tools` | The agent tool spec `MemoryTools` (seven tools, host-fixed namespace and reach) and `context`, the `ContextCompiler` that builds `context.md` from an engine. |
+| `tinymemory-integrations` | Everything that talks to the outside world, each behind a feature: `cortex` (default; the CortexDB engine, registered twice as `cortexdb` and `tinyhumans`, plus the registry `list_engines`/`build_engine` and `MemoryConfig`), `documents` and `documents-office` (format sniffing and conversion to markdown, emitting `StoreItem::Document`; PDF/DOCX/PPTX/XLSX via `OfficeConverter` or a host `DocumentConverter`), `sources` and `sources-network` (readers for folder, file, link, GitHub, RSS, Composio payloads and conversations, with the SSRF guard), `safety` (secret/PII scrubbing applied to every item before `store`), and `legacy-import` (reads a v1 TinyCortex workspace and migrates it into any engine). |
 
-Deleted: `tinymemory-bus`, `tinymemory-core`, `tinymemory-tinycortex`,
-`tinymemory-remote` (CortexDB moves to `tinymemory-cortex`; mem0, supermemory,
-cognee, agentmemory, livingbrain are dropped), `tinymemory-tools`,
+Deleted: the earlier `tinymemory` facade, `tinymemory-cortex`,
+`tinymemory-documents`, `tinymemory-sources`, `tinymemory-safety`,
+`tinymemory-context`, `tinymemory-import` and `tinymemory-conformance` as
+separate crates (their code moved into the three above: the engine, registry
+and config, documents, sources, safety and import into
+`tinymemory-integrations`; context into `tinymemory-tools`; conformance into
+the `conformance` feature of `tinymemory-api`). Earlier still: `tinymemory-bus`,
+`tinymemory-core`, `tinymemory-tinycortex`, `tinymemory-remote` (CortexDB is
+the engine; mem0, supermemory, cognee, agentmemory, livingbrain are dropped),
 `tinymemory-conversations`, `tinymemory-guard`, `tinymemory-gate`,
-`tinymemory-sync` (normalisers move into `tinymemory-sources`),
-`tinymemory-module`, `tinymemory-testing-ui`, and the `vendor/tinycortex`,
-`vendor/tinybus` and `vendor/tinyinference` submodules (`tinymemory-import`
-reads the v1 on-disk layout directly, so it needs no engine dependency).
-`tinymemory-conversations` (the chat thread store) moves to
-`tinyagents-session::threads` in tinyagents.
+`tinymemory-sync` (normalisers moved into `sources`), `tinymemory-module`,
+`tinymemory-testing-ui`, and the `vendor/tinycortex`, `vendor/tinybus` and
+`vendor/tinyinference` submodules (`legacy-import` reads the v1 on-disk layout
+directly, so it needs no engine dependency). `tinymemory-conversations` (the
+chat thread store) moved to `tinyagents-session::threads` in tinyagents.
 
 ## Contract (`tinymemory-api`)
 
@@ -158,11 +162,11 @@ contract rather than by an engine's storage layout, so one explorer works on
 every engine:
 
 ```rust
-pub enum Facet { Kind, Source, SourceId, Workspace, Folder, FilePath, Language, Repo, Url, Thread, Agent, ToolCall, Tag }
+pub enum Facet { Kind, Source, SourceId, Workspace, Folder, FilePath, Language, Repo, Url, Thread, Agent, ToolCall, Tag, Namespace }
 pub struct ExploreRequest { pub facet: Facet, pub filter: MetaFilter, pub limit: usize /* 1..=500 buckets */, pub scan_limit: usize /* 1..=50_000, default 5_000 */ }
 pub struct FacetBucket { pub value: String, pub count: u64 }
 pub struct ExplorePage { pub facet: Facet, pub buckets: Vec<FacetBucket>, pub total: u64, pub missing: u64, pub more_buckets: u64, pub truncated: bool }
-pub struct GetRequest { pub ids: Vec<ItemId> /* 1..=200 */ }
+pub struct GetRequest { pub ids: Vec<ItemId> /* 1..=200 */, pub reach: Option<Reach> }
 ```
 
 - `explore` groups the items `filter` admits by one facet: buckets largest
@@ -212,7 +216,10 @@ There is one `Error` enum: `Unsupported`, `InvalidRequest`, `Unauthorized`,
 `NotFound`, `Conflict`, `Unavailable` (transient), `Engine` (the engine's own
 failure, already sanitised), and `Config`. Messages never carry credentials.
 
-## Facade (`tinymemory`)
+## Registry and config (`tinymemory-integrations`, feature `cortex`)
+
+There is no facade crate: a host depends on `tinymemory-api` and the
+integrations it wants, and builds an engine with the registry.
 
 ```rust
 pub struct MemoryConfig { pub engine: String, pub engines: BTreeMap<String, EngineSettings> }
@@ -220,12 +227,13 @@ pub struct EngineSettings { pub endpoint: Option<String> }
 pub enum EngineCredential { None, Static(String), Dynamic(Arc<dyn BearerSource>) }
 pub fn list_engines() -> Vec<EngineDescriptor>;
 pub fn build_engine(id: &str, settings: &EngineSettings, credential: EngineCredential) -> Result<Arc<dyn MemoryEngine>>;
+impl MemoryConfig { pub fn build(&self, credential: EngineCredential) -> Result<Arc<dyn MemoryEngine>>; }
 ```
 
 `build_engine` refuses an unknown id, a missing required endpoint or key, and a
-credentialed cleartext non-loopback endpoint.
+credentialed cleartext non-loopback endpoint, all as `Error::Config`.
 
-## Engine: CortexDB (`tinymemory-cortex`)
+## Engine: CortexDB (`tinymemory-integrations`, module `cortex`)
 
 - **Wires.** `Direct` (`v1/experience`, `v1/events`, `v1/recall`, `v1/forget`, `v1/answer`) and `TinyHumans` (`memory/*` with `{success,data}` envelopes), as in the v1 adapter.
 - **Store.**
@@ -239,7 +247,41 @@ credentialed cleartext non-loopback endpoint.
 - **Recall.** Pack, then answer, as in v1. One scope: one pack over it. An unscoped read over several scopes: one pack over `app:tinymemory` with `view: "descend"`. A reach over several scopes: one pack per scope, built concurrently, and the answer route is asked once with the pack holding the most admitted events. Citations come from the packs' `layers.events`, decoded back to `Hit`s, the most specific node's first.
 - **List / forget.** These use `v1/events` paging and `v1/forget` by `memory_ids`. `ForgetTarget::Filter` lists first, then forgets ids, and never sends an empty selector.
 
-## Context (`tinymemory-context`)
+## Tools (`tinymemory-tools`)
+
+`MemoryTools` exposes seven tools over any `MemoryEngine`, with no tool-runtime
+dependency. `MemoryTools::specs()` returns `Vec<ToolSpec>` (`name`,
+`description`, `parameters` as a JSON Schema); `MemoryTools::call(name, args)`
+runs one by name with the model's JSON arguments and returns compact JSON.
+
+| Tool | Kind | Maps to |
+| --- | --- | --- |
+| `memory_recall` | read | `recall` |
+| `memory_fetch` | read | `fetch` (the `mode` enum lists exactly the engine's `fetch_modes`; absent when the engine serves none) |
+| `memory_list` | read | `list` |
+| `memory_get` | read | `get` (reports unknown or out-of-reach ids as `missing`) |
+| `memory_explore` | read | `explore` (every facet except `namespace`) |
+| `memory_store` | write | `store` of one learning, document or conversation |
+| `memory_forget` | write | `forget` by ids or a non-empty filter (reports `skipped` ids) |
+
+**The model never chooses whose memory it touches.** The host fixes a
+`ToolScope { place: Namespace, reach: Option<Reach>, writes: bool }`
+(`MemoryTools::new`, `placed_at`, `reach`, `read_only`, `with_scope`):
+
+- writes land at `place`: the tool builds the metadata itself (namespace,
+  source `agent`, the model's tags, `observed_at` now);
+- every read filter's `reach` is overwritten with the scope's, and `memory_get`
+  passes it as `GetRequest::reach`;
+- forget by ids first reads the ids back under the reach and forgets only
+  those found; by filter, the filter must set a field besides the reach;
+- a `namespace` or `reach` key anywhere in the arguments, or any unknown key,
+  is `Error::InvalidRequest`; write tools on read-only tools are
+  `Error::Unsupported`.
+
+Names and schemas are frozen by a fixture test. See
+[`docs/architecture/tools.md`](../architecture/tools.md).
+
+## Context (`tinymemory-tools`, module `context`)
 
 ```rust
 pub struct ContextSpec { pub budget_tokens: usize, pub briefs: Vec<Brief>, pub learnings_limit: usize }
@@ -261,7 +303,7 @@ Output rules:
 - Frontmatter records `generated_at`, `engine`, `tokens` and `refs`.
 - An engine with nothing stored yields an empty document (`markdown` is empty), not an error. A brief that fails is skipped and logged; it does not fail the document.
 
-## Import (`tinymemory-import`)
+## Import (`tinymemory-integrations`, feature `legacy-import`)
 
 `LegacyWorkspace::open(path)` detects a v1 TinyCortex store. `items()` yields
 `StoreItem`s:
@@ -271,11 +313,21 @@ Output rules:
 - Profile facets become `Learning(Preference)`.
 
 Every item gets `source.kind = Import`. A `Checkpoint` (last yielded cursor per
-section, persisted by the host) makes import resumable. Behind `legacy-import`.
+section, persisted by the host) makes import resumable.
+
+`import::migrate(engine, workspace, from)` copies a workspace into any engine:
+it streams `items_from(checkpoint)` in batches of at most `MAX_STORE_MANY`,
+hands each batch to `store_many`, and returns a `MigrationReport { stored,
+replayed, batches, checkpoint }`. `migrate_with` also calls an `on_batch`
+callback with the committed checkpoint after every stored batch, so the host
+can persist it. A failed `store_many` is `Error::Engine`, carrying the last
+committed checkpoint; resuming re-sends the failed batch, whose stored items
+come back as replays. A legacy read failure is returned as is, and resuming
+from any earlier checkpoint only replays.
 
 ## Testing
 
-`tinymemory-conformance::run(engine)` covers:
+`tinymemory_api::conformance::run(engine)` (feature `conformance`) covers:
 - store/list round-trip for each kind;
 - replay idempotency;
 - `explore` counts agreeing with `list` per kind and per workspace, and each
