@@ -1,5 +1,6 @@
 //! The inputs and outputs of each lifecycle step, and the recall policy.
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tinymemory_api::{StoreReceipt, ToolCallRef, Turn};
 
@@ -70,6 +71,10 @@ pub struct PreTurn {
     /// `0` (the default) leaves the whole thread out.
     #[serde(default)]
     pub in_prompt_from: u32,
+    /// When the user spoke, if the host knows: orders history newest first.
+    /// Leave it out to keep a retried turn a replay.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<DateTime<Utc>>,
 }
 
 impl PreTurn {
@@ -82,6 +87,7 @@ impl PreTurn {
             turn_index,
             user_text: user_text.into(),
             in_prompt_from: 0,
+            at: None,
         }
     }
 }
@@ -111,6 +117,9 @@ pub struct PostTurn {
     /// The tool calls the reply made.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<ToolCallRef>,
+    /// When the reply was given, if the host knows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<DateTime<Utc>>,
 }
 
 impl PostTurn {
@@ -127,6 +136,7 @@ impl PostTurn {
             turn_index,
             assistant_text: assistant_text.into(),
             tool_calls: Vec::new(),
+            at: None,
         }
     }
 }

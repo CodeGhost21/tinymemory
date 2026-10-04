@@ -12,7 +12,9 @@
 //!   a model, so this is for session start and compaction.
 //! - **Latest** — the newest, most confident items, with no query.
 //!
-//! The sections are read concurrently, then rendered under one `#` title,
+//! The sections are read concurrently. An item shows once, in the first
+//! section that found it, so overlapping scopes (one agent's history inside
+//! the team's) never repeat a line. Then they are rendered under one `#` title,
 //! one `##` heading per section that found something. The block fits
 //! `budget_tokens` (four characters per token): bullets are trimmed from the
 //! last section first, then answers shorten (see `render`).
@@ -63,10 +65,12 @@ mod gather;
 pub(crate) mod render;
 mod types;
 
+use std::collections::HashSet;
+
 use futures::future::join_all;
 use tinymemory_api::{MemoryEngine, Result};
 
-use gather::Gathered;
+use gather::Settled;
 pub(crate) use render::Frontmatter;
 pub use render::estimate_tokens;
 pub use types::{
@@ -106,13 +110,14 @@ pub(crate) async fn run(
     let mut sections = Vec::new();
     let mut rendered_from = Vec::new();
     let mut skipped = Vec::new();
-    for outcome in gathered {
-        match outcome {
-            Gathered::Filled(section, hits) => {
-                rendered_from.push(section);
+    let mut shown = HashSet::new();
+    for (section, outcome) in request.sections.iter().zip(gathered) {
+        match gather::settle(request, section, outcome, &mut shown) {
+            Settled::Filled(rendered, hits) => {
+                rendered_from.push(rendered);
                 sections.push(hits);
             }
-            Gathered::Skipped(reason) => skipped.push(reason),
+            Settled::Skipped(reason) => skipped.push(reason),
         }
     }
     let rendered = render::render(

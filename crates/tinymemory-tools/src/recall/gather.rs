@@ -1,10 +1,16 @@
-//! Filling one section from the engine.
+//! Filling one section from the engine, and turning what it found into a
+//! renderable section.
 //!
 //! Every section runs on its own and none can fail the pack: an engine error
 //! or an empty result becomes a [`SkippedSection`], logged and reported.
+//! [`section`] reads; [`settle`] then applies the request's exclusions and
+//! the items earlier sections already show, in section order, so an item
+//! appears once — in its highest-priority section.
+
+use std::collections::HashSet;
 
 use tinymemory_api::{
-    FetchMode, FetchRequest, Hit, ListRequest, MemoryEngine, MetaFilter, RecallRequest,
+    FetchMode, FetchRequest, Hit, ItemId, ListRequest, MemoryEngine, MetaFilter, RecallRequest,
 };
 
 use super::render::{Body, Line, Section, shorten, single_line};
@@ -20,8 +26,18 @@ const LATEST_PAGE: usize = 100;
 /// Most listing pages read before ranking; a ceiling, not a target.
 const LATEST_MAX_PAGES: usize = 50;
 
-/// What one section produced.
+/// What one section read.
 pub(super) enum Gathered {
+    /// An answer and its citations.
+    Answered(Section, SectionHits),
+    /// Ranked or latest hits, before exclusions.
+    Hits(Vec<Hit>),
+    /// Nothing, and why.
+    Skipped(SkippedSection),
+}
+
+/// What one section contributes once settled.
+pub(super) enum Settled {
     /// Something to render, and what it was drawn from.
     Filled(Section, SectionHits),
     /// Nothing, and why.
@@ -65,7 +81,7 @@ pub(super) async fn section(
         SectionQuery::Latest => latest(engine, &section.filter, want).await,
     };
     match outcome {
-        Ok(hits) => lines(request, section, hits),
+        Ok(hits) => Gathered::Hits(hits),
         Err(error) => {
             log::warn!(
                 "[recall] section skipped heading={:?} error={error}",
@@ -77,22 +93,33 @@ pub(super) async fn section(
 }
 
 /// How many hits to ask for so that `section.limit` survive the request's
-/// exclusions: one more per excluded id, and double when a whole thread
-/// window may be left out.
+/// exclusions and the items earlier sections already show: one more per
+/// excluded id and per item an earlier section may hold, and double when a
+/// whole thread window may be left out.
 fn wanted(request: &HolisticRecall, section: &ScopeSection) -> usize {
     let window = if request.exclude_thread.is_some() {
         section.limit
     } else {
         0
     };
-    section.limit + request.exclude_ids.len() + window
+    let earlier: usize = request
+        .sections
+        .iter()
+        .take_while(|other| !std::ptr::eq(*other, section))
+        .map(|other| other.limit)
+        .sum();
+    section.limit + request.exclude_ids.len() + window + earlier
 }
 
 fn skipped(section: &ScopeSection, reason: String) -> Gathered {
-    Gathered::Skipped(SkippedSection {
+    Gathered::Skipped(skipped_section(section, reason))
+}
+
+fn skipped_section(section: &ScopeSection, reason: String) -> SkippedSection {
+    SkippedSection {
         heading: section.heading.clone(),
         reason,
-    })
+    }
 }
 
 /// One recall; `None` when it cited nothing or answered blank.
@@ -127,7 +154,7 @@ async fn answer(
         })
         .collect();
     let refs = hits.iter().map(|hit| hit.id.clone()).collect();
-    Ok(Some(Gathered::Filled(
+    Ok(Some(Gathered::Answered(
         Section {
             heading: section.heading.clone(),
             body: Body::Prose {
@@ -170,7 +197,8 @@ async fn fetch(
     Ok(engine.fetch(request).await?.hits)
 }
 
-/// The newest hits, then the most confident; ties keep the engine's order.
+/// The newest hits, then the most confident, then the latest turn; ties
+/// keep the engine's order.
 async fn latest(
     engine: &dyn MemoryEngine,
     filter: &MetaFilter,
@@ -189,29 +217,51 @@ async fn latest(
         }
     }
     all.sort_by(|a, b| {
-        b.meta.observed_at.cmp(&a.meta.observed_at).then_with(|| {
-            b.confidence
-                .unwrap_or(0.0)
-                .total_cmp(&a.confidence.unwrap_or(0.0))
-        })
+        b.meta
+            .observed_at
+            .cmp(&a.meta.observed_at)
+            .then_with(|| {
+                b.confidence
+                    .unwrap_or(0.0)
+                    .total_cmp(&a.confidence.unwrap_or(0.0))
+            })
+            .then_with(|| {
+                let last = |hit: &Hit| hit.meta.turns.as_ref().map(|turns| turns.last);
+                last(b).cmp(&last(a))
+            })
     });
     all.truncate(limit);
     Ok(all)
 }
 
-/// Hits as a lines section, after the request's exclusions and the
-/// section's kinds; skipped when nothing is left.
-fn lines(request: &HolisticRecall, section: &ScopeSection, hits: Vec<Hit>) -> Gathered {
+/// Settles one gathered section: answers pass through (their citations
+/// join `shown`); hits lose the request's exclusions and anything in
+/// `shown`, are cut to the section's limit, and join `shown`.
+pub(super) fn settle(
+    request: &HolisticRecall,
+    section: &ScopeSection,
+    gathered: Gathered,
+    shown: &mut HashSet<ItemId>,
+) -> Settled {
+    let hits = match gathered {
+        Gathered::Skipped(reason) => return Settled::Skipped(reason),
+        Gathered::Answered(rendered, hits) => {
+            shown.extend(hits.hits.iter().map(|hit| hit.id.clone()));
+            return Settled::Filled(rendered, hits);
+        }
+        Gathered::Hits(hits) => hits,
+    };
     let kinds = &section.filter.kinds;
     let hits: Vec<Hit> = hits
         .into_iter()
         .filter(|hit| kinds.is_empty() || kinds.contains(&hit.kind))
-        .filter(|hit| !request.excludes(hit))
+        .filter(|hit| !request.excludes(hit) && !shown.contains(&hit.id))
         .take(section.limit)
         .collect();
     if hits.is_empty() {
-        return skipped(section, "empty".to_string());
+        return Settled::Skipped(skipped_section(section, "empty".to_string()));
     }
+    shown.extend(hits.iter().map(|hit| hit.id.clone()));
     let lines = hits
         .iter()
         .map(|hit| {
@@ -227,7 +277,7 @@ fn lines(request: &HolisticRecall, section: &ScopeSection, hits: Vec<Hit>) -> Ga
             }
         })
         .collect();
-    Gathered::Filled(
+    Settled::Filled(
         Section {
             heading: section.heading.clone(),
             body: Body::Lines(lines),
