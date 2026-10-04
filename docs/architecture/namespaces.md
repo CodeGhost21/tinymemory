@@ -161,6 +161,23 @@ Items exist at R, T, W, H and E. What each reach sees:
 | `subtree(root)` | R, T, W, H, E |
 | no reach (`None`) | R, T, W, H, E |
 
+### A company above its tenants
+
+A layout reads the subtree of its root, never what lies above it. To share
+memory across tenants, a host nests every tenant below one company node and
+names that node (and, optionally, the root) as a **core scope**
+([specs/core-scopes.md](../specs/core-scopes.md)):
+
+```text
+root                                   core: "Core"     (optional)
+└── ws:acme                            core: "Company"  company brain
+    ├── team:hive                      layout root of the hive's agents
+    └── team:other                     another tenant, never read by the hive
+```
+
+A core scope reads its node with `Reach::exact`, so the hive sees the
+company's own items but nothing from `team:other`.
+
 ## What each operation does with reach
 
 | Operation | Namespace handling |

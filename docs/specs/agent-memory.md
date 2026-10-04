@@ -166,8 +166,9 @@ skipped, engine }`.
 | `recall(query)` | — | the pre-turn read without logging |
 | `run_background(job)` | the job's | — |
 
-- **Standard sections**, in priority order: Learnings (the whole tree), Brain
-  (all documents), this agent's history, and team conversations (every
+- **Standard sections**, in priority order: Learnings (the whole tree), one
+  section per core scope ([core-scopes.md](core-scopes.md); none by default),
+  Brain (all documents), this agent's history, and team conversations (every
   agent). A zero limit in `RecallPolicy` leaves a section out.
 - **`pre_turn` never fails on an engine error.** A failed log is reported in
   `TurnContext::log_error` and the pack is still returned.
