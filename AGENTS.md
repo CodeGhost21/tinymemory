@@ -117,8 +117,8 @@ Use standard `rustfmt` output and Rust 2024 idioms. Do not hand-format around
   `impl Into<String>` at boundaries; return owned, concrete types.
 - Keep the public surface minimal: default to private, and export deliberately
   from the crate's `src/lib.rs`.
-- `unsafe` is forbidden crate-wide by the `[lints]` table in each crate's own
-  `Cargo.toml` — the root is virtual and carries no lint configuration. If a
+- `unsafe` is forbidden in every crate by `[workspace.lints]` in the root
+  `Cargo.toml`, which each crate inherits with `[lints] workspace = true`. If a
   crate genuinely needs it, relax the lint in its own commit and document every
   invariant with a `// SAFETY:` comment.
 
