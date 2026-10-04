@@ -165,6 +165,18 @@ async fn a_core_scope_recalls_the_company_node_on_either_wire() {
             )
             .await
             .unwrap();
+        engine
+            .store(StoreItem::learning(
+                "Kestrel's private schedule",
+                LearningKind::Fact,
+                0.9,
+                MemoryMeta {
+                    namespace: "ws:acme/team:other".parse().unwrap(),
+                    ..MemoryMeta::default()
+                },
+            ))
+            .await
+            .unwrap();
         state.seen.lock().unwrap().recalls.clear();
 
         let pack = agent.recall("holidays").await.unwrap().markdown;
@@ -172,6 +184,7 @@ async fn a_core_scope_recalls_the_company_node_on_either_wire() {
             pack.contains("## Company\n\n- Acme closes for the holidays on Friday"),
             "{wire:?}: {pack}"
         );
+        assert!(!pack.contains("Kestrel"), "{wire:?}: {pack}");
         let scopes: Vec<String> = state
             .seen
             .lock()

@@ -230,15 +230,21 @@ impl AgentMemory {
     /// core scopes, or a conversation (turns stay at the agent's node); the
     /// engine's failure to store.
     pub async fn promote(&self, scope: &Namespace, mut item: StoreItem) -> Result<StoreReceipt> {
-        if !self.core.iter().any(|core| &core.at == scope) {
+        let Some(core) = self.core.iter().find(|core| &core.at == scope) else {
             return Err(Error::InvalidRequest(format!(
                 "`{scope}` is not a core scope of this memory"
             )));
-        }
-        if item.kind() == ItemKind::Conversation {
+        };
+        let kind = item.kind();
+        if kind == ItemKind::Conversation {
             return Err(Error::InvalidRequest(
                 "only learnings and documents are promoted to a core scope".to_string(),
             ));
+        }
+        if !core.kinds.is_empty() && !core.kinds.contains(&kind) {
+            return Err(Error::InvalidRequest(format!(
+                "the core scope `{scope}` does not read {kind:?} items"
+            )));
         }
         item.meta_mut().namespace = scope.clone();
         self.engine.store(item).await

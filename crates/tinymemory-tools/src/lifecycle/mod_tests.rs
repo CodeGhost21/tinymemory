@@ -495,14 +495,7 @@ async fn with_core_replaces_the_set_per_call() {
 
     let dropped = memory.clone().with_core(Vec::new()).unwrap();
     assert!(dropped.core().is_empty());
-    assert!(
-        !dropped
-            .recall("")
-            .await
-            .unwrap()
-            .markdown
-            .contains("holidays")
-    );
+    assert_eq!(dropped.recall("").await.unwrap().markdown, without);
 }
 
 #[tokio::test]
@@ -593,6 +586,15 @@ async fn promote_rejects_a_conversation_and_an_unconfigured_node() {
     };
     let refused = memory.promote(&acme(), conversation).await;
     assert!(matches!(refused, Err(Error::InvalidRequest(_))));
+
+    let learning_only = memory
+        .with_core(vec![CoreScope::new(acme(), "Company").kinds([ItemKind::Learning])])
+        .unwrap();
+    let document = StoreItem::document("x", MemoryMeta::default());
+    assert!(matches!(
+        learning_only.promote(&acme(), document).await,
+        Err(Error::InvalidRequest(_))
+    ));
 }
 
 #[tokio::test]

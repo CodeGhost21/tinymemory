@@ -19,6 +19,7 @@
 //! # Example
 //!
 //! ```
+//! #![cfg(feature = "conformance")]
 //! use tinymemory_api::{MemoryEngine, MemoryMeta, StoreItem, WaitFor, WriteOptions};
 //! use tinymemory_api::conformance::ReferenceEngine;
 //!
