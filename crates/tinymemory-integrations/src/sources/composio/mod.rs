@@ -23,9 +23,9 @@
 //! fields are preserved alongside, so ordering and identity stay UTC-based.
 
 pub mod clickup;
+pub mod fields;
 pub mod github;
 pub mod gmail_post_process;
-pub mod fields;
 pub mod linear;
 pub mod notion;
 pub mod slack_post_process;
