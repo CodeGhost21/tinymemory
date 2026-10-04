@@ -8,9 +8,9 @@
 //!
 //! A delta is called a move only when it is larger than the noise: the
 //! spread (max − min) the repeats of either profile show, and never less
-//! than a floor for a single run (3 points for a percentage, 0.03 for a
-//! score, 25% and at least 5 ms for a latency, 10% of the baseline
-//! otherwise). A move is marked `▲` when it is an
+//! than a floor for a single run: one probe's worth for a rate or score
+//! over probes (and at least 3 points or 0.03), 25% and at least 5 ms for a
+//! latency, and 10% of the baseline otherwise. A move is marked `▲` when it is an
 //! improvement, `▼` when it is a regression, and `~` when it is within noise.
 
 use std::collections::BTreeMap;
@@ -69,11 +69,13 @@ pub(crate) enum Move {
     Changed,
 }
 
-/// The smallest delta a single run can call a move.
-fn floor(unit: Unit, baseline: f64) -> f64 {
+/// The smallest delta a single run can call a move. Over `n` probes it is
+/// never less than one probe's worth, so a single probe flipping is noise.
+fn floor(unit: Unit, baseline: f64, n: Option<usize>) -> f64 {
+    let probe = n.map_or(0.0, |n| 1.0 / n as f64);
     match unit {
-        Unit::Pct | Unit::Points => 3.0,
-        Unit::Score => 0.03,
+        Unit::Pct | Unit::Points => (100.0 * probe).max(3.0),
+        Unit::Score => probe.max(0.03),
         Unit::Usd | Unit::Count => 0.1 * baseline.abs(),
         // Wall-clock time jitters most: a quarter, and never under 5 ms.
         Unit::Ms => (0.25 * baseline.abs()).max(5.0),
@@ -81,9 +83,11 @@ fn floor(unit: Unit, baseline: f64) -> f64 {
 }
 
 /// Whether `value` moved from `baseline` by more than `noise`, and which way.
-pub(crate) fn judge(baseline: f64, value: f64, noise: f64, unit: Unit, better: Better) -> Move {
+pub(crate) fn judge(baseline: f64, value: f64, noise: f64, kpi: &Kpi) -> Move {
+    let (unit, better) = (kpi.unit, kpi.better);
     let delta = value - baseline;
-    if delta.abs() <= noise.max(floor(unit, baseline)) {
+    // The epsilon keeps a delta of exactly one probe from rounding past it.
+    if delta.abs() <= noise.max(floor(unit, baseline, kpi.n)) + 1e-9 {
         return Move::Same;
     }
     match (better, delta > 0.0) {
@@ -155,7 +159,7 @@ pub(crate) fn run(paths: &[String]) -> Result<(), Error> {
     println!("# CortexDB flag comparison\n");
     println!(
         "Deltas are against `{}`. ▲ better, ▼ worse, ~ within noise (the repeats' \
-         spread, at least 3 pp / 0.03 / 25% of a latency / 10% otherwise).\n",
+         spread, and at least one probe's worth / 25% of a latency / 10% otherwise).\n",
         baseline.name
     );
     println!("| Profile | Runs | Flags over the baseline |");
@@ -203,7 +207,7 @@ pub(crate) fn run(paths: &[String]) -> Result<(), Error> {
                     None => shown,
                     Some(base) => {
                         let noise = baseline.spread(&kpi.name).max(profile.spread(&kpi.name));
-                        let verdict = judge(base, value, noise, kpi.unit, kpi.better);
+                        let verdict = judge(base, value, noise, kpi);
                         let mark = match verdict {
                             Move::Better => "▲",
                             Move::Worse => "▼",

@@ -77,6 +77,10 @@ pub(crate) struct Kpi {
     pub(crate) value: Option<f64>,
     pub(crate) unit: Unit,
     pub(crate) better: Better,
+    /// The probes a rate or score is over, so a comparison can tell a
+    /// one-probe change from a real one.
+    #[serde(default)]
+    pub(crate) n: Option<usize>,
 }
 
 impl Kpi {
@@ -87,7 +91,19 @@ impl Kpi {
             value,
             unit,
             better,
+            n: None,
         }
+    }
+
+    /// `part` of `whole` probes as a percentage.
+    fn rate(group: &str, name: &str, part: usize, whole: usize, better: Better) -> Self {
+        Self::new(group, name, pct(part, whole), Unit::Pct, better).of(whole)
+    }
+
+    /// The KPI, over `n` probes.
+    fn of(mut self, n: usize) -> Self {
+        self.n = (n > 0).then_some(n);
+        self
     }
 
     /// The value as a table cell.
@@ -143,40 +159,40 @@ pub(crate) fn compute(
     let conflicts = Totals::of(probes(reports, "synthesis", |n| n == "conflicts"));
     let leaks = Totals::of(reports.iter().flat_map(|r| &r.probes));
     let mut kpis = vec![
-        Kpi::new(
+        Kpi::rate(
             "accuracy",
             "pack hit (recall)",
-            pct(recall.hits, recall.scored),
-            Unit::Pct,
+            recall.hits,
+            recall.scored,
             Higher,
         ),
-        Kpi::new(
+        Kpi::rate(
             "accuracy",
             "pack hit",
-            pct(synthesis.hits, synthesis.scored),
-            Unit::Pct,
+            synthesis.hits,
+            synthesis.scored,
             Higher,
         ),
-        Kpi::new("accuracy", "MRR", Some(synthesis.mrr), Unit::Score, Higher),
-        Kpi::new(
+        Kpi::new("accuracy", "MRR", Some(synthesis.mrr), Unit::Score, Higher).of(synthesis.scored),
+        Kpi::rate(
             "accuracy",
             "extractive answer",
-            pct(synthesis.answers_ok, synthesis.scored),
-            Unit::Pct,
+            synthesis.answers_ok,
+            synthesis.scored,
             Higher,
         ),
-        Kpi::new(
+        Kpi::rate(
             "accuracy",
             "model answer",
-            pct(synthesis.llm_ok, synthesis.llm_scored),
-            Unit::Pct,
+            synthesis.llm_ok,
+            synthesis.llm_scored,
             Higher,
         ),
-        Kpi::new(
+        Kpi::rate(
             "accuracy",
             "captured",
-            pct(synthesis.captured, synthesis.captured_checked),
-            Unit::Pct,
+            synthesis.captured,
+            synthesis.captured_checked,
             Higher,
         ),
         Kpi::new(
@@ -205,28 +221,28 @@ pub(crate) fn compute(
         .zip(pct(recall.hits, recall.scored))
         .map(|(after, before)| after - before);
     kpis.extend([
-        Kpi::new(
+        Kpi::rate(
             "learning",
             "lesson in pack",
-            pct(learning.hits, learning.scored),
-            Unit::Pct,
+            learning.hits,
+            learning.scored,
             Higher,
         ),
-        Kpi::new(
+        Kpi::rate(
             "learning",
             "lesson answered",
-            pct(learning.llm_ok, learning.llm_scored),
-            Unit::Pct,
+            learning.llm_ok,
+            learning.llm_scored,
             Higher,
         ),
-        Kpi::new(
+        Kpi::rate(
             "learning",
             "lesson captured",
-            pct(learning.captured, learning.captured_checked),
-            Unit::Pct,
+            learning.captured,
+            learning.captured_checked,
             Higher,
         ),
-        Kpi::new("learning", "synthesis gain", gain, Unit::Points, Higher),
+        Kpi::new("learning", "synthesis gain", gain, Unit::Points, Higher).of(synthesis.scored),
         Kpi::new(
             "learning",
             "beliefs built",
@@ -266,11 +282,11 @@ pub(crate) fn compute(
 
     // Surprise.
     kpis.extend([
-        Kpi::new(
+        Kpi::rate(
             "surprise",
             "surprise in pack",
-            pct(surprise.hits, surprise.scored),
-            Unit::Pct,
+            surprise.hits,
+            surprise.scored,
             Higher,
         ),
         Kpi::new(
@@ -279,12 +295,13 @@ pub(crate) fn compute(
             (surprise.scored > 0).then_some(surprise.mrr),
             Unit::Score,
             Higher,
-        ),
-        Kpi::new(
+        )
+        .of(surprise.scored),
+        Kpi::rate(
             "surprise",
             "surprise answered",
-            pct(surprise.llm_ok, surprise.llm_scored),
-            Unit::Pct,
+            surprise.llm_ok,
+            surprise.llm_scored,
             Higher,
         ),
     ]);
@@ -316,7 +333,8 @@ pub(crate) fn compute(
             on_cortex.then(|| pct(found, planted)).flatten(),
             Unit::Pct,
             Higher,
-        ),
+        )
+        .of(planted),
         Kpi::new(
             "conflicts",
             "spurious conflicts",
@@ -331,18 +349,18 @@ pub(crate) fn compute(
             Unit::Count,
             Neither,
         ),
-        Kpi::new(
+        Kpi::rate(
             "conflicts",
             "disagreement in pack",
-            pct(conflicts.hits, conflicts.scored),
-            Unit::Pct,
+            conflicts.hits,
+            conflicts.scored,
             Higher,
         ),
-        Kpi::new(
+        Kpi::rate(
             "conflicts",
             "fresh first",
-            pct(synthesis.fresh_first, synthesis.contradictions),
-            Unit::Pct,
+            synthesis.fresh_first,
+            synthesis.contradictions,
             Higher,
         ),
     ]);

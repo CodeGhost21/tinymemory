@@ -2,28 +2,56 @@
 
 use super::*;
 
+fn kpi(unit: Unit, better: Better, n: Option<usize>) -> Kpi {
+    Kpi {
+        group: "g".into(),
+        name: "k".into(),
+        value: None,
+        unit,
+        better,
+        n,
+    }
+}
+
+#[test]
+fn one_probe_flipping_is_never_a_move() {
+    // One probe of 7 is 14 points; two are a move.
+    let rate = kpi(Unit::Pct, Better::Higher, Some(7));
+    let of7 = |probes: f64| 100.0 * probes / 7.0;
+    assert_eq!(judge(of7(4.0), of7(5.0), 0.0, &rate), Move::Same);
+    assert_eq!(judge(of7(4.0), of7(6.0), 0.0, &rate), Move::Better);
+    let mrr = kpi(Unit::Score, Better::Higher, Some(5));
+    assert_eq!(judge(0.6, 0.8, 0.0, &mrr), Move::Same);
+}
+
 #[test]
 fn a_rise_in_a_higher_is_better_kpi_beyond_noise_is_better() {
     assert_eq!(
-        judge(60.0, 70.0, 0.0, Unit::Pct, Better::Higher),
+        judge(60.0, 70.0, 0.0, &kpi(Unit::Pct, Better::Higher, None)),
         Move::Better
     );
     assert_eq!(
-        judge(60.0, 50.0, 0.0, Unit::Pct, Better::Higher),
+        judge(60.0, 50.0, 0.0, &kpi(Unit::Pct, Better::Higher, None)),
         Move::Worse
     );
 }
 
 #[test]
 fn a_rise_in_cost_is_worse() {
-    assert_eq!(judge(1.0, 1.5, 0.0, Unit::Usd, Better::Lower), Move::Worse);
-    assert_eq!(judge(1.0, 0.5, 0.0, Unit::Usd, Better::Lower), Move::Better);
+    assert_eq!(
+        judge(1.0, 1.5, 0.0, &kpi(Unit::Usd, Better::Lower, None)),
+        Move::Worse
+    );
+    assert_eq!(
+        judge(1.0, 0.5, 0.0, &kpi(Unit::Usd, Better::Lower, None)),
+        Move::Better
+    );
 }
 
 #[test]
 fn a_delta_within_the_repeats_spread_is_noise() {
     assert_eq!(
-        judge(60.0, 70.0, 12.0, Unit::Pct, Better::Higher),
+        judge(60.0, 70.0, 12.0, &kpi(Unit::Pct, Better::Higher, None)),
         Move::Same
     );
 }
@@ -32,15 +60,24 @@ fn a_delta_within_the_repeats_spread_is_noise() {
 fn a_single_run_needs_more_than_the_floor_to_move() {
     // 3 points for a percentage, 10% of the baseline for a cost.
     assert_eq!(
-        judge(60.0, 62.0, 0.0, Unit::Pct, Better::Higher),
+        judge(60.0, 62.0, 0.0, &kpi(Unit::Pct, Better::Higher, None)),
         Move::Same
     );
-    assert_eq!(judge(1.0, 1.05, 0.0, Unit::Usd, Better::Lower), Move::Same);
-    // A latency needs a quarter, and at least 5 ms.
-    assert_eq!(judge(100.0, 80.0, 0.0, Unit::Ms, Better::Lower), Move::Same);
-    assert_eq!(judge(4.0, 1.0, 0.0, Unit::Ms, Better::Lower), Move::Same);
     assert_eq!(
-        judge(100.0, 70.0, 0.0, Unit::Ms, Better::Lower),
+        judge(1.0, 1.05, 0.0, &kpi(Unit::Usd, Better::Lower, None)),
+        Move::Same
+    );
+    // A latency needs a quarter, and at least 5 ms.
+    assert_eq!(
+        judge(100.0, 80.0, 0.0, &kpi(Unit::Ms, Better::Lower, None)),
+        Move::Same
+    );
+    assert_eq!(
+        judge(4.0, 1.0, 0.0, &kpi(Unit::Ms, Better::Lower, None)),
+        Move::Same
+    );
+    assert_eq!(
+        judge(100.0, 70.0, 0.0, &kpi(Unit::Ms, Better::Lower, None)),
         Move::Better
     );
 }
@@ -48,7 +85,7 @@ fn a_single_run_needs_more_than_the_floor_to_move() {
 #[test]
 fn a_kpi_with_no_direction_only_changes() {
     assert_eq!(
-        judge(10.0, 20.0, 0.0, Unit::Count, Better::Neither),
+        judge(10.0, 20.0, 0.0, &kpi(Unit::Count, Better::Neither, None)),
         Move::Changed
     );
 }
