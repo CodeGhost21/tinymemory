@@ -11,7 +11,7 @@
 //! The local kinds ([`folder::FolderReader`], [`file::FileReader`],
 //! [`conversation::ConversationReader`]) are always compiled. The network
 //! kinds (`github`, `rss`, `web_page`) sit behind the `sources-network`
-//! feature; `rss` and `web_page` fetch through [`crate::sources::fetch`]. What this crate does **not** own is *when*
+//! feature; `rss` and `web_page` fetch through `sources::fetch`. What this crate does **not** own is *when*
 //! a network read happens: scheduling, polling cadence, OAuth, credentials,
 //! and egress/cost budgeting stay with the host.
 //!

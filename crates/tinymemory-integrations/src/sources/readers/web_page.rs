@@ -6,16 +6,17 @@
 //! `tinymemory_integrations::documents::html::to_markdown`, keeping its headings, lists and
 //! links.
 //!
-//! The fetch-side SSRF guard (scheme/host policy plus a DNS resolver that
-//! pins connections to globally routable addresses) lives in the shared
-//! `ssrf` module, which the RSS reader uses too.
+//! The page is fetched through `sources::fetch`, behind its SSRF guard
+//! (scheme/host policy plus a DNS resolver that pins connections to globally
+//! routable addresses), with a 10 MiB body cap.
 
 mod types;
 
 use async_trait::async_trait;
 
-use super::ssrf::{build_client, is_url_allowed, read_body_capped};
 use types::SelectorSpec;
+
+use crate::sources::fetch::fetch_url_capped;
 
 use crate::sources::error::{Error, Result};
 use crate::sources::types::{
@@ -23,6 +24,9 @@ use crate::sources::types::{
 };
 
 use super::SourceReader;
+
+/// Largest page body the reader will buffer.
+const MAX_BODY_BYTES: u64 = 10 * 1024 * 1024;
 
 /// Reader for a single-page web source: fetches one URL and extracts its
 /// readable text.
@@ -38,36 +42,9 @@ impl SourceReader for WebPageReader {
     async fn list_items(
         &self,
         source: &MemorySourceEntry,
-        workspace: &std::path::Path,
-    ) -> Result<Vec<SourceItem>> {
-        self.list_items_inner(source, workspace)
-            .await
-            .map_err(Error::Reader)
-    }
-
-    async fn read_item(
-        &self,
-        source: &MemorySourceEntry,
-        item_id: &str,
-        workspace: &std::path::Path,
-    ) -> Result<SourceContent> {
-        self.read_item_inner(source, item_id, workspace)
-            .await
-            .map_err(Error::Reader)
-    }
-}
-
-impl WebPageReader {
-    async fn list_items_inner(
-        &self,
-        source: &MemorySourceEntry,
         _workspace: &std::path::Path,
-    ) -> std::result::Result<Vec<SourceItem>, String> {
-        let url = source
-            .url
-            .as_deref()
-            .ok_or("web_page source requires a url")?;
-
+    ) -> Result<Vec<SourceItem>> {
+        let url = configured_url(source)?;
         Ok(vec![SourceItem {
             id: url.to_string(),
             title: source.label.clone(),
@@ -75,52 +52,28 @@ impl WebPageReader {
         }])
     }
 
-    async fn read_item_inner(
+    async fn read_item(
         &self,
         source: &MemorySourceEntry,
         item_id: &str,
         _workspace: &std::path::Path,
-    ) -> std::result::Result<SourceContent, String> {
+    ) -> Result<SourceContent> {
         let url = if item_id.starts_with("http") {
             item_id.to_string()
         } else {
-            source.url.clone().ok_or("web_page source requires a url")?
+            configured_url(source)?.to_string()
         };
 
-        // SSRF guard: validate scheme and host, reject private/internal
-        // targets, and refuse redirects that would escape that policy.
-        let parsed = reqwest::Url::parse(&url).map_err(|e| format!("invalid URL: {e}"))?;
-        if !is_url_allowed(&parsed) {
-            return Err(format!(
-                "web_page source requires an http(s) URL to a public host, got: {}",
-                url.chars().take(64).collect::<String>()
-            ));
-        }
-
         tracing::debug!(
-            host = %parsed.host_str().unwrap_or(""),
             selector = ?source.selector,
             "[memory_sources:web_page] reading item"
         );
 
-        let client = build_client()?;
-        let resp = client
-            .get(parsed)
-            .header("User-Agent", "openhuman")
-            .send()
-            .await
-            .map_err(|e| format!("failed to fetch page: {e}"))?;
-
-        if !resp.status().is_success() {
-            return Err(format!("page returned {}", resp.status()));
-        }
-
-        // Cap response body to 10 MiB so a hostile/giant page can't OOM us.
-        // The read is streamed so the cap is enforced while downloading, not
-        // after the whole body has been buffered into memory.
-        const MAX_BODY_BYTES: u64 = 10 * 1024 * 1024;
-        let bytes = read_body_capped(resp, MAX_BODY_BYTES).await?;
-        let body = String::from_utf8_lossy(&bytes).into_owned();
+        // `fetch_url_capped` applies the SSRF guard (scheme and host policy,
+        // public-only DNS, per-hop redirect checks) and streams the body
+        // against the cap, so a hostile or giant page cannot exhaust memory.
+        let document = fetch_url_capped(&url, MAX_BODY_BYTES).await?;
+        let body = String::from_utf8_lossy(&document.bytes).into_owned();
 
         let title = crate::documents::html::extract_title(&body)
             .or_else(|| extract_title(&body))
@@ -141,6 +94,14 @@ impl WebPageReader {
             metadata: serde_json::json!({ "url": url }),
         })
     }
+}
+
+/// The configured page URL.
+fn configured_url(source: &MemorySourceEntry) -> Result<&str> {
+    source
+        .url
+        .as_deref()
+        .ok_or_else(|| Error::Invalid("web_page source requires a url".to_string()))
 }
 
 // ── Text extraction ─────────────────────────────────────────────────
