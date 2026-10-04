@@ -37,9 +37,6 @@ pub enum Error {
     /// A network reader's own diagnostic, carried verbatim.
     #[error("{0}")]
     Reader(String),
-    /// The source registry file could not be read, parsed or written.
-    #[error("source registry error: {0}")]
-    Registry(String),
     /// A filesystem operation failed.
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
@@ -60,7 +57,6 @@ impl From<Error> for tinymemory_api::Error {
             }
             Error::NotFound(_) => Self::NotFound(error.to_string()),
             Error::Unreachable(_) => Self::Unavailable(error.to_string()),
-            Error::Registry(_) => Self::Config(error.to_string()),
             Error::Document(inner) => inner.into(),
             Error::Upstream(_) | Error::Reader(_) | Error::Io(_) => Self::Engine(error.to_string()),
         }
