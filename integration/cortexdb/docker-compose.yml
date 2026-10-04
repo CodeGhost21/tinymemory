@@ -26,20 +26,23 @@ services:
       CORTEX_ANSWER_URL: ${CORTEX_INFERENCE_URL:-http://mock-inference:8080/v1}
       CORTEX_ANSWER_API_KEY: ${CORTEX_INFERENCE_KEY:-tinymemory-test}
       CORTEX_ANSWER_MODEL: ${CORTEX_ANSWER_MODEL:-reasoning}
-      CORTEX_VERIFIER_URL: ${CORTEX_INFERENCE_URL:-http://mock-inference:8080/v1}
+      # A flag profile turns the verifier off with an empty CORTEX_VERIFIER_URL.
+      CORTEX_VERIFIER_URL: ${CORTEX_VERIFIER_URL-${CORTEX_INFERENCE_URL:-http://mock-inference:8080/v1}}
       CORTEX_VERIFIER_API_KEY: ${CORTEX_INFERENCE_KEY:-tinymemory-test}
       CORTEX_VERIFIER_MODEL: ${CORTEX_VERIFIER_MODEL:-max-reasoning}
       CORTEX_VERIFIER_MAX_TOKENS: "16384"
-      CORTEX_ENTITY_GRAPH: "1"
-      CORTEX_V1_LAYERS_AUTO: "1"
-      CORTEX_AUTO_ROUTE: "1"
-      CORTEX_CONSOLIDATION_MIN_AGE_HOURS: "0"
+    # The server's feature flags: the baseline, then the profile under test
+    # (scripts/memory-flag-sweep.sh), which only names what it changes. See
+    # flags/README.md. A variable in `environment` above wins over both.
+    env_file:
+      - flags/baseline.env
+      - ${CORTEX_FLAGS_FILE:-flags/baseline.env}
     ports: ["127.0.0.1:${CORTEXDB_PORT:-3141}:3141"]
     extra_hosts:
       - host.docker.internal:host-gateway
     volumes:
       - cortex-data:/data
-      - ./cortex.toml:/data/cortex.toml:ro
+      - ./${CORTEX_TOML:-cortex.toml}:/data/cortex.toml:ro
     depends_on:
       mock-inference:
         condition: service_healthy
