@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 
+use crate::consolidate::Consolidation;
 use crate::engine::{EngineDescriptor, EngineHealth};
 use crate::item::{StoreItem, StoreReceipt};
 use crate::meta::{SourceRef, ToolCallRef};
