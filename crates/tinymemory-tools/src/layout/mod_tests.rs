@@ -1,6 +1,7 @@
 //! Layout nodes, filters and brain source ids.
 
 use super::*;
+use tinymemory_api::SourceKind;
 
 #[test]
 fn places_every_part_below_the_root() {
