@@ -388,11 +388,13 @@ async fn a_timed_turn_is_led_by_when_it_was_said() {
 }
 
 /// The reference engine plus beliefs kept apart from its items, or a belief
-/// read that fails; it records every belief request.
+/// read that fails. Fetch returns them when asked; it records every belief
+/// listing and every fetch's belief budget.
 struct Believer {
     inner: ReferenceEngine,
     beliefs: Option<Vec<&'static str>>,
     asked: std::sync::Mutex<Vec<tinymemory_api::BeliefsRequest>>,
+    budgets: std::sync::Mutex<Vec<usize>>,
 }
 
 impl Believer {
@@ -401,38 +403,11 @@ impl Believer {
             inner: seeded().await,
             beliefs,
             asked: std::sync::Mutex::new(Vec::new()),
+            budgets: std::sync::Mutex::new(Vec::new()),
         }
     }
-}
 
-#[async_trait]
-impl tinymemory_api::MemoryEngine for Believer {
-    fn descriptor(&self) -> &EngineDescriptor {
-        self.inner.descriptor()
-    }
-    async fn health(&self) -> EngineHealth {
-        EngineHealth::Ok
-    }
-    async fn recall(&self, req: RecallRequest) -> tinymemory_api::Result<RecallAnswer> {
-        self.inner.recall(req).await
-    }
-    async fn fetch(&self, req: FetchRequest) -> tinymemory_api::Result<FetchPage> {
-        self.inner.fetch(req).await
-    }
-    async fn store(&self, item: StoreItem) -> tinymemory_api::Result<StoreReceipt> {
-        self.inner.store(item).await
-    }
-    async fn forget(&self, target: ForgetTarget) -> tinymemory_api::Result<ForgetReport> {
-        self.inner.forget(target).await
-    }
-    async fn list(&self, req: ListRequest) -> tinymemory_api::Result<ListPage> {
-        self.inner.list(req).await
-    }
-    async fn beliefs(
-        &self,
-        req: tinymemory_api::BeliefsRequest,
-    ) -> tinymemory_api::Result<Vec<tinymemory_api::Hit>> {
-        self.asked.lock().unwrap().push(req.clone());
+    fn held(&self, limit: usize) -> tinymemory_api::Result<Vec<tinymemory_api::Hit>> {
         let Some(texts) = &self.beliefs else {
             return Err(Error::Unavailable("beliefs are down".into()));
         };
@@ -449,8 +424,46 @@ impl tinymemory_api::MemoryEngine for Believer {
                 score: 0.0,
                 confidence: Some(0.9),
             })
-            .take(req.limit)
+            .take(limit)
             .collect())
+    }
+}
+
+#[async_trait]
+impl tinymemory_api::MemoryEngine for Believer {
+    fn descriptor(&self) -> &EngineDescriptor {
+        self.inner.descriptor()
+    }
+    async fn health(&self) -> EngineHealth {
+        EngineHealth::Ok
+    }
+    async fn recall(&self, req: RecallRequest) -> tinymemory_api::Result<RecallAnswer> {
+        self.inner.recall(req).await
+    }
+    async fn fetch(&self, req: FetchRequest) -> tinymemory_api::Result<FetchPage> {
+        self.budgets.lock().unwrap().push(req.beliefs);
+        let wanted = req.beliefs;
+        let mut page = self.inner.fetch(req).await?;
+        if wanted > 0 {
+            page.beliefs = self.held(wanted)?;
+        }
+        Ok(page)
+    }
+    async fn store(&self, item: StoreItem) -> tinymemory_api::Result<StoreReceipt> {
+        self.inner.store(item).await
+    }
+    async fn forget(&self, target: ForgetTarget) -> tinymemory_api::Result<ForgetReport> {
+        self.inner.forget(target).await
+    }
+    async fn list(&self, req: ListRequest) -> tinymemory_api::Result<ListPage> {
+        self.inner.list(req).await
+    }
+    async fn beliefs(
+        &self,
+        req: tinymemory_api::BeliefsRequest,
+    ) -> tinymemory_api::Result<Vec<tinymemory_api::Hit>> {
+        self.asked.lock().unwrap().push(req.clone());
+        self.held(req.limit)
     }
 }
 
@@ -480,10 +493,70 @@ async fn a_learnings_section_merges_the_engine_s_beliefs() {
         md.find("Customers prefer").unwrap() < md.find("user prefers pnpm").unwrap(),
         "stored learnings lead at each rank: {md}"
     );
-    let asked = engine.asked.lock().unwrap().clone();
-    assert_eq!(asked.len(), 1, "only the learnings section reads beliefs");
-    assert_eq!(asked[0].query.as_deref(), Some("refunds"));
-    assert_eq!(asked[0].reach, Reach::subtree(Namespace::ROOT));
+    assert!(
+        engine.asked.lock().unwrap().is_empty(),
+        "with a query, beliefs come from the fetches, not a separate read"
+    );
+    assert_eq!(
+        *engine.budgets.lock().unwrap(),
+        [5, 10],
+        "every fetch asks for what the learnings section wants"
+    );
+}
+
+#[tokio::test]
+async fn beliefs_another_section_read_land_in_the_learnings() {
+    let engine = Believer::new(Some(vec!["user prefers pnpm over npm"])).await;
+    let pack = holistic_recall(
+        &engine,
+        &HolisticRecall::new(
+            Some("refunds".into()),
+            vec![
+                ScopeSection::fetch("Docs", docs(), 5),
+                learnings_section("Learnings"),
+            ],
+        ),
+    )
+    .await
+    .unwrap();
+    let learnings = pack
+        .sections
+        .iter()
+        .find(|section| section.heading == "Learnings")
+        .unwrap();
+    assert_eq!(
+        learnings
+            .hits
+            .iter()
+            .filter(|hit| hit.text == "user prefers pnpm over npm")
+            .count(),
+        1,
+        "each belief once, in the learnings: {}",
+        pack.markdown
+    );
+    assert!(
+        !pack.sections[0]
+            .hits
+            .iter()
+            .any(|hit| hit.text.contains("pnpm")),
+        "beliefs never land in a section that does not read learnings"
+    );
+}
+
+#[tokio::test]
+async fn a_pack_without_learnings_asks_for_no_beliefs() {
+    let engine = Believer::new(Some(vec!["user prefers pnpm over npm"])).await;
+    holistic_recall(
+        &engine,
+        &HolisticRecall::new(
+            Some("refunds".into()),
+            vec![ScopeSection::fetch("Docs", docs(), 5)],
+        ),
+    )
+    .await
+    .unwrap();
+    assert_eq!(*engine.budgets.lock().unwrap(), [0]);
+    assert!(engine.asked.lock().unwrap().is_empty());
 }
 
 #[tokio::test]
