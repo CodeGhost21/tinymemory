@@ -6,12 +6,21 @@
 //! [`section`] reads; [`settle`] then applies the request's exclusions and
 //! the items earlier sections already list, in section order, so an item is
 //! listed once — in its highest-priority section.
+//!
+//! **Beliefs.** A fetched or latest section that reads learnings also reads
+//! the engine's beliefs in its reach ([`MemoryEngine::beliefs`]),
+//! concurrently and for the same query, and interleaves them with the stored
+//! learnings rank by rank: to the reader a belief the engine built is a
+//! learning like any other. A belief read that fails leaves the section to
+//! its stored learnings. Answered sections read none: the engine's answer
+//! draws on its beliefs itself.
 
 use std::collections::HashSet;
 
+use futures::future::join;
 use tinymemory_api::{
-    FetchMode, FetchRequest, Hit, ItemId, ItemKind, ListRequest, MemoryEngine, MetaFilter,
-    RecallRequest,
+    BeliefsRequest, FetchMode, FetchRequest, Hit, ItemId, ItemKind, ListRequest, MemoryEngine,
+    MetaFilter, Namespace, Reach, RecallRequest,
 };
 
 use super::render::{Body, Line, Section, shorten, single_line};
@@ -69,13 +78,29 @@ pub(super) async fn section(
             }
             Err(error) => Err(error),
         },
-        SectionQuery::Fetch { query } => match query.as_deref().or(request.query.as_deref()) {
-            Some(query) if !query.trim().is_empty() => {
-                fetch(engine, &section.filter, query, want).await
-            }
-            _ => latest(engine, &section.filter, want).await,
-        },
-        SectionQuery::Latest => latest(engine, &section.filter, want).await,
+        SectionQuery::Fetch { query } => {
+            let query = query
+                .as_deref()
+                .or(request.query.as_deref())
+                .filter(|query| !query.trim().is_empty());
+            with_beliefs(engine, section, query, want, async {
+                match query {
+                    Some(query) => fetch(engine, &section.filter, query, want).await,
+                    None => latest(engine, &section.filter, want).await,
+                }
+            })
+            .await
+        }
+        SectionQuery::Latest => {
+            with_beliefs(
+                engine,
+                section,
+                None,
+                want,
+                latest(engine, &section.filter, want),
+            )
+            .await
+        }
     };
     match outcome {
         Ok(hits) => Gathered::Hits(hits),
@@ -175,6 +200,57 @@ fn preferred_mode(engine: &dyn MemoryEngine) -> Option<FetchMode> {
         Some(FetchMode::Hybrid)
     } else {
         modes.first().copied()
+    }
+}
+
+/// `items`, read alongside the engine's beliefs when `section` reads
+/// learnings, the two interleaved rank by rank (stored learnings first at
+/// each rank).
+async fn with_beliefs(
+    engine: &dyn MemoryEngine,
+    section: &ScopeSection,
+    query: Option<&str>,
+    want: usize,
+    items: impl Future<Output = tinymemory_api::Result<Vec<Hit>>>,
+) -> tinymemory_api::Result<Vec<Hit>> {
+    if !section.filter.admits_kind(ItemKind::Learning) {
+        return items.await;
+    }
+    let reach = section
+        .filter
+        .reach
+        .clone()
+        .unwrap_or_else(|| Reach::subtree(Namespace::ROOT));
+    let mut request = BeliefsRequest::new(reach, want);
+    request.query = query.map(str::to_owned);
+    let (items, beliefs) = join(items, engine.beliefs(request)).await;
+    let items = items?;
+    let beliefs = match beliefs {
+        Ok(beliefs) => beliefs,
+        Err(error) => {
+            log::warn!(
+                "[recall] beliefs unavailable heading={:?} error={error}",
+                section.heading
+            );
+            return Ok(items);
+        }
+    };
+    let beliefs = beliefs
+        .into_iter()
+        .filter(|belief| section.filter.matches(ItemKind::Learning, &belief.meta));
+    Ok(interleave(items, beliefs))
+}
+
+/// `first` and `second` merged rank by rank, `first` leading at each rank.
+fn interleave(first: Vec<Hit>, second: impl IntoIterator<Item = Hit>) -> Vec<Hit> {
+    let mut first = first.into_iter();
+    let mut second = second.into_iter();
+    let mut out = Vec::new();
+    loop {
+        match (first.next(), second.next()) {
+            (None, None) => return out,
+            (a, b) => out.extend(a.into_iter().chain(b)),
+        }
     }
 }
 
