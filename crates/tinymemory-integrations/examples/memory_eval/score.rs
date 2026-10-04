@@ -138,17 +138,15 @@ pub(crate) fn score(
     }
 }
 
-/// Whether `answer` is right for `probe`: every expected string and no stale
-/// one. `None` for a probe that expects nothing.
+/// Whether `answer` is right for `probe`: every expected string (or one of
+/// its accepted wordings) and no stale one. `None` for a probe that expects nothing.
 pub(crate) fn grade(probe: &Probe, answer: Option<&str>) -> Option<bool> {
     (!probe.expect.is_empty()).then(|| {
         answer.is_some_and(|text| {
             let text = text.to_lowercase();
-            probe
-                .expect
-                .iter()
-                .all(|e| text.contains(&e.to_lowercase()))
-                && !probe.stale.iter().any(|s| text.contains(&s.to_lowercase()))
+            let has = |needle: &&str| text.contains(&needle.to_lowercase());
+            (probe.expect.iter().all(has) || probe.accept.iter().any(has))
+                && !probe.stale.iter().any(has)
         })
     })
 }
