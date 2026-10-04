@@ -356,11 +356,29 @@ async fn build_beliefs(
     }
     state.seen.lock().unwrap().builds.push(body.clone());
     // CortexDB v0.10 builds within the request and reports the count.
+    let built = state.log.lock().unwrap().build(scope);
     ok(
         &state,
         200,
-        json!({ "built": 1, "items": [], "facts_scanned": 1, "events_scanned": 1 }),
+        json!({ "built": built, "items": [], "facts_scanned": built, "events_scanned": built }),
     )
+}
+
+async fn beliefs(
+    State(state): State<Shared>,
+    uri: Uri,
+    headers: HeaderMap,
+    Query(query): Query<HashMap<String, String>>,
+) -> Reply {
+    if let Some(early) = gate(&state, "GET", &uri, &headers) {
+        return early;
+    }
+    let scope = query.get("scope").cloned().unwrap_or_default();
+    if let Some(refused) = refuse_scope(&state, &scope) {
+        return refused;
+    }
+    let items = state.log.lock().unwrap().list_beliefs(&scope);
+    ok(&state, 200, json!({ "items": items, "has_more": false }))
 }
 
 /// CortexDB's own routes.
@@ -375,6 +393,7 @@ pub(super) fn direct(state: Shared) -> Router {
         .route("/v1/admin/health", get(health))
         .route("/v1/scopes/list", get(scopes))
         .route("/v1/beliefs/build", post(build_beliefs))
+        .route("/v1/beliefs", get(beliefs))
         .with_state(state)
 }
 
