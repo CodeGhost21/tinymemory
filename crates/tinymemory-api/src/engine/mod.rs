@@ -4,7 +4,7 @@
 use async_trait::async_trait;
 use serde::Serialize;
 
-use crate::consolidate::{ConsolidateReceipt, ConsolidateRequest, Consolidation};
+use crate::consolidate::{BeliefsRequest, ConsolidateReceipt, ConsolidateRequest, Consolidation};
 use crate::error::{Error, Result};
 use crate::explore::{ExplorePage, ExploreRequest, GetRequest, explore_by_listing, get_by_listing};
 use crate::item::{StoreItem, StoreReceipt};

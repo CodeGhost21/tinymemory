@@ -6,11 +6,13 @@
 //! - `consolidate` — an invalid request is refused, and a valid one answers
 //!   as the descriptor promises: [`Consolidation::None`] refuses with
 //!   `Unsupported`, [`Consolidation::OnDemand`] starts or completes a build,
-//!   and [`Consolidation::Scheduled`] acknowledges without one.
+//!   and [`Consolidation::Scheduled`] acknowledges without one. Then
+//!   `beliefs` refuses a zero limit, and every belief it returns is a
+//!   learning tagged [`BELIEF_TAG`] within the reach asked for.
 
 use crate::{
-    ConsolidateRequest, ConsolidateStatus, Consolidation, Error as ApiError, ItemKind, Namespace,
-    Reach, WaitFor, WriteOptions,
+    BELIEF_TAG, BeliefsRequest, ConsolidateRequest, ConsolidateStatus, Consolidation,
+    Error as ApiError, ItemKind, Namespace, Reach, WaitFor, WriteOptions,
 };
 
 use super::{Ctx, ensure};
@@ -94,9 +96,19 @@ pub(super) async fn consolidate(ctx: &Ctx<'_>) -> Result<()> {
         || format!("a request naming a kind twice was not refused: {refused:?}"),
     )?;
 
-    let request = ConsolidateRequest::new(Reach::exact(node)).kinds([ItemKind::Document]);
+    let request = ConsolidateRequest::new(Reach::exact(node.clone())).kinds([ItemKind::Document]);
     let outcome = ctx.engine.consolidate(request).await;
     let promised = ctx.engine.descriptor().consolidation;
+    answers_as_promised(promised, outcome)?;
+    beliefs(ctx, node).await
+}
+
+/// A consolidation's answer against what the descriptor promised.
+fn answers_as_promised(
+    promised: Consolidation,
+    outcome: std::result::Result<crate::ConsolidateReceipt, ApiError>,
+) -> Result<()> {
+    const CHECK: &str = "consolidate";
     match (promised, outcome) {
         (Consolidation::None, Err(ApiError::Unsupported(_))) => Ok(()),
         (Consolidation::None, other) => Err(Error::Check {
@@ -121,4 +133,44 @@ pub(super) async fn consolidate(ctx: &Ctx<'_>) -> Result<()> {
             || format!("a scheduled engine answered {:?}", receipt.status),
         ),
     }
+}
+
+/// Beliefs read back after a build: a malformed request is refused, and
+/// every belief is a tagged learning within the reach asked for.
+async fn beliefs(ctx: &Ctx<'_>, node: Namespace) -> Result<()> {
+    const CHECK: &str = "consolidate";
+    let reach = Reach::exact(node);
+    let refused = ctx
+        .engine
+        .beliefs(BeliefsRequest::new(reach.clone(), 0))
+        .await;
+    ensure(
+        CHECK,
+        matches!(refused, Err(ApiError::InvalidRequest(_))),
+        || format!("a beliefs read with a zero limit was not refused: {refused:?}"),
+    )?;
+    let held = ctx
+        .call(
+            CHECK,
+            ctx.engine
+                .beliefs(BeliefsRequest::new(reach.clone(), 10).query("A fact to build on")),
+        )
+        .await?;
+    ensure(CHECK, held.len() <= 10, || {
+        format!("a beliefs read for 10 answered {}", held.len())
+    })?;
+    for belief in held {
+        ensure(
+            CHECK,
+            belief.kind == ItemKind::Learning
+                && belief.meta.tags.iter().any(|tag| tag == BELIEF_TAG)
+                && reach.admits(&belief.meta.namespace),
+            || {
+                format!(
+                    "a belief must be a learning tagged `{BELIEF_TAG}` within its reach: {belief:?}"
+                )
+            },
+        )?;
+    }
+    Ok(())
 }

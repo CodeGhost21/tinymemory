@@ -155,7 +155,11 @@ impl BeliefsRequest {
                 "a beliefs limit must be positive".to_string(),
             ));
         }
-        if self.query.as_deref().is_some_and(|query| query.trim().is_empty()) {
+        if self
+            .query
+            .as_deref()
+            .is_some_and(|query| query.trim().is_empty())
+        {
             return Err(Error::InvalidRequest(
                 "a beliefs query must not be blank".to_string(),
             ));
