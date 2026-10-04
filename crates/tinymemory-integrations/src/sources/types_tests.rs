@@ -112,23 +112,6 @@ fn every_config_kind_maps_onto_a_contract_source_kind() {
 }
 
 #[test]
-fn path_applies_to_folders_and_files_but_glob_only_to_folders() {
-    let path = MemorySourcePatch {
-        path: Some(Some("a".into())),
-        ..Default::default()
-    };
-    assert!(path.validate_for_kind(SourceKind::Folder).is_ok());
-    assert!(path.validate_for_kind(SourceKind::File).is_ok());
-    assert!(path.validate_for_kind(SourceKind::RssFeed).is_err());
-    let glob = MemorySourcePatch {
-        glob: Some(Some("*.md".into())),
-        ..Default::default()
-    };
-    assert!(glob.validate_for_kind(SourceKind::Folder).is_ok());
-    assert!(glob.validate_for_kind(SourceKind::File).is_err());
-}
-
-#[test]
 fn validate_rss_and_web_page_require_url() {
     let rss = MemorySourceEntry {
         id: "src_rss".into(),
@@ -280,24 +263,7 @@ pub(super) fn default_entry() -> MemorySourceEntry {
     }
 }
 
-#[test]
-fn max_items_is_applicable_to_composio_and_rss_but_not_other_kinds() {
-    // The host UI exposes `max_items` for Composio sources and creates them with
-    // a toolkit default, so editing one must not be rejected — the regression
-    // this guards ("field 'max_items' is not applicable to source kind
-    // 'composio'"). RSS keeps it; kinds with no per-run item cap still reject.
-    let patch = || MemorySourcePatch {
-        max_items: Some(Some(100)),
-        ..Default::default()
-    };
-    assert!(patch().validate_for_kind(SourceKind::Composio).is_ok());
-    assert!(patch().validate_for_kind(SourceKind::RssFeed).is_ok());
-    assert!(patch().validate_for_kind(SourceKind::Folder).is_err());
-    assert!(patch().validate_for_kind(SourceKind::GithubRepo).is_err());
-    assert!(patch().validate_for_kind(SourceKind::WebPage).is_err());
-}
-
-/// Hosts persist these types in their `config.toml` and exchange them over
+/// Hosts persist these types in their configuration and exchange them over
 /// RPC as JSON, so a renamed field or a new `SourceKind` variant is not a
 /// compile error anywhere: it is a runtime failure the first time a host reads
 /// a config written by another version.
@@ -425,4 +391,28 @@ fn source_content_wire_format_is_pinned() {
             "metadata": { "author": "shanu" }
         })
     );
+}
+
+#[test]
+fn validate_treats_an_empty_string_field_as_missing() {
+    let entry = MemorySourceEntry {
+        id: "src_folder".into(),
+        label: "Folder".into(),
+        path: Some(String::new()),
+        ..default_entry()
+    };
+    assert!(entry.validate().is_err());
+}
+
+#[test]
+fn validate_rejects_an_id_with_a_colon_or_control_character() {
+    for id in ["src:x", "src\nx"] {
+        let entry = MemorySourceEntry {
+            id: id.into(),
+            label: "Conversation".into(),
+            kind: SourceKind::Conversation,
+            ..default_entry()
+        };
+        assert!(entry.validate().is_err(), "{id:?} must be rejected");
+    }
 }

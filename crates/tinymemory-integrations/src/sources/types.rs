@@ -1,11 +1,10 @@
 //! Core types for memory sources.
 //!
 //! A *memory source* answers the question "what feeds my memory?". Each
-//! configured source is a [`MemorySourceEntry`] persisted in `config.toml`
-//! under `[[memory_sources]]`. The [`SourceKind`] discriminator selects which
-//! kind-specific fields are required; required-field checks live in
-//! [`crate::sources::validation`] and are surfaced via
-//! [`MemorySourceEntry::validate`].
+//! configured source is a [`MemorySourceEntry`], which the host persists
+//! wherever it keeps configuration. The [`SourceKind`] discriminator selects
+//! which kind-specific fields are required; [`MemorySourceEntry::validate`]
+//! checks them.
 //!
 //! Reader output contracts ([`SourceItem`], [`SourceContent`], [`ContentType`])
 //! are shared across every reader implementation so the host can ingest source
@@ -27,7 +26,7 @@ pub(crate) fn default_true() -> bool {
 /// The kind of a configured memory source.
 ///
 /// The wire representation is snake_case (`github_repo`, `rss_feed`, …) and is
-/// persisted in `config.toml`; it must stay stable across versions. Each maps
+/// persisted by hosts; it must stay stable across versions. Each maps
 /// onto one [`tinymemory_api::SourceKind`] through [`SourceKind::api_kind`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -93,12 +92,11 @@ impl SourceKind {
     }
 }
 
-/// A configured memory source entry persisted in `config.toml`.
+/// A configured memory source entry.
 ///
 /// All kind-specific fields are flattened onto the struct as `Option`s. The
 /// [`kind`](MemorySourceEntry::kind) discriminator determines which fields are
-/// required; validation is enforced at add/update time via
-/// [`MemorySourceEntry::validate`].
+/// required; [`MemorySourceEntry::validate`] checks them.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MemorySourceEntry {
     /// Stable unique id (e.g. `src_<uuid>`).
@@ -200,201 +198,49 @@ impl MemorySourceEntry {
         }
     }
 
-    /// Validate required fields for this entry's [`SourceKind`].
+    /// Validate the fields this entry's [`SourceKind`] requires.
     ///
-    /// Delegates to [`crate::sources::validation::validate_entry`].
+    /// `id` and `label` are required for every kind, and `id` must not contain
+    /// `:` or control characters. Composio needs `toolkit` and
+    /// `connection_id`; folders and files need `path`; GitHub repositories, RSS
+    /// feeds and web pages need `url`. An empty string counts as missing.
     ///
     /// # Errors
     ///
     /// [`Error::Invalid`] naming the first failing rule.
     pub fn validate(&self) -> Result<()> {
-        crate::sources::validation::validate_entry(self)
+        if self.id.trim().is_empty() {
+            return Err(Error::Invalid("id is required".to_string()));
+        }
+        if self.id.contains(':') || self.id.chars().any(char::is_control) {
+            return Err(Error::Invalid(
+                "id must not contain ':' or control characters".to_string(),
+            ));
+        }
+        if self.label.is_empty() {
+            return Err(Error::Invalid("label is required".to_string()));
+        }
+        match self.kind {
+            SourceKind::Composio => {
+                require_field(&self.toolkit, "toolkit")?;
+                require_field(&self.connection_id, "connection_id")
+            }
+            SourceKind::Conversation => Ok(()),
+            SourceKind::Folder | SourceKind::File => require_field(&self.path, "path"),
+            SourceKind::GithubRepo | SourceKind::RssFeed | SourceKind::WebPage => {
+                require_field(&self.url, "url")
+            }
+        }
     }
 }
 
-fn deserialize_double_option<'de, D, T>(
-    deserializer: D,
-) -> std::result::Result<Option<Option<T>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-    T: serde::Deserialize<'de>,
-{
-    <Option<T> as serde::Deserialize>::deserialize(deserializer).map(Some)
-}
-
-/// Partial update payload for a source entry.
-///
-/// An absent field leaves the current value unchanged. For optional source
-/// properties, an explicit JSON `null` clears the value while a concrete value
-/// replaces it.
-#[derive(Debug, Default, Deserialize)]
-pub struct MemorySourcePatch {
-    /// New human-readable label for the source.
-    #[serde(default)]
-    pub label: Option<String>,
-    /// Toggle whether the source participates in sync.
-    #[serde(default)]
-    pub enabled: Option<bool>,
-    /// Composio toolkit slug (e.g. `gmail`, `slack`).
-    #[serde(default, deserialize_with = "deserialize_double_option")]
-    pub toolkit: Option<Option<String>>,
-    /// Composio connection id this source binds to.
-    #[serde(default, deserialize_with = "deserialize_double_option")]
-    pub connection_id: Option<Option<String>>,
-    /// Filesystem root for a local-files source.
-    #[serde(default, deserialize_with = "deserialize_double_option")]
-    pub path: Option<Option<String>>,
-    /// Glob filter applied under [`MemorySourcePatch::path`].
-    #[serde(default, deserialize_with = "deserialize_double_option")]
-    pub glob: Option<Option<String>>,
-    /// Remote URL for a git/web source.
-    #[serde(default, deserialize_with = "deserialize_double_option")]
-    pub url: Option<Option<String>>,
-    /// Git branch to track.
-    #[serde(default, deserialize_with = "deserialize_double_option")]
-    pub branch: Option<Option<String>>,
-    /// Explicit path allowlist within a repo source.
-    #[serde(default)]
-    pub paths: Option<Vec<String>>,
-    /// Cap on the number of items pulled per sync.
-    #[serde(default, deserialize_with = "deserialize_double_option")]
-    pub max_items: Option<Option<u32>>,
-    /// Source-specific selector (e.g. a CSS selector for a web page).
-    #[serde(default, deserialize_with = "deserialize_double_option")]
-    pub selector: Option<Option<String>>,
-    /// Token budget per sync run.
-    #[serde(default, deserialize_with = "deserialize_double_option")]
-    pub max_tokens_per_sync: Option<Option<u64>>,
-    /// Cost budget per sync run, in USD.
-    #[serde(default, deserialize_with = "deserialize_double_option")]
-    pub max_cost_per_sync_usd: Option<Option<f64>>,
-    /// History depth in days for tree/summary backfill.
-    #[serde(default, deserialize_with = "deserialize_double_option")]
-    pub sync_depth_days: Option<Option<u32>>,
-    /// Cap on commits ingested from a git source.
-    #[serde(default, deserialize_with = "deserialize_double_option")]
-    pub max_commits: Option<Option<u32>>,
-    /// Cap on issues ingested from a repo source.
-    #[serde(default, deserialize_with = "deserialize_double_option")]
-    pub max_issues: Option<Option<u32>>,
-    /// Cap on pull requests ingested from a repo source.
-    #[serde(default, deserialize_with = "deserialize_double_option")]
-    pub max_prs: Option<Option<u32>>,
-}
-
-impl MemorySourcePatch {
-    /// Reject fields that do not apply to `kind`.
-    ///
-    /// A patch is a partial update, so a caller can set a field the source's
-    /// kind has no use for — a git branch on an RSS feed. Catching that here
-    /// keeps a nonsensical value out of the registry rather than letting the
-    /// reader discover it later.
-    ///
-    /// # Errors
-    ///
-    /// [`Error::Invalid`] naming the first inapplicable field.
-    pub fn validate_for_kind(&self, kind: SourceKind) -> Result<()> {
-        let reject = |field: &str| {
-            Err(Error::Invalid(format!(
-                "field '{field}' is not applicable to source kind '{}'",
-                kind.as_str()
-            )))
-        };
-        if (self.toolkit.is_some() || self.connection_id.is_some()) && kind != SourceKind::Composio
-        {
-            return reject("toolkit/connection_id");
-        }
-        if self.path.is_some() && !matches!(kind, SourceKind::Folder | SourceKind::File) {
-            return reject("path");
-        }
-        if self.glob.is_some() && kind != SourceKind::Folder {
-            return reject("glob");
-        }
-        if (self.branch.is_some()
-            || self.paths.is_some()
-            || self.max_commits.is_some()
-            || self.max_issues.is_some()
-            || self.max_prs.is_some())
-            && kind != SourceKind::GithubRepo
-        {
-            return reject("github repository fields");
-        }
-        if self.selector.is_some() && kind != SourceKind::WebPage {
-            return reject("selector");
-        }
-        // `max_items` is the per-run ingest cap. It applies to RSS feeds and to
-        // Composio connections — the host UI (`SourceSettingsPanel`) exposes it
-        // for both, and a Composio source is created with a toolkit default, so
-        // rejecting it on edit desynced the UI from the store. Other kinds have
-        // no per-run item cap.
-        if matches!(self.max_items, Some(Some(_)))
-            && !matches!(kind, SourceKind::RssFeed | SourceKind::Composio)
-        {
-            return reject("max_items");
-        }
-        if self.url.is_some()
-            && kind != SourceKind::GithubRepo
-            && kind != SourceKind::RssFeed
-            && kind != SourceKind::WebPage
-        {
-            return reject("url");
-        }
-        Ok(())
-    }
-
-    /// Apply each present field of this patch onto `entry` in place.
-    pub fn apply_to(self, entry: &mut MemorySourceEntry) {
-        if let Some(value) = self.label {
-            entry.label = value;
-        }
-        if let Some(value) = self.enabled {
-            entry.enabled = value;
-        }
-        if let Some(value) = self.toolkit {
-            entry.toolkit = value;
-        }
-        if let Some(value) = self.connection_id {
-            entry.connection_id = value;
-        }
-        if let Some(value) = self.path {
-            entry.path = value;
-        }
-        if let Some(value) = self.glob {
-            entry.glob = value;
-        }
-        if let Some(value) = self.url {
-            entry.url = value;
-        }
-        if let Some(value) = self.branch {
-            entry.branch = value;
-        }
-        if let Some(value) = self.paths {
-            entry.paths = value;
-        }
-        if let Some(value) = self.max_items {
-            entry.max_items = value;
-        }
-        if let Some(value) = self.selector {
-            entry.selector = value;
-        }
-        if let Some(value) = self.max_tokens_per_sync {
-            entry.max_tokens_per_sync = value;
-        }
-        if let Some(value) = self.max_cost_per_sync_usd {
-            entry.max_cost_per_sync_usd = value;
-        }
-        if let Some(value) = self.sync_depth_days {
-            entry.sync_depth_days = value;
-        }
-        if let Some(value) = self.max_commits {
-            entry.max_commits = value;
-        }
-        if let Some(value) = self.max_issues {
-            entry.max_issues = value;
-        }
-        if let Some(value) = self.max_prs {
-            entry.max_prs = value;
-        }
+/// Require that `value` is present and non-empty, naming it `name` in errors.
+fn require_field(value: &Option<String>, name: &str) -> Result<()> {
+    match value {
+        Some(v) if !v.is_empty() => Ok(()),
+        _ => Err(Error::Invalid(format!(
+            "{name} is required for this source kind"
+        ))),
     }
 }
 
