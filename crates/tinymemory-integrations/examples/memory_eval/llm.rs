@@ -60,7 +60,10 @@ impl Llm {
         let body = json!({
             "model": self.model,
             "temperature": 0,
-            "max_tokens": 120,
+            "max_tokens": 400,
+            // Reasoning models (GLM, o-series) would spend the budget
+            // thinking; OpenRouter turns it off where the model allows.
+            "reasoning": { "enabled": false },
             "messages": [
                 { "role": "system", "content": SYSTEM },
                 { "role": "user", "content": format!("{pack}\n\nQuestion: {question}") },
