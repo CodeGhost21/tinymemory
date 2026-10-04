@@ -2,7 +2,7 @@
 //! in-memory engine to calibrate it.
 //!
 //! [`run`] stores, lists, fetches, recalls and forgets through any
-//! [`tinymemory_api::MemoryEngine`] and reports the first behaviour that breaks
+//! [`MemoryEngine`](crate::MemoryEngine) and reports the first behaviour that breaks
 //! the contract. It covers store/list round trips for each item kind, replay
 //! idempotency, fetch filtering by every metadata field in every declared
 //! mode, forget by id and by filter, refusal of an empty forget,
