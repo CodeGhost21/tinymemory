@@ -17,7 +17,7 @@ mod failure;
 
 use std::time::Duration;
 
-use reqwest::header::{AUTHORIZATION, HeaderValue};
+use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue};
 use reqwest::{Method, RequestBuilder, Url};
 use serde_json::Value;
 
@@ -59,6 +59,51 @@ pub(crate) struct HttpClient {
     wire: CortexWire,
     read_backoff: Duration,
     actor: actor::ActorCache,
+    /// Fixed headers the host attaches to every request (see
+    /// [`default_headers`]).
+    default_headers: HeaderMap,
+}
+
+/// Headers a host may not fix: the credential, the claim and actor this
+/// transport sets itself, and what the HTTP stack owns.
+const RESERVED_HEADERS: [&str; 7] = [
+    "authorization",
+    "proxy-authorization",
+    "cookie",
+    "host",
+    "content-length",
+    "idempotency-key",
+    actor::ACTOR_HEADER,
+];
+
+/// The header map for `pairs`: fixed, non-credential headers a host sends
+/// on every request, such as its product attribution (`x-sdk-name`).
+///
+/// # Errors
+///
+/// [`Error::Config`] for a name or value no header may carry, or a reserved
+/// name (the credential, `Idempotency-Key`, the actor header, and what the
+/// HTTP stack sets). No message carries a value.
+pub(crate) fn default_headers<K, V>(pairs: impl IntoIterator<Item = (K, V)>) -> Result<HeaderMap>
+where
+    K: AsRef<str>,
+    V: AsRef<str>,
+{
+    let mut map = HeaderMap::new();
+    for (name, value) in pairs {
+        let name = name.as_ref().trim();
+        let parsed = HeaderName::from_bytes(name.as_bytes())
+            .map_err(|_| Error::Config(format!("`{name}` is not a valid header name")))?;
+        if RESERVED_HEADERS.contains(&parsed.as_str()) {
+            return Err(Error::Config(format!(
+                "`{name}` is set by the memory transport and cannot be fixed"
+            )));
+        }
+        let value = HeaderValue::from_str(value.as_ref().trim())
+            .map_err(|_| Error::Config(format!("the `{name}` header value is not valid")))?;
+        map.insert(parsed, value);
+    }
+    Ok(map)
 }
 
 impl std::fmt::Debug for HttpClient {
@@ -129,7 +174,13 @@ impl HttpClient {
             wire,
             read_backoff: READ_BACKOFF,
             actor: actor::ActorCache::default(),
+            default_headers: HeaderMap::new(),
         })
+    }
+
+    /// Sends `headers` on every request from now on.
+    pub(crate) fn set_default_headers(&mut self, headers: HeaderMap) {
+        self.default_headers = headers;
     }
 
     /// The wire this client speaks.
@@ -166,6 +217,7 @@ impl HttpClient {
         Ok(self
             .inner
             .request(method, url)
+            .headers(self.default_headers.clone())
             .header(AUTHORIZATION, header))
     }
 
