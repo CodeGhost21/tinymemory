@@ -191,5 +191,5 @@ fn is_token_char(c: char) -> bool {
 }
 
 #[cfg(test)]
-#[path = "markers_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;

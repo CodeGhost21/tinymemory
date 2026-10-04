@@ -30,19 +30,19 @@
 use regex::Regex;
 use std::sync::LazyLock;
 
-use super::pattern::literal;
-use super::{BareCardGate, Policy, SanitizationReport, Sanitized};
+use crate::safety::pattern::literal;
+use crate::safety::policy::{BareCardGate, Policy, SanitizationReport, Sanitized};
 
-mod checks;
+/// Checksum and structural validators (Luhn, mod-97, Verhoeff, CPF/CNPJ, …).
+pub(crate) mod checks;
+/// Fullwidth / zero-width normalization used before matching.
+mod normalize;
+/// The single cheap byte pass that decides which pattern classes run.
+mod prefilter;
+
 use checks::*;
-
-// Flattened test-only re-exports so the crate's test modules can exercise the
-// internals (checksum validators, the normalization pass, the candidate scan).
-#[cfg(test)]
-pub(crate) use checks::{
-    digits, valid_cnpj, valid_cpf, valid_cuit, valid_dni_es, valid_iban, valid_luhn, valid_nie_es,
-    valid_nino, valid_ssn, valid_verhoeff,
-};
+pub(crate) use normalize::NormalizedView;
+pub(crate) use prefilter::{Candidates, scan_candidates};
 
 // ---------- Replacement tokens ----------
 
@@ -159,13 +159,6 @@ static NIE_RE: LazyLock<Regex> = LazyLock::new(|| literal(r"(?i)\b[XYZ]\d{7}[A-Z
 static RRN_RE: LazyLock<Regex> = LazyLock::new(|| literal(r"\b\d{6}-[1-4]\d{6}\b"));
 static EMAIL_RE: LazyLock<Regex> =
     LazyLock::new(|| literal(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b"));
-
-// ---------- Byte-oriented candidate pre-filter ----------
-//
-// The single cheap byte pass that replaces the always-resident combined
-// `RegexSet`. Lives in its own module — see `prefilter.rs` for the full rationale.
-mod prefilter;
-pub(crate) use prefilter::{Candidates, scan_candidates};
 
 // ---------- Public API ----------
 
@@ -565,15 +558,10 @@ fn splice_redactions(
     }
 }
 
-// ---------- Unicode normalization for matching ----------
-
-// Fullwidth / zero-width normalization used before matching. Lives in its own
-// module — see `normalize.rs`.
-mod normalize;
-pub(crate) use normalize::NormalizedView;
-
-// ---------- Checksum helpers ----------
+#[cfg(test)]
+#[path = "mod_tests.rs"]
+mod tests;
 
 #[cfg(test)]
-#[path = "pii_tests.rs"]
-mod tests;
+#[path = "mod_prefilter_tests.rs"]
+mod prefilter_tests;
