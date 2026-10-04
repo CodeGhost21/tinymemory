@@ -3,8 +3,8 @@
 //! Real engines distil beliefs with a model. The reference engine needs only
 //! something deterministic and obvious: each document or conversation an
 //! [`ConsolidateRequest`] admits yields one [`LearningKind::Fact`] — the
-//! first sentence of the document's body, or of the conversation's first user
-//! turn — stored at the source item's own node with the source's metadata, a
+//! first sentence of the document's prose, or of the conversation's first
+//! user turn — stored at the source item's own node with the source's metadata, a
 //! `consolidated` tag, and the source's id as evidence. Consolidating twice is
 //! a replay, so it never duplicates a belief.
 
@@ -59,14 +59,22 @@ fn source_text(item: &StoreItem) -> Option<String> {
     }
 }
 
-/// The first sentence of `text`, markdown heading markers stripped and
-/// whitespace collapsed; `None` when nothing is left.
+/// The first sentence of `text`'s prose, whitespace collapsed; markdown
+/// headings are skipped unless they are all there is. `None` when nothing is
+/// left.
 fn first_sentence(text: &str) -> Option<String> {
-    let line = text
+    let (headings, prose): (Vec<&str>, Vec<&str>) = text
         .lines()
-        .map(|line| line.trim().trim_start_matches('#').trim())
-        .find(|line| !line.is_empty())?;
-    let collapsed = line.split_whitespace().collect::<Vec<_>>().join(" ");
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .partition(|line| line.starts_with('#'));
+    let lines = if prose.is_empty() { headings } else { prose };
+    let collapsed = lines
+        .iter()
+        .map(|line| line.trim_start_matches('#'))
+        .flat_map(|line| line.split_whitespace())
+        .collect::<Vec<_>>()
+        .join(" ");
     let end = collapsed
         .char_indices()
         .find(|(_, c)| matches!(c, '.' | '!' | '?'))
