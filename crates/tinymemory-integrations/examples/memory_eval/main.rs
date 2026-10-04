@@ -1,12 +1,14 @@
 //! An accuracy and latency eval of the agent memory lifecycle.
 //!
-//! A scripted agent (`agent`) plays nine scenarios (`scenarios`) through the
-//! real lifecycle calls: brain lookups, a restart, contradicting facts, a
+//! A scripted agent (`agent`) plays twelve scenarios (`scenarios`) through
+//! the real lifecycle calls: brain lookups, a restart, contradicting facts, a
 //! tool-heavy incident, a team handoff, compaction, tenant isolation, a
-//! needle in noise, and explicit learnings. After each scenario's writes
-//! settle, its probes are scored (`score`). Every scenario then runs a
-//! belief build over its whole tree and is probed again, so the effect of
-//! synthesis shows up as a second phase.
+//! needle in noise, explicit learnings, learning from corrections, a
+//! surprise, and conflicting sources. After each scenario's writes settle,
+//! its probes are scored (`score`). Every scenario then runs a belief build
+//! over its whole tree and is probed again, so the effect of synthesis shows
+//! up as a second phase. The run ends with its KPIs (`kpi`): accuracy,
+//! learning, surprise, conflicts, cost and latency.
 //!
 //! ```sh
 //! # Offline, against the reference engine:
@@ -31,11 +33,18 @@
 //! - `--llm`: also have a model answer every probe from its pack (see
 //!   `llm`).
 //!
+//! `memory_eval compare <run.json>…` compares the reports of several runs
+//! instead (see `compare`). A run records the CortexDB flag profile it ran
+//! under when `CORTEX_FLAGS_FILE` names one (see
+//! `integration/cortexdb/flags/` and `scripts/memory-flag-sweep.sh`).
+//!
 //! Everything is written below roots unique to the run and forgotten at the
 //! end, unless `CORTEX_DB_KEEP` is set.
 
 mod agent;
+mod compare;
 mod inspect;
+mod kpi;
 mod llm;
 mod scenarios;
 mod score;
@@ -59,7 +68,7 @@ use tinymemory_tools::{
 };
 
 use agent::{ScriptedAgent, ms};
-use inspect::{Captured, Derived, Inspector};
+use inspect::{Captured, Derived, Inspector, Usage};
 use llm::Llm;
 use scenarios::{MAIN, Probe, Scenario, Step, Via};
 use score::{Latency, ProbeResult, Totals, grade, score};
@@ -152,11 +161,43 @@ struct ScenarioReport {
     settle_ms: f64,
     synthesis: Synthesis,
     probes: Vec<ProbeResult>,
+    /// What CortexDB's models spent on this scenario.
+    usage: Option<Usage>,
+}
+
+/// The CortexDB flag profile a run is under: its name, and every flag it
+/// sets, the baseline's included.
+fn profile() -> Result<(Option<String>, BTreeMap<String, String>), Error> {
+    let Ok(file) = std::env::var("CORTEX_FLAGS_FILE") else {
+        return Ok((None, BTreeMap::new()));
+    };
+    let file = std::path::Path::new(&file);
+    let mut flags = BTreeMap::new();
+    for path in [file.with_file_name("baseline.env"), file.to_path_buf()] {
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        for line in text.lines().map(str::trim) {
+            if let Some((key, value)) = line.split_once('=').filter(|_| !line.starts_with('#')) {
+                flags.insert(key.trim().to_string(), value.trim().to_string());
+            }
+        }
+    }
+    let name = file
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .ok_or("CORTEX_FLAGS_FILE names no file")?;
+    Ok((Some(name.to_string()), flags))
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    let raw: Vec<String> = std::env::args().skip(1).collect();
+    if raw.first().map(String::as_str) == Some("compare") {
+        return compare::run(&raw[1..]);
+    }
     let args = args()?;
+    let (profile, flags) = profile()?;
     let url = std::env::var("CORTEX_DB_URL").unwrap_or_default();
     let key = std::env::var("CORTEX_DB_KEY").unwrap_or_else(|_| "tinymemory-cortex-test".into());
     let (engine, inspector): (Arc<dyn MemoryEngine>, Option<Inspector>) = match args.engine.as_str()
@@ -227,27 +268,47 @@ async fn main() -> Result<(), Error> {
 
     print_summary(&args.label, &reports, &timings);
     let usage = match (&eval.inspector, usage_before) {
-        (Some(inspector), Some(before)) => Some(inspector.usage().await?.since(before)),
+        (Some(inspector), Some(before)) => Some(inspector.usage().await?.since(&before)),
         _ => None,
     };
-    if let Some(usage) = usage {
+    if let Some(usage) = &usage {
         println!(
             "\n## Model usage\n\nCortexDB's models: {} calls, {} tokens, ${:.2} as its routers \
-             price them (excludes the `--llm` answers).",
+             price them (excludes the `--llm` answers).\n",
             usage.calls, usage.tokens, usage.cost_usd
         );
+        println!("| Scenario | Calls | Tokens | Cost |");
+        println!("| --- | --- | --- | --- |");
+        for report in &reports {
+            if let Some(spent) = &report.usage {
+                println!(
+                    "| {} | {} | {} | ${:.3} |",
+                    report.name, spent.calls, spent.tokens, spent.cost_usd
+                );
+            }
+        }
     }
+    let kpis = kpi::compute(&reports, usage.as_ref(), &timings);
+    kpi::print(&args.label, &kpis);
+    let server = match &eval.inspector {
+        Some(inspector) => inspector.version().await.ok(),
+        None => None,
+    };
     if let Some(path) = &args.json {
         if let Some(dir) = std::path::Path::new(path).parent() {
             std::fs::create_dir_all(dir)?;
         }
         let out = serde_json::json!({
             "label": args.label,
+            "profile": profile,
+            "flags": flags,
+            "server": server,
             "engine": engine.descriptor().id,
             "run": run,
             "scenarios": reports,
             "timings": timings,
             "usage": usage,
+            "kpis": kpis,
         });
         std::fs::write(path, serde_json::to_string_pretty(&out)?)?;
         println!("\nwrote {path}");
@@ -296,6 +357,10 @@ impl Eval {
         timings: &mut Timings,
     ) -> Result<ScenarioReport, Error> {
         let (engine, run, policy) = (&self.engine, self.run, &self.policy);
+        let usage_before = match &self.inspector {
+            Some(inspector) => Some(inspector.usage().await?),
+            None => None,
+        };
         let memory = |tenant: &str, agent: &str| -> Result<AgentMemory, Error> {
             Ok(
                 AgentMemory::new(engine.clone(), layout(run, scenario.name, tenant)?, agent)?
@@ -442,10 +507,9 @@ impl Eval {
                         .derived
                         .push(inspector.derived(scope, &questions).await?);
                 }
-                let captured = inspector.captured(&scopes).await?;
-                synthesis.captured.facts.extend(captured.facts);
-                synthesis.captured.beliefs.extend(captured.beliefs);
-                synthesis.captured.conflicts.extend(captured.conflicts);
+                synthesis
+                    .captured
+                    .extend(inspector.captured(&scopes).await?);
             }
         }
         let beliefs: usize = synthesis.derived.iter().map(|d| d.beliefs).sum();
@@ -489,7 +553,12 @@ impl Eval {
                     .await?;
             }
         }
+        let usage = match (&self.inspector, usage_before) {
+            (Some(inspector), Some(before)) => Some(inspector.usage().await?.since(&before)),
+            _ => None,
+        };
         Ok(ScenarioReport {
+            usage,
             name: scenario.name,
             about: scenario.about,
             writes: writes.values().sum(),
@@ -600,8 +669,10 @@ impl Eval {
         let mut result = score(scenario.name, phase, probe, &markdown, tokens, elapsed);
         if let Some(llm) = llm {
             let answer = llm.answer(&markdown, probe.question).await?;
-            result.llm_ok = grade(probe, Some(&answer));
-            result.llm_answer = Some(answer);
+            result.llm_ok = grade(probe, Some(&answer.text));
+            result.llm_answer = Some(answer.text);
+            result.llm_tokens = answer.tokens;
+            result.llm_cost_usd = answer.cost_usd;
         }
         timings.add(&format!("probe {}", result.via), elapsed);
         Ok(result)

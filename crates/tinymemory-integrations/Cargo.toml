@@ -142,6 +142,9 @@ required-features = ["cortex"]
 name = "memory_eval"
 path = "examples/memory_eval/main.rs"
 required-features = ["cortex", "brain"]
+# Runs the eval's own unit tests (KPI arithmetic, comparison verdicts) under
+# `cargo test`; the eval itself only runs through `cargo run`.
+test = true
 
 [[example]]
 name = "cortex_agent"
