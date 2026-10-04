@@ -1609,6 +1609,7 @@ dependencies = [
  "tinymemory-sources",
  "tokio",
  "toml",
+ "zip",
 ]
 
 [[package]]

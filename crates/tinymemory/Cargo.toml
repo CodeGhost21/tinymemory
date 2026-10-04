@@ -38,7 +38,10 @@ toml = "1"
 serde_json = "1"
 # The registry tests implement `BearerSource`.
 async-trait = "0.1"
-tokio = { version = "1", features = ["macros", "rt"] }
+tokio = { version = "1", features = ["macros", "rt", "time"] }
+# The live Office pipeline test converts a real OOXML archive and stores the
+# resulting document through the CortexDB engine.
+zip = { version = "8", default-features = false, features = ["deflate"] }
 
 # One feature per optional crate, all additive and none on by default: naming
 # no feature gets the contract, the registry and the CortexDB engines.

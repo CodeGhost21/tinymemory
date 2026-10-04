@@ -7,7 +7,14 @@ all-features = true
 [advisories]
 # Fail on any crate with a security advisory or an unmaintained warning.
 # Add an entry here only with a comment explaining the exposure and the plan.
-ignore = []
+ignore = [
+    # RUSTSEC-2026-0192 marks ttf-parser unmaintained; it is pulled by
+    # pdf-extract for the optional Office PDF converter. No safe upgrade exists.
+    # The Office feature only parses caller-supplied uploads and has byte and
+    # panic guards. Replace pdf-extract when a maintained pure-Rust parser can
+    # pass the existing PDF fixtures and live document pipeline.
+    { id = "RUSTSEC-2026-0192", reason = "optional PDF conversion path; replacement is tracked above" },
+]
 
 [licenses]
 # Licenses accepted for this crate and its dependencies. Keep GPL-3.0-only for
