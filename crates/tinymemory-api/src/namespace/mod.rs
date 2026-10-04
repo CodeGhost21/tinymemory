@@ -25,13 +25,13 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::error::{Error, Result};
 
 /// Deepest a namespace may nest.
-pub const MAX_DEPTH: usize = 8;
+pub(crate) const MAX_DEPTH: usize = 8;
 
 /// Longest a segment id may be.
-pub const MAX_SEGMENT_ID: usize = 128;
+pub(crate) const MAX_SEGMENT_ID: usize = 128;
 
 /// How the root namespace is written.
-pub const ROOT_LABEL: &str = "root";
+pub(crate) const ROOT_LABEL: &str = "root";
 
 /// What a namespace segment names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -50,15 +50,6 @@ pub enum SegmentKind {
 }
 
 impl SegmentKind {
-    /// Every kind, in declaration order.
-    pub const ALL: [Self; 5] = [
-        Self::Agent,
-        Self::Team,
-        Self::User,
-        Self::Workspace,
-        Self::Project,
-    ];
-
     /// The stable wire prefix (`agent`, `team`, `user`, `ws`, `project`).
     #[must_use]
     pub fn as_str(self) -> &'static str {
@@ -72,12 +63,16 @@ impl SegmentKind {
     }
 
     fn parse(value: &str) -> Result<Self> {
-        Self::ALL
-            .into_iter()
-            .find(|kind| kind.as_str() == value)
-            .ok_or_else(|| {
-                Error::InvalidRequest(format!("`{value}` is not a namespace segment kind"))
-            })
+        match value {
+            "agent" => Ok(Self::Agent),
+            "team" => Ok(Self::Team),
+            "user" => Ok(Self::User),
+            "ws" => Ok(Self::Workspace),
+            "project" => Ok(Self::Project),
+            _ => Err(Error::InvalidRequest(format!(
+                "`{value}` is not a namespace segment kind"
+            ))),
+        }
     }
 }
 
@@ -89,8 +84,7 @@ pub struct Segment {
 }
 
 impl Segment {
-    /// A segment, checking its id: `1..=`[`MAX_SEGMENT_ID`] characters of
-    /// `[A-Za-z0-9_-]`.
+    /// A segment, checking its id: 1 to 128 characters of `[A-Za-z0-9_-]`.
     ///
     /// # Errors
     ///
@@ -167,7 +161,7 @@ fn fnv1a(value: &str) -> u32 {
 /// A node of the memory tree, as the path from the root.
 ///
 /// Written `team:acme/agent:writer`; the root is the empty path, written
-/// [`ROOT_LABEL`]. On the wire a namespace is that string.
+/// `root`. On the wire a namespace is that string.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Namespace(Vec<Segment>);
 
@@ -179,7 +173,7 @@ impl Namespace {
     ///
     /// # Errors
     ///
-    /// [`Error::InvalidRequest`] when deeper than [`MAX_DEPTH`].
+    /// [`Error::InvalidRequest`] when deeper than 8 segments.
     pub fn new(segments: Vec<Segment>) -> Result<Self> {
         if segments.len() > MAX_DEPTH {
             return Err(Error::InvalidRequest(format!(
@@ -194,18 +188,6 @@ impl Namespace {
     #[must_use]
     pub fn agent(id: &str) -> Self {
         Self(vec![Segment::sanitized(SegmentKind::Agent, id)])
-    }
-
-    /// This node with `segment` appended: a child.
-    ///
-    /// # Errors
-    ///
-    /// [`Error::InvalidRequest`] when the child would be deeper than
-    /// [`MAX_DEPTH`].
-    pub fn child(&self, segment: Segment) -> Result<Self> {
-        let mut segments = self.0.clone();
-        segments.push(segment);
-        Self::new(segments)
     }
 
     /// Whether this is the root.
@@ -226,37 +208,16 @@ impl Namespace {
         self.0.len()
     }
 
-    /// The parent node; `None` for the root.
-    #[must_use]
-    pub fn parent(&self) -> Option<Self> {
-        (!self.is_root()).then(|| Self(self.0[..self.0.len() - 1].to_vec()))
-    }
-
     /// The root, every ancestor, then this node.
-    #[must_use]
-    pub fn ancestors_and_self(&self) -> Vec<Self> {
+    fn ancestors_and_self(&self) -> Vec<Self> {
         (0..=self.0.len())
             .map(|depth| Self(self.0[..depth].to_vec()))
             .collect()
     }
 
     /// Whether this node is `other` or lies below it.
-    #[must_use]
-    pub fn is_within(&self, other: &Self) -> bool {
+    fn is_within(&self, other: &Self) -> bool {
         self.0.starts_with(&other.0)
-    }
-
-    /// The nearest node at or above this one whose last segment is not an
-    /// agent: where memory meant to be shared with an agent's peers goes (a
-    /// team, a workspace, or the root).
-    #[must_use]
-    pub fn shared_ancestor(&self) -> Self {
-        let keep = self
-            .0
-            .iter()
-            .rposition(|segment| segment.kind != SegmentKind::Agent)
-            .map_or(0, |index| index + 1);
-        Self(self.0[..keep].to_vec())
     }
 }
 
@@ -278,7 +239,7 @@ impl fmt::Display for Namespace {
 impl FromStr for Namespace {
     type Err = Error;
 
-    /// Parses `team:acme/agent:writer`; `""` and [`ROOT_LABEL`] are the root.
+    /// Parses `team:acme/agent:writer`; `""` and `root` are the root.
     fn from_str(value: &str) -> Result<Self> {
         let value = value.trim();
         if value.is_empty() || value == ROOT_LABEL {

@@ -14,6 +14,10 @@ fn parses_and_prints_paths() {
     assert_eq!(writer.segments()[0].kind(), SegmentKind::Team);
     assert_eq!(writer.segments()[1].id(), "writer");
     assert_eq!(ns("ws:shared").to_string(), "ws:shared");
+    for kind in ["agent", "team", "user", "ws", "project"] {
+        let segment = ns(&format!("{kind}:x")).segments()[0].clone();
+        assert_eq!(segment.kind().as_str(), kind);
+    }
     assert!(ns("").is_root());
     assert!(ns(ROOT_LABEL).is_root());
     assert_eq!(Namespace::ROOT.to_string(), ROOT_LABEL);
@@ -56,8 +60,6 @@ fn sanitizes_host_ids_without_collisions() {
 #[test]
 fn walks_the_tree() {
     let scout = ns("agent:researcher/agent:scout");
-    assert_eq!(scout.parent(), Some(ns("agent:researcher")));
-    assert_eq!(Namespace::ROOT.parent(), None);
     assert_eq!(
         scout.ancestors_and_self(),
         vec![Namespace::ROOT, ns("agent:researcher"), scout.clone()]
@@ -66,21 +68,6 @@ fn walks_the_tree() {
     assert!(scout.is_within(&Namespace::ROOT));
     assert!(!ns("agent:researcher").is_within(&scout));
     assert!(!ns("agent:researchers").is_within(&ns("agent:researcher")));
-    let child = ns("team:acme")
-        .child(Segment::new(SegmentKind::Agent, "writer").unwrap())
-        .unwrap();
-    assert_eq!(child, ns("team:acme/agent:writer"));
-}
-
-#[test]
-fn shared_ancestor_skips_agents() {
-    assert_eq!(ns("agent:a/agent:b").shared_ancestor(), Namespace::ROOT);
-    assert_eq!(
-        ns("team:acme/agent:writer").shared_ancestor(),
-        ns("team:acme")
-    );
-    assert_eq!(ns("team:acme").shared_ancestor(), ns("team:acme"));
-    assert_eq!(Namespace::ROOT.shared_ancestor(), Namespace::ROOT);
 }
 
 #[test]
