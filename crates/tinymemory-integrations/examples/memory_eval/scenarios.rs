@@ -68,6 +68,10 @@ pub(crate) enum Via {
         turn_index: u32,
         in_prompt_from: u32,
     },
+    /// A `context.md` with one brief, `heading`, answering the probe's
+    /// question over the whole layout: the initial context a host compiles
+    /// once per session.
+    ContextDoc { heading: &'static str },
 }
 
 /// Whether a question shares its key words with the stored text.
@@ -163,6 +167,9 @@ pub(crate) fn all() -> Vec<Scenario> {
         isolation(),
         needle_in_noise(),
         learnings(),
+        learning_from_feedback(),
+        surprise(),
+        conflicts(),
     ]
 }
 
@@ -878,6 +885,269 @@ fn learnings() -> Scenario {
             )
             .expect(&["metric units"])
             .accept(&["kilomet", "metric"]),
+        ],
+    }
+}
+
+/// The `context.md` brief that should carry standing instructions.
+const PREFERENCES: Via = Via::ContextDoc {
+    heading: "Preferences and standing instructions",
+};
+
+/// The `context.md` brief that should carry surprises.
+const EVENTS: Via = Via::ContextDoc {
+    heading: "Recent important events",
+};
+
+/// A fresh session's initial context: `start_session` with nothing to go on.
+const COLD_START: Via = Via::Resume {
+    thread: None,
+    focus: None,
+};
+
+fn learning_from_feedback() -> Scenario {
+    use Style::{Lexical, Paraphrase};
+    let turns = vec![
+        (
+            "Install the dependencies for the web app.".to_string(),
+            vec![tool(
+                "run_shell",
+                "npm install failed: this repo uses pnpm workspaces (found pnpm-lock.yaml)",
+            )],
+        ),
+        (
+            "Right, in this repo always use pnpm, never npm.".to_string(),
+            Vec::new(),
+        ),
+        (
+            "Now deploy the staging build.".to_string(),
+            vec![tool(
+                "run_shell",
+                "kubectl apply -f k8s/staging refused: not logged in to the cluster",
+            )],
+        ),
+        (
+            "Don't run kubectl yourself. We always deploy with make ship ENV=staging."
+                .to_string(),
+            Vec::new(),
+        ),
+        (
+            "Also: open pull requests ready for review, never as drafts.".to_string(),
+            Vec::new(),
+        ),
+    ];
+    Scenario {
+        name: "learning_from_feedback",
+        about: "The agent makes mistakes, the user corrects it; the corrections must stick",
+        steps: vec![
+            chat("coder-42", "setup", 0, turns),
+            chat(
+                "coder-42",
+                "chores",
+                1,
+                said(&["Bump the eslint config.", "Rename utils.ts to format.ts."]),
+            ),
+        ],
+        probes: vec![
+            Probe::new(
+                "install-cold",
+                "coder-42",
+                "Which package manager should I use in this repo?",
+                Paraphrase,
+            )
+            .via(COLD_START)
+            .expect(&["pnpm"]),
+            Probe::new(
+                "install-context",
+                "coder-42",
+                "What preferences and standing instructions has the user given?",
+                Lexical,
+            )
+            .via(PREFERENCES)
+            .expect(&["pnpm", "make ship"])
+            .accept(&["pnpm"]),
+            Probe::new(
+                "install",
+                "coder-42",
+                "How do I install the dependencies?",
+                Lexical,
+            )
+            .expect(&["pnpm"]),
+            Probe::new(
+                "deploy",
+                "coder-42",
+                "What's the command to deploy staging?",
+                Lexical,
+            )
+            .expect(&["make ship"])
+            .stale(&["kubectl apply"]),
+            Probe::new(
+                "draft-pr",
+                "coder-42",
+                "Should my new pull request be a draft?",
+                Paraphrase,
+            )
+            .expect(&["ready for review"])
+            .accept(&["not as a draft", "never as a draft", "never as drafts", "not a draft"]),
+        ],
+    }
+}
+
+fn surprise() -> Scenario {
+    use Style::{Lexical, Paraphrase};
+    Scenario {
+        name: "surprise",
+        about: "A long-stable routine breaks and a metric spikes; the surprise must surface",
+        steps: vec![
+            chat(
+                "ops-01",
+                "baseline",
+                0,
+                said(&[
+                    "The nightly backup has succeeded every night for over a year.",
+                    "Checkout's error rate always sits under 0.1%.",
+                ]),
+            ),
+            chat(
+                "ops-01",
+                "morning-check",
+                5,
+                vec![
+                    (
+                        "Check last night's backup.".to_string(),
+                        vec![tool(
+                            "backup_status",
+                            "FAILED: disk full on backup-02, the first failure in 412 days",
+                        )],
+                    ),
+                    (
+                        "That's a surprise. Keep an eye on backup-02.".to_string(),
+                        Vec::new(),
+                    ),
+                    (
+                        "How is checkout doing?".to_string(),
+                        vec![tool(
+                            "get_metrics",
+                            "checkout error rate 4.7% since 02:00, about 47 times its usual level",
+                        )],
+                    ),
+                ],
+            ),
+        ],
+        probes: vec![
+            Probe::new(
+                "unusual-cold",
+                "ops-01",
+                "Is anything unusual going on?",
+                Paraphrase,
+            )
+            .via(COLD_START)
+            .expect(&["backup-02"])
+            .accept(&["disk full", "backup failed", "4.7%"]),
+            Probe::new(
+                "events-context",
+                "ops-01",
+                "What important events happened recently?",
+                Paraphrase,
+            )
+            .via(EVENTS)
+            .expect(&["backup-02"])
+            .accept(&["disk full", "backup failed", "4.7%"]),
+            Probe::new(
+                "backup",
+                "ops-01",
+                "Did last night's backup succeed?",
+                Lexical,
+            )
+            .expect(&["FAILED"])
+            .accept(&["fail", "did not succeed", "didn't succeed"]),
+            Probe::new(
+                "checkout",
+                "ops-01",
+                "Is anything off with checkout?",
+                Paraphrase,
+            )
+            .expect(&["4.7%"])
+            .accept(&["error rate"]),
+            Probe::new(
+                "surprising",
+                "ops-01",
+                "What surprised us recently?",
+                Paraphrase,
+            )
+            .expect(&["backup-02"])
+            .accept(&["disk full", "backup failed", "4.7%"]),
+        ],
+    }
+}
+
+fn conflicts() -> Scenario {
+    use Style::{Lexical, Paraphrase};
+    Scenario {
+        name: "conflicts",
+        about: "Sources disagree (a policy, a colleague, an agent); the disagreement must show",
+        steps: vec![
+            doc(
+                BrainSource::Pdf,
+                "Refund policy",
+                "Refunds settle within five business days of approval.",
+            ),
+            chat(
+                "support-01",
+                "finance-sync",
+                0,
+                said(&["Finance told me refunds now take ten business days."]),
+            ),
+            chat(
+                "sales-02",
+                "acme-call",
+                1,
+                said(&[
+                    "I promised Acme their refund lands in seven days.",
+                    "Acme is on the Enterprise plan.",
+                ]),
+            ),
+            chat(
+                "support-01",
+                "acme-ticket",
+                2,
+                said(&["Acme downgraded to the Team plan last week."]),
+            ),
+        ],
+        probes: vec![
+            Probe::new(
+                "refund-days",
+                "support-01",
+                "How long do refunds take?",
+                Lexical,
+            )
+            .expect(&["five", "ten"])
+            .accept(&["conflict", "inconsistent", "disagree", "differ"]),
+            Probe::new(
+                "refund-cold",
+                "support-01",
+                "How long do refunds take?",
+                Lexical,
+            )
+            .via(COLD_START)
+            .expect(&["five", "ten"])
+            .accept(&["conflict", "inconsistent", "disagree", "differ"]),
+            Probe::new(
+                "acme-plan",
+                "support-01",
+                "Which plan is Acme on?",
+                Lexical,
+            )
+            .expect(&["Team plan"])
+            .stale(&["Enterprise"]),
+            Probe::new(
+                "promise",
+                "support-01",
+                "Did anyone promise Acme a refund timeline that disagrees with policy?",
+                Paraphrase,
+            )
+            .expect(&["seven days"])
+            .accept(&["7 days"]),
         ],
     }
 }
