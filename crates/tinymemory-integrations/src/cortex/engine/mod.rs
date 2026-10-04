@@ -3,8 +3,9 @@
 //!
 //! Each operation lives in its own module:
 //!
-//! - `store` — replay detection by item label, then one experience (or one
-//!   ordered batch of turns), then the readability wait;
+//! - `store` — one path for `store` and `store_many`: replay detection by
+//!   item label, then each item's experience (or ordered batch of turns),
+//!   then the readability waits;
 //! - `list` — a cursor over the kind scopes' listings, each item once;
 //! - `fetch` — hybrid retrieval through recall packs, ranked by the engine;
 //! - `recall` — one pack, one answer, citations from the pack;
@@ -156,8 +157,11 @@ impl MemoryEngine for CortexEngine {
         self.fetch_page(req).await
     }
 
+    /// A batch of one (see `store`): listed and ranked on return.
     async fn store(&self, item: StoreItem) -> Result<StoreReceipt> {
-        self.store_item(item).await
+        self.store_items(vec![item]).await?.pop().ok_or_else(|| {
+            Error::Engine("a store of one item returned no receipt".to_string())
+        })
     }
 
     /// Ranked recall is awaited for the last item only (see `store`).

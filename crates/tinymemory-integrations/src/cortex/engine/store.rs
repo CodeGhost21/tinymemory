@@ -26,18 +26,10 @@ use tinymemory_api::{ItemId, StoreItem, StoreReceipt, validate_many};
 use super::CortexEngine;
 use super::scopes::KindScope;
 use crate::cortex::envelope::Envelope;
-use crate::cortex::error::{Error, Result};
+use crate::cortex::error::Result;
 use crate::cortex::log::Written;
 
 impl CortexEngine {
-    /// `store`: a batch of one, so it waits exactly as the batch's final
-    /// item does.
-    pub(super) async fn store_item(&self, item: StoreItem) -> Result<StoreReceipt> {
-        self.store_items(vec![item]).await?.pop().ok_or_else(|| {
-            Error::Engine("a store of one item returned no receipt".to_string())
-        })
-    }
-
     /// `store_many`, paying per batch rather than per item:
     ///
     /// - one id lookup per scope (kind and namespace) finds what the batch
