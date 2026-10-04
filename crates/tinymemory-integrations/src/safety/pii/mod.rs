@@ -34,7 +34,7 @@ use crate::safety::pattern::literal;
 use crate::safety::policy::{BareCardGate, Policy, SanitizationReport, Sanitized};
 
 /// Checksum and structural validators (Luhn, mod-97, Verhoeff, CPF/CNPJ, …).
-pub(crate) mod checks;
+mod checks;
 /// Fullwidth / zero-width normalization used before matching.
 mod normalize;
 /// The single cheap byte pass that decides which pattern classes run.

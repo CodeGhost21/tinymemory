@@ -4,7 +4,6 @@
 use super::*;
 use serde_json::json;
 
-use crate::safety::pii::checks::digits;
 use crate::safety::pii::{
     PII_AADHAAR, PII_CC, PII_CNPJ, PII_CPF, PII_CUIT, PII_DNI, PII_IBAN, PII_MYNUM, PII_NINO,
     PII_PAN_IN, PII_PHONE, PII_RFC, PII_RRN, PII_SSN, redact_pii, scan_candidates,
