@@ -199,8 +199,9 @@ Counts memories per value of one `facet`, largest first. Facets: `kind`,
 `source`, `source_id`, `workspace`, `folder`, `file_path`, `language`, `repo`,
 `url`, `thread`, `agent`, `tool_call` and `tag`. The `namespace` facet is
 deliberately absent. The result is the engine's explore page: `buckets` of
-`{value, count}`, `total`, `missing` (items without the facet),
-`more_buckets` and `truncated`.
+`{value, count}`, `total` (items the filter admitted), `missing` (those with no
+value for the facet), `more_buckets` (values beyond `limit`) and `truncated`
+(the engine's scan stopped early, so counts are a lower bound).
 
 ### memory_store
 
