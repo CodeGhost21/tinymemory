@@ -322,7 +322,7 @@ impl AgentMemory {
         let due = self
             .policy
             .build_beliefs_every
-            .is_some_and(|every| every > 0 && (turn.turn_index + 1) % every == 0);
+            .is_some_and(|every| every > 0 && (turn.turn_index + 1).is_multiple_of(every));
         let jobs = if due {
             vec![self.history_build()]
         } else {
