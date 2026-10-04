@@ -104,6 +104,12 @@ const PACK_TITLE: &str = "Memory";
 /// Longest the gist of dropped turns used as a query may be, in characters.
 const MAX_GIST_CHARS: usize = 600;
 
+/// The fewest characters of each dropped turn the gist keeps.
+const MIN_GIST_SHARE: usize = 40;
+
+/// The most turns a compaction's summary reads.
+const MAX_SUMMARY_TURNS: usize = 24;
+
 /// The question a compaction's summary answers.
 const SUMMARY_QUESTION: &str = "What was discussed, decided and left open earlier in this \
      conversation?";
@@ -356,7 +362,12 @@ impl AgentMemory {
                 thread_id: Some(thread_id.to_string()),
                 ..self.layout.conversations_filter(Some(&self.agent_id))
             },
-            limit: self.policy.history_limit.max(1),
+            // Every dropped turn is a candidate, not only the policy's few.
+            limit: self
+                .policy
+                .history_limit
+                .max(compaction.dropped.len())
+                .clamp(1, MAX_SUMMARY_TURNS),
             query: SectionQuery::Answer {
                 question: SUMMARY_QUESTION.to_string(),
                 instructions: Some(SUMMARY_INSTRUCTIONS.to_string()),
@@ -481,25 +492,26 @@ fn non_blank<'a>(value: &'a str, what: &str) -> Result<&'a str> {
     }
 }
 
-/// The dropped turns' text, newest last, cut to [`MAX_GIST_CHARS`] from the
-/// end (the most recent turns matter most); `None` when they say nothing.
+/// The dropped turns' text within [`MAX_GIST_CHARS`], oldest first: each
+/// turn keeps the start of its text, an equal share of the budget (at least
+/// [`MIN_GIST_SHARE`]), so a fact stated early in a long thread still steers
+/// the query. `None` when the turns say nothing.
 fn gist(turns: &[Turn]) -> Option<String> {
-    let joined = turns
+    let texts: Vec<String> = turns
         .iter()
         .map(|turn| turn.text.split_whitespace().collect::<Vec<_>>().join(" "))
         .filter(|text| !text.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ");
-    if joined.is_empty() {
+        .collect();
+    if texts.is_empty() {
         return None;
     }
-    let count = joined.chars().count();
-    Some(
-        joined
-            .chars()
-            .skip(count.saturating_sub(MAX_GIST_CHARS))
-            .collect(),
-    )
+    let share = (MAX_GIST_CHARS / texts.len()).max(MIN_GIST_SHARE);
+    let joined = texts
+        .iter()
+        .map(|text| text.chars().take(share).collect::<String>())
+        .collect::<Vec<_>>()
+        .join(" ");
+    Some(joined.chars().take(MAX_GIST_CHARS).collect())
 }
 
 #[cfg(test)]

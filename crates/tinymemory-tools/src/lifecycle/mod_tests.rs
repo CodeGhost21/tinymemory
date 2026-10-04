@@ -369,16 +369,25 @@ async fn a_failed_log_still_returns_the_pack() {
 }
 
 #[test]
-fn the_gist_keeps_the_most_recent_text() {
+fn the_gist_samples_every_dropped_turn() {
     assert_eq!(gist(&[]), None);
     assert_eq!(gist(&[Turn::new(Role::User, "  ")]), None);
     let long = vec![
-        Turn::new(Role::User, "a".repeat(MAX_GIST_CHARS)),
-        Turn::new(Role::Assistant, "the end"),
+        Turn::new(Role::User, "The offsite is in Porto."),
+        Turn::new(Role::Assistant, "a".repeat(MAX_GIST_CHARS)),
+        Turn::new(Role::User, "the end"),
     ];
     let gist = gist(&long).unwrap();
+    assert!(gist.chars().count() <= MAX_GIST_CHARS);
+    assert!(gist.starts_with("The offsite is in Porto."), "{gist}");
+    assert!(gist.ends_with("the end"), "{gist}");
+
+    let many: Vec<Turn> = (0..100)
+        .map(|n| Turn::new(Role::User, format!("turn {n} {}", "x".repeat(80))))
+        .collect();
+    let gist = super::gist(&many).unwrap();
     assert_eq!(gist.chars().count(), MAX_GIST_CHARS);
-    assert!(gist.ends_with("the end"));
+    assert!(gist.starts_with("turn 0 "), "the oldest turns come first");
 }
 
 #[test]
