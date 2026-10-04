@@ -131,9 +131,10 @@ fn box_err(
 /// and resolved addresses in `PublicOnlyResolver`).
 ///
 /// Not fetchable: loopback, private, link-local, unspecified, CGNAT
-/// (`100.64.0.0/10`), IETF protocol assignments (`192.0.0.0/24`), multicast,
-/// broadcast, documentation (`192.0.2.0/24`, `198.51.100.0/24`,
-/// `203.0.113.0/24`, `2001:db8::/32`), benchmarking (`198.18.0.0/15`),
+/// (`100.64.0.0/10`), `192.0.0.0/16` (IETF protocol assignments and the
+/// `192.0.2.0/24` documentation range), multicast, broadcast, documentation
+/// (`198.51.100.0/24`, `203.0.113.0/24`, `2001:db8::/32`), benchmarking
+/// (`198.18.0.0/15`),
 /// reserved (`240.0.0.0/4`), and IPv6 unique-local (`fc00::/7`) and
 /// link-local (`fe80::/10`). An IPv6 address carrying an IPv4 one — mapped
 /// (`::ffff:a.b.c.d`) or the deprecated compatible form (`::a.b.c.d`) — is

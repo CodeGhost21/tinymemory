@@ -1,6 +1,6 @@
 //! The engine registry: [`list_engines`] and [`build_engine`].
 //!
-//! Two engines are registered, both served by `tinymemory-cortex`:
+//! Two engines are registered, both served by [`crate::cortex`]:
 //!
 //! | Id | Engine | Endpoint | Credential |
 //! | --- | --- | --- | --- |
