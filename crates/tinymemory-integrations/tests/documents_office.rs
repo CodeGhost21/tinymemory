@@ -2,7 +2,9 @@
 //! facade, and it composes with the default converter chain.
 #![cfg(feature = "documents-office")]
 
-use tinymemory_integrations::documents::{ConverterChain, DocumentConverter, DocumentFormat, OfficeConverter};
+use tinymemory_integrations::documents::{
+    ConverterChain, DocumentConverter, DocumentFormat, OfficeConverter,
+};
 
 #[test]
 fn documents_office_feature_exposes_the_office_converter() {

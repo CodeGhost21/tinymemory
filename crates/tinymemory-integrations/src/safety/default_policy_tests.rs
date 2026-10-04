@@ -1,13 +1,13 @@
 use super::*;
 use serde_json::json;
 
-use crate::safety::pii::{redact_pii, PII_CC};
+use crate::safety::pii::{PII_CC, redact_pii};
 // `pii`'s internals (checksum validators, the normalization pass) are test-only
 // re-exports at the `pii` module level; pull them in here so the nested test
 // submodules below can reach them through their own `use super::*;`.
 use crate::safety::pii::{
-    digits, scan_candidates, valid_cnpj, valid_cpf, valid_cuit, valid_dni_es, valid_iban,
-    valid_luhn, valid_nie_es, valid_nino, valid_ssn, valid_verhoeff, NormalizedView,
+    NormalizedView, digits, scan_candidates, valid_cnpj, valid_cpf, valid_cuit, valid_dni_es,
+    valid_iban, valid_luhn, valid_nie_es, valid_nino, valid_ssn, valid_verhoeff,
 };
 use crate::safety::{MAX_JSON_SANITIZE_DEPTH, REDACTED_PRIVATE_KEY, REDACTED_SECRET};
 
@@ -69,9 +69,11 @@ fn bare_card_gate_is_the_only_policy_difference() {
     // Real card, bare, real IIN: both policies redact.
     let visa = "4111111111111111";
     assert!(redact_pii(visa).value.contains(PII_CC));
-    assert!(crate::safety::pii::redact_pii_with(visa, Policy::corroborated())
-        .value
-        .contains(PII_CC));
+    assert!(
+        crate::safety::pii::redact_pii_with(visa, Policy::corroborated())
+            .value
+            .contains(PII_CC)
+    );
 
     // The JSON and text entry points thread the policy through.
     let value = json!({ "ts": ts });

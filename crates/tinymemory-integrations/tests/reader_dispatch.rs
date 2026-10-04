@@ -1,8 +1,8 @@
 //! Public reader-dispatch policy tests.
 
 use tinymemory_integrations::sources::{
-    readers::{is_locally_readable, reader_for},
     SourceKind,
+    readers::{is_locally_readable, reader_for},
 };
 
 #[test]

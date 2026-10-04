@@ -47,10 +47,12 @@ fn sanitize_json_redacts_sensitive_keys_and_nested_strings() {
     let sanitized = sanitize_json(&input);
     assert_eq!(sanitized.value["token"], json!(REDACTED_SECRET));
     assert_eq!(sanitized.value["nested"]["ok"], json!("hello"));
-    assert!(sanitized.value["nested"]["notes"]
-        .as_str()
-        .unwrap_or_default()
-        .contains("[REDACTED]"));
+    assert!(
+        sanitized.value["nested"]["notes"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("[REDACTED]")
+    );
     assert!(sanitized.report.key_redactions >= 1);
     assert!(sanitized.report.text_redactions >= 2);
 }
@@ -114,10 +116,12 @@ fn sanitize_json_redacts_values_beyond_max_depth() {
     }
     let sanitized = sanitize_json(&nested);
     assert!(sanitized.report.depth_redactions >= 1);
-    assert!(sanitized
-        .value
-        .to_string()
-        .contains(&format!("\"{REDACTED_SECRET}\"")));
+    assert!(
+        sanitized
+            .value
+            .to_string()
+            .contains(&format!("\"{REDACTED_SECRET}\""))
+    );
 }
 
 #[test]

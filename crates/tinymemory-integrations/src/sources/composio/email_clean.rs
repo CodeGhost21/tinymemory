@@ -183,14 +183,15 @@ pub fn md_escape(s: &str) -> String {
 pub fn extract_email(from: &str) -> Option<String> {
     let s = from.trim();
     if let (Some(start), Some(end)) = (s.rfind('<'), s.rfind('>'))
-        && start < end {
-            debug_assert!(s.is_char_boundary(start + 1));
-            debug_assert!(s.is_char_boundary(end));
-            let inner = s[start + 1..end].trim();
-            if inner.contains('@') {
-                return Some(inner.to_string());
-            }
+        && start < end
+    {
+        debug_assert!(s.is_char_boundary(start + 1));
+        debug_assert!(s.is_char_boundary(end));
+        let inner = s[start + 1..end].trim();
+        if inner.contains('@') {
+            return Some(inner.to_string());
         }
+    }
     if s.contains('@') && !s.contains(' ') {
         return Some(s.to_string());
     }
@@ -247,9 +248,10 @@ fn parse_date_value(raw: &Value) -> Option<DateTime<Utc>> {
         // mismatched day-of-week. Strip a `<DayName>, ` prefix and retry with
         // the rfc2822 body format.
         if let Some(rest) = strip_day_of_week_prefix(s)
-            && let Ok(dt) = DateTime::parse_from_str(rest, "%d %b %Y %H:%M:%S %z") {
-                return Some(dt.with_timezone(&Utc));
-            }
+            && let Ok(dt) = DateTime::parse_from_str(rest, "%d %b %Y %H:%M:%S %z")
+        {
+            return Some(dt.with_timezone(&Utc));
+        }
         if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
             return d.and_hms_opt(0, 0, 0).map(|n| n.and_utc());
         }

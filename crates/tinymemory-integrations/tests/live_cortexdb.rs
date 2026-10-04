@@ -20,8 +20,8 @@ use tinymemory_api::{
     MemoryMeta, MetaFilter, RecallRequest, Role, SourceKind, SourceRef, StoreItem, ToolCallRef,
     Turn,
 };
-use tinymemory_tools::context::{ContextSpec, compile};
 use tinymemory_integrations::cortex::{CortexCredential, CortexEngine};
+use tinymemory_tools::context::{ContextSpec, compile};
 
 const DEFAULT_KEY: &str = "tinymemory-cortex-test";
 

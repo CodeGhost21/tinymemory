@@ -151,10 +151,11 @@ fn list_enabled_by_kind_filters() {
     let enabled = reg.list_enabled_by_kind(SourceKind::Folder).unwrap();
     assert_eq!(enabled.len(), 1);
     assert_eq!(enabled[0].id, "src_a");
-    assert!(reg
-        .list_enabled_by_kind(SourceKind::Conversation)
-        .unwrap()
-        .is_empty());
+    assert!(
+        reg.list_enabled_by_kind(SourceKind::Conversation)
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]

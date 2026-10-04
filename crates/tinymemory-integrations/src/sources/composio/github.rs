@@ -51,9 +51,10 @@ pub fn extract_issue_id(issue: &Value) -> Option<String> {
     // Fallback: parse owner/repo/number from html_url path segments.
     // URL shape: https://github.com/{owner}/{repo}/issues/{number}
     if let Some(url) = pick_str(issue, &["html_url", "data.html_url", "url", "data.url"])
-        && let Some(slug) = github_url_to_slug(&url) {
-            return Some(slug);
-        }
+        && let Some(slug) = github_url_to_slug(&url)
+    {
+        return Some(slug);
+    }
     None
 }
 

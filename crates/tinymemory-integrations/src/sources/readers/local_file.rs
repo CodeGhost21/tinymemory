@@ -7,11 +7,11 @@
 
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
 use crate::documents::RawDocument;
+use chrono::{DateTime, Utc};
 
-use crate::sources::error::{Error, Result};
 use crate::sources::FOLDER_FILE_SIZE_CAP_BYTES;
+use crate::sources::error::{Error, Result};
 
 /// A file read from disk, before any conversion.
 #[derive(Debug, Clone)]

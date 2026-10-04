@@ -77,9 +77,9 @@ pub mod validation;
 pub const FOLDER_FILE_SIZE_CAP_BYTES: u64 = 10 * 1024 * 1024;
 
 pub use error::{Error, Result};
-pub use items::{collect_items, content_item, conversation_item, file_item, Collected};
+pub use items::{Collected, collect_items, content_item, conversation_item, file_item};
 pub use registry::{
-    apply_kind_defaults, memory_sync_defaults_for_toolkit, ComposioUpsertTarget, SourceRegistry,
+    ComposioUpsertTarget, SourceRegistry, apply_kind_defaults, memory_sync_defaults_for_toolkit,
 };
 pub use types::{
     ContentType, MemorySourceEntry, MemorySourcePatch, SourceContent, SourceItem, SourceKind,

@@ -6,7 +6,7 @@
 //! the decisions, with no I/O, so they are unit-tested directly.
 
 use crate::sources::registry::{
-    apply_kind_defaults, memory_sync_defaults_for_toolkit, ComposioUpsertTarget,
+    ComposioUpsertTarget, apply_kind_defaults, memory_sync_defaults_for_toolkit,
 };
 use crate::sources::types::{MemorySourceEntry, SourceKind};
 

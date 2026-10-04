@@ -42,9 +42,10 @@ pub fn extract_page_markdown(data: &Value) -> Option<String> {
     ];
     for p in PATHS {
         if let Some(s) = data.pointer(p).and_then(Value::as_str)
-            && !s.trim().is_empty() {
-                return Some(s.to_string());
-            }
+            && !s.trim().is_empty()
+        {
+            return Some(s.to_string());
+        }
     }
     None
 }
@@ -82,16 +83,17 @@ pub fn extract_page_title(page: &Value) -> Option<String> {
         if let Some(obj) = props.as_object() {
             for (_key, val) in obj {
                 if val.get("type").and_then(Value::as_str) == Some("title")
-                    && let Some(arr) = val.get("title").and_then(Value::as_array) {
-                        let text: String = arr
-                            .iter()
-                            .filter_map(|t| t.get("plain_text").and_then(Value::as_str))
-                            .collect::<Vec<_>>()
-                            .join("");
-                        if !text.is_empty() {
-                            return Some(text);
-                        }
+                    && let Some(arr) = val.get("title").and_then(Value::as_array)
+                {
+                    let text: String = arr
+                        .iter()
+                        .filter_map(|t| t.get("plain_text").and_then(Value::as_str))
+                        .collect::<Vec<_>>()
+                        .join("");
+                    if !text.is_empty() {
+                        return Some(text);
                     }
+                }
             }
         }
     }

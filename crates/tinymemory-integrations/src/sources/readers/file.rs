@@ -10,16 +10,18 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::documents::DocumentConverter;
 use async_trait::async_trait;
 use tinymemory_api::StoreItem;
-use crate::documents::DocumentConverter;
 
 use crate::sources::error::{Error, Result};
 use crate::sources::items;
-use crate::sources::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
+use crate::sources::types::{
+    ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind,
+};
 
-use super::local_file::{modified_at, read_capped, resolve_base, LocalFile};
 use super::SourceReader;
+use super::local_file::{LocalFile, modified_at, read_capped, resolve_base};
 
 /// A reader over one local file.
 #[derive(Debug, Clone, Copy, Default)]

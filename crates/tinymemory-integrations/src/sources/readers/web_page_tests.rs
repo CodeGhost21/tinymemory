@@ -38,20 +38,24 @@ async fn reader_lists_one_configured_page_and_rejects_missing_or_private_reads()
 
     let missing = web_source(None, None);
     assert!(reader.list_items(&missing, workspace.path()).await.is_err());
-    assert!(reader
-        .read_item(&missing, "not-an-http-id", workspace.path())
-        .await
-        .is_err());
+    assert!(
+        reader
+            .read_item(&missing, "not-an-http-id", workspace.path())
+            .await
+            .is_err()
+    );
 
     for item in [
         "http://[",
         "http://127.0.0.1/private",
         "http://service.internal/private",
     ] {
-        assert!(reader
-            .read_item(&source, item, workspace.path())
-            .await
-            .is_err());
+        assert!(
+            reader
+                .read_item(&source, item, workspace.path())
+                .await
+                .is_err()
+        );
     }
 }
 

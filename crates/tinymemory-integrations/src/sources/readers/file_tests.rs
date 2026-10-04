@@ -71,7 +71,8 @@ fn read_path_refuses_directories_and_oversized_files() {
 
     let huge = dir.path().join("huge.txt");
     let file = fs::File::create(&huge).unwrap();
-    file.set_len(crate::sources::FOLDER_FILE_SIZE_CAP_BYTES + 1).unwrap();
+    file.set_len(crate::sources::FOLDER_FILE_SIZE_CAP_BYTES + 1)
+        .unwrap();
     drop(file);
     let error = FileReader::read_path(&huge).unwrap_err();
     assert!(matches!(error, Error::TooLarge(_)), "got {error:?}");

@@ -17,10 +17,12 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 
 use crate::sources::error::{Error, Result};
-use crate::sources::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
+use crate::sources::types::{
+    ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind,
+};
 
-use super::ssrf::{build_client, is_url_allowed, read_body_capped};
 use super::SourceReader;
+use super::ssrf::{build_client, is_url_allowed, read_body_capped};
 use types::{FeedCache, FeedEntry};
 
 const DEFAULT_MAX_ITEMS: u32 = 50;
@@ -62,9 +64,11 @@ impl RssReader {
         {
             let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(cached) = cache.as_ref()
-                && cached.url == url && cached.fetched_at.elapsed() < FEED_CACHE_TTL {
-                    return Ok(cached.entries.clone());
-                }
+                && cached.url == url
+                && cached.fetched_at.elapsed() < FEED_CACHE_TTL
+            {
+                return Ok(cached.entries.clone());
+            }
         }
 
         let body = fetch_url(url).await?;

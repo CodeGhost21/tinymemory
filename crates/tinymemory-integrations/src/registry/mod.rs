@@ -14,11 +14,11 @@
 use std::net::IpAddr;
 use std::sync::Arc;
 
-use tinymemory_api::{EngineDescriptor, Error, MemoryEngine, Result};
 use crate::cortex::{
     BearerSource, CORTEXDB_ENGINE_ID, CortexCredential, CortexEngine, StaticBearer,
     TINYHUMANS_ENGINE_ID,
 };
+use tinymemory_api::{EngineDescriptor, Error, MemoryEngine, Result};
 
 use crate::config::EngineSettings;
 

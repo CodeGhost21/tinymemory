@@ -93,24 +93,30 @@ async fn cached_feed_drives_list_and_read_without_network() {
 async fn rss_reader_reports_missing_configuration_and_items() {
     let reader = RssReader::new();
     let missing_url = rss_source(None, None);
-    assert!(reader
-        .list_items(&missing_url, std::path::Path::new("."))
-        .await
-        .is_err());
-    assert!(reader
-        .read_item(&missing_url, "anything", std::path::Path::new("."))
-        .await
-        .is_err());
+    assert!(
+        reader
+            .list_items(&missing_url, std::path::Path::new("."))
+            .await
+            .is_err()
+    );
+    assert!(
+        reader
+            .read_item(&missing_url, "anything", std::path::Path::new("."))
+            .await
+            .is_err()
+    );
 
     let url = "https://example.com/feed.xml";
-    assert!(cached_reader(url)
-        .read_item(
-            &rss_source(Some(url), None),
-            "missing",
-            std::path::Path::new("."),
-        )
-        .await
-        .is_err());
+    assert!(
+        cached_reader(url)
+            .read_item(
+                &rss_source(Some(url), None),
+                "missing",
+                std::path::Path::new("."),
+            )
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]

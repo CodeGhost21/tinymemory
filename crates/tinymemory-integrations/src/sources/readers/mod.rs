@@ -52,9 +52,9 @@ pub mod ssrf;
 
 use std::path::Path;
 
+use crate::documents::DocumentConverter;
 use async_trait::async_trait;
 use tinymemory_api::StoreItem;
-use crate::documents::DocumentConverter;
 
 use crate::sources::error::Result;
 use crate::sources::items;

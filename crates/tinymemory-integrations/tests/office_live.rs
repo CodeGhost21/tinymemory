@@ -5,10 +5,12 @@
 use std::io::Write;
 use std::time::{Duration, Instant};
 
-use tinymemory_integrations::cortex::{CortexCredential, CortexEngine};
-use tinymemory_integrations::documents::{ConverterChain, OfficeConverter, RawDocument, document_item};
-use tinymemory_integrations::{
+use tinymemory_api::{
     ItemKind, ListRequest, MemoryEngine, MemoryMeta, MetaFilter, SourceKind, SourceRef,
+};
+use tinymemory_integrations::cortex::{CortexCredential, CortexEngine};
+use tinymemory_integrations::documents::{
+    ConverterChain, OfficeConverter, RawDocument, document_item,
 };
 
 const DEFAULT_KEY: &str = "tinymemory-cortex-test";

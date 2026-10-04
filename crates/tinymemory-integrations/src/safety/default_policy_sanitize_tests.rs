@@ -1,6 +1,5 @@
 use super::*;
 
-use crate::safety::pii::redact_pii;
 use crate::safety::pii::PII_AADHAAR;
 use crate::safety::pii::PII_CC;
 use crate::safety::pii::PII_CNPJ;
@@ -15,6 +14,7 @@ use crate::safety::pii::PII_PHONE;
 use crate::safety::pii::PII_RFC;
 use crate::safety::pii::PII_RRN;
 use crate::safety::pii::PII_SSN;
+use crate::safety::pii::redact_pii;
 #[test]
 fn sanitize_text_redacts_bearer_and_openai_key() {
     let input = "Authorization: Bearer abcdefghijklmnop and sk-1234567890123456789012345";
@@ -42,10 +42,12 @@ fn sanitize_json_redacts_sensitive_keys_and_nested_strings() {
     let sanitized = sanitize_json(&input);
     assert_eq!(sanitized.value["token"], json!(REDACTED_SECRET));
     assert_eq!(sanitized.value["nested"]["ok"], json!("hello"));
-    assert!(sanitized.value["nested"]["notes"]
-        .as_str()
-        .unwrap_or_default()
-        .contains("[REDACTED]"));
+    assert!(
+        sanitized.value["nested"]["notes"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("[REDACTED]")
+    );
     assert!(sanitized.report.key_redactions >= 1);
     assert!(sanitized.report.text_redactions >= 2);
 }
@@ -130,14 +132,18 @@ fn sanitize_json_propagates_pii_redaction_into_nested_strings() {
         "meta": { "cuit": "20-11111111-2" }
     });
     let sanitized = sanitize_json(&input);
-    assert!(sanitized.value["note"]
-        .as_str()
-        .unwrap_or_default()
-        .contains("[REDACTED_PII_RFC]"));
-    assert!(sanitized.value["meta"]["cuit"]
-        .as_str()
-        .unwrap_or_default()
-        .contains("[REDACTED_PII_CUIT]"));
+    assert!(
+        sanitized.value["note"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("[REDACTED_PII_RFC]")
+    );
+    assert!(
+        sanitized.value["meta"]["cuit"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("[REDACTED_PII_CUIT]")
+    );
     assert!(sanitized.report.pii_redactions >= 2);
 }
 
@@ -149,10 +155,12 @@ fn sanitize_json_redacts_values_beyond_max_depth() {
     }
     let sanitized = sanitize_json(&nested);
     assert!(sanitized.report.depth_redactions >= 1);
-    assert!(sanitized
-        .value
-        .to_string()
-        .contains(&format!("\"{REDACTED_SECRET}\"")));
+    assert!(
+        sanitized
+            .value
+            .to_string()
+            .contains(&format!("\"{REDACTED_SECRET}\""))
+    );
 }
 
 #[test]

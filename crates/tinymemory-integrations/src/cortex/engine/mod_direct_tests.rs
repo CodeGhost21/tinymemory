@@ -188,7 +188,11 @@ async fn statuses_map_onto_the_contract() {
             .await
             .unwrap_err();
         assert!(check(&error), "{code}: {error:?}");
-        assert!(!error.to_string().contains(crate::cortex::testing::TEST_TOKEN));
+        assert!(
+            !error
+                .to_string()
+                .contains(crate::cortex::testing::TEST_TOKEN)
+        );
     }
 }
 

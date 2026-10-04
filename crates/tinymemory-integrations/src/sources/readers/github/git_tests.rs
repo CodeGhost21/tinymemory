@@ -181,10 +181,12 @@ async fn local_bare_clone_lists_filters_and_renders_commits() {
 async fn git_helpers_surface_missing_cache_ref_and_process_failures() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let missing = tmp.path().join("missing.git");
-    assert!(read_commit_git("owner", "repo", "deadbeef", &missing)
-        .await
-        .expect_err("missing cache")
-        .contains("not present"));
+    assert!(
+        read_commit_git("owner", "repo", "deadbeef", &missing)
+            .await
+            .expect_err("missing cache")
+            .contains("not present")
+    );
 
     let src = tmp.path().join("src");
     init_repo(&src);
@@ -199,10 +201,12 @@ async fn git_helpers_surface_missing_cache_ref_and_process_failures() {
             cache.to_str().expect("cache path"),
         ],
     );
-    assert!(read_commit_git("owner", "repo", "not-a-ref", &cache)
-        .await
-        .expect_err("unknown ref")
-        .contains("git show exited"));
+    assert!(
+        read_commit_git("owner", "repo", "not-a-ref", &cache)
+            .await
+            .expect_err("unknown ref")
+            .contains("git show exited")
+    );
     assert!(
         list_commits_git("owner", "repo", 10, &cache, Some("missing"), &[])
             .await

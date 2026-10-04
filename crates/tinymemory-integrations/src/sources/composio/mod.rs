@@ -36,4 +36,4 @@ pub mod slack_post_process;
 
 mod documents;
 
-pub use documents::{normalise_payload, payload_items, ComposioDocument};
+pub use documents::{ComposioDocument, normalise_payload, payload_items};

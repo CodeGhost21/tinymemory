@@ -193,19 +193,23 @@ async fn read_item_rejects_path_traversal() {
 
     let result = reader.read_item(&source, "../config", config).await;
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("path traversal denied"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("path traversal denied")
+    );
 
     let result = reader
         .read_item(&source, "foo/../../etc/passwd", config)
         .await;
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("path traversal denied"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("path traversal denied")
+    );
 }
 
 #[test]

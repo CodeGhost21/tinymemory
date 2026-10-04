@@ -5,10 +5,10 @@ use super::*;
 
 use std::fs;
 
+use crate::documents::ConverterChain;
 use async_trait::async_trait;
 use tempfile::TempDir;
 use tinymemory_api::{ItemKind, Role, SourceKind as Api, Turn};
-use crate::documents::ConverterChain;
 
 use crate::sources::readers::conversation::ConversationReader;
 use crate::sources::readers::file::FileReader;

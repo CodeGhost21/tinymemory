@@ -62,11 +62,7 @@ pub(crate) fn valid_luhn(s: &str) -> bool {
     for x in d.iter().rev() {
         let v = if alt {
             let doubled = x * 2;
-            if doubled > 9 {
-                doubled - 9
-            } else {
-                doubled
-            }
+            if doubled > 9 { doubled - 9 } else { doubled }
         } else {
             *x
         };

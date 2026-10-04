@@ -63,11 +63,12 @@ pub async fn read_body_capped(resp: reqwest::Response, max: u64) -> Result<Vec<u
     // Trust a truthful Content-Length up front so a known-huge body is
     // rejected before the first byte is read.
     if let Some(len) = resp.content_length()
-        && len > max {
-            return Err(format!(
-                "response body exceeds {max}-byte limit (Content-Length={len})"
-            ));
-        }
+        && len > max
+    {
+        return Err(format!(
+            "response body exceeds {max}-byte limit (Content-Length={len})"
+        ));
+    }
 
     let mut body = Vec::new();
     let mut stream = resp.bytes_stream();

@@ -91,9 +91,10 @@ pub fn extract_viewer(data: &Value) -> Option<Value> {
     ];
     for cand in array_candidates.into_iter().flatten() {
         if let Some(arr) = cand.as_array()
-            && let Some(first) = arr.first() {
-                return Some(first.clone());
-            }
+            && let Some(first) = arr.first()
+        {
+            return Some(first.clone());
+        }
     }
     // Fallback: if the payload itself looks like a user object, return it.
     if data.get("id").is_some() || data.get("email").is_some() {
@@ -130,13 +131,12 @@ pub fn extract_pagination_cursor(data: &Value) -> Option<String> {
             .get("hasNextPage")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        if has_next
-            && let Some(cursor) = cand.get("endCursor").and_then(|v| v.as_str()) {
-                let trimmed = cursor.trim();
-                if !trimmed.is_empty() {
-                    return Some(trimmed.to_string());
-                }
+        if has_next && let Some(cursor) = cand.get("endCursor").and_then(|v| v.as_str()) {
+            let trimmed = cursor.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
             }
+        }
     }
     None
 }

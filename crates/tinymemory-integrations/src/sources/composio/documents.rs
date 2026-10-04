@@ -7,10 +7,10 @@
 //! rather than dropped. [`payload_items`] wraps the documents as
 //! `StoreItem::Document`s.
 
+use crate::documents::{DocumentFormat, markdown_from_text};
 use chrono::{DateTime, TimeZone, Utc};
 use serde_json::Value;
 use tinymemory_api::{DocumentBody, MemoryMeta, SourceKind, StoreItem};
-use crate::documents::{markdown_from_text, DocumentFormat};
 
 use super::helpers::pick_str;
 use super::{clickup, github, gmail_post_process, linear, notion};

@@ -24,17 +24,17 @@
 
 use std::path::Path;
 
+use crate::documents::{
+    DocumentConverter, DocumentFormat, document_item, language_for_path, markdown_from_text,
+};
 use chrono::{DateTime, TimeZone, Utc};
 use tinymemory_api::{DocumentBody, MemoryMeta, SourceRef, StoreItem, TurnRange};
-use crate::documents::{
-    document_item, language_for_path, markdown_from_text, DocumentConverter, DocumentFormat,
-};
 
 use crate::sources::error::{Error, Result};
+use crate::sources::readers::SourceReader;
 use crate::sources::readers::conversation::Thread;
 use crate::sources::readers::file::FileReader;
 use crate::sources::readers::local_file::LocalFile;
-use crate::sources::readers::SourceReader;
 use crate::sources::types::{ContentType, MemorySourceEntry, SourceContent, SourceKind};
 
 /// Metadata naming `entry` as the source: `source.kind` is the entry's kind
@@ -50,9 +50,10 @@ pub fn base_meta(entry: &MemorySourceEntry) -> MemoryMeta {
         ..MemoryMeta::default()
     };
     if entry.kind == SourceKind::Composio
-        && let Some(toolkit) = entry.toolkit.as_deref().filter(|t| !t.is_empty()) {
-            meta.tags = vec![toolkit.to_string()];
-        }
+        && let Some(toolkit) = entry.toolkit.as_deref().filter(|t| !t.is_empty())
+    {
+        meta.tags = vec![toolkit.to_string()];
+    }
     meta
 }
 

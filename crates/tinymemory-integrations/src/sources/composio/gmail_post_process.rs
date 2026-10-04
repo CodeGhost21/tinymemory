@@ -51,7 +51,7 @@
 //! more slugs they should live in this file, branched from
 //! [`post_process`].
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 /// Entry point called from `GmailProvider::post_process_action_result`.
 ///
@@ -224,14 +224,15 @@ pub fn split_response_markdown_per_message_with_hint(
         // next pattern. Empty / null subjects skip validation (e.g.
         // notification mails where the subject is "").
         if let Some(hints) = messages_hint
-            && !validate_segments_against_hints(&segments, hints) {
-                tracing::debug!(
-                    expected = expected_count,
-                    sep = sep,
-                    "[composio:gmail][post-process] split candidate failed subject check"
-                );
-                continue;
-            }
+            && !validate_segments_against_hints(&segments, hints)
+        {
+            tracing::debug!(
+                expected = expected_count,
+                sep = sep,
+                "[composio:gmail][post-process] split candidate failed subject check"
+            );
+            continue;
+        }
         return Some(segments);
     }
     None
@@ -436,9 +437,10 @@ fn pick_header(msg: &Map<String, Value>, name: &str) -> Option<Value> {
     for h in headers {
         let hn = h.get("name").and_then(|v| v.as_str()).unwrap_or("");
         if hn.eq_ignore_ascii_case(name)
-            && let Some(v) = h.get("value").and_then(|v| v.as_str()) {
-                return Some(Value::String(v.to_string()));
-            }
+            && let Some(v) = h.get("value").and_then(|v| v.as_str())
+        {
+            return Some(Value::String(v.to_string()));
+        }
     }
     None
 }

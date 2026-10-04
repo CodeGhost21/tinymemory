@@ -11,8 +11,8 @@
 //! No scheduling, no retries, no credentials, no robots.txt: this fetches one
 //! URL, once, when asked. Conversion to markdown is `tinymemory-documents`'.
 
+use crate::documents::{DocumentConverter, MAX_DOCUMENT_BYTES, RawDocument, document_item};
 use tinymemory_api::{MemoryMeta, SourceKind, StoreItem};
-use crate::documents::{document_item, DocumentConverter, RawDocument, MAX_DOCUMENT_BYTES};
 
 use crate::sources::error::{Error, Result};
 use crate::sources::readers::ssrf::{build_client, is_url_allowed, read_body_capped};

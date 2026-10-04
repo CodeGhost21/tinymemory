@@ -96,9 +96,10 @@ async fn lists_cache_and_render_issues_and_pull_requests_without_network() {
     )
     .await
     .expect("read cached pull request despite malformed comments");
-    assert!(pr
-        .body
-        .contains("**State:** closed (merged at 2026-01-05T00:00:00Z)"));
+    assert!(
+        pr.body
+            .contains("**State:** closed (merged at 2026-01-05T00:00:00Z)")
+    );
     assert!(pr.body.contains("**Participants:** @bob"));
     assert!(!pr.body.contains("## Comments"));
     assert_eq!(pr.metadata["merged"], true);

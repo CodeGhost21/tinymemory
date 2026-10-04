@@ -31,12 +31,14 @@ fn thread_markdown_format_is_pinned() {
 
 #[test]
 fn empty_thread_is_none_and_body_separators_are_escaped() {
-    assert!(thread_markdown(EmailThread {
-        provider: "gmail".into(),
-        thread_subject: String::new(),
-        messages: Vec::new(),
-    })
-    .is_none());
+    assert!(
+        thread_markdown(EmailThread {
+            provider: "gmail".into(),
+            thread_subject: String::new(),
+            messages: Vec::new(),
+        })
+        .is_none()
+    );
 
     let thread = EmailThread {
         provider: "gmail".into(),

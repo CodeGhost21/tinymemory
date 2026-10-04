@@ -11,18 +11,20 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::documents::DocumentConverter;
 use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Utc};
 use tinymemory_api::{Role, StoreItem, Turn};
-use crate::documents::DocumentConverter;
 
 use crate::sources::error::{Error, Result};
 use crate::sources::items;
-use crate::sources::types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
+use crate::sources::types::{
+    ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind,
+};
 use crate::sources::validation::ensure_within_base;
 
-use super::local_file::modified_at;
 use super::SourceReader;
+use super::local_file::modified_at;
 
 /// One thread read from disk, parsed into turns.
 #[derive(Debug, Clone, PartialEq)]

@@ -93,17 +93,21 @@ async fn reader_rejects_missing_urls_and_malformed_item_ids_before_network() {
     let reader = GithubReader;
     let missing = github_source(None);
     assert!(reader.list_items(&missing, workspace.path()).await.is_err());
-    assert!(reader
-        .read_item(&missing, "commit:abc", workspace.path())
-        .await
-        .is_err());
+    assert!(
+        reader
+            .read_item(&missing, "commit:abc", workspace.path())
+            .await
+            .is_err()
+    );
 
     let configured = github_source(Some("https://github.com/local/fixture"));
     for item_id in ["unknown", "issue:not-a-number", "pr:not-a-number"] {
-        assert!(reader
-            .read_item(&configured, item_id, workspace.path())
-            .await
-            .is_err());
+        assert!(
+            reader
+                .read_item(&configured, item_id, workspace.path())
+                .await
+                .is_err()
+        );
     }
 }
 
@@ -258,9 +262,11 @@ async fn api_commit_fallback_lists_merges_and_renders_without_network() {
     .await
     .expect("read deterministic commit");
     assert_eq!(content.title, "newer commit");
-    assert!(content
-        .body
-        .contains("Test Author <author@example.com> (@octocat)"));
+    assert!(
+        content
+            .body
+            .contains("Test Author <author@example.com> (@octocat)")
+    );
     assert_eq!(content.metadata["author_handle"], "octocat");
 }
 
@@ -497,15 +503,16 @@ async fn fetch_all_pages_stops_at_a_short_page() {
     // A short page (fewer than GH_PAGE_SIZE rows) is the last page; the walk
     // must not request page 2 after it.
     let mut requested: Vec<u32> = Vec::new();
-    let pages = crate::sources::readers::github::api::collect_pages::<u64, _, _>("commits", 1000, |page| {
-        requested.push(page);
-        async move {
-            // Page 1 is short (3 rows) — stop after it even though max is large.
-            Ok("[1,2,3]".to_string())
-        }
-    })
-    .await
-    .unwrap();
+    let pages =
+        crate::sources::readers::github::api::collect_pages::<u64, _, _>("commits", 1000, |page| {
+            requested.push(page);
+            async move {
+                // Page 1 is short (3 rows) — stop after it even though max is large.
+                Ok("[1,2,3]".to_string())
+            }
+        })
+        .await
+        .unwrap();
 
     assert_eq!(requested, vec![1]);
     assert_eq!(pages, vec![1, 2, 3]);

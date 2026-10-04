@@ -2,11 +2,11 @@
 
 use async_trait::async_trait;
 use chrono::TimeZone;
+use tinymemory_api::conformance::ReferenceEngine;
 use tinymemory_api::{
     EngineDescriptor, EngineHealth, Error as ApiError, FetchPage, FetchRequest, ForgetReport,
     ForgetTarget, LearningKind, ListPage, MemoryMeta, RecallAnswer, StoreItem, StoreReceipt,
 };
-use tinymemory_api::conformance::ReferenceEngine;
 
 use super::*;
 use crate::context::spec::Brief;

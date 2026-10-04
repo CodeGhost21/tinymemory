@@ -10,12 +10,12 @@ mod score;
 
 use std::sync::Mutex;
 
-use async_trait::async_trait;
 use crate::{
     Citation, EngineDescriptor, EngineHealth, Error, FetchMode, FetchPage, FetchRequest,
     ForgetReport, ForgetTarget, Hit, ItemId, ListPage, ListRequest, MemoryEngine, MetaFilter,
     RecallAnswer, RecallRequest, Result, StoreItem, StoreReceipt,
 };
+use async_trait::async_trait;
 
 /// The reference engine's id.
 pub const REFERENCE_ENGINE_ID: &str = "reference";

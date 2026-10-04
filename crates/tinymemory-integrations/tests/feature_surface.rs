@@ -3,7 +3,7 @@
 //! run the conformance suite, and compile a context from what is left.
 #![cfg(feature = "full")]
 
-use tinymemory_integrations::{LearningKind, MemoryEngine, MemoryMeta, StoreItem};
+use tinymemory_api::{LearningKind, MemoryEngine, MemoryMeta, StoreItem};
 
 #[tokio::test]
 async fn the_optional_crates_compose_through_the_facade() {
@@ -22,9 +22,12 @@ async fn the_optional_crates_compose_through_the_facade() {
     assert!(scrubbed.report.changed());
     engine.store(scrubbed.value).await.expect("store");
 
-    let doc = tinymemory_tools::context::compile(&engine, &tinymemory_tools::context::ContextSpec::default())
-        .await
-        .expect("compile");
+    let doc = tinymemory_tools::context::compile(
+        &engine,
+        &tinymemory_tools::context::ContextSpec::default(),
+    )
+    .await
+    .expect("compile");
     assert!(doc.markdown.contains("## Learnings"));
     assert!(!doc.markdown.contains("sk-proj-"));
     assert_eq!(doc.engine, "reference");

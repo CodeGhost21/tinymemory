@@ -15,7 +15,7 @@ use std::collections::HashSet;
 use crate::sources::types::{ContentType, SourceContent, SourceItem};
 
 use super::types::GhCommit;
-use super::{parse_iso_ts, GH_CLI_TIMEOUT};
+use super::{GH_CLI_TIMEOUT, parse_iso_ts};
 
 // Keep the production transport at its established source locations. This file
 // is compiled both as the standalone sources crate and through downstream

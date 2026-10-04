@@ -180,10 +180,12 @@ async fn read_item_enforces_configured_glob() {
     source.glob = Some("docs/**/*.md".into());
     let reader = FolderReader;
 
-    assert!(reader
-        .read_item(&source, "docs/allowed.md", config())
-        .await
-        .is_ok());
+    assert!(
+        reader
+            .read_item(&source, "docs/allowed.md", config())
+            .await
+            .is_ok()
+    );
     let err = reader
         .read_item(&source, "docs/secret.env", config())
         .await
@@ -250,11 +252,13 @@ async fn oversized_files_are_not_listed_and_cannot_be_read() {
     let source = folder_source(&tmp.path().to_string_lossy());
     let reader = FolderReader;
 
-    assert!(reader
-        .list_items(&source, config())
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        reader
+            .list_items(&source, config())
+            .await
+            .unwrap()
+            .is_empty()
+    );
     let error = reader
         .read_item(&source, "huge.md", config())
         .await
@@ -309,11 +313,13 @@ async fn symlinks_cannot_escape_the_configured_folder() {
     let source = folder_source(&base.path().to_string_lossy());
     let reader = FolderReader;
 
-    assert!(reader
-        .list_items(&source, config())
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        reader
+            .list_items(&source, config())
+            .await
+            .unwrap()
+            .is_empty()
+    );
     let error = reader
         .read_item(&source, "escape.md", config())
         .await
