@@ -60,7 +60,10 @@ pub mod namespace;
 pub mod query;
 pub mod write;
 
-pub use consolidate::{ConsolidateReceipt, ConsolidateRequest, ConsolidateStatus, Consolidation};
+pub use consolidate::{
+    BELIEF_TAG, BeliefsRequest, ConsolidateReceipt, ConsolidateRequest, ConsolidateStatus,
+    Consolidation,
+};
 pub use engine::{EngineDescriptor, EngineHealth, MAX_STORE_MANY, MemoryEngine, validate_many};
 pub use error::{Error, Result};
 pub use explore::{

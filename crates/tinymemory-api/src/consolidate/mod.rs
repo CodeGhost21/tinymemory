@@ -21,6 +21,16 @@
 //! - [`Consolidation::Scheduled`] — the engine consolidates on its own
 //!   schedule; `consolidate` acknowledges with
 //!   [`ConsolidateStatus::Scheduled`] and does nothing more.
+//!
+//! **Reading beliefs.** An engine that keeps what it builds apart from its
+//! stored items (CortexDB's belief layer) serves it through
+//! [`MemoryEngine::beliefs`](crate::MemoryEngine::beliefs): a
+//! [`BeliefsRequest`] names a reach, an optional query and a limit, and the
+//! answer is learning hits tagged [`BELIEF_TAG`]. They are not stored items,
+//! so they cannot be listed, fetched or forgotten by id; forgetting the items
+//! they were built from removes them. An engine whose beliefs are ordinary
+//! learning items (the reference engine) has nothing to add and keeps the
+//! default, which holds none.
 
 use serde::{Deserialize, Serialize};
 
@@ -94,6 +104,61 @@ impl ConsolidateRequest {
                 )));
             }
             seen.push(*kind);
+        }
+        Ok(())
+    }
+}
+
+/// The tag on every hit [`MemoryEngine::beliefs`](crate::MemoryEngine::beliefs)
+/// returns.
+pub const BELIEF_TAG: &str = "belief";
+
+/// Which beliefs to read (see [`MemoryEngine::beliefs`](crate::MemoryEngine::beliefs)).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BeliefsRequest {
+    /// The part of the namespace tree whose beliefs to read.
+    pub reach: Reach,
+    /// What the beliefs should be relevant to. Without one, the most
+    /// confident come first, then the newest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+    /// The most beliefs to return.
+    pub limit: usize,
+}
+
+impl BeliefsRequest {
+    /// At most `limit` beliefs within `reach`, most confident first.
+    #[must_use]
+    pub fn new(reach: Reach, limit: usize) -> Self {
+        Self {
+            reach,
+            query: None,
+            limit,
+        }
+    }
+
+    /// Ranks the beliefs for `query`.
+    #[must_use]
+    pub fn query(mut self, query: impl Into<String>) -> Self {
+        self.query = Some(query.into());
+        self
+    }
+
+    /// Checks the request.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::InvalidRequest`] for a zero limit or a blank query.
+    pub fn validate(&self) -> Result<()> {
+        if self.limit == 0 {
+            return Err(Error::InvalidRequest(
+                "a beliefs limit must be positive".to_string(),
+            ));
+        }
+        if self.query.as_deref().is_some_and(|query| query.trim().is_empty()) {
+            return Err(Error::InvalidRequest(
+                "a beliefs query must not be blank".to_string(),
+            ));
         }
         Ok(())
     }

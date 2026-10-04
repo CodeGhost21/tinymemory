@@ -152,6 +152,25 @@ pub trait MemoryEngine: Send + Sync {
             self.descriptor().id
         )))
     }
+
+    /// The beliefs the engine built and keeps apart from its stored items,
+    /// within `req.reach`: ranked for `req.query`, or most confident and
+    /// then newest without one (see [`crate::consolidate`]).
+    ///
+    /// Each is a [`crate::ItemKind::Learning`] hit tagged
+    /// [`crate::BELIEF_TAG`], at the node its sources live at. It is not a
+    /// stored item: it cannot be listed, fetched or forgotten by id.
+    ///
+    /// The default holds none: an engine whose beliefs are ordinary
+    /// learning items, or that builds none, keeps it.
+    ///
+    /// # Errors
+    ///
+    /// Invalid requests, and the engine's own failures.
+    async fn beliefs(&self, req: BeliefsRequest) -> Result<Vec<Hit>> {
+        req.validate()?;
+        Ok(Vec::new())
+    }
 }
 
 /// Most items one [`MemoryEngine::store_many`] call may take.

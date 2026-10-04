@@ -4,6 +4,21 @@ use super::*;
 use crate::namespace::Namespace;
 
 #[test]
+fn a_beliefs_request_needs_a_limit_and_a_real_query() {
+    let request = BeliefsRequest::new(Reach::subtree(Namespace::ROOT), 5);
+    request.validate().unwrap();
+    request.clone().query("refunds").validate().unwrap();
+    assert!(matches!(
+        BeliefsRequest::new(Reach::default(), 0).validate(),
+        Err(Error::InvalidRequest(_))
+    ));
+    assert!(matches!(
+        request.query("  ").validate(),
+        Err(Error::InvalidRequest(_))
+    ));
+}
+
+#[test]
 fn an_unnamed_kind_list_admits_every_kind() {
     let request = ConsolidateRequest::new(Reach::subtree(Namespace::ROOT));
     assert_eq!(request.admitted_kinds(), ItemKind::ALL.to_vec());
