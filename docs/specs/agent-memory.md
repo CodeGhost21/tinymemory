@@ -92,6 +92,9 @@ by default, or a host node such as `team:acme`.
     forgotten by id. Forgetting its sources removes it.
   - The default holds none. An engine whose beliefs are ordinary learning
     items (the reference engine) keeps it.
+- **`FetchRequest::beliefs`** (default `0`) asks a fetch for up to that many
+  beliefs from what it read, returned in `FetchPage::beliefs` (first page
+  only). An engine that keeps no beliefs apart returns none.
 - **Conformance** adds two checks:
   - `store_with`: a visible store is listed on return and replays; an
     accepted store answers with the item's own id.
@@ -121,14 +124,20 @@ skipped, engine }`.
   `skipped` and never fails the pack. The only error is an invalid request.
 - **Deduplication.** An item is listed once, in its first (highest-priority)
   section. An answer citing an item does not hide it.
-- **Beliefs are learnings.** A fetched or latest section that reads
-  learnings also reads the engine's beliefs in its reach, concurrently, for
-  the same query. They are interleaved with the stored learnings rank by
-  rank, stored learnings first at each rank.
+- **Beliefs are learnings.** When a pack has a learnings section (a fetched
+  or latest section that admits learnings), it gathers the engine's beliefs
+  into it:
+  - with a query, every fetched section asks its fetch for beliefs too
+    (`FetchRequest::beliefs`), so they come from reads the pack makes
+    anyway;
+  - without one, the learnings section lists them (`beliefs` with no query);
+  - what all sections returned is merged, each belief once, and
+    interleaved with the stored learnings rank by rank, stored learnings
+    first.
   - The section's filter applies to beliefs too.
   - A failed belief read leaves the section to its stored learnings.
-  - Answered sections read none, because the engine's answer draws on its
-    beliefs itself.
+  - Answered sections ask for none, because the engine's answer draws on
+    its beliefs itself.
   - So on CortexDB, what a build produced reaches every pack's Learnings
     section: in `pre_turn`, `start_session`, compaction and `context.md`.
 - **Exclusions:**

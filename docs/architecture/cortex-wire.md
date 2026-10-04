@@ -217,11 +217,15 @@ A build takes seconds per scope with a real model (8–30 s for a whole
 scenario in [the eval](../evals/agent-memory.md)), so it belongs off the turn.
 Each build is sent once and never retried: a host can always ask again.
 
-The beliefs land in a derived layer, read by `beliefs`
-(`engine/beliefs.rs`):
+The beliefs land in a derived layer, read two ways:
 
-- **With a query:** one recall per scope held in reach, with a budget for
-  the `beliefs` layer only:
+- **Inside a fetch** (`FetchRequest::beliefs > 0`): each scope's recall
+  pack also carries `"beliefs": N` in `per_layer_limits`. One pack, and one
+  query embedding, serves both the events and the beliefs. This is how
+  holistic recall reads them.
+- **`beliefs` with a query** (`engine/beliefs.rs`), for a caller that wants
+  beliefs alone: one recall per scope held in reach, with a budget for the
+  `beliefs` layer only:
 
   ```json
   { "scope": "…", "query": "…",

@@ -116,11 +116,15 @@ Built beliefs reach the Learnings section of every pack:
   section lists them like any other.
 - On CortexDB they live in a derived layer, which fetch and list (stored
   items only) never return. Holistic recall therefore asks
-  `MemoryEngine::beliefs` alongside every section that reads learnings, and
-  interleaves the beliefs with the stored learnings:
-  - with the pack's query, it reads each scope's `beliefs` recall layer;
-  - without one (a cold `start_session`, `context.md`), it reads the
-    `v1/beliefs` listing.
+  for them whenever a pack has a learnings section, and interleaves them
+  with the stored learnings:
+  - with the pack's query, every fetched section's fetch asks for beliefs
+    (`FetchRequest::beliefs`). CortexDB adds the `beliefs` layer to the
+    recall pack it builds for each scope anyway, so a scope's query is
+    embedded once. Brain, history and team between them read every scope
+    a belief can be built in;
+  - without one (a cold `start_session`, `context.md`), the learnings
+    section lists them (`MemoryEngine::beliefs`, the `v1/beliefs` listing).
 
   Answered sections, such as a compaction summary or a `context.md` brief,
   also draw on beliefs through CortexDB's answer route.
