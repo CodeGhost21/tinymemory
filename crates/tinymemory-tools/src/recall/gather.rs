@@ -10,7 +10,8 @@
 use std::collections::HashSet;
 
 use tinymemory_api::{
-    FetchMode, FetchRequest, Hit, ItemId, ItemKind, ListRequest, MemoryEngine, MetaFilter, RecallRequest,
+    FetchMode, FetchRequest, Hit, ItemId, ItemKind, ListRequest, MemoryEngine, MetaFilter,
+    RecallRequest,
 };
 
 use super::render::{Body, Line, Section, shorten, single_line};

@@ -22,7 +22,9 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tinymemory_api::{ForgetTarget, MemoryEngine, MemoryMeta, Role, Turn};
 use tinymemory_integrations::brain::brain_document;
 use tinymemory_integrations::cortex::{CortexCredential, CortexEngine};
-use tinymemory_integrations::documents::{ConverterChain, NativeConverter, OfficeConverter, RawDocument};
+use tinymemory_integrations::documents::{
+    ConverterChain, NativeConverter, OfficeConverter, RawDocument,
+};
 use tinymemory_tools::{
     AgentMemory, BackgroundJob, Brain, Compaction, MemoryLayout, PostTurn, PreTurn, RecallPolicy,
     SessionStart,
@@ -32,12 +34,18 @@ type Error = Box<dyn std::error::Error>;
 
 /// Prints how long `label` took.
 fn took(label: &str, started: Instant) {
-    println!("  {label:<34} {:>7.1} ms", started.elapsed().as_secs_f64() * 1e3);
+    println!(
+        "  {label:<34} {:>7.1} ms",
+        started.elapsed().as_secs_f64() * 1e3
+    );
 }
 
 /// Stands in for the model.
 fn generate(context: &str) -> String {
-    let facts = context.lines().filter(|line| line.starts_with("- ")).count();
+    let facts = context
+        .lines()
+        .filter(|line| line.starts_with("- "))
+        .count();
     format!("(an answer grounded in {facts} remembered lines)")
 }
 
@@ -54,7 +62,11 @@ async fn main() -> Result<(), Error> {
     let key = std::env::var("CORTEX_DB_KEY").unwrap_or_else(|_| "tinymemory-cortex-test".into());
     let engine: Arc<dyn MemoryEngine> =
         Arc::new(CortexEngine::direct(&url, CortexCredential::api_key(key))?);
-    println!("engine: {} at {url} ({:?})", engine.descriptor().id, engine.health().await);
+    println!(
+        "engine: {} at {url} ({:?})",
+        engine.descriptor().id,
+        engine.health().await
+    );
 
     // Everything below one node per run, so runs never see each other.
     let run = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
@@ -63,7 +75,8 @@ async fn main() -> Result<(), Error> {
 
     println!("\nbrain");
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/fixtures");
-    let converters = ConverterChain::new(vec![Box::new(OfficeConverter), Box::new(NativeConverter)]);
+    let converters =
+        ConverterChain::new(vec![Box::new(OfficeConverter), Box::new(NativeConverter)]);
     let brain = Brain::new(engine.clone(), layout.clone());
     for file in ["onboarding.md", "refund-policy.pdf"] {
         let raw = RawDocument::new(std::fs::read(fixtures.join(file))?).with_filename(file);
@@ -83,13 +96,12 @@ async fn main() -> Result<(), Error> {
         AgentMemory::new(engine.clone(), layout.clone(), "support-01")?.with_policy(policy.clone());
     let coder = AgentMemory::new(engine.clone(), layout.clone(), "coder-42")?.with_policy(policy);
 
-    for (memory, thread, user) in [
-        (&support, "s-1", "How long do refunds take to settle?"),
-        (&coder, "c-1", "The refund webhook deploy failed again."),
-        (&support, "s-1", "Who handles billing disputes?"),
+    for (memory, thread, index, user) in [
+        (&support, "s-1", 0, "How long do refunds take to settle?"),
+        (&coder, "c-1", 0, "The refund webhook deploy failed again."),
+        (&support, "s-1", 2, "Who handles billing disputes?"),
     ] {
         println!("\n{} turn: {user}", memory.agent_id());
-        let index = if memory.agent_id() == "support-01" && user.starts_with("Who") { 2 } else { 0 };
         let started = Instant::now();
         let context = memory.pre_turn(PreTurn::new(thread, index, user)).await?;
         took("pre_turn (log + recall)", started);
@@ -99,7 +111,9 @@ async fn main() -> Result<(), Error> {
         println!("{}", indent(&context.pack.markdown));
         let reply = generate(&context.pack.markdown);
         let started = Instant::now();
-        let report = memory.post_turn(PostTurn::new(thread, index + 1, reply)).await?;
+        let report = memory
+            .post_turn(PostTurn::new(thread, index + 1, reply))
+            .await?;
         took("post_turn (log)", started);
         jobs.extend(report.jobs);
     }
@@ -146,7 +160,11 @@ async fn main() -> Result<(), Error> {
         let forgotten = engine
             .forget(ForgetTarget::Filter(layout.holistic_filter()))
             .await?;
-        println!("\ncleaned up {} items under {}", forgotten.forgotten, layout.root());
+        println!(
+            "\ncleaned up {} items under {}",
+            forgotten.forgotten,
+            layout.root()
+        );
     }
     Ok(())
 }

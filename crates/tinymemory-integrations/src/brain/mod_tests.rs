@@ -12,16 +12,15 @@ fn every_format_has_a_source() {
         source_for(DocumentFormat::Xlsx),
         BrainSource::Other("xlsx".into())
     );
-    assert_eq!(
-        source_for(DocumentFormat::Unknown).to_string(),
-        "other"
-    );
+    assert_eq!(source_for(DocumentFormat::Unknown).to_string(), "other");
 }
 
 #[tokio::test]
 async fn html_lands_on_the_web_unless_the_caller_says_otherwise() {
-    let page = RawDocument::new("<html><head><title>Pricing</title></head><body><p>Pro is $20.</p></body></html>")
-        .with_filename("pricing.html");
+    let page = RawDocument::new(
+        "<html><head><title>Pricing</title></head><body><p>Pro is $20.</p></body></html>",
+    )
+    .with_filename("pricing.html");
     let chain = ConverterChain::default();
     let document = brain_document(&chain, &page, None, MemoryMeta::default())
         .await
@@ -30,9 +29,14 @@ async fn html_lands_on_the_web_unless_the_caller_says_otherwise() {
     assert_eq!(document.mime.as_deref(), Some("text/html"));
     assert!(document.text.contains("Pro is $20."));
 
-    let notion = brain_document(&chain, &page, Some(BrainSource::Notion), MemoryMeta::default())
-        .await
-        .unwrap();
+    let notion = brain_document(
+        &chain,
+        &page,
+        Some(BrainSource::Notion),
+        MemoryMeta::default(),
+    )
+    .await
+    .unwrap();
     assert_eq!(notion.source, BrainSource::Notion);
 }
 

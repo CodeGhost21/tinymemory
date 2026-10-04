@@ -27,12 +27,18 @@ use tinymemory_tools::{
 fn generate(context: &str, user: &str) -> String {
     let words: Vec<String> = user
         .split_whitespace()
-        .map(|word| word.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase())
+        .map(|word| {
+            word.trim_matches(|c: char| !c.is_alphanumeric())
+                .to_lowercase()
+        })
         .filter(|word| word.len() > 4)
         .collect();
     let overlap = |line: &str| {
         let line = line.to_lowercase();
-        words.iter().filter(|word| line.contains(word.as_str())).count()
+        words
+            .iter()
+            .filter(|word| line.contains(word.as_str()))
+            .count()
     };
     let best = context
         .lines()
@@ -54,9 +60,7 @@ async fn turn(
     user: &str,
     jobs: &mut Vec<BackgroundJob>,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let context = memory
-        .pre_turn(PreTurn::new(thread, index, user))
-        .await?;
+    let context = memory.pre_turn(PreTurn::new(thread, index, user)).await?;
     let reply = generate(&context.pack.markdown, user);
     let report = memory
         .post_turn(PostTurn::new(thread, index + 1, reply.clone()))
@@ -107,13 +111,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         build_beliefs_every: Some(4),
         ..RecallPolicy::default()
     };
-    let support = AgentMemory::new(engine.clone(), layout.clone(), "support-01")?
-        .with_policy(policy.clone());
+    let support =
+        AgentMemory::new(engine.clone(), layout.clone(), "support-01")?.with_policy(policy.clone());
     let coder = AgentMemory::new(engine.clone(), layout.clone(), "coder-42")?.with_policy(policy);
 
-    turn(&support, "s-1", 0, "How long do refunds take to settle?", &mut jobs).await?;
-    turn(&coder, "c-1", 0, "The refund webhook deploy failed on Friday.", &mut jobs).await?;
-    turn(&support, "s-1", 2, "My customer says the refund webhook is broken.", &mut jobs).await?;
+    turn(
+        &support,
+        "s-1",
+        0,
+        "How long do refunds take to settle?",
+        &mut jobs,
+    )
+    .await?;
+    turn(
+        &coder,
+        "c-1",
+        0,
+        "The refund webhook deploy failed on Friday.",
+        &mut jobs,
+    )
+    .await?;
+    turn(
+        &support,
+        "s-1",
+        2,
+        "My customer says the refund webhook is broken.",
+        &mut jobs,
+    )
+    .await?;
 
     // 3. Cross-agent recall: the coder's turn shows under the team.
     let team = support.recall("refund webhook").await?;

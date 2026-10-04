@@ -134,6 +134,10 @@ full = ["cortex", "documents-office", "brain", "sources-network", "safety", "leg
 name = "basic"
 required-features = ["cortex"]
 
+[[example]]
+name = "cortex_agent"
+required-features = ["cortex", "brain", "documents-office"]
+
 [[test]]
 name = "live_cortexdb"
 required-features = ["cortex"]

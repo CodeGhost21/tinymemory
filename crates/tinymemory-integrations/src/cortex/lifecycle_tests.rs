@@ -29,9 +29,10 @@ async fn an_agent_loop_runs_the_same_on_either_wire() {
             .unwrap();
         let events = state.log.lock().unwrap().events.clone();
         assert!(
-            events
-                .iter()
-                .any(|e| e["scope"].as_str().unwrap().ends_with("source:pdf/app:documents")),
+            events.iter().any(|e| e["scope"]
+                .as_str()
+                .unwrap()
+                .ends_with("source:pdf/app:documents")),
             "{wire:?}: the pdf lands in its source scope"
         );
 
@@ -53,7 +54,11 @@ async fn an_agent_loop_runs_the_same_on_either_wire() {
         );
         assert!(turn.pack.markdown.contains("five business days"));
         let report = support
-            .post_turn(PostTurn::new("t1", 1, "Refunds settle in five business days."))
+            .post_turn(PostTurn::new(
+                "t1",
+                1,
+                "Refunds settle in five business days.",
+            ))
             .await
             .unwrap();
         assert_eq!(report.jobs.len(), 1, "{wire:?}: the policy's build is due");
@@ -64,7 +69,10 @@ async fn an_agent_loop_runs_the_same_on_either_wire() {
                 .iter()
                 .filter(|r| *r == "POST /v1/experience")
                 .count();
-            assert_eq!(unwaited, 2, "both turns logged without waiting: {requests:?}");
+            assert_eq!(
+                unwaited, 2,
+                "both turns logged without waiting: {requests:?}"
+            );
             assert_eq!(
                 requests
                     .iter()
