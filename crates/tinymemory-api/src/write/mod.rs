@@ -19,22 +19,21 @@
 //! # Example
 //!
 //! ```
-//! fn main() {
-//!     #[cfg(feature = "conformance")]
-//!     {
-//!         use tinymemory_api::{MemoryEngine, MemoryMeta, StoreItem, WaitFor, WriteOptions};
-//!         use tinymemory_api::conformance::ReferenceEngine;
+//! # #[cfg(feature = "conformance")]
+//! {
+//!     use tinymemory_api::{MemoryEngine, MemoryMeta, StoreItem, WaitFor, WriteOptions};
+//!     use tinymemory_api::conformance::ReferenceEngine;
 //!
-//!         let runtime = tokio::runtime::Builder::new_current_thread().build().unwrap();
-//!         runtime.block_on(async {
-//!             let engine = ReferenceEngine::new();
-//!             let item = StoreItem::document("logged without waiting", MemoryMeta::default());
-//!             let receipt = engine.store_with(item, WriteOptions::accepted()).await?;
-//!             assert!(!receipt.replayed);
-//!             assert_eq!(WriteOptions::default().wait, WaitFor::Visible);
-//!             Ok::<(), tinymemory_api::Error>(())
-//!         }).unwrap();
-//!     }
+//!     let runtime = tokio::runtime::Builder::new_current_thread().build().unwrap();
+//!     runtime.block_on(async {
+//!         let engine = ReferenceEngine::new();
+//!         let item = StoreItem::document("logged without waiting", MemoryMeta::default());
+//!         let receipt = engine.store_with(item, WriteOptions::accepted()).await?;
+//!         assert!(!receipt.replayed);
+//!         assert_eq!(WriteOptions::default().wait, WaitFor::Visible);
+//!         Ok::<(), tinymemory_api::Error>(())
+//!     }).unwrap();
+//! }
 //! }
 //! ```
 
