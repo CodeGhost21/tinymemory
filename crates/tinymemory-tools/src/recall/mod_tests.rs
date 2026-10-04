@@ -386,3 +386,152 @@ async fn a_timed_turn_is_led_by_when_it_was_said() {
         "an untimed turn has no date: {md}"
     );
 }
+
+/// The reference engine plus beliefs kept apart from its items, or a belief
+/// read that fails; it records every belief request.
+struct Believer {
+    inner: ReferenceEngine,
+    beliefs: Option<Vec<&'static str>>,
+    asked: std::sync::Mutex<Vec<tinymemory_api::BeliefsRequest>>,
+}
+
+impl Believer {
+    async fn new(beliefs: Option<Vec<&'static str>>) -> Self {
+        Self {
+            inner: seeded().await,
+            beliefs,
+            asked: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl tinymemory_api::MemoryEngine for Believer {
+    fn descriptor(&self) -> &EngineDescriptor {
+        self.inner.descriptor()
+    }
+    async fn health(&self) -> EngineHealth {
+        EngineHealth::Ok
+    }
+    async fn recall(&self, req: RecallRequest) -> tinymemory_api::Result<RecallAnswer> {
+        self.inner.recall(req).await
+    }
+    async fn fetch(&self, req: FetchRequest) -> tinymemory_api::Result<FetchPage> {
+        self.inner.fetch(req).await
+    }
+    async fn store(&self, item: StoreItem) -> tinymemory_api::Result<StoreReceipt> {
+        self.inner.store(item).await
+    }
+    async fn forget(&self, target: ForgetTarget) -> tinymemory_api::Result<ForgetReport> {
+        self.inner.forget(target).await
+    }
+    async fn list(&self, req: ListRequest) -> tinymemory_api::Result<ListPage> {
+        self.inner.list(req).await
+    }
+    async fn beliefs(
+        &self,
+        req: tinymemory_api::BeliefsRequest,
+    ) -> tinymemory_api::Result<Vec<tinymemory_api::Hit>> {
+        self.asked.lock().unwrap().push(req.clone());
+        let Some(texts) = &self.beliefs else {
+            return Err(Error::Unavailable("beliefs are down".into()));
+        };
+        Ok(texts
+            .iter()
+            .map(|text| tinymemory_api::Hit {
+                id: tinymemory_api::ItemId::new(format!("belief:{text}")),
+                kind: ItemKind::Learning,
+                text: (*text).to_string(),
+                meta: MemoryMeta {
+                    tags: vec![tinymemory_api::BELIEF_TAG.to_string()],
+                    ..MemoryMeta::default()
+                },
+                score: 0.0,
+                confidence: Some(0.9),
+            })
+            .take(req.limit)
+            .collect())
+    }
+}
+
+fn learnings_section(heading: &str) -> ScopeSection {
+    ScopeSection::fetch(heading, MetaFilter::kinds([ItemKind::Learning]), 5)
+}
+
+#[tokio::test]
+async fn a_learnings_section_merges_the_engine_s_beliefs() {
+    let engine = Believer::new(Some(vec!["user prefers pnpm over npm"])).await;
+    let pack = holistic_recall(
+        &engine,
+        &HolisticRecall::new(
+            Some("refunds".into()),
+            vec![
+                learnings_section("Learnings"),
+                ScopeSection::fetch("Docs", docs(), 5),
+            ],
+        ),
+    )
+    .await
+    .unwrap();
+    let md = &pack.markdown;
+    assert!(md.contains("- Customers prefer refunds by email\n"), "{md}");
+    assert!(md.contains("- user prefers pnpm over npm\n"), "{md}");
+    assert!(
+        md.find("Customers prefer").unwrap() < md.find("user prefers pnpm").unwrap(),
+        "stored learnings lead at each rank: {md}"
+    );
+    let asked = engine.asked.lock().unwrap().clone();
+    assert_eq!(asked.len(), 1, "only the learnings section reads beliefs");
+    assert_eq!(asked[0].query.as_deref(), Some("refunds"));
+    assert_eq!(asked[0].reach, Reach::subtree(Namespace::ROOT));
+}
+
+#[tokio::test]
+async fn a_latest_learnings_section_reads_beliefs_without_a_query() {
+    let engine = Believer::new(Some(vec!["user prefers pnpm over npm"])).await;
+    let pack = holistic_recall(
+        &engine,
+        &HolisticRecall::new(
+            None,
+            vec![ScopeSection::latest(
+                "Learnings",
+                MetaFilter::kinds([ItemKind::Learning]),
+                5,
+            )],
+        ),
+    )
+    .await
+    .unwrap();
+    assert!(pack.markdown.contains("- user prefers pnpm over npm\n"));
+    assert_eq!(engine.asked.lock().unwrap()[0].query, None);
+}
+
+#[tokio::test]
+async fn a_failed_belief_read_leaves_the_stored_learnings() {
+    let engine = Believer::new(None).await;
+    let pack = holistic_recall(
+        &engine,
+        &HolisticRecall::new(Some("refunds".into()), vec![learnings_section("Learnings")]),
+    )
+    .await
+    .unwrap();
+    assert!(
+        pack.markdown
+            .contains("- Customers prefer refunds by email\n")
+    );
+    assert!(pack.skipped.is_empty(), "{:?}", pack.skipped);
+}
+
+#[tokio::test]
+async fn a_belief_the_filter_rules_out_is_left_out() {
+    let engine = Believer::new(Some(vec!["user prefers pnpm over npm"])).await;
+    let mut section = learnings_section("Learnings");
+    section.filter.thread_id = Some("t1".into());
+    let pack = holistic_recall(
+        &engine,
+        &HolisticRecall::new(Some("refunds".into()), vec![section]),
+    )
+    .await
+    .unwrap();
+    assert!(!pack.markdown.contains("pnpm"), "{}", pack.markdown);
+}
