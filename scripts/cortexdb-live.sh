@@ -40,3 +40,4 @@ curl --fail --silent "$url/v1/admin/ready" >/dev/null || {
 echo "CortexDB $(curl --silent "$url/v1/admin/health") at $url"
 
 TINYMEMORY_LIVE_CORTEXDB_URL="$url" cargo test -p tinymemory-cortex --test live_cortexdb -- --nocapture
+TINYMEMORY_LIVE_CORTEXDB_URL="$url" cargo test -p tinymemory --features documents-office --test office_live -- --nocapture
