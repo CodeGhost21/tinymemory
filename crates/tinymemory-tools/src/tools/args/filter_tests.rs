@@ -71,8 +71,7 @@ fn a_filter_field_outside_the_subset_is_refused() {
 #[test]
 fn a_namespace_inside_the_filter_is_refused() {
     let value = json!({ "filter": { "namespace": "agent:other" } });
-    let args = Args::parse("t", &value, &["filter"]).unwrap();
-    let text = invalid_message(meta_filter(&args, "filter"));
+    let text = invalid_message(Args::parse("t", &value, &["filter"]));
     assert!(
         text.contains("`filter.namespace` is fixed by the host"),
         "{text}"

@@ -48,8 +48,7 @@ fn a_host_fixed_key_is_refused_even_when_listed_as_allowed() {
 #[test]
 fn a_nested_host_fixed_key_is_refused_with_its_path() {
     let value = json!({ "filter": { "reach": { "at": "root" } } });
-    let args = Args::parse("memory_list", &value, &["filter"]).unwrap();
-    let error = args.object("filter", "filter.", &["kinds"]).unwrap_err();
+    let error = Args::parse("memory_list", &value, &["filter"]).unwrap_err();
     assert!(message(error).contains("`filter.reach` is fixed by the host"));
 }
 
