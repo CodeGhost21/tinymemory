@@ -1,4 +1,4 @@
-//! Exercises Office conversion through the facade and into a live CortexDB.
+//! Exercises Office conversion through `documents` and into a live CortexDB.
 #![cfg(all(feature = "documents-office", feature = "cortex"))]
 #![allow(clippy::expect_used)]
 

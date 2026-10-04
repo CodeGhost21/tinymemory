@@ -1,5 +1,5 @@
-//! The `documents-office` feature reaches `OfficeConverter` through the
-//! facade, and it composes with the default converter chain.
+//! The `documents-office` feature reaches `OfficeConverter` through
+//! `documents`, and it composes with the default converter chain.
 #![cfg(feature = "documents-office")]
 
 use tinymemory_integrations::documents::{

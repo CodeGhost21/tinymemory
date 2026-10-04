@@ -98,7 +98,7 @@ pub fn apply_response_level_markdown(data: &mut Value, top_md: &str) {
     }
     // Presence is checked immutably first, then fetched mutably. The original
     // form re-fetched with `unwrap()` after a mutable probe, which is sound but
-    // relies on the reader to see why; this module's crate forbids `unwrap`, and the
+    // relies on the reader to see why; this crate lints against `unwrap`, and the
     // immutable probe expresses the same reasoning to the compiler.
     let container = if data.get("messages").is_some() {
         data
