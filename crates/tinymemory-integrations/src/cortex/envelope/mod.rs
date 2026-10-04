@@ -14,8 +14,9 @@
 //! So within every node, learnings, documents and conversations are separate
 //! scopes, and CortexDB can recall, retain and erase each on its own. The
 //! namespace segments map onto CortexDB's built-in scope types (`agent`,
-//! `team`, `user`, `ws`, `project`), which every shipped deployment preset
-//! allows. The hosted backend additionally re-roots every scope under the
+//! `team`, `user`, `ws`, `project`, `source`), which every shipped
+//! deployment preset allows. A brain's per-source documents therefore live in
+//! `app:tinymemory/source:pdf/app:documents`. The hosted backend additionally re-roots every scope under the
 //! caller's tenant, which is invisible here. A
 //! [`tinymemory_api::MetaFilter`]'s `kinds` and `reach` pick which scopes are
 //! read (see `engine::scopes`).

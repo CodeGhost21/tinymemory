@@ -1,33 +1,30 @@
-//! [`ContextCompiler`]: gathers briefs and learnings from an engine and
-//! renders them into a budgeted `context.md`.
+//! [`ContextCompiler`]: `context.md` as a holistic recall.
 //!
-//! Gathering is one recall per brief, then a listing of learnings. A brief
-//! whose recall fails, or that cites nothing, is skipped (a failure is logged);
-//! a failed learnings listing leaves the learnings out. Neither fails the
-//! document, so an engine that holds nothing yields an empty document.
-
-mod render;
+//! The document is [`crate::recall`] with a fixed shape: one answered
+//! section per brief (in order), then the latest learnings as a list, under
+//! `# Context` with frontmatter. A brief whose recall fails, or that cites
+//! nothing, is skipped (a failure is logged); a failed learnings listing
+//! leaves the learnings out. Neither fails the document, so an engine that
+//! holds nothing yields an empty document.
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use tinymemory_api::{
-    Hit, ItemId, ItemKind, ListRequest, MemoryEngine, MetaFilter, Reach, RecallRequest,
-};
+use tinymemory_api::{ItemId, ItemKind, MemoryEngine, MetaFilter};
 
-use crate::context::error::Result;
+use crate::context::error::{Error, Result};
 use crate::context::spec::ContextSpec;
-use render::{BriefSection, LearningLine, Sections};
+use crate::recall::{self, Frontmatter, HolisticRecall, ScopeSection, SectionQuery};
 
-pub use render::estimate_tokens;
+pub use crate::recall::estimate_tokens;
 
 /// Most citations one brief's recall gathers.
 const BRIEF_CITATIONS: usize = 8;
 
-/// Page size of the learnings listing.
-const LEARNINGS_PAGE: usize = 100;
+/// The document's `#` heading.
+const TITLE: &str = "Context";
 
-/// Most learnings pages read before sorting; a ceiling, not a target.
-const LEARNINGS_MAX_PAGES: usize = 50;
+/// The learnings section's heading.
+const LEARNINGS_HEADING: &str = "Learnings";
 
 /// Instructions sent with every brief's recall.
 const BRIEF_INSTRUCTIONS: &str = "Answer briefly, as markdown bullet points suitable for a \
@@ -84,22 +81,24 @@ impl ContextCompiler {
         spec.validate()?;
         let generated_at = self.at.unwrap_or_else(Utc::now);
         let engine_id = engine.descriptor().id;
-        let sections = Sections {
-            briefs: gather_briefs(engine, spec).await,
-            learnings: gather_learnings(engine, spec.learnings_limit, spec.reach.as_ref()).await,
+        let frontmatter = Frontmatter {
+            engine: engine_id,
+            generated_at,
         };
-        let rendered = render::render(sections, spec.budget_tokens, engine_id, generated_at);
+        let pack = recall::run(engine, &holistic(spec), Some(frontmatter))
+            .await
+            .map_err(|error| Error::InvalidSpec(error.to_string()))?;
         log::debug!(
             "[context] compiled engine={engine_id} tokens={} refs={}",
-            rendered.tokens,
-            rendered.refs.len()
+            pack.tokens,
+            pack.refs.len()
         );
         Ok(ContextDoc {
-            markdown: rendered.markdown,
-            tokens: rendered.tokens,
+            markdown: pack.markdown,
+            tokens: pack.tokens,
             generated_at,
             engine: engine_id.to_string(),
-            refs: rendered.refs,
+            refs: pack.refs,
         })
     }
 }
@@ -113,98 +112,44 @@ pub async fn compile(engine: &dyn MemoryEngine, spec: &ContextSpec) -> Result<Co
     ContextCompiler::new().compile(engine, spec).await
 }
 
-async fn gather_briefs(engine: &dyn MemoryEngine, spec: &ContextSpec) -> Vec<BriefSection> {
-    let mut sections = Vec::with_capacity(spec.briefs.len());
-    for brief in &spec.briefs {
-        let mut filter = brief.filter.clone();
-        if spec.reach.is_some() {
-            filter.reach = spec.reach.clone();
-        }
-        let request = RecallRequest {
-            question: brief.question.clone(),
-            filter,
-            limit: BRIEF_CITATIONS,
-            instructions: Some(BRIEF_INSTRUCTIONS.to_string()),
-        };
-        match engine.recall(request).await {
-            Ok(answer) if answer.citations.is_empty() || answer.answer.trim().is_empty() => {
-                log::debug!(
-                    "[context] brief skipped heading={:?} reason=nothing_cited",
-                    brief.heading
-                );
+/// The holistic recall `spec` describes: one answered section per brief,
+/// then the latest learnings, every read confined to `spec.reach`.
+fn holistic(spec: &ContextSpec) -> HolisticRecall {
+    let mut sections: Vec<ScopeSection> = spec
+        .briefs
+        .iter()
+        .map(|brief| {
+            let mut filter = brief.filter.clone();
+            if spec.reach.is_some() {
+                filter.reach = spec.reach.clone();
             }
-            Ok(answer) => sections.push(BriefSection {
+            ScopeSection {
                 heading: brief.heading.clone(),
-                body: answer.answer.trim().to_string(),
-                refs: answer.citations.into_iter().map(|c| c.id).collect(),
-            }),
-            Err(error) => {
-                log::warn!(
-                    "[context] brief skipped heading={:?} error={error}",
-                    brief.heading
-                );
+                filter,
+                limit: BRIEF_CITATIONS,
+                query: SectionQuery::Answer {
+                    question: brief.question.clone(),
+                    instructions: Some(BRIEF_INSTRUCTIONS.to_string()),
+                    fallback_to_fetch: false,
+                },
             }
-        }
-    }
-    sections
-}
-
-async fn gather_learnings(
-    engine: &dyn MemoryEngine,
-    limit: usize,
-    reach: Option<&Reach>,
-) -> Vec<LearningLine> {
-    if limit == 0 {
-        return Vec::new();
-    }
-    let mut all: Vec<Hit> = Vec::new();
-    let mut cursor: Option<String> = None;
-    for _ in 0..LEARNINGS_MAX_PAGES {
-        let filter = MetaFilter {
-            reach: reach.cloned(),
-            ..MetaFilter::kinds([ItemKind::Learning])
-        };
-        let mut request = ListRequest::new(filter, LEARNINGS_PAGE);
-        request.cursor = cursor.take();
-        match engine.list(request).await {
-            Ok(page) => {
-                all.extend(
-                    page.items
-                        .into_iter()
-                        .filter(|hit| hit.kind == ItemKind::Learning),
-                );
-                match page.next_cursor {
-                    Some(next) => cursor = Some(next),
-                    None => break,
-                }
-            }
-            Err(error) => {
-                log::warn!("[context] learnings skipped error={error}");
-                return Vec::new();
-            }
-        }
-    }
-    rank_learnings(all)
-        .into_iter()
-        .take(limit)
-        .map(|hit| LearningLine {
-            id: hit.id,
-            text: hit.text,
         })
-        .collect()
-}
-
-/// Newest first, then most confident; undated learnings after dated ones,
-/// and ties keep the engine's listing order.
-fn rank_learnings(mut hits: Vec<Hit>) -> Vec<Hit> {
-    hits.sort_by(|a, b| {
-        b.meta.observed_at.cmp(&a.meta.observed_at).then_with(|| {
-            b.confidence
-                .unwrap_or(0.0)
-                .total_cmp(&a.confidence.unwrap_or(0.0))
-        })
-    });
-    hits
+        .collect();
+    if spec.learnings_limit > 0 {
+        sections.push(ScopeSection::latest(
+            LEARNINGS_HEADING,
+            MetaFilter {
+                reach: spec.reach.clone(),
+                ..MetaFilter::kinds([ItemKind::Learning])
+            },
+            spec.learnings_limit,
+        ));
+    }
+    HolisticRecall {
+        budget_tokens: spec.budget_tokens,
+        title: TITLE.to_string(),
+        ..HolisticRecall::new(None, sections)
+    }
 }
 
 #[cfg(test)]

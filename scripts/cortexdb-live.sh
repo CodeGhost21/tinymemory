@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Boots the pinned CortexDB server (integration/cortexdb/) and runs the
-# `cortexdb` engine's live tests against it, then tears it down.
+# `cortexdb` engine's live tests (contract, office documents, agent
+# lifecycle) against it, then tears it down.
 #
 #   ./scripts/cortexdb-live.sh            # boot, test, tear down
 #   KEEP=1 ./scripts/cortexdb-live.sh     # leave the server running after
@@ -51,3 +52,4 @@ echo "CortexDB $(curl --silent "$url/v1/admin/health") at $url"
 
 TINYMEMORY_LIVE_CORTEXDB_URL="$url" cargo test -p tinymemory-integrations --test live_cortexdb -- --nocapture
 TINYMEMORY_LIVE_CORTEXDB_URL="$url" cargo test -p tinymemory-integrations --features documents-office --test office_live -- --nocapture
+TINYMEMORY_LIVE_CORTEXDB_URL="$url" cargo test -p tinymemory-integrations --features brain --test live_cortex_lifecycle -- --nocapture

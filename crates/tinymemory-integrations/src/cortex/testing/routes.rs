@@ -339,6 +339,48 @@ async fn scopes(
     }
 }
 
+async fn build_beliefs(
+    State(state): State<Shared>,
+    uri: Uri,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Reply {
+    if let Some(early) = gate(&state, "POST", &uri, &headers) {
+        return early;
+    }
+    let Some(scope) = body["scope"].as_str().filter(|scope| !scope.is_empty()) else {
+        return fail(&state, 422, "VALIDATION_ERROR");
+    };
+    if let Some(refused) = refuse_scope(&state, scope) {
+        return refused;
+    }
+    state.seen.lock().unwrap().builds.push(body.clone());
+    // CortexDB v0.10 builds within the request and reports the count.
+    let built = state.log.lock().unwrap().build(scope);
+    ok(
+        &state,
+        200,
+        json!({ "built": built, "items": [], "facts_scanned": built, "events_scanned": built }),
+    )
+}
+
+async fn beliefs(
+    State(state): State<Shared>,
+    uri: Uri,
+    headers: HeaderMap,
+    Query(query): Query<BTreeMap<String, String>>,
+) -> Reply {
+    if let Some(early) = gate(&state, "GET", &uri, &headers) {
+        return early;
+    }
+    let scope = query.get("scope").cloned().unwrap_or_default();
+    if let Some(refused) = refuse_scope(&state, &scope) {
+        return refused;
+    }
+    let items = state.log.lock().unwrap().list_beliefs(&scope);
+    ok(&state, 200, json!({ "items": items, "has_more": false }))
+}
+
 /// CortexDB's own routes.
 pub(super) fn direct(state: Shared) -> Router {
     Router::new()
@@ -350,6 +392,8 @@ pub(super) fn direct(state: Shared) -> Router {
         .route("/v1/answer", post(answer))
         .route("/v1/admin/health", get(health))
         .route("/v1/scopes/list", get(scopes))
+        .route("/v1/beliefs/build", post(build_beliefs))
+        .route("/v1/beliefs", get(beliefs))
         .with_state(state)
 }
 

@@ -47,10 +47,14 @@ pub enum SegmentKind {
     Workspace,
     /// A project.
     Project,
+    /// A source of knowledge (`source:pdf`, `source:notion`): where a shared
+    /// document came from, so a brain can hold each source type apart.
+    Source,
 }
 
 impl SegmentKind {
-    /// The stable wire prefix (`agent`, `team`, `user`, `ws`, `project`).
+    /// The stable wire prefix (`agent`, `team`, `user`, `ws`, `project`,
+    /// `source`).
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
@@ -59,6 +63,7 @@ impl SegmentKind {
             Self::User => "user",
             Self::Workspace => "ws",
             Self::Project => "project",
+            Self::Source => "source",
         }
     }
 
@@ -69,6 +74,7 @@ impl SegmentKind {
             "user" => Ok(Self::User),
             "ws" => Ok(Self::Workspace),
             "project" => Ok(Self::Project),
+            "source" => Ok(Self::Source),
             _ => Err(Error::InvalidRequest(format!(
                 "`{value}` is not a namespace segment kind"
             ))),
@@ -188,6 +194,25 @@ impl Namespace {
     #[must_use]
     pub fn agent(id: &str) -> Self {
         Self(vec![Segment::sanitized(SegmentKind::Agent, id)])
+    }
+
+    /// The node for one knowledge source directly under the root, its id
+    /// sanitized ([`Segment::sanitized`]).
+    #[must_use]
+    pub fn source(id: &str) -> Self {
+        Self(vec![Segment::sanitized(SegmentKind::Source, id)])
+    }
+
+    /// This node with `segment` appended: its child.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::InvalidRequest`] when the child would nest deeper than 8
+    /// segments.
+    pub fn child(&self, segment: Segment) -> Result<Self> {
+        let mut segments = self.0.clone();
+        segments.push(segment);
+        Self::new(segments)
     }
 
     /// Whether this is the root.

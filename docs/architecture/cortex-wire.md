@@ -44,6 +44,7 @@ for. Both fail with `Error::Unsupported` before any request.
 | Answer | `v1/answer` | `memory/answer` | POST |
 | Health | `v1/admin/health` | `memory/scopes` | GET |
 | Scopes (registered scopes under a prefix) | `v1/scopes/list` | `memory/scopes` | GET |
+| Build beliefs (one scope) | `v1/beliefs/build` | none (never sent) | POST |
 | Whoami (Direct only) | `v1/auth/whoami` | | GET |
 
 The endpoint is joined with the route, so a base URL with a path prefix keeps
@@ -85,7 +86,11 @@ Response: `{"event_id": "..."}` (Direct answers `202`, with `status` and
 `replayed_from_idempotency` the engine does not read). A response without
 `event_id` is `Error::Engine`.
 
-Direct appends with `?wait=indexed`. A single event goes to `v1/experience`;
+Direct appends with `?wait=indexed`, except for a store that waits only for
+acceptance (`store_with` with `WaitFor::Accepted`, which the agent lifecycle
+uses for live turns). That store omits the parameter and also skips the
+visibility waits, so the call returns once CortexDB has captured the event.
+A single event goes to `v1/experience`;
 **two or more** go to `v1/experience/bulk` with
 
 ```json
@@ -186,6 +191,64 @@ The reader accepts either `{"items": [{"path": "..."}]}` (Direct) or
 object with `path`. A `404` means "no scope listing" and is treated as no
 scopes.
 
+### Build beliefs: `v1/beliefs/build` (Direct only)
+
+`consolidate` resolves its reach and kinds to the kind scopes that CortexDB
+has registered. It reads them through `v1/scopes/list` under
+`app:tinymemory`, keeping only the scopes the reach admits. It then posts one
+request per scope, in order:
+
+```json
+{ "scope": "app:tinymemory/source:pdf/app:documents" }
+```
+
+CortexDB v0.10 builds within the request, from the facts its enrichment has
+already extracted, and answers with what it built:
+
+```json
+{ "built": 2, "items": [ … ], "facts_scanned": 4, "events_scanned": 4,
+  "reasons": { "no_subject_or_predicate": 2 } }
+```
+
+When every answer carries `built`, the receipt is `Completed` with the counts
+summed in `built`. An answer naming a job instead (`job_id`, `build_id` or
+`id`) means the build was queued: the receipt is `Started` with the handles.
+A build takes seconds per scope with a real model (8–30 s for a whole
+scenario in [the eval](../evals/agent-memory.md)), so it belongs off the turn.
+Each build is sent once and never retried: a host can always ask again.
+
+The beliefs land in a derived layer, read two ways:
+
+- **Inside a fetch** (`FetchRequest::beliefs > 0`): each scope's recall
+  pack also carries `"beliefs": N` in `per_layer_limits`. One pack, and one
+  query embedding, serves both the events and the beliefs. This is how
+  holistic recall reads them.
+- **`beliefs` with a query** (`engine/beliefs.rs`), for a caller that wants
+  beliefs alone: one recall per scope held in reach, with a budget for the
+  `beliefs` layer only:
+
+  ```json
+  { "scope": "…", "query": "…",
+    "budgets": { "per_layer_limits": { "events": 0, "facts": 0, "episodes": 0,
+                                       "understanding": 0, "beliefs": 8 } } }
+  ```
+
+- **Without one:** `GET v1/beliefs?scope=…&limit=…` per scope, ordered most
+  confident and then newest. The hosted wire has no listing and answers
+  none.
+- **Each belief** (`{id, scope, claim: {subject, predicate, object},
+  stance, confidence, valid_from}`) becomes a `Learning` hit:
+  - its text is `subject predicate object`, with the predicate's
+    underscores as spaces;
+  - it is tagged `belief`, at its scope's node;
+  - only `supported` and `contested` stances are read, and a contested
+    belief says so.
+
+The answer route reads the same layer, so a `SectionQuery::Answer` section
+(a compaction summary, a `context.md` brief) uses beliefs as well. Fetch
+and list are unchanged: they decode only this crate's events. The TinyHumans backend has no such route; its descriptor declares
+`Consolidation::Scheduled`, and `consolidate` sends nothing.
+
 ### Health
 
 Direct: `GET v1/admin/health`. TinyHumans has no health route, so it lists one
@@ -229,6 +292,7 @@ scope segment of the same text, using the contract's prefixes:
 | User | `user` |
 | Workspace | `ws` |
 | Project | `project` |
+| Source | `source` |
 | TinyMemory root and each kind leaf | `app` |
 
 These are CortexDB's built-in types, chosen on purpose. From CortexDB v0.10 a

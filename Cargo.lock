@@ -1641,6 +1641,7 @@ version = "1.22.4"
 dependencies = [
  "async-trait",
  "chrono",
+ "futures",
  "log",
  "serde",
  "serde_json",

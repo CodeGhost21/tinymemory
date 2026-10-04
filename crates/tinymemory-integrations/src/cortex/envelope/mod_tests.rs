@@ -167,6 +167,14 @@ fn scopes_nest_kinds_under_their_namespace_node() {
 }
 
 #[test]
+fn a_brain_source_is_a_cortex_source_scope() {
+    let pdf: Namespace = "team:acme/source:pdf".parse().unwrap();
+    let path = scope_path(&pdf, ItemKind::Document);
+    assert_eq!(path, "app:tinymemory/team:acme/source:pdf/app:documents");
+    assert_eq!(parse_scope(&path), Some((pdf, ItemKind::Document)));
+}
+
+#[test]
 fn an_item_is_written_to_its_namespace_scope() {
     let meta = MemoryMeta {
         namespace: Namespace::agent("researcher"),

@@ -89,6 +89,23 @@ impl CortexEngine {
         Ok(known(base, &kinds))
     }
 
+    /// The scopes of `kinds` in `reach` that CortexDB has registered — only
+    /// those with something written — kind first then namespace. Unlike a
+    /// read, nothing is assumed to exist: a build of an empty scope would be
+    /// wasted model time.
+    pub(super) async fn held(&self, reach: &Reach, kinds: &[ItemKind]) -> Result<Vec<KindScope>> {
+        let mut found = BTreeSet::new();
+        for path in self.log.scopes(ROOT_SCOPE).await? {
+            let Some((namespace, kind)) = parse_scope(&path) else {
+                continue;
+            };
+            if reach.admits(&namespace) && kinds.contains(&kind) {
+                found.insert(KindScope::new(namespace, kind));
+            }
+        }
+        Ok(found.into_iter().collect())
+    }
+
     /// Every scope of `kinds` the engine holds, in reach.
     async fn discovered(
         &self,

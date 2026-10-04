@@ -4,16 +4,22 @@
 //! It is the suite's calibration subject: a failure against it means the
 //! assertion is wrong, not the engine. It serves every fetch mode, using a
 //! trivial keyword scorer and a deterministic toy vector (see `score`), and
-//! answers recall by quoting its best hybrid hits.
+//! answers recall by quoting its best hybrid hits. It consolidates on demand,
+//! distilling one toy belief per source item (see `distil`), so a host's
+//! whole memory lifecycle runs offline against it.
 
+mod distil;
 mod score;
 
 use std::sync::Mutex;
 
+pub use distil::CONSOLIDATED_TAG;
+
 use crate::{
-    Citation, EngineDescriptor, EngineHealth, Error, FetchMode, FetchPage, FetchRequest,
-    ForgetReport, ForgetTarget, Hit, ItemId, ListPage, ListRequest, MemoryEngine, MetaFilter,
-    RecallAnswer, RecallRequest, Result, StoreItem, StoreReceipt,
+    Citation, ConsolidateReceipt, ConsolidateRequest, ConsolidateStatus, Consolidation,
+    EngineDescriptor, EngineHealth, Error, FetchMode, FetchPage, FetchRequest, ForgetReport,
+    ForgetTarget, Hit, ItemId, ListPage, ListRequest, MemoryEngine, MetaFilter, RecallAnswer,
+    RecallRequest, Result, StoreItem, StoreReceipt,
 };
 use async_trait::async_trait;
 
@@ -47,6 +53,7 @@ impl ReferenceEngine {
                 needs_key: false,
                 default_endpoint: None,
                 fetch_modes: FetchMode::ALL.to_vec(),
+                consolidation: Consolidation::OnDemand,
             },
             items: Mutex::new(Vec::new()),
         }
@@ -163,7 +170,11 @@ impl MemoryEngine for ReferenceEngine {
         req.validate()?;
         let hits = self.ranked(&req.query, req.mode, &req.filter)?;
         let (hits, next_cursor) = page(hits, req.cursor.as_deref(), req.limit)?;
-        Ok(FetchPage { hits, next_cursor })
+        Ok(FetchPage {
+            hits,
+            next_cursor,
+            beliefs: Vec::new(),
+        })
     }
 
     async fn store(&self, item: StoreItem) -> Result<StoreReceipt> {
@@ -191,6 +202,34 @@ impl MemoryEngine for ReferenceEngine {
         }
         Ok(ForgetReport {
             forgotten: before - items.len(),
+        })
+    }
+
+    /// Distils one belief per admitted document or conversation, at once:
+    /// the build is [`ConsolidateStatus::Completed`] on return.
+    async fn consolidate(&self, req: ConsolidateRequest) -> Result<ConsolidateReceipt> {
+        req.validate()?;
+        let mut items = self.items()?;
+        let beliefs = distil::distil(&items, &req);
+        let mut nodes: Vec<&crate::Namespace> = Vec::new();
+        for belief in &beliefs {
+            if !nodes.contains(&&belief.meta().namespace) {
+                nodes.push(&belief.meta().namespace);
+            }
+        }
+        let scopes = nodes.len() * req.admitted_kinds().len();
+        let built = beliefs.len();
+        for belief in beliefs {
+            let id = belief.fingerprint();
+            if !items.iter().any(|held| held.fingerprint() == id) {
+                items.push(belief);
+            }
+        }
+        Ok(ConsolidateReceipt {
+            status: ConsolidateStatus::Completed,
+            jobs: Vec::new(),
+            scopes,
+            built: Some(built),
         })
     }
 

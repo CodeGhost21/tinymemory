@@ -14,6 +14,11 @@
 //! [`MemoryEngine::get`] for explorers: counts of stored items per metadata
 //! [`Facet`], and items read whole by id ([`explore`]).
 //!
+//! A live agent turn stores with [`MemoryEngine::store_with`] and
+//! [`WaitFor::Accepted`] so it never waits on indexing, and a host asks an
+//! engine to distil beliefs off the hot path with
+//! [`MemoryEngine::consolidate`] ([`consolidate`]).
+//!
 //! Every item lives at one [`Namespace`] node (the root, an agent, a team, a
 //! nested sub-agent); a [`Reach`] in the filter says which nodes a read sees
 //! ([`namespace`]).
@@ -45,6 +50,7 @@
 
 #[cfg(feature = "conformance")]
 pub mod conformance;
+pub mod consolidate;
 pub mod engine;
 pub mod error;
 pub mod explore;
@@ -52,7 +58,12 @@ pub mod item;
 pub mod meta;
 pub mod namespace;
 pub mod query;
+pub mod write;
 
+pub use consolidate::{
+    BELIEF_TAG, BeliefsRequest, ConsolidateReceipt, ConsolidateRequest, ConsolidateStatus,
+    Consolidation,
+};
 pub use engine::{EngineDescriptor, EngineHealth, MAX_STORE_MANY, MemoryEngine, validate_many};
 pub use error::{Error, Result};
 pub use explore::{
@@ -66,6 +77,7 @@ pub use query::{
     Citation, FetchMode, FetchPage, FetchRequest, ForgetReport, ForgetTarget, Hit, ListPage,
     ListRequest, RecallAnswer, RecallRequest,
 };
+pub use write::{WaitFor, WriteOptions};
 
 /// Re-exported so engines and hosts name the same `async_trait` and `chrono`
 /// the contract was compiled with.

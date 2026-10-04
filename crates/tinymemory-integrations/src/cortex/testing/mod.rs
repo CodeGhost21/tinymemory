@@ -42,6 +42,8 @@ pub(crate) struct Seen {
     pub(crate) answers: Vec<serde_json::Value>,
     /// Every forget body.
     pub(crate) forgets: Vec<serde_json::Value>,
+    /// Every beliefs build body.
+    pub(crate) builds: Vec<serde_json::Value>,
 }
 
 /// One double's state and knobs.

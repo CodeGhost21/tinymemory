@@ -3,6 +3,10 @@
 - [Memory v2: Recall, Fetch, Store](memory-v2.md) — the contract, the CortexDB
   engine, `context.md`, legacy import and the conformance suite. Accepted; it
   supersedes every earlier specification.
+- [Agent memory lifecycle](agent-memory.md) — the standard layout (brain by
+  source, per-agent conversations, learnings), holistic recall, pre- and
+  post-turn calls, compaction and background belief builds. Accepted; builds
+  on memory v2.
 
 Specifications define what the system must do before implementation details
 take over. Create one for behavior that changes a public API, crosses module

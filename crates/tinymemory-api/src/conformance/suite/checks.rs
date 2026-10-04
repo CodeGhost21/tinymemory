@@ -18,13 +18,15 @@ pub(super) async fn all(ctx: &Ctx<'_>) -> Result<()> {
     super::explore::explore(ctx).await?;
     super::explore::get(ctx).await?;
     super::bulk::store_many(ctx).await?;
+    super::lifecycle::store_with(ctx).await?;
     fetch_filters(ctx).await?;
     unsupported_modes(ctx).await?;
     super::namespaces::namespaces(ctx).await?;
     empty_forget(ctx).await?;
     forget_by_id(ctx).await?;
     forget_by_filter(ctx).await?;
-    recall(ctx).await
+    recall(ctx).await?;
+    super::lifecycle::consolidate(ctx).await
 }
 
 /// Forgets everything the run stored and checks it is gone.

@@ -16,6 +16,8 @@ namespace tree that keeps one tenant's or agent's memory apart from another's.
 
 - **Specified behaviour:** [`docs/specs/memory-v2.md`](docs/specs/memory-v2.md)
   is the source of truth for what the system does and why.
+- **Integrating an agent:** [`docs/integration.md`](docs/integration.md) is
+  the guide for a host wiring its agent loop to the memory API.
 - **How it is built:** [`docs/architecture/README.md`](docs/architecture/README.md)
   has one page per concern: the contract, operations, namespaces, the CortexDB
   engine, the agent tools, the integrations and the test strategy.
@@ -33,7 +35,9 @@ crates/
 │                             an in-memory reference engine
 ├── tinymemory-tools/         the agent surface over any engine: `MemoryTools` (seven
 │                             model-callable tools with JSON Schemas and host-fixed
-│                             scoping) and the `context.md` compiler
+│                             scoping), holistic recall and the `context.md` compiler,
+│                             and the agent lifecycle (`AgentMemory`, `Brain`,
+│                             `MemoryLayout`, background jobs)
 └── tinymemory-integrations/  everything that touches the outside world, one module
                               per feature: `cortex` (+ `registry`, `config`),
                               `documents`, `sources`, `safety`, `import`
@@ -58,11 +62,12 @@ else on request, so a host pays only for what it uses.
 | `cortex` (default) | `cortex`, `registry`, `config` | `CortexEngine` over both wires, `list_engines`, `build_engine`, `EngineCredential`, `MemoryConfig` |
 | `documents` | `documents` | Format sniffing and conversion to markdown, producing `StoreItem::Document` |
 | `documents-office` | `documents::OfficeConverter` | PDF, DOCX, PPTX and XLSX to markdown (implies `documents`) |
+| `brain` | `brain` | Files into `tinymemory_tools::BrainDocument`s, by the source type their format implies (implies `documents`) |
 | `sources` | `sources` | Folder, file and conversation readers, Composio normalisers (implies `documents`) |
 | `sources-network` | `sources::fetch` and the network readers | GitHub, RSS and web-page readers and `fetch_url`, behind the SSRF guard (implies `sources`) |
 | `safety` | `safety` | Secret and PII scrubbing of a `StoreItem` |
 | `legacy-import` | `import` | Migrating a v1 (embedded TinyCortex) workspace into any engine |
-| `full` | all of the above | `cortex`, `documents-office`, `sources-network`, `safety`, `legacy-import` |
+| `full` | all of the above | `cortex`, `documents-office`, `brain`, `sources-network`, `safety`, `legacy-import` |
 
 Dependency weight per feature is tabulated in
 [`crates/tinymemory-integrations/README.md`](crates/tinymemory-integrations/README.md).
@@ -135,6 +140,28 @@ credential, and a credentialed cleartext endpoint that is not loopback.
 
 To compile a `context.md` for the start of a session, call
 `tinymemory_tools::context::compile(&*engine, &ContextSpec::default())`.
+
+### The agent lifecycle
+
+For memory around every turn, use `tinymemory_tools::AgentMemory`. It
+implements a standard layout: a global brain of documents by source type,
+each agent's conversations, and shared learnings. Call it at each point of
+the agent loop:
+
+```rust,ignore
+let memory = AgentMemory::new(engine.clone(), MemoryLayout::default(), "support-01")?;
+let turn = memory.pre_turn(PreTurn::new("thread-1", 0, user_text)).await?;   // log + recall, no indexing wait
+let reply = llm.generate(&turn.pack.markdown, user_text).await;
+let report = memory.post_turn(PostTurn::new("thread-1", 1, reply)).await?;   // log
+for job in report.jobs { queue.push(job) }                                    // belief builds, off the turn
+```
+
+`Brain` ingests documents (with `tinymemory_integrations::brain::brain_document`
+converting PDFs and markdown first). `start_session` and
+`recall_for_compaction` cover session resume and prompt truncation. Run
+`cargo run -p tinymemory-tools --example agent_loop` for the whole loop
+offline, and see
+[`docs/architecture/lifecycle.md`](docs/architecture/lifecycle.md).
 
 ## Engines
 

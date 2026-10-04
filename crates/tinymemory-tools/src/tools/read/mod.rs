@@ -77,6 +77,7 @@ pub(crate) async fn fetch(
         filter,
         limit: args.count("limit", DEFAULT_LIMIT, MAX_LIMIT)?,
         cursor: args.string("cursor")?,
+        beliefs: 0,
     };
     Ok(render::fetch(&engine.fetch(request).await?))
 }

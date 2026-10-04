@@ -16,8 +16,16 @@
 //! promise a ranking the wire cannot ask for, so both descriptors list
 //! `Hybrid` alone and the other modes fail with
 //! [`tinymemory_api::Error::Unsupported`].
+//!
+//! # Consolidation
+//!
+//! CortexDB builds beliefs on demand at `v1/beliefs/build`, one scope per
+//! call, so the direct descriptor declares [`Consolidation::OnDemand`]. The
+//! TinyHumans backend exposes no build route; CortexDB's own scheduler
+//! consolidates behind it, so the hosted descriptor declares
+//! [`Consolidation::Scheduled`].
 
-use tinymemory_api::{EngineDescriptor, FetchMode};
+use tinymemory_api::{Consolidation, EngineDescriptor, FetchMode};
 
 /// Configuration id of CortexDB reached directly.
 pub const CORTEXDB_ENGINE_ID: &str = "cortexdb";
@@ -36,7 +44,7 @@ const FETCH_MODES: [FetchMode; 1] = [FetchMode::Hybrid];
 
 /// The descriptor of CortexDB reached directly: not hosted by a third party,
 /// an endpoint is optional ([`CORTEX_API_ENDPOINT`] by default), an API key
-/// is required, and fetch is hybrid only.
+/// is required, fetch is hybrid only, and beliefs build on demand.
 #[must_use]
 pub fn cortexdb_descriptor() -> EngineDescriptor {
     EngineDescriptor {
@@ -49,12 +57,14 @@ pub fn cortexdb_descriptor() -> EngineDescriptor {
         needs_key: true,
         default_endpoint: Some(CORTEX_API_ENDPOINT),
         fetch_modes: FETCH_MODES.to_vec(),
+        consolidation: Consolidation::OnDemand,
     }
 }
 
 /// The descriptor of CortexDB behind the TinyHumans backend: hosted, the
 /// endpoint defaults to [`TINYHUMANS_API_ENDPOINT`], a bearer (session JWT or
-/// API key) is required, and fetch is hybrid only.
+/// API key) is required, fetch is hybrid only, and beliefs build on the
+/// server's schedule.
 #[must_use]
 pub fn tinyhumans_descriptor() -> EngineDescriptor {
     EngineDescriptor {
@@ -66,6 +76,7 @@ pub fn tinyhumans_descriptor() -> EngineDescriptor {
         needs_key: true,
         default_endpoint: Some(TINYHUMANS_API_ENDPOINT),
         fetch_modes: FETCH_MODES.to_vec(),
+        consolidation: Consolidation::Scheduled,
     }
 }
 
@@ -103,12 +114,19 @@ impl CortexWire {
             (Self::Direct, Route::Answer) => "v1/answer",
             (Self::Direct, Route::Health) => "v1/admin/health",
             (Self::Direct, Route::Scopes) => "v1/scopes/list",
+            (Self::Direct, Route::BuildBeliefs) => "v1/beliefs/build",
+            (Self::Direct, Route::Beliefs) => "v1/beliefs",
             (Self::TinyHumans, Route::Experience | Route::Bulk) => "memory/experience",
             (Self::TinyHumans, Route::Events) => "memory/events",
             (Self::TinyHumans, Route::Recall) => "memory/recall",
             (Self::TinyHumans, Route::Forget) => "memory/forget",
             (Self::TinyHumans, Route::Answer) => "memory/answer",
             (Self::TinyHumans, Route::Health | Route::Scopes) => "memory/scopes",
+            // Never sent: the hosted descriptor declares scheduled
+            // consolidation, so `consolidate` makes no request there.
+            (Self::TinyHumans, Route::BuildBeliefs) => "memory/beliefs/build",
+            // Never sent: hosted beliefs are read through recall only.
+            (Self::TinyHumans, Route::Beliefs) => "memory/beliefs",
         }
     }
 }
@@ -132,6 +150,10 @@ pub(crate) enum Route {
     Health,
     /// List the caller's registered scopes under a prefix.
     Scopes,
+    /// Build one scope's beliefs on demand (Direct only).
+    BuildBeliefs,
+    /// List one scope's beliefs (Direct only).
+    Beliefs,
 }
 
 #[cfg(test)]

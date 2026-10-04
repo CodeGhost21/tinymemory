@@ -33,5 +33,5 @@ pub mod reference;
 mod suite;
 
 pub use error::{Error, Result};
-pub use reference::{REFERENCE_ENGINE_ID, ReferenceEngine};
+pub use reference::{CONSOLIDATED_TAG, REFERENCE_ENGINE_ID, ReferenceEngine};
 pub use suite::run;

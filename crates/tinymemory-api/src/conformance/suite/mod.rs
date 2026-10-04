@@ -14,19 +14,24 @@
 //!    their listing, with an unknown id left out.
 //! 6. `store_many` — a batch stores in order, every item is listed on
 //!    return, a repeat is all replays, and an empty batch is refused.
-//! 7. `fetch_filters` — for every declared fetch mode, a filter on each
+//! 7. `store_with` — a store waiting for visibility is listed on return and
+//!    replays on a repeat; one only waiting for acceptance answers with the
+//!    item's own id.
+//! 8. `fetch_filters` — for every declared fetch mode, a filter on each
 //!    metadata field selects exactly the item carrying it (and `list` agrees).
-//! 8. `unsupported_modes` — every undeclared fetch mode fails `Unsupported`.
-//! 9. `namespaces` — items at the root, two sibling agents and a sub-agent:
-//!    each reach (own and inherited, exact, subtree) lists exactly its nodes,
-//!    never a sibling's; `get` and `fetch` honour the reach; the same text in
-//!    two namespaces is two items; the namespace facet counts each node; and
-//!    a forget scoped to one node removes only it.
-//! 10. `empty_forget` — a forget with no ids or an empty filter is refused and
+//! 9. `unsupported_modes` — every undeclared fetch mode fails `Unsupported`.
+//! 10. `namespaces` — items at the root, two sibling agents and a sub-agent:
+//!     each reach (own and inherited, exact, subtree) lists exactly its nodes,
+//!     never a sibling's; `get` and `fetch` honour the reach; the same text in
+//!     two namespaces is two items; the namespace facet counts each node; and
+//!     a forget scoped to one node removes only it.
+//! 11. `empty_forget` — a forget with no ids or an empty filter is refused and
 //!     removes nothing.
-//! 11. `forget_by_id` and `forget_by_filter` — forgotten items stop listing and
+//! 12. `forget_by_id` and `forget_by_filter` — forgotten items stop listing and
 //!     are counted; others stay.
-//! 12. `recall` — an answer cites items that resolve through `list`.
+//! 13. `recall` — an answer cites items that resolve through `list`.
+//! 14. `consolidate` — a malformed request is refused, and a valid one is
+//!     answered as the descriptor's `consolidation` promises.
 //!
 //! Finally the run's items are forgotten by filter and must be gone.
 
@@ -34,6 +39,7 @@ mod bulk;
 mod checks;
 mod explore;
 mod fixtures;
+mod lifecycle;
 mod namespaces;
 
 use std::collections::HashSet;

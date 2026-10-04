@@ -21,7 +21,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use tinymemory_api::{ItemId, StoreItem, StoreReceipt, validate_many};
+use tinymemory_api::{ItemId, StoreItem, StoreReceipt, WaitFor, validate_many};
 
 use super::CortexEngine;
 use super::scopes::KindScope;
@@ -40,7 +40,14 @@ impl CortexEngine {
     ///   ones are), and ranked recall for the batch's final event only.
     ///
     /// An item repeated inside the batch is a replay of its first copy.
-    pub(super) async fn store_items(&self, items: Vec<StoreItem>) -> Result<Vec<StoreReceipt>> {
+    ///
+    /// With [`WaitFor::Accepted`] the writes ask for no indexing and the
+    /// waits are skipped: the call returns once CortexDB captured every event.
+    pub(super) async fn store_items(
+        &self,
+        items: Vec<StoreItem>,
+        wait: WaitFor,
+    ) -> Result<Vec<StoreReceipt>> {
         validate_many(&items)?;
         let ids: Vec<String> = items.iter().map(StoreItem::fingerprint).collect();
         let mut held: HashMap<String, HashSet<Option<u32>>> = HashMap::new();
@@ -76,7 +83,7 @@ impl CortexEngine {
                 }
             }
             let replayed = requests.is_empty();
-            if let Some(written) = self.log.write(&requests).await? {
+            if let Some(written) = self.log.write(&requests, wait).await? {
                 last_per_scope.retain(|w| w.scope != written.scope);
                 last_per_scope.push(written);
             }
@@ -85,6 +92,9 @@ impl CortexEngine {
                 id: ItemId::new(id),
                 replayed,
             });
+        }
+        if wait == WaitFor::Accepted {
+            return Ok(receipts);
         }
         let final_index = last_per_scope.len().saturating_sub(1);
         for (index, written) in last_per_scope.iter().enumerate() {

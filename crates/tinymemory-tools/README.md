@@ -7,6 +7,15 @@ The agent-facing side of TinyMemory, over any `tinymemory_api::MemoryEngine`:
   entry point that runs them and returns compact JSON.
 - **`context`**: the `context.md` compiler, a token-budgeted brief a host
   injects at the start of a session.
+- **`recall`**: holistic recall, the one read across several scopes,
+  rendered as one budgeted `ContextPack`. `context.md` is one preset of it.
+- **`layout`**, **`brain`**, **`lifecycle`**, **`background`**: the agent
+  memory lifecycle. `MemoryLayout` is the standard tree: brain documents by
+  source, per-agent conversations, and learnings. `Brain` ingests documents.
+  `AgentMemory` serves session start, pre-turn context, post-turn logging and
+  compaction. `BackgroundJob` carries the belief builds those calls hand back.
+  See [`docs/architecture/lifecycle.md`](../../docs/architecture/lifecycle.md)
+  and the runnable `examples/agent_loop.rs` and `examples/brain.rs`.
 
 The crate has no tool-runtime dependency (no MCP, no `tinytools`). A host
 adapts `ToolSpec` to whatever runtime it uses; see

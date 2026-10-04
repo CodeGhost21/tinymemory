@@ -303,7 +303,10 @@ let output = match tools.call(&call.name, call.arguments).await {
 
 `context.md` is a token-budgeted brief a host injects at the start of a
 session so the agent begins with what memory knows about its user. The
-compiler works over any engine and is stateless.
+compiler works over any engine and is stateless. It is a preset of the
+holistic recall in `recall`: one answered section per brief, then the
+latest learnings, rendered with frontmatter. The agent lifecycle's packs are
+other presets of the same read (see [lifecycle.md](lifecycle.md)).
 
 ### ContextSpec
 
@@ -404,7 +407,12 @@ crates/tinymemory-tools/src/
 │   ├── read/           # recall, fetch, list, get, explore
 │   ├── write/          # store, forget
 │   └── render/         # compact result JSON
-└── context/            # ContextSpec, Brief, compile, render, Error
+├── context/            # ContextSpec, Brief, compile, Error
+├── recall/             # HolisticRecall, ContextPack: gather, settle, render
+├── layout/             # MemoryLayout, BrainSource
+├── brain/              # Brain, BrainDocument
+├── lifecycle/          # AgentMemory, RecallPolicy, turn types
+└── background/         # BackgroundJob, BackgroundRunner
 ```
 
 Tests: `tests/tools_roundtrip.rs` runs every tool against the reference

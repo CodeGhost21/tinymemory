@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 
+use crate::consolidate::Consolidation;
 use crate::engine::{EngineDescriptor, EngineHealth};
 use crate::item::{StoreItem, StoreReceipt};
 use crate::meta::{SourceRef, ToolCallRef};
@@ -33,6 +34,7 @@ impl Paging {
                 needs_key: false,
                 default_endpoint: None,
                 fetch_modes: Vec::new(),
+                consolidation: Consolidation::None,
             },
             hits,
             pages: AtomicUsize::new(0),

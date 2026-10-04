@@ -12,7 +12,10 @@
 //!   `confirm_all` is refused, and a selector with `confirm_all` is refused
 //!   as ambiguous;
 //! - recall renders text for a reader (`[role] {...}`), honours `view:
-//!   "descend"`, metadata label filters and the events budget.
+//!   "descend"`, metadata label filters and the events budget;
+//! - a belief build turns each of a scope's events into one supported
+//!   belief (`user said <text>`), which recall returns in `layers.beliefs`
+//!   when its budget asks for them, and `GET /v1/beliefs` lists.
 
 use std::collections::BTreeMap;
 
@@ -28,6 +31,8 @@ pub(crate) struct CortexLog {
     next_id: u64,
     /// Every event id a forget removed.
     pub(crate) forgotten: Vec<String>,
+    /// Beliefs built, oldest first.
+    pub(crate) beliefs: Vec<Value>,
 }
 
 /// Whether `event` carries any one of `wanted` (an empty list keeps all).
@@ -234,6 +239,69 @@ impl CortexLog {
                 hit
             })
             .collect();
-        json!({ "pack_id": "pack_test", "layers": { "events": events } })
+        let wanted = body
+            .pointer("/budgets/per_layer_limits/beliefs")
+            .and_then(Value::as_u64)
+            .map_or(0, |b| usize::try_from(b).unwrap_or(usize::MAX));
+        let beliefs: Vec<Value> = self
+            .beliefs
+            .iter()
+            .rev()
+            .filter(|belief| in_scope(belief))
+            .filter(|belief| {
+                let text = belief.to_string().to_lowercase();
+                words.is_empty() || words.iter().any(|w| text.contains(w.as_str()))
+            })
+            .take(wanted)
+            .cloned()
+            .collect();
+        json!({ "pack_id": "pack_test", "layers": { "events": events, "beliefs": beliefs } })
+    }
+
+    /// `POST /v1/beliefs/build`: one belief per event in `scope` that has
+    /// none yet; how many were built.
+    pub(crate) fn build(&mut self, scope: &str) -> usize {
+        let fresh: Vec<Value> = self
+            .events
+            .iter()
+            .filter(|event| str_of(event, "/scope") == scope)
+            .filter(|event| {
+                let id = str_of(event, "/id");
+                !self.beliefs.iter().any(|b| str_of(b, "/source") == id)
+            })
+            .map(|event| {
+                let raw = str_of(event, "/content/text");
+                let said = serde_json::from_str::<Value>(raw)
+                    .ok()
+                    .and_then(|envelope| envelope["text"].as_str().map(str::to_owned))
+                    .unwrap_or_else(|| raw.to_string());
+                json!({
+                    "id": format!("belief_{}", str_of(event, "/id")),
+                    "source": str_of(event, "/id"),
+                    "scope": scope,
+                    "claim": {
+                        "subject": { "type": "entity", "id": "ent_user", "name": "user" },
+                        "predicate": "said",
+                        "object": { "type": "literal", "datatype": "string", "value": said },
+                    },
+                    "stance": "supported",
+                    "confidence": 0.9,
+                    "valid_from": "2026-09-01T09:00:00Z",
+                })
+            })
+            .collect();
+        let built = fresh.len();
+        self.beliefs.extend(fresh);
+        built
+    }
+
+    /// `GET /v1/beliefs?scope=`: the scope's beliefs, newest first.
+    pub(crate) fn list_beliefs(&self, scope: &str) -> Vec<Value> {
+        self.beliefs
+            .iter()
+            .rev()
+            .filter(|belief| str_of(belief, "/scope") == scope)
+            .cloned()
+            .collect()
     }
 }
