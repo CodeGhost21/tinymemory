@@ -93,8 +93,8 @@ pub fn build_engine(
             )));
         }
     };
-    let engine = CortexEngine::new(wire, endpoint, credential)?
-        .with_default_headers(&settings.headers)?;
+    let engine =
+        CortexEngine::new(wire, endpoint, credential)?.with_default_headers(&settings.headers)?;
     Ok(Arc::new(engine))
 }
 
