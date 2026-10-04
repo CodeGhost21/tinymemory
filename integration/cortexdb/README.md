@@ -40,6 +40,23 @@ server you started by hand (which uses the compose file's own project on
   `CORTEX_INFERENCE_KEY` at a real compatible endpoint to exercise real models;
   the double is a wiring fixture, not a quality benchmark.
 
+## Flag profiles
+
+The server's feature flags live in `flags/`: `baseline.env` holds the
+harness's standing ones, and every other profile is loaded on top of it and
+names only what it changes. Compose reads `CORTEX_FLAGS_FILE` (default: the
+baseline) and `CORTEX_TOML` (default `cortex.toml`; `cortex.no-learning.toml`
+pushes the background learning jobs out to once a year).
+`scripts/memory-flag-sweep.sh` runs the memory eval under each profile and
+compares them; see [docs/evals/cortex-flags.md](../../docs/evals/cortex-flags.md).
+
+Each profile's header says what it changes, which KPI it targets
+(`# targets:`), where CortexDB documents it (`# docs:`) and any credential
+it needs (`# requires:`). A variable the compose file sets in
+`environment` wins over a profile; the exceptions it interpolates instead
+(`CORTEX_VERIFIER_API_KEY`, `CORTEX_FALLBACK_KEY`, `CORTEX_TOML`) are
+honoured because the sweep also sources the profile into its shell.
+
 ## What the tests prove
 
 - The shared conformance suite (`tinymemory_api::conformance::run`) passes against
