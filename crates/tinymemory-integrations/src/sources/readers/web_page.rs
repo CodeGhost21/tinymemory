@@ -75,9 +75,7 @@ impl SourceReader for WebPageReader {
         let document = fetch_url_capped(&url, MAX_BODY_BYTES).await?;
         let body = String::from_utf8_lossy(&document.bytes).into_owned();
 
-        let title = crate::documents::html::extract_title(&body)
-            .or_else(|| extract_title(&body))
-            .unwrap_or_else(|| url.clone());
+        let title = crate::documents::html::extract_title(&body).unwrap_or_else(|| url.clone());
         let (extracted, content_type) = match source.selector.as_deref() {
             Some(selector) => (extract_by_selector(&body, selector), ContentType::Plaintext),
             None => (
@@ -105,13 +103,6 @@ fn configured_url(source: &MemorySourceEntry) -> Result<&str> {
 }
 
 // ── Text extraction ─────────────────────────────────────────────────
-
-fn extract_title(html: &str) -> Option<String> {
-    let start = html.find("<title")?;
-    let content_start = html[start..].find('>')? + start + 1;
-    let end = html[content_start..].find("</title>")? + content_start;
-    Some(html[content_start..end].trim().to_string())
-}
 
 fn parse_selector(selector: &str) -> Option<SelectorSpec> {
     let last = selector

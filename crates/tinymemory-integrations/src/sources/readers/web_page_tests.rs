@@ -66,12 +66,6 @@ fn strip_html_tags_removes_tags() {
 }
 
 #[test]
-fn extract_title_finds_title_tag() {
-    let html = "<html><head><title>My Page</title></head><body></body></html>";
-    assert_eq!(extract_title(html).as_deref(), Some("My Page"));
-}
-
-#[test]
 fn extract_by_selector_finds_tag_content() {
     let html = "<html><body><article><p>Important content</p></article><footer>skip</footer></body></html>";
     let result = extract_by_selector(html, "article");

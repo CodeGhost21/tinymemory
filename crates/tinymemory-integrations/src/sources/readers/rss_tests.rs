@@ -357,17 +357,27 @@ fn url_host_fallback_strips_userinfo_without_scheme() {
 // ── Entity decoding ─────────────────────────────────────────────────
 
 #[test]
-fn decode_xml_entities_decodes_amp_last() {
+fn feed_text_entities_decode_exactly_once() {
     // `&amp;lt;` is the escaped form of `&lt;`; it must decode once to `&lt;`,
     // not twice to `<`.
-    assert_eq!(decode_xml_entities("&amp;lt;"), "&lt;");
-    assert_eq!(decode_xml_entities("&amp;amp;"), "&amp;");
+    assert_eq!(
+        extract_tag("<title>&amp;lt;</title>", "title").as_deref(),
+        Some("&lt;")
+    );
+    assert_eq!(
+        extract_tag("<title>&amp;amp;</title>", "title").as_deref(),
+        Some("&amp;")
+    );
 }
 
 #[test]
-fn decode_xml_entities_handles_all_named() {
+fn feed_text_decodes_every_predefined_xml_entity_and_numeric_references() {
     assert_eq!(
-        decode_xml_entities("&lt;b&gt; &quot;q&quot; &apos;a&apos; &amp; more"),
-        "<b> \"q\" 'a' & more"
+        extract_tag(
+            "<title>&lt;b&gt; &quot;q&quot; &apos;a&apos; &amp; more &#8217;</title>",
+            "title"
+        )
+        .as_deref(),
+        Some("<b> \"q\" 'a' & more \u{2019}")
     );
 }

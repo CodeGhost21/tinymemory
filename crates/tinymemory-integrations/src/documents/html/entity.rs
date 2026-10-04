@@ -7,7 +7,7 @@
 //! nobody notices.
 
 /// Decode HTML entities in `text`.
-pub(super) fn decode_entities(text: &str) -> String {
+pub(crate) fn decode_entities(text: &str) -> String {
     if !text.contains('&') {
         return text.to_string();
     }

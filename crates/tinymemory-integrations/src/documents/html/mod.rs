@@ -22,7 +22,7 @@
 
 mod entity;
 
-use entity::decode_entities;
+pub(crate) use entity::decode_entities;
 
 /// Convert an HTML document to markdown.
 ///

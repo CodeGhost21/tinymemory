@@ -22,6 +22,7 @@ use crate::sources::types::{
 };
 
 use super::SourceReader;
+use crate::documents::html::decode_entities;
 use crate::sources::fetch::fetch_url_capped;
 use types::{FeedCache, FeedEntry};
 
@@ -329,7 +330,7 @@ fn extract_tag(xml: &str, tag: &str) -> Option<String> {
     if trimmed.starts_with("<![CDATA[") {
         Some(unwrapped.to_string())
     } else {
-        Some(decode_xml_entities(unwrapped))
+        Some(decode_entities(unwrapped))
     }
 }
 
@@ -347,16 +348,6 @@ fn extract_attr(xml: &str, tag: &str, attr: &str) -> Option<String> {
     let attr_start = tag_str.find(&format!("{attr}=\""))? + attr.len() + 2;
     let attr_end = tag_str[attr_start..].find('"')? + attr_start;
     Some(tag_str[attr_start..attr_end].to_string())
-}
-
-fn decode_xml_entities(s: &str) -> String {
-    // `&amp;` is decoded last so escaped entity text (`&amp;lt;` → `&lt;`)
-    // survives as literal text instead of being decoded a second time.
-    s.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&apos;", "'")
-        .replace("&amp;", "&")
 }
 
 #[cfg(test)]
