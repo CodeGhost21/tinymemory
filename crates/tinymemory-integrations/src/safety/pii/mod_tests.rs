@@ -1,3 +1,6 @@
+//! PII redaction per identifier class, normalization bypasses, the strict
+//! boundary check and the candidate prefilter, under the corroborated policy.
+
 use super::*;
 
 /// These tests were written against the TinyCortex engine, whose content

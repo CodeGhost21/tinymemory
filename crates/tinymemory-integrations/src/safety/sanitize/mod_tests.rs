@@ -1,3 +1,6 @@
+//! The scrubber under the corroborated (TinyCortex) policy: secret patterns,
+//! sensitive JSON keys, the depth cap and the credential-marker pass.
+
 use super::*;
 use serde_json::json;
 

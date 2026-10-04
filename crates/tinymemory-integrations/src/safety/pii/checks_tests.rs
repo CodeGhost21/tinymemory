@@ -1,3 +1,5 @@
+//! Checksum validators and the card-network plausibility check.
+
 use super::*;
 
 #[test]

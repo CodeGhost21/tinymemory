@@ -1,3 +1,6 @@
+//! The byte prefilter against the legacy screen, and the checksum validators
+//! at their length, range and repetition bounds.
+
 use super::*;
 
 /// Parity oracle: the new byte prefilter must be a SUPERSET of the legacy
