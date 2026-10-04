@@ -2,7 +2,7 @@
 //!
 //! Lifecycle calls never block on slow work. Instead they hand back
 //! [`BackgroundJob`]s — plain, serializable values a host can queue, persist,
-//! dedupe (they are `Eq + Hash`) and run later on whatever executor it owns.
+//! compare to drop duplicates, and run later on whatever executor it owns.
 //! This crate spawns nothing.
 //!
 //! - [`BackgroundJob::BuildBeliefs`] asks the engine to consolidate a scope
