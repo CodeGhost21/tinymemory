@@ -1,5 +1,5 @@
 //! Exercises Office conversion through the facade and into a live CortexDB.
-#![cfg(feature = "documents-office")]
+#![cfg(all(feature = "documents-office", feature = "cortex"))]
 #![allow(clippy::expect_used)]
 
 use std::io::Write;
