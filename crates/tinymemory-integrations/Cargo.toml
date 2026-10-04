@@ -94,6 +94,10 @@ axum = "0.8"
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "net", "io-util", "time"] }
 # Reader and import tests build throwaway folders and v1 workspaces.
 tempfile = "3"
+# The memory_eval example timestamps its scripted turns and writes its report.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 # The format and office tests build their OOXML fixtures in code.
 zip = { version = "8", default-features = false, features = ["deflate"] }
 # `MemoryConfig` round-trips through the TOML a host stores it in.
