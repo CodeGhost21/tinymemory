@@ -34,7 +34,6 @@ fn unchanged(input: &str) {
     assert_eq!(out.report.pii_redactions, 0);
 }
 
-
 /// The one place the two historical copies differed: a bare Luhn-valid run that
 /// is neither a real network IIN nor near a card keyword (here a 13-digit
 /// epoch-millisecond timestamp). The default policy is the strictest and
