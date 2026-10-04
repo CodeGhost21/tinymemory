@@ -6,7 +6,8 @@ measure how well that behaviour serves an agent.
 
 | Eval | What it measures | Latest run |
 | --- | --- | --- |
-| [Agent memory](agent-memory.md) | The lifecycle (`pre_turn`, `post_turn`, `start_session`, compaction, belief builds) across nine scenarios | 2026-10-04, CortexDB v0.10.4 |
+| [Agent memory](agent-memory.md) | The lifecycle (`pre_turn`, `post_turn`, `start_session`, compaction, belief builds) across twelve scenarios | 2026-10-04, CortexDB v0.10.4 |
+| [CortexDB flags](cortex-flags.md) | Whether CortexDB's server flags move accuracy, learning, surprise, conflicts, cost and latency | 2026-10-04, CortexDB v0.10.4 |
 
 ## The agent memory eval
 
@@ -17,9 +18,11 @@ The harness is the `memory_eval` example in
 | --- | --- |
 | `main.rs` | Runs each scenario: writes, settle, probe, synthesise, probe again, forget |
 | `agent.rs` | The scripted agent: real lifecycle calls, scripted tool calls, an extractive "model" |
-| `scenarios.rs` | The nine scenarios and their probes |
+| `scenarios.rs` | The twelve scenarios and their probes |
 | `score.rs` | Scoring a pack against a probe, totals and latency percentiles |
-| `inspect.rs` | Reads CortexDB's derived layers (facts, beliefs) straight off the wire |
+| `kpi.rs` | The run's KPIs: accuracy, learning, surprise, conflicts, cost, latency |
+| `compare.rs` | `memory_eval compare`: the KPIs of several runs against a baseline |
+| `inspect.rs` | Reads CortexDB's derived layers (facts, beliefs, conflicts) and model usage straight off the wire |
 | `llm.rs` | The optional model that answers each probe from its pack (`--llm`) |
 
 ### Running it
@@ -45,7 +48,8 @@ hits its spending limit, every embedding fails (`403 Key limit exceeded`)
 and the run stops at the settle step with "only 0 of N writes visible".
 
 The script prints the report and writes `target/memory-eval/<label>.md` and
-`.json`. The JSON holds every probe's pack, so a miss can be read in full.
+`.json`. The JSON holds every probe's pack, so a miss can be read in full,
+and the run's KPIs.
 
 Flags (after `--`): `--engine reference|cortex`, `--only <scenario>`,
 `--enrich-wait <secs>`, `--json <path>`, `--label <name>` and `--llm`. With
@@ -94,7 +98,12 @@ Every check is a case-insensitive substring match on the pack's markdown.
 | Extractive answer | The scripted agent's answer (the pack line sharing the most words with the question) holds every expected string and no superseded one |
 | Model answer | With `--llm`, a model answering from the pack alone (temperature 0, `openai/gpt-4.1-mini` by default) is graded the same way |
 | Fresh first | Over probes whose fact changed: the current value is present and comes before every superseded one |
+| Captured | Synthesis phase on CortexDB: a fact or belief CortexDB derived holds the expected answer, whether or not the pack shows it |
 | Leaks | Probes whose pack holds a forbidden string (another tenant's data, or turns still in the prompt), over the probes that check |
+
+The report ends with the run's **KPIs**, one number per question a
+configuration is chosen on (accuracy, learning, surprise, conflicts, cost,
+latency). They are defined in [cortex-flags.md](cortex-flags.md#kpis).
 
 Probes are tagged **lexical** when the question shares its key words with
 the stored text, and **paraphrase** when only meaning connects them. The
