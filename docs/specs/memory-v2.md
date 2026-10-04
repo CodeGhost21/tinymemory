@@ -141,6 +141,16 @@ A mode the engine does not list in `EngineDescriptor::fetch_modes` fails with
 `Hit::confidence` carries a learning's confidence (`None` for other kinds), so a
 listing can be ordered by it. An item's id is its `StoreItem::fingerprint()`.
 
+### Namespaces
+
+Memory is a tree of nodes (`Namespace`, written `team:acme/agent:writer`; the empty path is the root, written `root`). The root holds what every agent shares; each agent, sub-agent (nested under its spawner), team, user, workspace or project has its own node (`SegmentKind`). Segment ids are `[A-Za-z0-9_-]{1,128}`; `Segment::sanitized` maps any host id onto that charset without collisions; depth is at most 8.
+
+- **Placement.** `MemoryMeta.namespace` (default root, omitted on the wire when root) puts an item at one node, and is part of its fingerprint: the same text at two nodes is two items. Old envelopes read as root.
+- **Reach.** `MetaFilter.reach: Option<Reach>` confines every filtered read (recall, fetch, list, explore, forget by filter). `Reach { at, inherit, descendants }` admits `at`, its ancestors when `inherit` (the default, so an agent reads what its team and the root share), and everything below it when `descendants`. A sibling is never admitted. `None` reads every node.
+- **Get and forget by id.** `GetRequest.reach` leaves out ids beyond it. `ForgetTarget::Ids` is not scoped; a confined caller reads the ids with `get` and its reach first.
+- **Explore.** `Facet::Namespace` groups by node; narrowing a value reads exactly that node.
+- **Context.** `ContextSpec.reach` compiles a document from one node's reach.
+
 ### Explore and get
 
 An explorer walks stored items by **facet**, a metadata dimension fixed by the
@@ -222,11 +232,11 @@ credentialed cleartext non-loopback endpoint.
   - Each item becomes one experience: a conversation becomes a bulk append of its turns.
   - The envelope carries `{v:2, kind, meta, title?, learning_kind?, confidence?}`, and `meta` maps to scope labels where CortexDB can filter.
   - Writes wait for the indexed barrier, keeping the v1 `await_readable` behaviour.
-- **Scope.** One scope per item kind under the TinyMemory root `app:tinymemory` (which the hosted backend further roots under the tenant): `app:tinymemory/app:documents`, `app:tinymemory/app:conversations`, `app:tinymemory/app:learnings`. A `MetaFilter.kinds` restricts the scopes searched. The segments use CortexDB's built-in `app` scope type because CortexDB v0.10+ refuses scope types outside the deployment's `allowed_scope_types` (`422 UNREGISTERED_SCOPE_TYPE`).
+- **Scope.** One scope per item kind *per namespace node*, under the TinyMemory root `app:tinymemory` (which the hosted backend further roots under the tenant): the root node keeps `app:tinymemory/app:{documents,conversations,learnings}`, and a node adds its segments in between, e.g. `app:tinymemory/team:acme/agent:writer/app:learnings`. Namespace segments map to CortexDB's built-in `agent`, `team`, `user`, `ws` and `project` types and the kind leaf uses `app`, because CortexDB v0.10+ refuses scope types outside the deployment's `allowed_scope_types` (`422 UNREGISTERED_SCOPE_TYPE`); every shipped preset allows all of them. A `MetaFilter`'s `kinds` and `reach` pick the scopes read: a reach's nodes are known, and only a subtree reach or an unscoped read discovers nodes, from the registered scopes (`v1/scopes/list` / `memory/scopes`). Reads are always exact (`view=local`), never server-side traversal.
 - **Fetch.**
   - `Hybrid` maps to `recall` layers. `Keyword` and `Vector` are declared only if the wire exposes a mode switch; otherwise `fetch_modes = [Hybrid]`. The recall body accepts only `scope`, `query`, `budgets`, `view`, `include`, `temporal` and `filters`, with no mode switch, so both wires declare `[Hybrid]`.
   - Metadata filters CortexDB cannot apply server-side are applied client-side on the page, and the cursor is still the engine's.
-- **Recall.** Pack, then answer, as in v1. The pack is recalled from the one admitted kind's scope, or from `app:tinymemory` with `view: "descend"` when several kinds are admitted, so the answer route is called once. Citations come from the pack's `layers.events`, decoded back to `Hit`s.
+- **Recall.** Pack, then answer, as in v1. One scope: one pack over it. An unscoped read over several scopes: one pack over `app:tinymemory` with `view: "descend"`. A reach over several scopes: one pack per scope, built concurrently, and the answer route is asked once with the pack holding the most admitted events. Citations come from the packs' `layers.events`, decoded back to `Hit`s, the most specific node's first.
 - **List / forget.** These use `v1/events` paging and `v1/forget` by `memory_ids`. `ForgetTarget::Filter` lists first, then forgets ids, and never sends an empty selector.
 
 ## Context (`tinymemory-context`)
