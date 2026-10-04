@@ -114,5 +114,30 @@ async fn an_agent_loop_runs_the_same_on_either_wire() {
             ),
             CortexWire::TinyHumans => assert!(builds.is_empty()),
         }
+
+        // The built beliefs come back as learnings, in a turn's pack and in
+        // a cold session start. The hosted wire built none.
+        let later = support
+            .pre_turn(PreTurn::new("t2", 0, "refunds settle"))
+            .await
+            .unwrap();
+        let cold = support
+            .start_session(SessionStart::default())
+            .await
+            .unwrap();
+        for pack in [&later.pack.markdown, &cold.markdown] {
+            let learnings = pack
+                .split("## Learnings")
+                .nth(1)
+                .map(|rest| rest.split("\n## ").next().unwrap_or_default());
+            match wire {
+                CortexWire::Direct => assert!(
+                    learnings.is_some_and(|section| section
+                        .contains("- user said Refunds settle within five business days.")),
+                    "{wire:?}: {pack}"
+                ),
+                CortexWire::TinyHumans => assert!(learnings.is_none(), "{wire:?}: {pack}"),
+            }
+        }
     }
 }
