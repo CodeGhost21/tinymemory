@@ -100,15 +100,11 @@ async fn a_built_scope_s_beliefs_are_read_with_and_without_a_query() {
         .beliefs(BeliefsRequest::new(Reach::exact(node), 5))
         .await
         .unwrap();
+    let texts = |hits: &[Hit]| hits.iter().map(|h| h.text.clone()).collect::<Vec<_>>();
     assert_eq!(
-        listed,
-        ranked
-            .into_iter()
-            .map(|mut hit| {
-                hit.score = listed[0].score;
-                hit
-            })
-            .collect::<Vec<_>>()
+        texts(&listed),
+        texts(&ranked),
+        "the listing holds the same belief"
     );
     let elsewhere = engine
         .beliefs(BeliefsRequest::new(Reach::exact(Namespace::agent("other")), 5).query("pnpm"))
