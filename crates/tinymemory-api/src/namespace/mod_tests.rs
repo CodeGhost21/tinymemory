@@ -14,7 +14,7 @@ fn parses_and_prints_paths() {
     assert_eq!(writer.segments()[0].kind(), SegmentKind::Team);
     assert_eq!(writer.segments()[1].id(), "writer");
     assert_eq!(ns("ws:shared").to_string(), "ws:shared");
-    for kind in ["agent", "team", "user", "ws", "project"] {
+    for kind in ["agent", "team", "user", "ws", "project", "source"] {
         let segment = ns(&format!("{kind}:x")).segments()[0].clone();
         assert_eq!(segment.kind().as_str(), kind);
     }
@@ -107,4 +107,29 @@ fn serializes_as_strings() {
     let back: Reach = serde_json::from_value(serde_json::json!({"at": "agent:x"})).unwrap();
     assert_eq!(back, Reach::of(ns("agent:x")));
     assert!(serde_json::from_value::<Namespace>(serde_json::json!("nope")).is_err());
+}
+
+#[test]
+fn builds_source_and_child_nodes() {
+    let pdf = Namespace::source("pdf");
+    assert_eq!(pdf.to_string(), "source:pdf");
+    assert_eq!(pdf.segments()[0].kind(), SegmentKind::Source);
+    assert_eq!(ns("source:pdf"), pdf);
+
+    let team = ns("team:acme");
+    let child = team
+        .child(Segment::sanitized(SegmentKind::Source, "notion export"))
+        .unwrap();
+    assert_eq!(child.depth(), 2);
+    assert!(child.to_string().starts_with("team:acme/source:notion-export-"));
+    assert!(Reach::subtree(team).admits(&child));
+}
+
+#[test]
+fn refuses_a_child_past_the_depth_limit() {
+    let deep = ns(&["agent:a"; MAX_DEPTH].join("/"));
+    let error = deep
+        .child(Segment::sanitized(SegmentKind::Agent, "b"))
+        .unwrap_err();
+    assert!(matches!(error, Error::InvalidRequest(_)), "{error}");
 }
