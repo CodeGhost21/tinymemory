@@ -507,3 +507,7 @@ pub(crate) fn print(label: &str, kpis: &[Kpi]) {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "kpi_tests.rs"]
+mod tests;
