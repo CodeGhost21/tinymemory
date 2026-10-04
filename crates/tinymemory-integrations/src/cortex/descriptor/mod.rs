@@ -49,6 +49,7 @@ pub fn cortexdb_descriptor() -> EngineDescriptor {
         needs_key: true,
         default_endpoint: Some(CORTEX_API_ENDPOINT),
         fetch_modes: FETCH_MODES.to_vec(),
+        consolidation: CONS,
     }
 }
 
@@ -66,6 +67,7 @@ pub fn tinyhumans_descriptor() -> EngineDescriptor {
         needs_key: true,
         default_endpoint: Some(TINYHUMANS_API_ENDPOINT),
         fetch_modes: FETCH_MODES.to_vec(),
+        consolidation: CONS,
     }
 }
 

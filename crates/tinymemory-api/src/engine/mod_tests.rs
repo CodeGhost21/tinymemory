@@ -12,6 +12,7 @@ fn descriptor(modes: Vec<FetchMode>) -> EngineDescriptor {
         needs_key: false,
         default_endpoint: None,
         fetch_modes: modes,
+        consolidation: CONS,
     }
 }
 

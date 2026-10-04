@@ -9,15 +9,15 @@
 //! - **Store** — ingest a document, a conversation or a learning, each with
 //!   typed [`MemoryMeta`] ([`MemoryEngine::store`]).
 //!
-//! A live agent turn stores with [`MemoryEngine::store_with`] and
-//! [`WaitFor::Accepted`] so it never waits on indexing, and a host asks an
-//! engine to distil beliefs off the hot path with
-//! [`MemoryEngine::consolidate`] ([`consolidate`]).
-//!
 //! plus [`MemoryEngine::list`] and [`MemoryEngine::forget`] to page through
 //! and remove what was stored, and [`MemoryEngine::explore`] and
 //! [`MemoryEngine::get`] for explorers: counts of stored items per metadata
 //! [`Facet`], and items read whole by id ([`explore`]).
+//!
+//! A live agent turn stores with [`MemoryEngine::store_with`] and
+//! [`WaitFor::Accepted`] so it never waits on indexing, and a host asks an
+//! engine to distil beliefs off the hot path with
+//! [`MemoryEngine::consolidate`] ([`consolidate`]).
 //!
 //! Every item lives at one [`Namespace`] node (the root, an agent, a team, a
 //! nested sub-agent); a [`Reach`] in the filter says which nodes a read sees
