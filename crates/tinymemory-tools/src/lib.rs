@@ -8,6 +8,20 @@
 //!   argument can name either.
 //! - [`context`] compiles `context.md`, a token-budgeted brief a host injects
 //!   at the start of a session.
+//! - [`recall`] is the one read every lifecycle step is built from: a
+//!   holistic recall across several scopes, rendered as one budgeted
+//!   [`ContextPack`]. `context.md` is one preset of it.
+//! - [`layout`] is the standard memory tree — a global **brain** of
+//!   documents by source type, each agent's **conversations**, and shared
+//!   **learnings** — as namespaces and filters ([`MemoryLayout`]).
+//! - [`lifecycle`] runs one agent's memory through the agent loop
+//!   ([`AgentMemory`]): session start, pre-turn context, post-turn logging,
+//!   compaction recall. [`brain`] ingests and searches documents
+//!   ([`Brain`]), and [`background`] runs the slow work both hand back
+//!   ([`BackgroundJob`]).
+//!
+//! Everything is written against [`tinymemory_api::MemoryEngine`] alone, so a
+//! host moves between engines by changing the one it constructs.
 //!
 //! # Example
 //!
@@ -48,10 +62,22 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
+pub mod background;
+pub mod brain;
 pub mod context;
+pub mod layout;
+pub mod lifecycle;
 pub mod recall;
 pub mod tools;
 
+pub use background::{BackgroundJob, BackgroundRunner, JobOutcome, JobReport};
+pub use brain::{Brain, BrainBatch, BrainDocument, Ingested};
+pub use layout::{BrainSource, MemoryLayout};
+pub use lifecycle::{
+    AgentMemory, Compaction, PostTurn, PostTurnReport, PreTurn, RecallPolicy, SessionStart,
+    TurnContext,
+};
+pub use recall::{ContextPack, HolisticRecall, ScopeSection, SectionQuery, holistic_recall};
 pub use tools::{
     MEMORY_EXPLORE, MEMORY_FETCH, MEMORY_FORGET, MEMORY_GET, MEMORY_LIST, MEMORY_RECALL,
     MEMORY_STORE, MemoryTools, TOOL_NAMES, ToolScope, ToolSpec, WRITE_TOOL_NAMES,

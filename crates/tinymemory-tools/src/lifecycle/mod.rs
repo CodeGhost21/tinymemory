@@ -236,7 +236,7 @@ impl AgentMemory {
             ));
         }
         sections.extend(self.standard_sections());
-        self.read(start.focus, sections, None).await
+        self.read(start.focus, sections).await
     }
 
     /// Logs the user's turn and, concurrently, recalls the context to inject
@@ -361,7 +361,7 @@ impl AgentMemory {
         };
         let mut sections = vec![summary];
         sections.extend(self.standard_sections());
-        self.read(query, sections, None).await
+        self.read(query, sections).await
     }
 
     /// A pre-turn pack for `query`, without logging anything: for a tool, a
@@ -372,7 +372,7 @@ impl AgentMemory {
     /// [`Error::InvalidRequest`] for a policy with no budget.
     pub async fn recall(&self, query: &str) -> Result<ContextPack> {
         let query = (!query.trim().is_empty()).then(|| query.to_string());
-        self.read(query, self.standard_sections(), None).await
+        self.read(query, self.standard_sections()).await
     }
 
     /// Runs one job this memory (or its brain) handed back.
@@ -429,15 +429,8 @@ impl AgentMemory {
         }
     }
 
-    async fn read(
-        &self,
-        query: Option<String>,
-        sections: Vec<ScopeSection>,
-        window: Option<ThreadWindow>,
-    ) -> Result<ContextPack> {
-        let mut request = self.request(query, sections);
-        request.exclude_thread = window;
-        holistic_recall(self.engine.as_ref(), &request).await
+    async fn read(&self, query: Option<String>, sections: Vec<ScopeSection>) -> Result<ContextPack> {
+        holistic_recall(self.engine.as_ref(), &self.request(query, sections)).await
     }
 
     /// One turn of `thread_id` as a one-turn conversation at this agent's
