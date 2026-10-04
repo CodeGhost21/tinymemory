@@ -278,7 +278,15 @@ impl Inspector {
                     captured.confidences.push(confidence);
                 }
             }
-            for conflict in listed(&self.get("v1/conflicts", &page).await?, "conflicts") {
+            // With bi-temporal detection off the route answers 503: there
+            // are no conflicts to list.
+            let conflicts = match self.get("v1/conflicts", &page).await {
+                Err(error) if error.status() == Some(reqwest::StatusCode::SERVICE_UNAVAILABLE) => {
+                    Value::Null
+                }
+                answer => answer?,
+            };
+            for conflict in listed(&conflicts, "conflicts") {
                 let values: Vec<String> = conflict["records"]
                     .as_array()
                     .into_iter()

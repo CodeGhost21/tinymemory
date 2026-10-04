@@ -71,7 +71,6 @@ free_port() {
 }
 
 jobs_run=()
-failed=()
 port="$base_port"
 running=0
 for profile in "${profiles[@]}"; do
@@ -87,6 +86,7 @@ for profile in "${profiles[@]}"; do
   fi
   for n in $(seq 1 "$repeat"); do
     label="flags-$profile-r$n"
+    rm -f "$out/$label.json"
     port="$(free_port "$port")"
     echo "run  $label on :$port"
     (run_one "$profile" "$n" "$port" "$@" && echo "done $label" || {
@@ -97,19 +97,25 @@ for profile in "${profiles[@]}"; do
     port=$((port + 1))
     running=$((running + 1))
     if [ "$running" -ge "$parallel" ]; then
-      wait -n || failed+=("one run")
+      wait -n || true
       running=$((running - 1))
     fi
   done
 done
 while [ "$running" -gt 0 ]; do
-  wait -n || failed+=("one run")
+  wait -n || true
   running=$((running - 1))
 done
 
+# A run failed when it left no report.
 reports=()
+failed=()
 for label in "${jobs_run[@]}"; do
-  [ -f "$out/$label.json" ] && reports+=("$out/$label.json")
+  if [ -f "$out/$label.json" ]; then
+    reports+=("$out/$label.json")
+  else
+    failed+=("$label")
+  fi
 done
 if [ ${#reports[@]} -eq 0 ]; then
   echo "no run finished; see the logs in $out" >&2
@@ -120,6 +126,6 @@ cargo run --quiet -p tinymemory-integrations --features full --example memory_ev
 echo
 echo "wrote $out/summary.md"
 if [ ${#failed[@]} -gt 0 ]; then
-  echo "${#failed[@]} run(s) failed; see the logs in $out" >&2
+  echo "failed: ${failed[*]}; see their logs in $out" >&2
   exit 1
 fi
