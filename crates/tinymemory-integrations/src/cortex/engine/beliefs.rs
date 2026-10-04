@@ -105,7 +105,7 @@ pub(super) fn belief_hit(belief: &Value, rank: usize) -> Option<Hit> {
 }
 
 /// The beliefs of one recall pack or listing.
-fn beliefs_in(answer: &Value, pointer: &str) -> Vec<Hit> {
+pub(super) fn beliefs_in(answer: &Value, pointer: &str) -> Vec<Hit> {
     answer
         .pointer(pointer)
         .and_then(Value::as_array)
@@ -117,7 +117,7 @@ fn beliefs_in(answer: &Value, pointer: &str) -> Vec<Hit> {
 }
 
 /// `lists` merged rank by rank, each sentence once, at most `limit`.
-fn merge(lists: Vec<Vec<Hit>>, limit: usize) -> Vec<Hit> {
+pub(super) fn merge(lists: Vec<Vec<Hit>>, limit: usize) -> Vec<Hit> {
     let longest = lists.iter().map(Vec::len).max().unwrap_or(0);
     let mut seen = HashSet::new();
     let mut out = Vec::new();
