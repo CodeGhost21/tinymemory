@@ -18,7 +18,9 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use tinymemory_api::{ForgetTarget, LearningKind, MemoryEngine, MemoryMeta, Namespace, StoreItem};
+use tinymemory_api::{
+    ForgetTarget, LearningKind, MemoryEngine, MemoryMeta, MetaFilter, Namespace, Reach, StoreItem,
+};
 use tinymemory_integrations::brain::brain_document;
 use tinymemory_integrations::cortex::{CortexCredential, CortexEngine};
 use tinymemory_integrations::documents::{ConverterChain, RawDocument};
@@ -194,7 +196,7 @@ async fn live_core_scope_recall_and_promotion_respect_tenant_boundaries() {
             LearningKind::Fact,
             0.9,
             MemoryMeta {
-                namespace: other,
+                namespace: other.clone(),
                 ..MemoryMeta::default()
             },
         ))
@@ -219,9 +221,14 @@ async fn live_core_scope_recall_and_promotion_respect_tenant_boundaries() {
         pack.markdown
     );
 
-    let forgotten = engine
-        .forget(ForgetTarget::Filter(layout.holistic_filter()))
-        .await
-        .expect("clean up test data");
-    assert!(forgotten.forgotten >= 2, "{forgotten:?}");
+    for namespace in [company, other] {
+        let forgotten = engine
+            .forget(ForgetTarget::Filter(MetaFilter {
+                reach: Some(Reach::exact(namespace)),
+                ..MetaFilter::default()
+            }))
+            .await
+            .expect("clean up test data");
+        assert_eq!(forgotten.forgotten, 1, "{forgotten:?}");
+    }
 }
