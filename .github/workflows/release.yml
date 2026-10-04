@@ -60,10 +60,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          # The root manifest is a virtual workspace, so name the facade
-          # rather than taking whichever package cargo lists first.
+          # Every crate inherits `version` from `[workspace.package]`, so any
+          # one of them names the current version; read the contract crate's.
           metadata="$(cargo metadata --format-version 1 --no-deps)"
-          crate_name="tinymemory"
+          crate_name="tinymemory-api"
           current_version="$(
             jq -r --arg name "$crate_name" \
               '.packages[] | select(.name == $name) | .version' <<< "$metadata"
@@ -96,9 +96,10 @@ jobs:
             echo "tag=${tag}"
           } >> "$GITHUB_OUTPUT"
 
-      # Bumps the facade's `[package]` version only. That is sufficient because
-      # no intra-workspace path dependency carries a `version = "…"`
-      # requirement; the guard below keeps it that way.
+      # Bumps `[workspace.package] version` in the root manifest, which every
+      # crate inherits. That is sufficient because no intra-workspace path
+      # dependency carries a `version = "…"` requirement; the guard below
+      # keeps it that way.
       - name: Update crate version
         env:
           CRATE_NAME: ${{ steps.version.outputs.crate_name }}
@@ -117,9 +118,15 @@ jobs:
             exit 1
           fi
 
-          perl -0pi -e 's/(\[package\][\s\S]*?\nversion = ")[^"]+(")/$1$ENV{NEXT_VERSION}$2/' \
-            crates/tinymemory/Cargo.toml
-          cargo update -p "$CRATE_NAME" --precise "$NEXT_VERSION"
+          perl -0pi -e 's/(\[workspace\.package\][\s\S]*?\nversion = ")[^"]+(")/$1$ENV{NEXT_VERSION}$2/' \
+            Cargo.toml
+          cargo update --workspace
+          current="$(cargo metadata --format-version 1 --no-deps \
+            | jq -r --arg name "$CRATE_NAME" '.packages[] | select(.name == $name) | .version')"
+          if [[ "$current" != "$NEXT_VERSION" ]]; then
+            echo "Version bump did not take: $CRATE_NAME is $current, expected $NEXT_VERSION" >&2
+            exit 1
+          fi
 
       - name: Commit version bump and tag
         env:
@@ -128,7 +135,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add crates/tinymemory/Cargo.toml Cargo.lock
+          git add Cargo.toml Cargo.lock
           git commit -m "Release ${RELEASE_TAG}"
           git tag -a "${RELEASE_TAG}" -m "Release ${RELEASE_TAG}"
 

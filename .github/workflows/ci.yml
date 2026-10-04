@@ -49,9 +49,9 @@ jobs:
         run: cargo test
 
       # `cargo build --all-targets` only compiles an example; AGENTS.md
-      # promises `cargo run -p tinymemory --example basic` works.
+      # promises `cargo run -p tinymemory-integrations --example basic` works.
       - name: Run the bundled example
-        run: cargo run -p tinymemory --example basic
+        run: cargo run -p tinymemory-integrations --example basic
 
       # The contract is what engines and hosts compile against. It must stay
       # free of storage engines, native libraries, HTTP clients and async
@@ -129,24 +129,39 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: no default features
+          - name: integrations, no default features
+            package: tinymemory-integrations
             features: --no-default-features
+          - name: cortex
+            package: tinymemory-integrations
+            features: --no-default-features --features cortex
           - name: documents
+            package: tinymemory-integrations
             features: --no-default-features --features documents
           - name: documents-office
+            package: tinymemory-integrations
             features: --no-default-features --features documents-office
           - name: sources network implication
+            package: tinymemory-integrations
             features: --no-default-features --features sources-network
           - name: safety
+            package: tinymemory-integrations
             features: --no-default-features --features safety
-          - name: context
-            features: --no-default-features --features context
           - name: legacy import
+            package: tinymemory-integrations
             features: --no-default-features --features legacy-import
-          - name: conformance
-            features: --no-default-features --features conformance
           - name: full aggregate
+            package: tinymemory-integrations
             features: --no-default-features --features full
+          - name: api, no features
+            package: tinymemory-api
+            features: --no-default-features
+          - name: api conformance
+            package: tinymemory-api
+            features: --features conformance
+          - name: tools
+            package: tinymemory-tools
+            features: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -157,7 +172,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
       - name: Test
-        run: cargo test -p tinymemory ${{ matrix.features }}
+        run: cargo test -p ${{ matrix.package }} ${{ matrix.features }}
 
   docs:
     name: Docs
@@ -189,7 +204,7 @@ jobs:
         run: |
           set -euo pipefail
           msrv="$(cargo metadata --format-version 1 --no-deps \
-            | jq -r '.packages[] | select(.name == "tinymemory") | .rust_version')"
+            | jq -r '.packages[] | select(.name == "tinymemory-api") | .rust_version')"
           if [[ -z "$msrv" || "$msrv" == "null" ]]; then
             echo "package.rust-version is not set in Cargo.toml" >&2
             exit 1
