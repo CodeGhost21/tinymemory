@@ -6,7 +6,7 @@
 use tinymemory_api::{LearningKind, MemoryEngine, MemoryMeta, StoreItem};
 
 #[tokio::test]
-async fn the_optional_crates_compose_through_the_facade() {
+async fn the_integration_modules_compose_into_one_write_path() {
     let engine = tinymemory_api::conformance::ReferenceEngine::new();
     tinymemory_api::conformance::run(&engine)
         .await

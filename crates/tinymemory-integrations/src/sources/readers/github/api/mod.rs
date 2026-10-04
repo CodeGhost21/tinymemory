@@ -17,11 +17,10 @@ use crate::sources::types::{ContentType, SourceContent, SourceItem};
 use super::types::GhCommit;
 use super::{GH_CLI_TIMEOUT, parse_iso_ts};
 
-// Keep the production transport at its established source locations. This file
-// is compiled both as the standalone sources crate and through downstream
-// workspace consumers, and LLVM merges their regions by source coordinate.
-// Moving these functions would turn otherwise identical regions into apparent
-// duplicate production lines. Only the deterministic response queue belongs in
+// Keep the production transport at its established source locations. Coverage
+// tools merge regions by source coordinate, so moving these functions would
+// turn otherwise identical regions into apparent duplicate production lines.
+// Only the deterministic response queue belongs in
 // the selected external module below; the actual transport remains here.
 //
 // The deliberately expanded explanation also occupies the source range that

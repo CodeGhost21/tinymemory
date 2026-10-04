@@ -101,8 +101,9 @@ pattern set than content scrubbing; see the PII section.
 Separated runs (`4111 1111 1111 1111`) are Luhn-gated under both settings. The
 corroborated gate exists because Luhn passes about one in ten arbitrary digit
 runs, and 13-digit epoch-millisecond timestamps in stored JSON envelopes were
-being corrupted at that rate (opencompany#1201). The TinyCortex engine uses
-it; a caller that does not opt in never redacts less than before.
+being corrupted at that rate (opencompany#1201). A host scrubbing items that
+carry such timestamps should opt in; a caller that does not never redacts less
+than before.
 
 ## PII detection pipeline
 
