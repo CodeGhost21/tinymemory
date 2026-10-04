@@ -81,7 +81,9 @@ warm `pre_turn` measured about 40 ms and a `post_turn` about 2 ms; see
    - A section left empty is reported as skipped (`reason: "empty"`), as is
      a failed one (its error).
 4. **Render** (`recall/render.rs`). A section is prose (an answer) or lines
-   (one bullet per hit). A titled document is shown as `title: body`. When
+   (one bullet per hit). A titled document is shown as `title: body`, and a
+   turn that carries a time is led by it (`[2026-09-15 09:01] user: …`), so
+   a reader can tell a corrected value from its correction. When
    the block overflows its budget, the last line is dropped first, from the
    last section; once no lines are left, the last answer shortens and is
    then dropped. `context.md` adds frontmatter whose token count includes

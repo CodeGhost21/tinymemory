@@ -114,6 +114,10 @@ skipped, engine }`.
   - `exclude_ids` drops named items, such as the turn just logged.
   - `exclude_thread { thread_id, from_turn }` drops the turns still in the
     prompt.
+- **Dates.** A conversation bullet whose turn carries a time
+  (`meta.observed_at`, set from `PreTurn::at` and `PostTurn::at`) is led by
+  it, `[YYYY-MM-DD HH:MM]`. Hosts should pass the time the message was sent:
+  without it, a superseded value and its correction look alike.
 - **Budget.** The block fits `budget_tokens` at four characters per token.
   Bullets are trimmed from the last section first, then the last answer
   shortens.

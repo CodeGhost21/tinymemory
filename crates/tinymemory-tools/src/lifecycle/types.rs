@@ -71,8 +71,10 @@ pub struct PreTurn {
     /// `0` (the default) leaves the whole thread out.
     #[serde(default)]
     pub in_prompt_from: u32,
-    /// When the user spoke, if the host knows: orders history newest first.
-    /// Leave it out to keep a retried turn a replay.
+    /// When the user spoke, if the host knows: orders history newest first,
+    /// and leads the turn's bullet in later packs, so a reader can tell a
+    /// corrected value from its correction. Pass the message's own time (not
+    /// the time of the call), so a retried turn stays a replay.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub at: Option<DateTime<Utc>>,
 }
