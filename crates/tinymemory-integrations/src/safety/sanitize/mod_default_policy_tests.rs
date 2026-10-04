@@ -1,20 +1,87 @@
-use super::*;
+//! The scrubber under the default (strictest) policy: secret redaction, JSON
+//! walking, and the full PII pass reached through [`sanitize_text`].
 
-use crate::safety::pii::PII_AADHAAR;
-use crate::safety::pii::PII_CC;
-use crate::safety::pii::PII_CNPJ;
-use crate::safety::pii::PII_CPF;
-use crate::safety::pii::PII_CUIT;
-use crate::safety::pii::PII_DNI;
-use crate::safety::pii::PII_IBAN;
-use crate::safety::pii::PII_MYNUM;
-use crate::safety::pii::PII_NINO;
-use crate::safety::pii::PII_PAN_IN;
-use crate::safety::pii::PII_PHONE;
-use crate::safety::pii::PII_RFC;
-use crate::safety::pii::PII_RRN;
-use crate::safety::pii::PII_SSN;
-use crate::safety::pii::redact_pii;
+use super::*;
+use serde_json::json;
+
+use crate::safety::pii::checks::digits;
+use crate::safety::pii::{
+    PII_AADHAAR, PII_CC, PII_CNPJ, PII_CPF, PII_CUIT, PII_DNI, PII_IBAN, PII_MYNUM, PII_NINO,
+    PII_PAN_IN, PII_PHONE, PII_RFC, PII_RRN, PII_SSN, redact_pii, scan_candidates,
+};
+
+/// Assembled rather than written out so a repository secret scanner does
+/// not read the fixture as a real key block.
+fn private_key_fixture(kind: &str, body: &str) -> String {
+    format!("-----BEGIN {kind}-----\n{body}\n-----END {kind}-----")
+}
+
+fn redacts(input: &str, token: &str) {
+    let out = redact_pii(input);
+    assert!(
+        out.value.contains(token),
+        "expected {token} in output. input={input:?} output={out:?}"
+    );
+}
+
+fn unchanged(input: &str) {
+    let out = redact_pii(input);
+    assert_eq!(
+        out.value, input,
+        "expected no change; report={:?}",
+        out.report
+    );
+    assert_eq!(out.report.pii_redactions, 0);
+}
+
+
+/// The one place the two historical copies differed: a bare Luhn-valid run that
+/// is neither a real network IIN nor near a card keyword (here a 13-digit
+/// epoch-millisecond timestamp). The default policy is the strictest and
+/// redacts it; the TinyCortex policy leaves it alone.
+#[test]
+fn bare_card_gate_is_the_only_policy_difference() {
+    let ts = "1700000000004";
+    let json = format!("{{\"ts\": {ts}}}");
+
+    let strict = redact_pii(&json);
+    assert!(
+        strict.value.contains(PII_CC),
+        "default policy must redact: {strict:?}"
+    );
+    assert_eq!(
+        crate::safety::pii::redact_pii_with(&json, Policy::default()).value,
+        strict.value
+    );
+    assert_eq!(Policy::default().bare_card, BareCardGate::LuhnOnly);
+
+    let corroborated = crate::safety::pii::redact_pii_with(&json, Policy::corroborated());
+    assert_eq!(
+        corroborated.value, json,
+        "corroborated policy keeps timestamps"
+    );
+
+    // Real card, bare, real IIN: both policies redact.
+    let visa = "4111111111111111";
+    assert!(redact_pii(visa).value.contains(PII_CC));
+    assert!(
+        crate::safety::pii::redact_pii_with(visa, Policy::corroborated())
+            .value
+            .contains(PII_CC)
+    );
+
+    // The JSON and text entry points thread the policy through.
+    let value = json!({ "ts": ts });
+    assert_ne!(
+        sanitize_json(&value).value,
+        sanitize_json_with(&value, Policy::corroborated()).value
+    );
+    assert_ne!(
+        sanitize_text(ts).value,
+        sanitize_text_with(ts, Policy::corroborated()).value
+    );
+}
+
 #[test]
 fn sanitize_text_redacts_bearer_and_openai_key() {
     let input = "Authorization: Bearer abcdefghijklmnop and sk-1234567890123456789012345";
