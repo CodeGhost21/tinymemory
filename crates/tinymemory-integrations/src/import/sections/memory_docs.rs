@@ -14,6 +14,12 @@
 //!
 //! Both sections scan the whole table by `document_id` and skip the rows that
 //! belong to the other one.
+//!
+//! A row v1 marked as synced from an external service (`taint` other than
+//! `internal`) is tagged [`EXTERNAL_SYNC_TAG`], whichever section it lands in,
+//! so the host can keep treating it as untrusted. The decode fails closed like
+//! v1's own: an unknown or empty value is external. A store from before the
+//! `taint` column has none to read, and v1 read those rows as internal.
 
 use rusqlite::params;
 use serde_json::Value;
@@ -37,12 +43,19 @@ const SECTION_PREFIXES: [&str; 9] = [
     "event",
 ];
 
+/// The tag on every item from a `memory_docs` row v1 marked as synced from an
+/// external service (Gmail, Slack, Notion, Composio, MCP, ...): content the
+/// user did not write, which v1 kept out of external-effect tool decisions.
+pub const EXTERNAL_SYNC_TAG: &str = "taint:external_sync";
+
 /// One `memory_docs` row.
 #[derive(Debug, Clone)]
 struct DocRow {
     document_id: String,
     namespace: String,
     logical_namespace: Option<String>,
+    /// Whether v1 marked the row as synced from an external service.
+    external: bool,
     title: String,
     content: String,
     tags_json: String,
@@ -109,9 +122,15 @@ fn rows(ws: &LegacyWorkspace, after: Option<&str>, limit: usize) -> Result<Vec<D
     } else {
         "NULL"
     };
+    // Without the column every row reads as `internal`, as v1 read them.
+    let taint = if ws.schema.taint {
+        "taint"
+    } else {
+        "'internal'"
+    };
     let sql = format!(
         "SELECT document_id, namespace, {logical}, title, content, tags_json, metadata_json, \
-         updated_at FROM memory_docs WHERE (?1 IS NULL OR document_id > ?1) \
+         updated_at, {taint} FROM memory_docs WHERE (?1 IS NULL OR document_id > ?1) \
          ORDER BY document_id LIMIT ?2"
     );
     let mut stmt = ws.memory.prepare(&sql)?;
@@ -125,9 +144,22 @@ fn rows(ws: &LegacyWorkspace, after: Option<&str>, limit: usize) -> Result<Vec<D
             tags_json: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
             metadata_json: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
             updated_at: row.get(7)?,
+            external: is_external(row.get::<_, Option<String>>(8)?.as_deref()),
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+/// Decodes v1's `taint` column, failing closed: only `internal` is trusted.
+fn is_external(taint: Option<&str>) -> bool {
+    !taint.is_some_and(|value| value.trim().eq_ignore_ascii_case("internal"))
+}
+
+/// Adds [`EXTERNAL_SYNC_TAG`] to `tags` when `row` was externally synced.
+fn mark_taint(row: &DocRow, tags: &mut Vec<String>) {
+    if row.external {
+        push_unique(tags, EXTERNAL_SYNC_TAG.to_string());
+    }
 }
 
 fn logical_namespace(row: &DocRow) -> String {
@@ -179,6 +211,7 @@ fn document(ws: &LegacyWorkspace, row: &DocRow, logical: String) -> Option<Store
     let mut meta = import_meta(ws, format!("memory_docs:{}", row.document_id));
     let mut tags = convert::string_array(&row.tags_json);
     push_unique(&mut tags, format!("ns:{logical}"));
+    mark_taint(row, &mut tags);
     meta.tags = tags;
     meta.observed_at = row.updated_at.and_then(convert::from_unix_seconds);
     let metadata = convert::object(&row.metadata_json);
@@ -215,6 +248,7 @@ fn learning(ws: &LegacyWorkspace, row: &DocRow, class: Option<String>) -> Option
             return None;
         }
         meta.tags = class.into_iter().collect();
+        mark_taint(row, &mut meta.tags);
         meta.observed_at = updated;
         return Some(StoreItem::Learning {
             text: row.content.clone(),
@@ -229,6 +263,7 @@ fn learning(ws: &LegacyWorkspace, row: &DocRow, class: Option<String>) -> Option
         .as_deref()
         .map_or(LearningKind::Other, convert::learning_kind);
     meta.tags = class.into_iter().collect();
+    mark_taint(row, &mut meta.tags);
     meta.observed_at = map
         .get("observed_at")
         .and_then(Value::as_f64)
@@ -254,6 +289,7 @@ fn global(ws: &LegacyWorkspace, row: &DocRow) -> Option<StoreItem> {
     }
     let mut meta = import_meta(ws, format!("memory_docs:{}", row.document_id));
     meta.tags = vec!["global".to_string()];
+    mark_taint(row, &mut meta.tags);
     meta.observed_at = row.updated_at.and_then(convert::from_unix_seconds);
     Some(StoreItem::Learning {
         text: row.content.clone(),

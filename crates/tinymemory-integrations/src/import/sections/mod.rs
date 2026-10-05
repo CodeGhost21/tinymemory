@@ -12,6 +12,8 @@ mod episodic;
 mod memory_docs;
 mod profile;
 
+pub use memory_docs::EXTERNAL_SYNC_TAG;
+
 use tinymemory_api::{MemoryMeta, SourceKind, StoreItem};
 
 use crate::import::checkpoint::{Checkpoint, ChunkCursor};

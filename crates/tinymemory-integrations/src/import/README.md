@@ -33,6 +33,7 @@ the importer reads. A missing path is `NotFound`; anything else that is not a
 v1 store (a file, no `memory.db`, a non-SQLite file, a different schema) is
 `NotLegacy` with the reason. Columns that later v1 migrations added are probed
 with `pragma_table_info` and used when present: `memory_docs.logical_namespace`,
+`memory_docs.taint`,
 `episodic_log.tool_calls_json`, `user_profile.state` / `user_state` / `class`
 / `evidence_refs_json`, and `mem_tree_chunks.content_path`.
 
@@ -72,6 +73,21 @@ restored). Then:
   `Memory::store` namespaces) → documents section.
 
 Rows with blank content are skipped in every section.
+
+### Taint
+
+v1 stamped every `memory_docs` row with a `taint`: `internal` for what the
+user and the agent wrote, `external_sync` for content synced from an outside
+service (Gmail, Slack, Notion, Composio, MCP, ...), and kept tainted content
+out of decisions to call external-effect tools. v2 has no taint field, so an
+item from a row whose `taint` is anything but `internal` gets the tag
+`taint:external_sync` (`EXTERNAL_SYNC_TAG`), in every section a `memory_docs`
+row can land in (documents, learnings, `global`). The tag rides in the item's
+metadata, which a CortexDB engine stores whole, so the host can read it back on
+recall. The decode fails closed like v1's: an unknown or empty value is
+external. A store from before the `taint` column is read as all `internal`,
+which is how v1 read it. `episodic_log`, `user_profile` and the chunk store
+have no taint in v1 and get no tag.
 
 ### Documents
 

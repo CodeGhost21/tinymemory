@@ -27,3 +27,13 @@ fn classifies_logical_namespaces() {
     assert_eq!(classify("eventually"), RowClass::Document);
     assert_eq!(classify("user_notes"), RowClass::Document);
 }
+
+#[test]
+fn decodes_taint_failing_closed() {
+    assert!(!is_external(Some("internal")));
+    assert!(!is_external(Some(" INTERNAL ")));
+    assert!(is_external(Some("external_sync")));
+    assert!(is_external(Some("sideloaded")));
+    assert!(is_external(Some("")));
+    assert!(is_external(None));
+}

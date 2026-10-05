@@ -13,7 +13,7 @@ use tinymemory_api::{
     DocumentBody, LearningKind, Role, SourceKind, StoreItem, ToolCallRef, TurnRange,
 };
 use tinymemory_integrations::import::{
-    Checkpoint, ChunkCursor, Error, ImportedItem, LegacyWorkspace,
+    Checkpoint, ChunkCursor, EXTERNAL_SYNC_TAG, Error, ImportedItem, LegacyWorkspace,
 };
 
 const T0: f64 = 1_700_000_000.0;
@@ -643,6 +643,117 @@ fn resuming_from_any_checkpoint_yields_exactly_the_remainder() {
     assert_eq!(last.conversations.as_deref(), Some("t-b"));
     assert_eq!(last.learnings.as_deref(), Some("d10"));
     assert_eq!(last.profile.as_deref(), Some("f2"));
+}
+
+#[test]
+fn tags_externally_synced_rows_in_every_memory_docs_section() {
+    let (dir, conn) = workspace(support::MEMORY_DDL);
+    let rows = [
+        // (id, namespace, logical, content, taint)
+        (
+            "e1",
+            "document_gmail",
+            "document:gmail",
+            "Invoice due Friday",
+            "external_sync",
+        ),
+        (
+            "e2",
+            "learning_style",
+            "learning:style",
+            r#"{"class":"style","key":"tone","value":"terse"}"#,
+            "external_sync",
+        ),
+        (
+            "e3",
+            "global",
+            "global",
+            "Always cc finance",
+            "external_sync",
+        ),
+        (
+            "e4",
+            "document_web",
+            "document:web",
+            "Unknown taint",
+            "sideloaded",
+        ),
+        ("e5", "document_web", "document:web", "Blank taint", ""),
+        (
+            "i1",
+            "document_notes",
+            "document:notes",
+            "My own note",
+            "internal",
+        ),
+        (
+            "i2",
+            "document_notes",
+            "document:notes",
+            "Spelled loosely",
+            " Internal ",
+        ),
+    ];
+    for (id, namespace, logical, content, taint) in rows {
+        doc(
+            &conn,
+            id,
+            namespace,
+            Some(logical),
+            "",
+            content,
+            "[]",
+            "{}",
+            T0,
+        );
+        conn.execute(
+            "UPDATE memory_docs SET taint = ?2 WHERE document_id = ?1",
+            rusqlite::params![id, taint],
+        )
+        .unwrap();
+    }
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let items = all(&ws);
+    let tags = |id: &str| {
+        find(&items, &format!("memory_docs:{id}"))
+            .meta()
+            .tags
+            .clone()
+    };
+
+    assert_eq!(tags("e1"), ["ns:document:gmail", EXTERNAL_SYNC_TAG]);
+    assert!(matches!(
+        find(&items, "memory_docs:e2"),
+        StoreItem::Learning { .. }
+    ));
+    assert_eq!(tags("e2"), ["style", EXTERNAL_SYNC_TAG]);
+    assert_eq!(tags("e3"), ["global", EXTERNAL_SYNC_TAG]);
+    // v1 decodes anything but `internal` as external; so does the importer.
+    assert!(tags("e4").contains(&EXTERNAL_SYNC_TAG.to_string()));
+    assert!(tags("e5").contains(&EXTERNAL_SYNC_TAG.to_string()));
+    assert_eq!(tags("i1"), ["ns:document:notes"]);
+    assert_eq!(tags("i2"), ["ns:document:notes"]);
+}
+
+#[test]
+fn a_store_without_the_taint_column_reads_as_internal() {
+    let (dir, conn) = workspace(OLD_MEMORY_DDL);
+    conn.execute_batch(
+        "INSERT INTO memory_docs (document_id, namespace, key, title, content, source_type,
+           priority, tags_json, metadata_json, category, created_at, updated_at, markdown_rel_path)
+         VALUES ('a', 'document_old', 'k', 'Old', 'old body', 'doc', 'n', '[]', '{}', 'core', 1, 1, '');",
+    )
+    .unwrap();
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let items = all(&ws);
+    assert!(items.iter().all(|imported| {
+        !imported
+            .item
+            .meta()
+            .tags
+            .iter()
+            .any(|t| t == EXTERNAL_SYNC_TAG)
+    }));
 }
 
 #[test]
