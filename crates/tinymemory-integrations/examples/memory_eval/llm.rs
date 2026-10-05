@@ -12,6 +12,8 @@
 //! - `EVAL_LLM_MODEL`: default `openai/gpt-4.1-mini`.
 //!
 //! It answers at temperature 0 and is scored like the extractive answer.
+//! Each answer carries the tokens it took and, where the endpoint reports it
+//! (OpenRouter does), its cost, so a run's cost covers the answers too.
 
 use serde_json::{Value, json};
 
@@ -19,6 +21,14 @@ use serde_json::{Value, json};
 const SYSTEM: &str = "You are an assistant with a long-term memory. The user's message \
      starts with what your memory recalled, then their question. Answer the question in one \
      short sentence, using only the memory. If the memory does not say, answer \"unknown\".";
+
+/// One answer and what it cost.
+pub(crate) struct Answer {
+    pub(crate) text: String,
+    pub(crate) tokens: u64,
+    /// `None` when the endpoint does not price its calls.
+    pub(crate) cost_usd: Option<f64>,
+}
 
 /// A chat model.
 pub(crate) struct Llm {
@@ -56,7 +66,7 @@ impl Llm {
     /// # Errors
     ///
     /// A transport failure, or an answer without text.
-    pub(crate) async fn answer(&self, pack: &str, question: &str) -> Result<String, String> {
+    pub(crate) async fn answer(&self, pack: &str, question: &str) -> Result<Answer, String> {
         let body = json!({
             "model": self.model,
             "temperature": 0,
@@ -64,6 +74,8 @@ impl Llm {
             // Flash, cannot turn it off) as well as the one-sentence answer.
             "max_tokens": 2000,
             "reasoning": { "effort": "low" },
+            // OpenRouter's usage accounting: the call's cost in `usage.cost`.
+            "usage": { "include": true },
             "messages": [
                 { "role": "system", "content": SYSTEM },
                 { "role": "user", "content": format!("{pack}\n\nQuestion: {question}") },
@@ -81,10 +93,18 @@ impl Llm {
             .json()
             .await
             .map_err(|error| error.to_string())?;
-        answer
+        let text = answer
             .pointer("/choices/0/message/content")
             .and_then(Value::as_str)
             .map(|text| text.trim().to_string())
-            .ok_or_else(|| format!("no answer text in {answer}"))
+            .ok_or_else(|| format!("no answer text in {answer}"))?;
+        Ok(Answer {
+            text,
+            tokens: answer
+                .pointer("/usage/total_tokens")
+                .and_then(Value::as_u64)
+                .unwrap_or_default(),
+            cost_usd: answer.pointer("/usage/cost").and_then(Value::as_f64),
+        })
     }
 }

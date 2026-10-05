@@ -46,6 +46,9 @@ pub(crate) struct ProbeResult {
     /// The `--llm` model's answer from the same pack.
     pub(crate) llm_answer: Option<String>,
     pub(crate) llm_ok: Option<bool>,
+    /// What the `--llm` answer took: tokens, and dollars where priced.
+    pub(crate) llm_tokens: u64,
+    pub(crate) llm_cost_usd: Option<f64>,
     /// Synthesis phase on CortexDB: whether a fact or belief CortexDB
     /// derived holds the expected answer, whether or not the pack shows it.
     pub(crate) captured: Option<bool>,
@@ -135,6 +138,8 @@ pub(crate) fn score(
         answer_ok,
         llm_answer: None,
         llm_ok: None,
+        llm_tokens: 0,
+        llm_cost_usd: None,
         captured: None,
         ms,
         tokens,
