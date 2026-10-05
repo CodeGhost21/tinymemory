@@ -18,8 +18,9 @@
 //! Every item's `meta.source` is `SourceKind::Import` with a section-scoped
 //! legacy id (`memory_docs:<document_id>`, `episodic_log:<session_id>`,
 //! `user_profile:<facet_id>`, `mem_tree_chunks:<kind>:<id>`), and
-//! `meta.workspace` is the workspace path. The module's `README.md` details
-//! every mapping decision.
+//! `meta.workspace` is the workspace path. A `memory_docs` row v1 marked as
+//! synced from an external service also carries [`EXTERNAL_SYNC_TAG`]. The
+//! module's `README.md` details every mapping decision.
 //!
 //! Import is resumable: each [`ImportedItem`] carries the [`Checkpoint`] to
 //! persist once its item is stored, and [`LegacyWorkspace::items_from`]
@@ -78,6 +79,7 @@ pub use checkpoint::{Checkpoint, ChunkCursor, ImportedItem};
 pub use error::{Error, Result};
 pub use items::{DEFAULT_PAGE_SIZE, Items};
 pub use migrate::{MigrationReport, migrate, migrate_with};
+pub use sections::EXTERNAL_SYNC_TAG;
 pub use workspace::LegacyWorkspace;
 
 /// Re-exported so a host names the same item type the importer yields.

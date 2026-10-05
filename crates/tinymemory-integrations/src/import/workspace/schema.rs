@@ -58,6 +58,8 @@ const CHUNK_COLUMNS: [&str; 7] = [
 pub(crate) struct MemorySchema {
     /// `memory_docs.logical_namespace`.
     pub(crate) logical_namespace: bool,
+    /// `memory_docs.taint`.
+    pub(crate) taint: bool,
     /// `episodic_log.tool_calls_json`.
     pub(crate) tool_calls_json: bool,
     /// `user_profile.state`.
@@ -89,6 +91,7 @@ impl MemorySchema {
         let profile = columns(conn, "user_profile")?;
         Ok(Ok(Self {
             logical_namespace: docs.contains("logical_namespace"),
+            taint: docs.contains("taint"),
             tool_calls_json: episodic.contains("tool_calls_json"),
             profile_state: profile.contains("state"),
             profile_user_state: profile.contains("user_state"),
