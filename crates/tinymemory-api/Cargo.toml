@@ -24,7 +24,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # `StoreItem::fingerprint`: the content-derived identity engines use to turn an
 # identical retry into a replay rather than a duplicate.
-sha2 = "0.10"
+sha2 = "0.11"
 # The crate-wide `Error`.
 thiserror = "2"
 

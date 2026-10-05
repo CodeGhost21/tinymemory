@@ -46,7 +46,7 @@ tokio = { version = "1", default-features = false, features = ["time"], optional
 # `StreamExt` to read a capped body chunk by chunk.
 futures = { version = "0.3", optional = true }
 # Lookup labels are fixed-length SHA-256 digests of metadata values.
-sha2 = { version = "0.10", optional = true }
+sha2 = { version = "0.11", optional = true }
 
 # --- documents-office ---
 # Text out of the formats people actually drop into memory — a contract PDF, a
