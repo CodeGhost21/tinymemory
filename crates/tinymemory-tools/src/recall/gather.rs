@@ -236,7 +236,7 @@ async fn with_listed_beliefs(
     engine: &dyn MemoryEngine,
     section: &ScopeSection,
     want: usize,
-    keep: &dyn Fn(&Hit) -> bool,
+    keep: &(dyn Fn(&Hit) -> bool + Sync),
 ) -> tinymemory_api::Result<(Vec<Hit>, Vec<Hit>)> {
     if !reads_learnings(section) {
         return Ok((
@@ -324,7 +324,7 @@ async fn fetch(
     query: &str,
     limit: usize,
     beliefs: usize,
-    keep: &dyn Fn(&Hit) -> bool,
+    keep: &(dyn Fn(&Hit) -> bool + Sync),
 ) -> tinymemory_api::Result<(Vec<Hit>, Vec<Hit>)> {
     let Some(mode) = preferred_mode(engine) else {
         return Ok((latest(engine, filter, limit, keep).await?, Vec::new()));
@@ -347,7 +347,7 @@ async fn latest(
     engine: &dyn MemoryEngine,
     filter: &MetaFilter,
     limit: usize,
-    keep: &dyn Fn(&Hit) -> bool,
+    keep: &(dyn Fn(&Hit) -> bool + Sync),
 ) -> tinymemory_api::Result<Vec<Hit>> {
     let mut all: Vec<Hit> = Vec::new();
     let mut cursor: Option<String> = None;

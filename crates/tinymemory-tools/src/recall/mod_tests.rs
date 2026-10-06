@@ -615,3 +615,19 @@ async fn a_belief_the_filter_rules_out_is_left_out() {
     .unwrap();
     assert!(!pack.markdown.contains("pnpm"), "{}", pack.markdown);
 }
+
+/// Hosts run recall on multi-threaded runtimes (a spawned pre-turn, an
+/// `async_trait` method), which need its future to be `Send`. Every
+/// reference it holds across an `.await` must therefore be `Sync`,
+/// including the `keep` predicate the gathering passes down.
+#[test]
+fn a_recall_future_can_cross_threads() {
+    fn send<T: Send>(_: &T) {}
+    let engine = ReferenceEngine::new();
+    let request = HolisticRecall::new(
+        Some("refunds".into()),
+        vec![ScopeSection::fetch("Docs", docs(), 5)],
+    );
+    let future = holistic_recall(&engine, &request);
+    send(&future);
+}
