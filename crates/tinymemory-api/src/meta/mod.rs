@@ -20,6 +20,11 @@ use serde::{Deserialize, Serialize};
 use crate::namespace::Namespace;
 
 /// Where an item came from and what it is about.
+///
+/// Fields are added as the contract grows, so build one with
+/// `..MemoryMeta::default()` for the fields you do not set. A literal that
+/// names every field stops compiling when a field is added, which is a
+/// major release.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MemoryMeta {
