@@ -170,6 +170,7 @@ impl CortexEngine {
     /// The beliefs of `scope` a recall for `query` ranks, at most `limit`.
     async fn ranked_beliefs(&self, scope: &str, query: &str, limit: usize) -> Result<Vec<Hit>> {
         let mut body = recall_body(scope, query, 0, &MetaFilter::default());
+        body["include"] = json!(["beliefs"]);
         body["budgets"]["per_layer_limits"] = json!({
             "events": 0, "facts": 0, "episodes": 0, "understanding": 0, "beliefs": limit,
         });

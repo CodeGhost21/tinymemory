@@ -52,11 +52,24 @@ const PACKS_AT_ONCE: usize = 4;
 /// turns, and the client-side filter drops some.
 const EVENTS_PER_HIT: usize = 3;
 
-/// A recall body for `query` over `scope`, narrowed by `filter`'s label.
+/// A recall body for `query` over exactly `scope`, narrowed by `filter`'s
+/// label.
+///
+/// - `view: "granular"` reads the scope alone. CortexDB's public recall
+///   defaults to `holistic`, which also reads the scope's ancestors and
+///   descendants; that is never what one per-scope pack wants.
+/// - `include` lists `events` first, so the cross-layer token budget funds
+///   the events this crate reads before any derived layer (by default it
+///   evicts events first). A caller that reads more layers names them after.
+/// - No `budgets.max_tokens`: the server's default only ever evicts, and an
+///   evicted event is a hit this crate never sees. Its client-side token
+///   budget applies after the read.
 pub(super) fn recall_body(scope: &str, query: &str, events: usize, filter: &MetaFilter) -> Value {
     let mut body = json!({
         "scope": scope,
         "query": query,
+        "view": "granular",
+        "include": ["events"],
         "budgets": { "per_layer_limits": { "events": events } },
     });
     if let Some(labels) = labels::narrowing(filter) {
@@ -101,6 +114,7 @@ impl CortexEngine {
             .map(|scope| async move {
                 let mut body = recall_body(&scope.path, &req.query, events, &req.filter);
                 if wanted_beliefs > 0 {
+                    body["include"] = json!(["events", "beliefs"]);
                     body["budgets"]["per_layer_limits"]["beliefs"] = json!(wanted_beliefs);
                 }
                 let pack = self.log.recall(&body).await?;
@@ -167,7 +181,7 @@ impl CortexEngine {
 
 /// Merges per-scope rankings rank by rank: every scope's best, then every
 /// scope's second, and so on.
-fn interleave(mut lists: Vec<Vec<Envelope>>) -> Vec<Envelope> {
+pub(super) fn interleave(mut lists: Vec<Vec<Envelope>>) -> Vec<Envelope> {
     let longest = lists.iter().map(Vec::len).max().unwrap_or(0);
     let mut iters: Vec<_> = lists.iter_mut().map(|list| list.drain(..)).collect();
     let mut out = Vec::new();

@@ -64,7 +64,7 @@ fn merging_keeps_each_sentence_once_rank_by_rank() {
 
 #[tokio::test]
 async fn a_built_scope_s_beliefs_are_read_with_and_without_a_query() {
-    let (endpoint, _state) = direct_double().await;
+    let (endpoint, state) = direct_double().await;
     let engine = direct_engine(&endpoint);
     let node = Namespace::agent("coder-42");
     engine
@@ -95,6 +95,9 @@ async fn a_built_scope_s_beliefs_are_read_with_and_without_a_query() {
         .unwrap();
     assert_eq!(ranked.len(), 1, "{ranked:?}");
     assert_eq!(ranked[0].text, "user said In this repo always use pnpm.");
+    let belief_pack = state.seen.lock().unwrap().recalls.last().cloned().unwrap();
+    assert_eq!(belief_pack["include"], json!(["beliefs"]));
+    assert_eq!(belief_pack["view"], "granular");
     assert_eq!(ranked[0].meta.namespace, node);
     let listed = engine
         .beliefs(BeliefsRequest::new(Reach::exact(node), 5))
@@ -183,6 +186,8 @@ async fn a_fetch_reads_beliefs_from_its_own_recall_packs() {
         "one pack for the one scope, beliefs included"
     );
     assert_eq!(recalls[0]["budgets"]["per_layer_limits"]["beliefs"], 3);
+    assert_eq!(recalls[0]["include"], json!(["events", "beliefs"]));
+    assert_eq!(recalls[0]["view"], "granular");
 
     let mut plain = tinymemory_api::FetchRequest::new("pnpm", tinymemory_api::FetchMode::Hybrid, 5);
     plain.filter.reach = Some(Reach::exact(node));
@@ -190,4 +195,5 @@ async fn a_fetch_reads_beliefs_from_its_own_recall_packs() {
     assert!(page.beliefs.is_empty(), "no beliefs unless asked");
     let last = state.seen.lock().unwrap().recalls.last().cloned().unwrap();
     assert!(last["budgets"]["per_layer_limits"].get("beliefs").is_none());
+    assert_eq!(last["include"], json!(["events"]));
 }

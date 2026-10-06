@@ -155,24 +155,32 @@ Only `Hybrid`. Other modes fail `Error::Unsupported` before any request.
 Recall builds a pack, asks the answer route **once** with `use_pack_id`, and
 cites from the pack.
 
-1. Resolve the scopes. Then choose the packs:
-   - **one scope**: one pack over it;
-   - **no reach** (an unscoped, administrative read), or a filter that admits
-     no kinds: one pack over `app:tinymemory` with `view: "descend"`, which
-     recalls the root and every scope under it;
-   - **a reach over several scopes**: one pack per scope, built four at a
-     time, exact (never server-side traversal), so a sibling agent's scope is
-     never in the pack. Scopes are ordered most specific node first.
+1. Resolve the scopes: a reach's kind scopes (its node and, when it
+   inherits, every ancestor; below it too for a subtree reach), or, with **no reach** (an
+   unscoped, administrative read), every kind scope the engine holds
+   (`v1/scopes/list`). No scope to read (nothing held, or a filter that
+   admits no kinds) answers empty without a request. Then one pack per scope,
+   built four at a time, exact (`view: "granular"`, never server-side
+   traversal), so a sibling agent's scope is never in a pack and no pack is a
+   parent scope's storage-order sample. Scopes are ordered most specific node
+   first.
 2. Each pack's events budget is `2 * limit`, with the derived layers sharing
    `limit` (see [the wire](cortex-wire.md#recall-recall)).
 3. Decode and filter each pack's events with the full `MetaFilter` (reach
    included).
 4. The answer comes from the pack holding the **most admitted events**, the
    most specific node on a tie. A missing `pack_id` is `Error::Engine`.
+   `/v1/answer` takes one `use_pack_id` (its scope must match), so the
+   **answer text is grounded on that one pack, while the citations (step 6)
+   come from every pack**. The parent-scope pack this replaced was an
+   unranked storage-order sample, so no coverage was lost; grounding the
+   answer on every scope waits for CortexDB's ranked `subtree` lane to be on
+   by default.
 5. Ask the answer route with that pack's scope and `use_pack_id`. A response
    without `answer` text is `Error::Engine`. `model` is
    `diagnostics.answer_model`.
-6. **Citations** come from the packs' decoded events, one per item, the most
+6. **Citations** come from the packs' decoded events, merged rank by rank
+   (each pack's best first), one per item, the most
    specific node's first, capped at `limit`, with `score: None` and the
    envelope's text as the snippet. A pack with no decodable events still
    returns the answer, with no citations.

@@ -164,16 +164,21 @@ impl Log {
             .collect())
     }
 
-    /// Builds a recall pack. A read: retried on transient failures.
+    /// Builds a recall pack, and logs what the pack says about itself
+    /// (`notes`). A read: retried on transient failures.
     pub(crate) async fn recall(&self, body: &Value) -> Result<Value> {
-        self.client
+        let pack = self
+            .client
             .json(
                 Method::POST,
                 self.client.wire().path(Route::Recall),
                 Some(body),
                 Attempts::RetryTransient,
             )
-            .await
+            .await?;
+        let scope = body.get("scope").and_then(Value::as_str).unwrap_or("");
+        super::notes::report(scope, &pack);
+        Ok(pack)
     }
 
     /// Asks the answer route once, with a pack already built.

@@ -134,13 +134,37 @@ Response:
 
 ```json
 { "scope": "app:tinymemory/app:documents", "query": "...",
+  "view": "granular", "include": ["events"],
   "budgets": { "per_layer_limits": { "events": 30 } },
-  "filters": { "metadata": { "labels": ["tm:t:<16 hex>"] } },
-  "view": "descend" }
+  "filters": { "metadata": { "labels": ["tm:t:<16 hex>"] } } }
 ```
 
-`filters` is present only when the metadata filter has a labelled field;
-`view` is only `"descend"`, for one case (an unscoped multi-scope recall).
+`filters` is present only when the metadata filter has a labelled field.
+
+- `view` is always `"granular"`: exactly the named scope. CortexDB's public
+  recall defaults to `holistic` (the scope, its ancestors and its
+  descendants), and a pack at a parent scope is filled from its children in
+  storage order (0.10.4 marks it `parent_pack_unranked_sample`), so no read
+  relies on either.
+- `include` lists `events` first. `budgets.max_tokens` (4000 by default) is a
+  cross-layer budget that funds `include`'s layers first, then
+  facts > beliefs > episodes > understanding > events, so without it events
+  are evicted first. A fetch that wants beliefs sends `["events", "beliefs"]`,
+  an answer pack `["events", "facts", "beliefs", "episodes",
+  "understanding"]`, a beliefs read `["beliefs"]`.
+- `max_tokens` is not sent: the default only ever evicts, and an evicted
+  event is a hit the engine never sees.
+- `temporal` is not sent. `temporal.reference_date` only anchors
+  `temporal.natural` (a phrase such as "last 30 days", reduced to a
+  capture-time filter) and already defaults to the request time; the field
+  that ranks by the time a question refers to is `temporal.refers_during`
+  (boost-only, capability `refers_to_v1`). Using it needs the turn's time and
+  IANA zone in the contract and the referred date extracted client-side,
+  which is follow-up work.
+- Every pack's `warnings[]` is logged (debug), with
+  `parent_pack_unranked_sample` and any knapsack eviction
+  (`diagnostics.knapsack_evictions`, or a `context_contributors` row with
+  `evicted_from_layers: true`) at warn, with the scope (`log/notes.rs`).
 Response: `{"pack_id": "...", "layers": {"events": [...]}}`. Events in a pack
 render their text for a reader as `[role] {...}`; the decoder strips that
 prefix. A pack's events are read from `/layers/events` and decoded exactly
@@ -316,9 +340,9 @@ double enforces).
   discovered once per call from the scopes registered under the TinyMemory
   root (or under the reach's own node), and the root's kind scopes are always
   read.
-- Reads are always exact. Server-side traversal (`view: "descend"`) is used by
-  one case only, an unscoped multi-scope recall, so one agent's read never
-  reaches a sibling's scope.
+- Reads are always exact: every pack is `view: "granular"` over one scope,
+  so one agent's read never reaches a sibling's scope and no read is a
+  parent-scope sample.
 - A filter whose `kinds` admits nothing reads no scopes.
 
 ## The v2 envelope

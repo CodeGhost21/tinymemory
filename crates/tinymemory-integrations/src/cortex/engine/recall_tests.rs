@@ -24,3 +24,11 @@ fn pack_budgets_cover_the_limit_across_layers() {
         .sum();
     assert_eq!(derived, 6);
 }
+
+#[test]
+fn an_answer_pack_funds_its_events_before_the_derived_layers() {
+    assert_eq!(
+        pack_layers(),
+        json!(["events", "facts", "beliefs", "episodes", "understanding"])
+    );
+}

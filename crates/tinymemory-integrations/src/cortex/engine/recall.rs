@@ -1,35 +1,43 @@
-//! Recall: recall packs, then the answer route once with one of them.
+//! Recall: one recall pack per scope, then the answer route once with one
+//! of them.
 //!
-//! - **One scope** (one kind at one node): one pack over it.
-//! - **No reach** (an unscoped, administrative read) over several scopes: one
-//!   pack over the TinyMemory root with `view: "descend"`, which recalls the
-//!   root and every scope under it.
-//! - **A reach** over several scopes (an agent's own node and the nodes it
-//!   inherits, each kind apart): one pack per scope, built concurrently and
-//!   read exactly, never by server-side traversal, so a sibling agent's scope
-//!   is never in the pack.
+//! The scopes are the filter's (see `scopes`): the kind scopes of its reach,
+//! or, with no reach (an unscoped, administrative read), every kind scope the
+//! engine holds (`scopes::held`). Each gets its own pack, read exactly (`view: "granular"`),
+//! a few at a time, most specific node first. No pack is ever asked of a
+//! parent scope: CortexDB fills such a pack from its children in storage
+//! order, not by relevance, so it would answer from an arbitrary sample.
+//! With no scope to read, the answer is empty and nothing is sent.
 //!
 //! The answer route is asked once with `use_pack_id`, so it answers from
 //! exactly the evidence that pack holds: with several packs, the one holding
-//! the most admitted events, the most specific node on a tie.
+//! the most admitted events, the most specific node on a tie. **The answer
+//! text is grounded on that one pack, while the citations come from every
+//! pack.** CortexDB's `/v1/answer` takes one `use_pack_id`, whose scope must
+//! match the request's; it has no multi-pack context. The parent-scope pack
+//! this replaced was a storage-order sample of the children, so no coverage
+//! was lost. Grounding the answer on every scope waits for CortexDB's ranked
+//! `subtree` lane (experimental and off by default in 0.10.4).
 //!
 //! Citations come from the packs' `layers.events`, decoded back to items,
-//! filtered by the full [`tinymemory_api::MetaFilter`] (reach included), one
-//! per item, the most specific node's first, at most `limit`. CortexDB scores
-//! none of them. A pack with no decodable events still returns the engine's
-//! answer, with no citations.
+//! filtered by the full [`tinymemory_api::MetaFilter`] (reach included), and
+//! merged rank by rank across the packs (each pack's best, the most specific
+//! node's first, then each pack's second, …), one per item, at most `limit`.
+//! CortexDB scores none of them. A pack with no decodable events still
+//! returns the engine's answer, with no citations.
 
 use std::collections::HashSet;
 
 use futures::{StreamExt, TryStreamExt, stream};
 use serde_json::{Value, json};
-use tinymemory_api::{Citation, ItemId, RecallAnswer, RecallRequest};
+use tinymemory_api::{Citation, ItemId, Namespace, Reach, RecallAnswer, RecallRequest};
 
 use super::CortexEngine;
-use super::fetch::{ranked, recall_body};
+use super::fetch::{interleave, ranked, recall_body};
+use super::items::admitted;
 use super::scopes::KindScope;
 use crate::cortex::descriptor::CortexWire;
-use crate::cortex::envelope::{Envelope, ROOT_SCOPE};
+use crate::cortex::envelope::Envelope;
 use crate::cortex::error::{Error, Result};
 
 /// Recall packs built at once when a reach spans several scopes.
@@ -37,6 +45,14 @@ const PACKS_AT_ONCE: usize = 4;
 
 /// The derived layers a pack also draws on, besides events.
 const DERIVED_LAYERS: [&str; 4] = ["facts", "beliefs", "episodes", "understanding"];
+
+/// The layers an answer pack includes: the events first, so the token
+/// budget funds the citations before the derived layers the answer draws on.
+pub(super) fn pack_layers() -> Value {
+    let mut layers = vec!["events"];
+    layers.extend(DERIVED_LAYERS);
+    json!(layers)
+}
 
 /// Per-layer budgets for a pack answering with at most `limit` citations:
 /// twice that many events (a conversation contributes several turns, and the
@@ -86,32 +102,33 @@ impl CortexEngine {
     /// See the module docs.
     pub(super) async fn recall_answer(&self, req: RecallRequest) -> Result<RecallAnswer> {
         req.validate()?;
-        let scopes = self.scopes_for(&req.filter).await?;
-        let packs: Vec<(String, Value)> = match scopes.as_slice() {
-            [single] => vec![(
-                single.path.clone(),
-                self.pack(&req, &single.path, false).await?,
-            )],
-            _ if req.filter.reach.is_none() || scopes.is_empty() => vec![(
-                ROOT_SCOPE.to_string(),
-                self.pack(&req, ROOT_SCOPE, true).await?,
-            )],
-            _ => {
-                // Most specific node first, so its citations lead.
-                let mut ordered: Vec<&KindScope> = scopes.iter().collect();
-                ordered.sort_by_key(|scope| std::cmp::Reverse(scope.namespace.depth()));
-                let paths: Vec<String> = ordered.into_iter().map(|s| s.path.clone()).collect();
-                let req = &req;
-                stream::iter(paths)
-                    .map(|path| async move {
-                        let pack = self.pack(req, &path, false).await?;
-                        Ok::<_, Error>((path, pack))
-                    })
-                    .buffered(PACKS_AT_ONCE)
-                    .try_collect()
+        let scopes = match &req.filter.reach {
+            Some(_) => self.scopes_for(&req.filter).await?,
+            None => {
+                self.held(&Reach::subtree(Namespace::ROOT), &admitted(&req.filter))
                     .await?
             }
         };
+        if scopes.is_empty() {
+            return Ok(RecallAnswer {
+                answer: String::new(),
+                citations: Vec::new(),
+                model: None,
+            });
+        }
+        // Most specific node first, so its citations lead each rank.
+        let mut ordered: Vec<&KindScope> = scopes.iter().collect();
+        ordered.sort_by_key(|scope| std::cmp::Reverse(scope.namespace.depth()));
+        let paths: Vec<String> = ordered.into_iter().map(|s| s.path.clone()).collect();
+        let req = &req;
+        let packs: Vec<(String, Value)> = stream::iter(paths)
+            .map(|path| async move {
+                let pack = self.pack(req, &path).await?;
+                Ok::<_, Error>((path, pack))
+            })
+            .buffered(PACKS_AT_ONCE)
+            .try_collect()
+            .await?;
         let per_pack: Vec<Vec<Envelope>> = packs
             .iter()
             .map(|(_, pack)| ranked(pack, None, &req.filter))
@@ -142,9 +159,8 @@ impl CortexEngine {
             .ok_or_else(|| Error::Engine("CortexDB omitted the answer text".to_string()))?
             .to_string();
         let mut seen = HashSet::new();
-        let citations = per_pack
+        let citations = interleave(per_pack)
             .into_iter()
-            .flatten()
             .filter(|envelope| seen.insert(envelope.id.clone()))
             .take(req.limit)
             .map(|envelope| Citation {
@@ -167,14 +183,13 @@ impl CortexEngine {
 }
 
 impl CortexEngine {
-    /// A recall pack for `req` over `scope`, sized for `req.limit`
-    /// citations; `descend` also reads every scope below.
-    async fn pack(&self, req: &RecallRequest, scope: &str, descend: bool) -> Result<Value> {
+    /// A recall pack for `req` over exactly `scope`, sized for `req.limit`
+    /// citations. It includes the derived layers the answer route reads,
+    /// after the events the citations come from.
+    async fn pack(&self, req: &RecallRequest, scope: &str) -> Result<Value> {
         let mut body = recall_body(scope, &req.question, 0, &req.filter);
+        body["include"] = pack_layers();
         body["budgets"]["per_layer_limits"] = pack_budgets(req.limit);
-        if descend {
-            body["view"] = json!("descend");
-        }
         self.log.recall(&body).await
     }
 }

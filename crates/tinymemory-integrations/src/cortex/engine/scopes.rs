@@ -14,8 +14,13 @@
 //!   registered scopes under the TinyMemory root. The root's own kind scopes
 //!   are always read.
 //!
-//! Reads are always exact (`view=local`): server-side traversal is never
-//! relied on, so one agent's read can never stray into a sibling's scope.
+//! Reads are always exact: every pack names one scope with
+//! `view: "granular"`. Server-side traversal is never relied on (CortexDB's
+//! public recall defaults to `holistic`, which also reads ancestors and
+//! descendants). An inherited ancestor is still read, deliberately, but as a
+//! scope of its own in the list above, never through traversal from a scope
+//! below it. So one agent's read never strays into a sibling's scope, and no
+//! pack is CortexDB's storage-order sample of a parent's children.
 
 use std::collections::BTreeSet;
 
