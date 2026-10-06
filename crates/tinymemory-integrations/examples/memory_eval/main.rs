@@ -266,6 +266,7 @@ async fn main() -> Result<(), Error> {
     let eval = Eval {
         engine: engine.clone(),
         inspector,
+        hosted,
         llm,
         run,
         enrich_wait,
@@ -379,6 +380,9 @@ fn tenants(scenario: &Scenario) -> Vec<&'static str> {
 struct Eval {
     engine: Arc<dyn MemoryEngine>,
     inspector: Option<Inspector>,
+    /// The engine is hosted memory: enrichment cannot be watched, so the
+    /// run waits `enrich_wait` instead. No other engine waits blind.
+    hosted: bool,
     llm: Option<Llm>,
     run: u64,
     enrich_wait: u64,
@@ -502,7 +506,7 @@ impl Eval {
             let waited = ms(started);
             timings.add("enrichment (queue drained)", waited);
             println!("   enrichment drained in {:.0} s", waited / 1e3);
-        } else if self.enrich_wait > 0 {
+        } else if self.hosted && self.enrich_wait > 0 {
             // No queue to read (hosted): give enrichment its usual lag.
             tokio::time::sleep(Duration::from_secs(self.enrich_wait)).await;
             println!(

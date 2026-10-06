@@ -43,7 +43,7 @@ MODELS=openrouter ./scripts/memory-eval.sh --llm
 behind the TinyHumans backend, with the production models it runs there:
 
 ```sh
-TINYHUMANS_API_URL=https://api.tinyhumans.ai TINYHUMANS_API_KEY=<test-account key> \
+TINYHUMANS_API_URL=https://api.tinyhumans.ai TINYHUMANS_API_KEY="YOUR_TEST_ACCOUNT_KEY" \
   cargo run -p tinymemory-integrations --features full --example memory_eval -- \
   --engine tinyhumans --llm --label hosted --json target/memory-eval/hosted.json
 ```
