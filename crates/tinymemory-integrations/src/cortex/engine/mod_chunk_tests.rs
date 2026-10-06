@@ -189,7 +189,7 @@ async fn a_store_that_lost_a_piece_writes_only_that_piece_again() {
 }
 
 #[tokio::test]
-async fn a_short_document_is_one_event_exactly_as_before_and_reads_the_same() {
+async fn a_short_document_is_one_event_and_reads_the_same() {
     for (engine, state) in both().await {
         let item = StoreItem::Document {
             title: Some("Note".into()),
@@ -200,9 +200,15 @@ async fn a_short_document_is_one_event_exactly_as_before_and_reads_the_same() {
         engine.store(item.clone()).await.unwrap();
         let written = events(&state, SCOPE);
         assert_eq!(written.len(), 1);
-        let text = written[0]["content"]["text"].as_str().unwrap();
-        let envelope: Value = serde_json::from_str(text).unwrap();
-        assert!(envelope.get("chunk").is_none(), "no piece info: {envelope}");
+        assert_eq!(
+            written[0]["content"]["text"],
+            format!("Page one.{PAGE_BREAK}Page two."),
+            "the body itself"
+        );
+        let envelope = crate::cortex::envelope::decode_event(&written[0])
+            .unwrap()
+            .envelope;
+        assert!(envelope.chunk.is_none(), "no piece info: {envelope:?}");
         let listed = engine
             .list(ListRequest::new(MetaFilter::default(), 10))
             .await

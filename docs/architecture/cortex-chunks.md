@@ -6,8 +6,10 @@ reads one back. The event layout and labels are in
 [cortex-flows.md](cortex-flows.md).
 
 CortexDB refuses an experience whose flattened text is over 1 MiB
-(`422 INVALID_ENVELOPE`, 0.10.4 API §6.10), and a document's event text is
-its whole envelope. So (`envelope/chunks.rs`):
+(`422 INVALID_ENVELOPE`, 0.10.4 API §6.10). Every limit here is measured on
+the event's whole envelope as v2 JSON, which is never shorter than a v3
+event's text, so a piece fits whichever layout it is written in
+(`envelope/chunks.rs`):
 
 - **When.** Measured as a piece would be written (the envelope with its
   `chunk` field): a document whose encoded envelope fits in
@@ -42,8 +44,9 @@ its whole envelope. So (`envelope/chunks.rs`):
   page breaks gets no page tag, a piece before the first heading no section
   tag. These tags are read-side metadata, not part of the item's identity.
   `pages` is an inclusive range `[first, last]`, counted from 1, so a piece
-  on one page has `first == last`. Readable CortexDB labels for page and
-  section are not written yet.
+  on one page has `first == last`. A v3 piece also carries readable
+  `page:` and `section:` CortexDB labels (see
+  [cortex-wire.md](cortex-wire.md)).
 - **Why one piece per target rather than per page.** CortexDB 0.10.4
   already fragments every event over about 500 bytes for retrieval
   (`matched_fragments`) and serves an over-budget event as an excerpt, and a

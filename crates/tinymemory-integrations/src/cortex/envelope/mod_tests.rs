@@ -72,7 +72,7 @@ fn a_conversation_is_one_event_per_turn_in_order() {
         .map(|e| e.turn.as_ref().map(|t| (t.index, t.count)))
         .collect();
     assert_eq!(turns, vec![Some((0, 2)), Some((1, 2))]);
-    let request = envelopes[1].request("x");
+    let request = envelopes[1].request(&envelopes[1].encode_checked().unwrap());
     assert_eq!(request["content"]["role"], "assistant");
     assert_eq!(request["scope"], "app:tinymemory/app:conversations");
     assert_eq!(request["modality"], "conversation");
@@ -80,13 +80,14 @@ fn a_conversation_is_one_event_per_turn_in_order() {
 
 #[test]
 fn a_recall_rendering_is_read_as_well_as_the_stored_text() {
-    let envelope = &Envelope::for_item(&conversation(), "id").unwrap()[0];
+    let mut envelope = Envelope::for_item(&conversation(), "id").unwrap().remove(0);
     let stored = envelope.encode().unwrap();
+    envelope.v = 2;
     assert_eq!(
-        Envelope::decode(&format!("[user] {stored}")).as_ref(),
-        Some(envelope)
+        Envelope::decode(&format!("[user] {stored}")),
+        Some(envelope.clone())
     );
-    assert_eq!(Envelope::decode(&stored).as_ref(), Some(envelope));
+    assert_eq!(Envelope::decode(&stored), Some(envelope));
 }
 
 #[test]
@@ -95,7 +96,7 @@ fn events_this_crate_did_not_write_are_ignored() {
     assert!(Envelope::decode(r#"{"k":"v1-key","c":"v1 content"}"#).is_none());
     let mut old = Envelope::for_item(&conversation(), "id").unwrap().remove(0);
     old.v = 1;
-    assert!(Envelope::decode(&old.encode().unwrap()).is_none());
+    assert!(Envelope::decode(&json_of(&old).unwrap()).is_none());
     assert!(decode_event(&json!({ "id": "e", "content": { "text": "plain" } })).is_none());
 }
 
@@ -116,7 +117,7 @@ fn observed_at_and_labels_reach_the_event_context() {
     meta.observed_at = Some("2026-01-02T03:04:05Z".parse().unwrap());
     let item = StoreItem::document("text", meta);
     let envelope = &Envelope::for_item(&item, "id").unwrap()[0];
-    let request = envelope.request("payload");
+    let request = envelope.request(&envelope.encode_checked().unwrap());
     assert_eq!(
         request["context"]["observed_at"],
         "2026-01-02T03:04:05+00:00"
@@ -125,7 +126,7 @@ fn observed_at_and_labels_reach_the_event_context() {
     assert_eq!(request["scope"], "app:tinymemory/app:documents");
     assert_ne!(
         request["idempotency_key"],
-        envelope.request("payload")["idempotency_key"],
+        envelope.request(&envelope.encode_checked().unwrap())["idempotency_key"],
         "every write mints a fresh key"
     );
 }
@@ -183,7 +184,7 @@ fn an_item_is_written_to_its_namespace_scope() {
     let item = StoreItem::document("notes", meta);
     let id = item.fingerprint();
     let envelope = Envelope::for_item(&item, &id).unwrap().remove(0);
-    let request = envelope.request(&envelope.encode().unwrap());
+    let request = envelope.request(&envelope.encode_checked().unwrap());
     assert_eq!(
         request["scope"],
         "app:tinymemory/agent:researcher/app:documents"
@@ -333,5 +334,196 @@ fn a_whole_read_needs_every_piece_of_one_agreed_layout() {
         rebuild_whole(&mixed),
         Some(item),
         "the same item written whole before chunking reads as that body"
+    );
+}
+
+#[test]
+fn an_item_that_opts_out_of_derivation_asks_to_extract_nothing() {
+    let mut opted_out = meta();
+    opted_out.derive = Some(false);
+    let item = StoreItem::document("Run digest: 3 items sent.", opted_out);
+    let envelope = Envelope::for_item(&item, &item.fingerprint())
+        .unwrap()
+        .remove(0);
+    let request = envelope.request(&envelope.encode_checked().unwrap());
+    assert_eq!(request["directives"], serde_json::json!({ "extract": [] }));
+
+    let plain = StoreItem::document("A note.", meta());
+    let envelope = Envelope::for_item(&plain, &plain.fingerprint())
+        .unwrap()
+        .remove(0);
+    let request = envelope.request(&envelope.encode_checked().unwrap());
+    assert!(request.get("directives").is_none(), "{request}");
+}
+
+/// The event CortexDB would hand back for `request`: its id, content and
+/// context as sent.
+fn stored(request: &Value) -> Value {
+    json!({
+        "id": "evt_1",
+        "content": request["content"],
+        "context": request["context"],
+    })
+}
+
+#[test]
+fn an_event_is_written_as_its_own_text_with_the_envelope_in_labels() {
+    let mut meta = meta();
+    meta.file_path = Some("/docs/handbook.pdf".into());
+    let item = StoreItem::document("Refunds take five days.", meta);
+    let envelope = Envelope::for_item(&item, &item.fingerprint())
+        .unwrap()
+        .remove(0);
+    let encoded = envelope.encode_checked().unwrap();
+    assert_eq!(encoded.text, "Refunds take five days.", "prose, not JSON");
+    let request = envelope.request(&encoded);
+    let labels: Vec<&str> = request["context"]["labels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|label| label.as_str().unwrap())
+        .collect();
+    assert_eq!(labels[0], labels::item(&item.fingerprint()), "lookup first");
+    assert!(labels.contains(&"kind:document"), "{labels:?}");
+    assert!(labels.contains(&"file:/docs/handbook.pdf"), "{labels:?}");
+    assert!(labels.iter().any(|label| label.starts_with("tm:e:00:")));
+    assert!(labels.len() <= 64);
+    assert!(labels.iter().all(|label| label.len() <= 256), "{labels:?}");
+    assert!(!labels.iter().any(|label| label.starts_with("lang:")));
+
+    let decoded = decode_event(&stored(&request)).unwrap();
+    assert_eq!(decoded.envelope, envelope);
+    assert_eq!(rebuild(&[decoded.envelope]).unwrap(), item);
+}
+
+#[test]
+fn every_piece_and_turn_round_trips_through_its_labels() {
+    for item in [conversation(), long_document()] {
+        let envelopes = Envelope::for_item(&item, &item.fingerprint()).unwrap();
+        let read: Vec<Envelope> = envelopes
+            .iter()
+            .map(|envelope| {
+                let request = envelope.request(&envelope.encode_checked().unwrap());
+                assert!(
+                    !request["content"]["text"]
+                        .as_str()
+                        .unwrap()
+                        .starts_with('{')
+                );
+                decode_event(&stored(&request)).unwrap().envelope
+            })
+            .collect();
+        assert_eq!(read, envelopes);
+        assert_eq!(rebuild(&read).unwrap(), item);
+    }
+}
+
+#[test]
+fn a_piece_names_its_pages_and_section_in_readable_labels() {
+    let mut envelope = Envelope::for_item(&StoreItem::document("piece", meta()), "id")
+        .unwrap()
+        .remove(0);
+    envelope.chunk = Some(ChunkInfo {
+        index: 1,
+        count: 3,
+        pages: Some([3, 5]),
+        section: Some("Billing".into()),
+    });
+    let labels = envelope.encode_checked().unwrap().labels;
+    assert!(labels.contains(&"page:3-5".to_string()), "{labels:?}");
+    assert!(
+        labels.contains(&"section:Billing".to_string()),
+        "{labels:?}"
+    );
+}
+
+#[test]
+fn an_envelope_too_big_for_its_labels_or_with_no_text_is_written_as_v2() {
+    let mut big = meta();
+    big.tags = (0..2000).map(|n| format!("tag-number-{n:04}")).collect();
+    let item = StoreItem::document("Some text.", big);
+    let envelope = Envelope::for_item(&item, &item.fingerprint())
+        .unwrap()
+        .remove(0);
+    let encoded = envelope.encode_checked().unwrap();
+    assert!(
+        encoded.text.starts_with('{'),
+        "the whole envelope: {}",
+        encoded.text
+    );
+    assert!(
+        !encoded
+            .labels
+            .iter()
+            .any(|label| label.starts_with("tm:e:"))
+    );
+    let decoded = decode_event(&stored(&envelope.request(&encoded))).unwrap();
+    assert_eq!(rebuild(&[decoded.envelope]).unwrap(), item);
+
+    let mut silent = Envelope::for_item(&conversation(), "id").unwrap().remove(0);
+    silent.text = String::new();
+    let encoded = silent.encode_checked().unwrap();
+    assert!(encoded.text.starts_with('{'), "never an empty message text");
+    assert_eq!(
+        decode_event(&stored(&silent.request(&encoded)))
+            .unwrap()
+            .envelope
+            .text,
+        ""
+    );
+}
+
+#[test]
+fn incomplete_or_foreign_part_labels_are_not_an_envelope() {
+    let mut tagged = meta();
+    tagged.tags = (0..40).map(|n| format!("tag-{n}")).collect();
+    let item = StoreItem::document("Some text.", tagged);
+    let envelope = Envelope::for_item(&item, "id").unwrap().remove(0);
+    let labels = envelope.encode_checked().unwrap().labels;
+    let parts: Vec<&str> = labels
+        .iter()
+        .map(String::as_str)
+        .filter(|label| label.starts_with("tm:e:"))
+        .collect();
+    assert!(parts.len() > 1, "{parts:?}");
+    let mut shuffled = parts.clone();
+    shuffled.reverse();
+    assert_eq!(
+        Envelope::from_labels("t", shuffled).unwrap().text,
+        "t",
+        "order is by number"
+    );
+    assert!(
+        Envelope::from_labels("t", parts[1..].iter().copied()).is_none(),
+        "a part missing"
+    );
+    assert!(
+        Envelope::from_labels("t", ["tm:e:00:{\"v\":2}"]).is_none(),
+        "not v3"
+    );
+    assert!(
+        Envelope::from_labels("t", ["owner:someone"]).is_none(),
+        "no parts"
+    );
+}
+
+#[test]
+fn a_tool_turn_asks_to_extract_nothing_and_other_turns_do_not() {
+    let item = StoreItem::Conversation {
+        turns: vec![
+            Turn::new(Role::User, "Look up the weather."),
+            Turn::new(Role::Tool, r#"{"temp_c": 21}"#),
+            Turn::new(Role::Assistant, "It is 21 degrees."),
+        ],
+        meta: meta(),
+    };
+    let extract: Vec<Value> = Envelope::for_item(&item, "id")
+        .unwrap()
+        .iter()
+        .map(|envelope| envelope.request(&envelope.encode_checked().unwrap())["directives"].clone())
+        .collect();
+    assert_eq!(
+        extract,
+        [Value::Null, json!({ "extract": [] }), Value::Null]
     );
 }

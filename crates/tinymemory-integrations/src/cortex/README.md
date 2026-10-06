@@ -21,7 +21,7 @@ This README is the short in-tree summary. The full reference is under
 - [`cortex.md`](../../../../docs/architecture/cortex.md): surface, credentials,
   transport, failure mapping, endpoint security, the registry and `MemoryConfig`;
 - [`cortex-wire.md`](../../../../docs/architecture/cortex-wire.md): every endpoint
-  and its shapes, scope layout, the v2 envelope, lookup labels;
+  and its shapes, scope layout, the envelope (v3 and v2), lookup labels;
 - [`cortex-flows.md`](../../../../docs/architecture/cortex-flows.md): step-by-step
   store, list, fetch, recall, forget, get, discovery;
 - [`testing.md`](../../../../docs/architecture/testing.md): the doubles, the
@@ -122,18 +122,26 @@ reassemble a chunked document, and return it only when every piece is present; `
 its best-ranked piece, with a `page:<n>` (or `page:<first>-<last>`) tag when the
 document marks its pages and a `section:<title>` tag when the piece starts
 under a heading; a piece with neither carries no extra tag. Each event's
-`content.text` is a JSON envelope:
+`content.text` is the item's own text (the body or piece, the turn's text, or
+the statement), and the rest of its envelope rides in `context.labels` as
+`tm:e:<NN>:` parts of at most 240 bytes of JSON (v3):
 
 ```json
-{ "v": 2, "id": "<40-hex fingerprint>", "kind": "conversation",
-  "text": "<body | turn text | statement>", "meta": { ... MemoryMeta ... },
+{ "v": 3, "id": "<40-hex fingerprint>", "kind": "conversation", "text": "",
+  "meta": { ... MemoryMeta ... },
   "title": "...", "mime": "...", "learning_kind": "...", "confidence": 0.8,
   "evidence": "...",
   "turn": { "index": 0, "count": 3, "role": "user", "at": "...", "tool_calls": [] } }
 ```
 
-Kind-specific fields appear only when set. Text that is not a v2 envelope is
-someone else's event and is ignored. `context.observed_at` carries the turn's
+Kind-specific fields appear only when set. Readable labels (`kind:`, `file:`,
+`page:`, `section:`) sit beside the parts. An event with empty text, or whose
+labels would pass 64, is written as v2 (the whole envelope as JSON text, as
+every event was before), and both layouts read. An event that is neither is
+someone else's and is ignored. An item that opts out of derivation
+(`MemoryMeta::derive == Some(false)`), and every tool turn, is sent with
+`directives.extract: []`: indexed and searchable, but no facts, beliefs or
+concepts are derived from it. `context.observed_at` carries the turn's
 `at` or the item's `meta.observed_at`.
 
 **Labels.** Each event carries up to eight `context.labels`, each a 16-hex

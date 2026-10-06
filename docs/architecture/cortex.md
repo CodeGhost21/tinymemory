@@ -11,7 +11,7 @@ This is the overview. The detail is split into focused pages:
 - **this page**: surface, credentials, transport, failure mapping, endpoint
   security, the registry and `MemoryConfig`;
 - [cortex-wire.md](cortex-wire.md): the two wires, every endpoint and its
-  request and response shape, the scope layout, the v2 envelope and the lookup
+  request and response shape, the scope layout, the envelope (v3 and v2) and the lookup
   labels;
 - [cortex-flows.md](cortex-flows.md): step-by-step store, list, fetch, recall,
   forget, get, explore, scope discovery and health;

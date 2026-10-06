@@ -395,3 +395,30 @@ async fn the_answer_body_holds_only_keys_the_strict_schema_allows() {
     with.instructions = Some("be brief".into());
     engine.recall(with).await.unwrap();
 }
+
+#[tokio::test]
+async fn recovery_does_not_take_another_turn_with_the_same_words_for_the_lost_one() {
+    use tinymemory_api::{MemoryMeta, Role, Turn};
+    let (endpoint, state) = hosted_double().await;
+    let engine = hosted_engine(&endpoint).with_test_timing(std::time::Duration::from_millis(200));
+    let item = StoreItem::Conversation {
+        turns: vec![
+            Turn::new(Role::User, "ok"),
+            Turn::new(Role::Assistant, "ok"),
+        ],
+        meta: MemoryMeta::default(),
+    };
+    engine.store(item.clone()).await.unwrap();
+    {
+        // The second turn's event is lost.
+        let mut log = state.log.lock().unwrap();
+        let last = log.events.len() - 1;
+        log.events.remove(last);
+    }
+    // Its re-write is claimed but never applied, so recovery must look for
+    // it, and must not take the first turn, which says the same words.
+    state.claim_then_fail.store(1, Ordering::SeqCst);
+    let error = engine.store(item).await.unwrap_err();
+    assert!(matches!(error, Error::Unavailable(_)), "{error:?}");
+    assert_eq!(state.event_count(), 1, "the lost turn is still missing");
+}

@@ -68,6 +68,15 @@ pub struct MemoryMeta {
     /// When the underlying fact was observed, as opposed to when it was stored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observed_at: Option<DateTime<Utc>>,
+    /// Whether an engine that derives layers from what it stores (facts,
+    /// beliefs, concepts) may derive them from this item. `Some(false)`
+    /// stores and indexes the item, so it stays searchable, but derives
+    /// nothing from it: runtime state, tool output, machine-written
+    /// summaries. `None`, the default, leaves it to the engine; engines that
+    /// derive nothing ignore it. Unset, it is not serialized, so an item's
+    /// fingerprint is the same as before the field existed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub derive: Option<bool>,
 }
 
 impl MemoryMeta {

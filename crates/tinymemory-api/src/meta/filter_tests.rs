@@ -27,6 +27,7 @@ fn meta() -> MemoryMeta {
         },
         tags: vec!["x".into(), "y".into()],
         observed_at: Some(Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap()),
+        derive: None,
     }
 }
 

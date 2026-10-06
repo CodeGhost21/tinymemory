@@ -26,7 +26,7 @@ use tinymemory_api::{ItemId, StoreItem, StoreReceipt, WaitFor, validate_many};
 
 use super::CortexEngine;
 use super::scopes::KindScope;
-use crate::cortex::envelope::Envelope;
+use crate::cortex::envelope::{Encoded, Envelope};
 use crate::cortex::error::Result;
 use crate::cortex::log::Written;
 
@@ -53,7 +53,7 @@ impl CortexEngine {
         let ids: Vec<String> = items.iter().map(StoreItem::fingerprint).collect();
         // Every event of the batch is laid out and size-checked before any is
         // sent, so an item CortexDB would refuse leaves nothing half-written.
-        let mut planned: Vec<Vec<(Option<u32>, Envelope, String)>> =
+        let mut planned: Vec<Vec<(Option<u32>, Envelope, Encoded)>> =
             Vec::with_capacity(items.len());
         for (item, id) in items.iter().zip(&ids) {
             let mut events = Vec::new();

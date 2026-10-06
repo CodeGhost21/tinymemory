@@ -188,8 +188,13 @@ impl Log {
         loop {
             match self.page(scope, Some(&labels), None, PAGE_SIZE).await {
                 Ok(page) => {
+                    // The text alone does not tell two turns of one item
+                    // apart (two v3 turns can both say "ok"); their labels
+                    // (the envelope parts, with the turn index) do.
                     let found = page.items.iter().find(|event| {
                         event.pointer("/content/text").and_then(Value::as_str) == Some(text)
+                            && event.pointer("/context/labels")
+                                == request.pointer("/context/labels")
                     });
                     if let Some(event) = found {
                         return receipt(&json!({ "event_id": event.get("id") }));
