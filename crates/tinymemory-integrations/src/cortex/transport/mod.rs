@@ -171,7 +171,7 @@ impl HttpClient {
             url.set_path(&path);
         }
         Ok(Self {
-            inner: build_inner(DEFAULT_TIMEOUT)?,
+            inner: build_inner(DEFAULT_TIMEOUT, url.scheme() == "https")?,
             endpoint: url,
             credential,
             wire,
@@ -355,10 +355,17 @@ fn label(path: &str) -> &str {
 }
 
 /// One place builds the reqwest client, so the two timeouts stay paired.
-fn build_inner(timeout: Duration) -> Result<reqwest::Client> {
+///
+/// `https_only` is set for an HTTPS endpoint. reqwest drops `Authorization`
+/// on a redirect only when the host or port changes, so a same-port
+/// downgrade (`https://h:8443` to `http://h:8443`) would otherwise carry the
+/// bearer in cleartext. A loopback HTTP endpoint ([`ensure_secure_endpoint`])
+/// keeps plain HTTP.
+fn build_inner(timeout: Duration, https_only: bool) -> Result<reqwest::Client> {
     reqwest::Client::builder()
         .timeout(timeout)
         .connect_timeout(CONNECT_TIMEOUT.min(timeout))
+        .https_only(https_only)
         .build()
         .map_err(|_| Error::Config("the HTTP client could not be built".to_string()))
 }

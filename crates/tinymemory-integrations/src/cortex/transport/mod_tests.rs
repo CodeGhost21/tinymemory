@@ -349,3 +349,24 @@ async fn fixed_headers_ride_every_request_beside_the_credential() {
     assert_eq!(request.headers().get("x-sdk-name").unwrap(), "openhuman");
     assert!(request.headers().get(AUTHORIZATION).unwrap().is_sensitive());
 }
+
+#[tokio::test]
+async fn an_https_client_never_reaches_plain_http_but_loopback_http_still_works() {
+    // The client an HTTPS endpoint builds refuses every http:// URL before
+    // connecting, a redirect target included, so the bearer never crosses
+    // the network in the clear. A loopback HTTP endpoint keeps plain HTTP.
+    let (endpoint, hits) = counting(StatusCode::OK).await;
+    let url = format!("{}/v1/events", endpoint.trim_end_matches('/'));
+
+    let strict = build_inner(DEFAULT_TIMEOUT, true).expect("client");
+    assert!(
+        strict.get(&url).send().await.is_err(),
+        "https_only refuses http"
+    );
+    assert_eq!(hits.load(Ordering::SeqCst), 0, "nothing reached the server");
+
+    let loopback = build_inner(DEFAULT_TIMEOUT, false).expect("client");
+    let response = loopback.get(&url).send().await.expect("loopback http");
+    assert!(response.status().is_success());
+    assert_eq!(hits.load(Ordering::SeqCst), 1);
+}

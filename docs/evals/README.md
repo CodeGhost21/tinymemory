@@ -39,6 +39,21 @@ cargo run -p tinymemory-integrations --features full --example memory_eval
 MODELS=openrouter ./scripts/memory-eval.sh --llm
 ```
 
+**Hosted memory.** `--engine tinyhumans` runs the eval against CortexDB
+behind the TinyHumans backend, with the production models it runs there:
+
+```sh
+TINYHUMANS_API_URL=https://api.tinyhumans.ai TINYHUMANS_API_KEY="YOUR_TEST_ACCOUNT_KEY" \
+  cargo run -p tinymemory-integrations --features full --example memory_eval -- \
+  --engine tinyhumans --llm --label hosted --json target/memory-eval/hosted.json
+```
+
+It is billed to the key's account, so use a test account. Hosted memory has
+no admin routes, so the run cannot watch the enrichment queue (it waits
+`--enrich-wait` seconds, default 60, before the belief build), and it reports
+no usage or derived-layer inspection. Pass the key through the environment;
+never commit it.
+
 **Cost.** Real models are not cheap here. CortexDB runs its extraction
 model over every stored event and again during belief builds. The report
 ends with the usage CortexDB accounted for (calls, tokens and dollars as its
@@ -51,7 +66,7 @@ The script prints the report and writes `target/memory-eval/<label>.md` and
 `.json`. The JSON holds every probe's pack, so a miss can be read in full,
 and the run's KPIs.
 
-Flags (after `--`): `--engine reference|cortex`, `--only <scenario>`,
+Flags (after `--`): `--engine reference|cortex|tinyhumans`, `--only <scenario>`,
 `--enrich-wait <secs>`, `--json <path>`, `--label <name>` and `--llm`. With
 `CORTEX_DB_KEEP=1` the run's data is left in place for inspection.
 
