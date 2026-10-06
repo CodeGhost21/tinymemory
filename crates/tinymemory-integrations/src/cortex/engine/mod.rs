@@ -264,6 +264,10 @@ mod tests;
 mod list_tests;
 
 #[cfg(test)]
+#[path = "mod_chunk_tests.rs"]
+mod chunk_tests;
+
+#[cfg(test)]
 #[path = "mod_direct_tests.rs"]
 mod direct_tests;
 

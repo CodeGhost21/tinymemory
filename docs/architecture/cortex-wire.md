@@ -135,7 +135,7 @@ Response:
 ```json
 { "scope": "app:tinymemory/app:documents", "query": "...",
   "view": "granular", "include": ["events"],
-  "budgets": { "per_layer_limits": { "events": 30 } },
+  "budgets": { "max_tokens": 23592960, "per_layer_limits": { "events": 30 } },
   "filters": { "metadata": { "labels": ["tm:t:<16 hex>"] } } }
 ```
 
@@ -152,8 +152,21 @@ Response:
   are evicted first. A fetch that wants beliefs sends `["events", "beliefs"]`,
   an answer pack `["events", "facts", "beliefs", "episodes",
   "understanding"]`, a beliefs read `["beliefs"]`.
-- `max_tokens` is not sent: the default only ever evicts, and an evicted
-  event is a hit the engine never sees.
+- `max_tokens` is sent, sized so every event asked for comes back whole: a
+  token per byte of the largest event this crate writes (768 KiB), for each
+  event (and, in an answer pack, each derived item). The default, 4000
+  tokens (about 14 KB), cuts a longer event to a `budget_excerpt` (0.10.4
+  API §9.5): a slice of the stored envelope that no longer decodes, so a
+  document piece would never be a hit. It also evicts.
+  The budget only stops the cutting: `per_layer_limits` still bounds a pack,
+  so a pack of `n` events carries at most `n` × 768 KiB of event text (a
+  fetch of 5 asks 18 events: at most 13.5 MiB, typically far less). The
+  budget is capped at 8 Mi tokens, about 24 to 28 MiB at the 3 to 3.5 bytes
+  a token CortexDB 0.10.4 counts (measured on English, CJK and random text),
+  so a token per byte is at least three times the room an event needs. Only
+  a pack holding more than that (at least 32 events of the largest size, or
+  about 100 at the chunk target) gets excerpts again, which do not decode
+  and are logged at warn (`log/notes.rs`).
 - `temporal` is not sent. `temporal.reference_date` only anchors
   `temporal.natural` (a phrase such as "last 30 days", reduced to a
   capture-time filter) and already defaults to the request time; the field
@@ -253,7 +266,8 @@ The beliefs land in a derived layer, read two ways:
 
   ```json
   { "scope": "…", "query": "…",
-    "budgets": { "per_layer_limits": { "events": 0, "facts": 0, "episodes": 0,
+    "budgets": { "max_tokens": 786432,
+                 "per_layer_limits": { "events": 0, "facts": 0, "episodes": 0,
                                        "understanding": 0, "beliefs": 8 } } }
   ```
 
@@ -345,10 +359,59 @@ double enforces).
   parent-scope sample.
 - A filter whose `kinds` admits nothing reads no scopes.
 
+## Chunked documents
+
+CortexDB refuses an experience whose flattened text is over 1 MiB
+(`422 INVALID_ENVELOPE`, 0.10.4 API §6.10), and a document's event text is
+its whole envelope. So (`envelope/chunks.rs`):
+
+- **When.** Measured as a piece would be written (the envelope with its
+  `chunk` field): a document whose encoded envelope fits in
+  `DOCUMENT_CHUNK_TARGET_BYTES` (256 KiB) is one event, byte-identical to an
+  unchunked one (no `chunk` field). A longer one is split. The target is the
+  only granularity knob: at `0` every page and every section becomes its own
+  event, except that a page or section too big for one event is still cut
+  into several (see Where).
+- **Where.** First at page breaks (the form feed the PDF converter puts
+  between pages), then before markdown heading lines; a stretch of only
+  whitespace (or page breaks) never becomes a piece of its own but joins the
+  unit next to it, except in a text that is nothing else, which is then one
+  piece, so every byte is kept. These units are packed greedily, in order,
+  up to the target. A unit over the target is cut at blank lines, then line
+  ends, then characters. Sizes are JSON-escaped bytes plus the envelope
+  around the piece (its metadata and the `chunk` field at full width, with
+  a page range reserved only when the document marks pages).
+- **Limit.** No event over `MAX_EVENT_TEXT_BYTES` (768 KiB of encoded
+  envelope, a quarter under the server's limit) is ever sent: every event of
+  a batch is encoded and checked before the first write, and an item over it
+  (a learning or a conversation turn that long) is `Error::InvalidRequest`.
+- **Identity and replay.** Every piece carries the item's id and label, so
+  replay detection, `forget` by id or filter, and `get` see all of them; a
+  store that failed part way writes only the missing pieces. Until then
+  `get` and `list` do not return the document (never a truncated body);
+  `fetch` and `recall` still hit the pieces that are there.
+- **Reads.** `get` and `list` give the whole document (pieces in index
+  order). `fetch` and `recall` give one hit or citation per document, as for
+  every item: its best-ranked piece, with the
+  item's id and its metadata plus, when known, a `page:<n>` (or
+  `page:<first>-<last>`) tag and a `section:<title>` tag: a document without
+  page breaks gets no page tag, a piece before the first heading no section
+  tag. These tags are read-side metadata, not part of the item's identity.
+  `pages` is an inclusive range `[first, last]`, counted from 1, so a piece
+  on one page has `first == last`. Readable CortexDB labels for page and
+  section are not written yet.
+- **Why one piece per target rather than per page.** CortexDB 0.10.4
+  already fragments every event over about 500 bytes for retrieval
+  (`matched_fragments`) and serves an over-budget event as an excerpt, and a
+  hosted write is billed per event, so splitting is used only to stay under
+  the limit, along the document's structure.
+
 ## The v2 envelope
 
-A document or learning is one event; a conversation is one event per turn,
-appended in order. CortexDB's experience schema is closed (an unknown field is
+A learning is one event; a conversation is one event per turn, appended in
+order. A document is one event unless its envelope would pass 256 KiB; then it
+is one event per piece (see [Chunked documents](#chunked-documents)).
+CortexDB's experience schema is closed (an unknown field is
 a 422), so the structured data rides in the one free-form field: the event's
 `content.text` is a JSON **envelope**:
 
@@ -371,6 +434,7 @@ a 422), so the structured data rides in the one free-form field: the event's
 | `title`, `mime` | documents, when set | |
 | `learning_kind`, `confidence`, `evidence` | learnings (`evidence` when set) | |
 | `turn` | conversation turns | `index` (0-based), `count`, `role`, `at`, `tool_calls` |
+| `chunk` | pieces of a chunked document only (a document written whole has none) | `index` (0-based), `count`; optional `pages` (`[first, last]`, only when the text marks pages) and `section` (only when the piece starts under a heading) |
 
 Text that is not a v2 envelope is someone else's event and is ignored by
 every reader. Decoding first tries the text as written (`/events` returns it
@@ -378,8 +442,11 @@ as stored), then, failing that, strips a `[role] ` prefix (`/recall` renders
 text for a reader). A document whose body is still an unresolved URI is
 refused at write time as `Error::InvalidRequest`.
 
-Rebuilding an item from envelopes: a document or learning takes the first
-envelope; a conversation orders turns by `index` and keeps one per index (so a
+Rebuilding an item from envelopes: a learning, or a document written whole,
+takes the first envelope; a chunked document orders its pieces by `index`,
+keeps one per index and concatenates their text (the pieces are contiguous
+slices, so all of them give back the body exactly, and one gives that piece);
+a conversation orders turns by `index` and keeps one per index (so a
 duplicated or re-written turn does not repeat, and a turn that was never
 written is absent). A learning with no `learning_kind` reads back as `Other`.
 

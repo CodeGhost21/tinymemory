@@ -107,18 +107,35 @@ fn xlsx_with_sheet(sheet_data: &str) -> Vec<u8> {
 /// cross-reference table so the parser takes the normal path rather than a
 /// recovery one.
 fn pdf(content: &str) -> Vec<u8> {
-    let objects = [
+    pdf_pages(&[content])
+}
+
+/// A PDF with one page per content stream, in order.
+fn pdf_pages(contents: &[&str]) -> Vec<u8> {
+    // 1 catalog, 2 pages, 3 font, then each page and its content stream.
+    let kids: Vec<String> = (0..contents.len())
+        .map(|index| format!("{} 0 R", 4 + 2 * index))
+        .collect();
+    let mut objects = vec![
         "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
-        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R \
-         /Resources << /Font << /F1 5 0 R >> >> >>"
-            .to_string(),
         format!(
-            "<< /Length {} >>\nstream\n{content}\nendstream",
-            content.len()
+            "<< /Type /Pages /Kids [{}] /Count {} >>",
+            kids.join(" "),
+            contents.len()
         ),
         "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
     ];
+    for (index, content) in contents.iter().enumerate() {
+        objects.push(format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents {} 0 R \
+             /Resources << /Font << /F1 3 0 R >> >> >>",
+            5 + 2 * index
+        ));
+        objects.push(format!(
+            "<< /Length {} >>\nstream\n{content}\nendstream",
+            content.len()
+        ));
+    }
     let mut out = String::from("%PDF-1.4\n");
     let mut offsets = Vec::new();
     for (index, object) in objects.iter().enumerate() {
@@ -273,11 +290,37 @@ async fn a_pdf_yields_its_text_layer() {
 }
 
 #[tokio::test]
+async fn a_pdf_keeps_its_page_boundaries_as_page_breaks() {
+    let bytes = pdf_pages(&[
+        "BT /F1 24 Tf 72 720 Td (Refunds take five days) Tj ET",
+        "BT /F1 24 Tf 72 720 Td (Shipping is free over fifty) Tj ET",
+        "",
+        "BT /F1 24 Tf 72 720 Td (Returns need a receipt) Tj ET",
+    ]);
+    let converted = convert("policy.pdf", bytes).await.unwrap();
+    let pages: Vec<&str> = converted
+        .markdown
+        .split(crate::documents::PAGE_BREAK)
+        .collect();
+    assert_eq!(pages.len(), 4, "{:?}", converted.markdown);
+    assert!(pages[0].contains("Refunds take five days"), "{pages:?}");
+    assert!(
+        pages[1].contains("Shipping is free over fifty"),
+        "{pages:?}"
+    );
+    assert!(pages[2].trim().is_empty(), "an empty page keeps its place");
+    assert!(pages[3].contains("Returns need a receipt"), "{pages:?}");
+}
+
+#[tokio::test]
 async fn a_pdf_without_a_text_layer_says_so_rather_than_storing_nothing() {
     // A scanned PDF carries pictures of words. That is not a parse failure,
     // but storing an empty body would lose the upload while looking like one
     // succeeded.
     let reason = refusal("scan.pdf", pdf("")).await;
+    assert!(reason.contains("no text"), "{reason}");
+    // Several empty pages are joined by page breaks, which are not text.
+    let reason = refusal("scan.pdf", pdf_pages(&["", "", ""])).await;
     assert!(reason.contains("no text"), "{reason}");
 }
 

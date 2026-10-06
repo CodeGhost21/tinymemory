@@ -9,8 +9,8 @@
 //!   storage order, not ranked. This crate reads one exact scope per pack
 //!   (`view: "granular"`), so it must never appear; if it does, a read
 //!   strayed into a parent scope.
-//! - **Knapsack evictions.** `budgets.max_tokens` (4000 by default) is a
-//!   cross-layer budget; items it evicts are counted in
+//! - **Knapsack evictions.** `budgets.max_tokens` is a cross-layer budget
+//!   (this crate sizes it to fit every event whole; see `whole_items_budget`); items it evicts are counted in
 //!   `diagnostics.knapsack_evictions` (when the caller may read
 //!   diagnostics), and a rendered event evicted from `layers.events` is named
 //!   by the `context_contributors` provenance entry with
@@ -19,6 +19,11 @@
 //!   renders no `context_block`, so it carries no contributor rows; there the
 //!   diagnostics count is the only signal. Every pack lists `events` first in
 //!   `include` so the budget funds events before derived layers.
+//! - **Partial events.** An event whose `content._partial` is `true` (a
+//!   `budget_excerpt`, §9.5, or another recall-time view) carries a slice of
+//!   its stored text, which does not decode, so it is a hit the engine
+//!   drops. Logged at warn with the scope, the count and the reasons. The
+//!   budget makes this rare (see `whole_items_budget`); this keeps it loud.
 
 use serde_json::Value;
 
@@ -40,6 +45,9 @@ pub(crate) enum Note<'a> {
         /// Event ids marked `evicted_from_layers: true`.
         events: Vec<&'a str>,
     },
+    /// Events served as partial views: each one's `_partial_reason`, or
+    /// `"unknown"`.
+    Partial(Vec<&'a str>),
 }
 
 impl Note<'_> {
@@ -47,12 +55,13 @@ impl Note<'_> {
     pub(crate) fn level(&self) -> log::Level {
         match self {
             Self::Warning(_) => log::Level::Debug,
-            Self::ParentSample(_) | Self::Evicted { .. } => log::Level::Warn,
+            Self::ParentSample(_) | Self::Evicted { .. } | Self::Partial(_) => log::Level::Warn,
         }
     }
 }
 
-/// Every note `pack` carries, in a fixed order: warnings, then evictions.
+/// Every note `pack` carries, in a fixed order: warnings, evictions, then
+/// partial events.
 pub(crate) fn notes(pack: &Value) -> Vec<Note<'_>> {
     let mut notes: Vec<Note<'_>> = pack
         .get("warnings")
@@ -84,6 +93,23 @@ pub(crate) fn notes(pack: &Value) -> Vec<Note<'_>> {
         .collect();
     if count.is_some() || !events.is_empty() {
         notes.push(Note::Evicted { count, events });
+    }
+    let partial: Vec<&str> = pack
+        .pointer("/layers/events")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|event| event.get("content"))
+        .filter(|content| content.get("_partial").and_then(Value::as_bool) == Some(true))
+        .map(|content| {
+            content
+                .get("_partial_reason")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+        })
+        .collect();
+    if !partial.is_empty() {
+        notes.push(Note::Partial(partial));
     }
     notes
 }
@@ -122,6 +148,12 @@ pub(crate) fn report(scope: &str, pack: &Value) {
                  knapsack_evictions={} evicted_events={}",
                 count.map_or_else(|| "unreported".to_string(), |count| count.to_string()),
                 events.len()
+            ),
+            Note::Partial(reasons) => log::log!(
+                level,
+                "[cortex] recall pack served events as partial views, which do not decode \
+                 scope={scope:?} partial_events={} reasons={reasons:?}",
+                reasons.len()
             ),
         }
     }

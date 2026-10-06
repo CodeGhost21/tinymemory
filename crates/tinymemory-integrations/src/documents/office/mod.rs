@@ -13,7 +13,7 @@
 //!
 //! | Format | Reader | Markdown it produces |
 //! | --- | --- | --- |
-//! | PDF | `pdf-extract`, text layer only | the page text, whitespace-normalized |
+//! | PDF | `pdf-extract`, text layer only | each page's text, whitespace-normalized, pages joined by [`PAGE_BREAK`] |
 //! | DOCX | `zip` + `quick-xml` over `word/document.xml` | one paragraph per `w:p` |
 //! | PPTX | `zip` + `quick-xml` over `ppt/slides/slideN.xml` | slides in numeric order, one paragraph per `a:p` |
 //! | XLSX | `calamine` | one `sheet \| cell \| cell` line per non-empty row |
@@ -56,6 +56,7 @@ mod xlsx;
 
 use async_trait::async_trait;
 
+use crate::documents::PAGE_BREAK;
 #[cfg(test)]
 use crate::documents::convert::MAX_DOCUMENT_BYTES;
 use crate::documents::convert::{ConvertedDocument, DocumentConverter, RawDocument, check_size};
@@ -96,24 +97,34 @@ impl OfficeConverter {
         check_size(document)?;
         let format = document.format();
         let bytes = document.bytes.as_slice();
-        let text = match format {
-            DocumentFormat::Pdf => pdf::extract(bytes)?,
-            DocumentFormat::Docx => ooxml::docx(bytes)?,
-            DocumentFormat::Pptx => ooxml::pptx(bytes)?,
-            DocumentFormat::Xlsx => xlsx::extract(bytes)?,
+        let markdown = match format {
+            DocumentFormat::Pdf => paged(&pdf::extract(bytes)?),
+            DocumentFormat::Docx => normalize::normalize(&ooxml::docx(bytes)?),
+            DocumentFormat::Pptx => normalize::normalize(&ooxml::pptx(bytes)?),
+            DocumentFormat::Xlsx => normalize::normalize(&xlsx::extract(bytes)?),
             other => {
                 return Err(Error::UnsupportedFormat(format!(
                     "the office converter does not handle {other}"
                 )));
             }
         };
-        let markdown = normalize::normalize(&text);
-        if markdown.is_empty() {
+        if markdown.trim().is_empty() {
             return Err(unreadable(format!("converting {format} produced no text")));
         }
         Ok(ConvertedDocument::new(markdown, format, bytes.len())
             .with_metadata(serde_json::json!({ "converter": self.name() })))
     }
+}
+
+/// A PDF's pages as one markdown text: each page normalized on its own,
+/// joined by [`PAGE_BREAK`] so a reader can still tell where each page
+/// starts (an empty page keeps its place, so numbering survives).
+fn paged(pages: &[String]) -> String {
+    pages
+        .iter()
+        .map(|page| normalize::normalize(page))
+        .collect::<Vec<_>>()
+        .join(&PAGE_BREAK.to_string())
 }
 
 #[async_trait]

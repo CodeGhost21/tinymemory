@@ -23,8 +23,16 @@
 //!
 //! # Events
 //!
-//! A document or a learning is one event. A conversation is one event per
-//! turn, appended in order. Each event's `content.text` is a JSON
+//! A learning is one event. A conversation is one event per turn, appended
+//! in order. A document is one event, or, when its envelope would be too big
+//! for one, one event per piece of its body ([`chunks`]), appended in order;
+//! each piece carries its index and, when available, the page range and
+//! section it covers, and the pieces concatenate back to the body.
+//!
+//! No event is sent whose encoded envelope is over
+//! [`chunks::MAX_EVENT_TEXT_BYTES`] ([`Envelope::encode_checked`]): CortexDB
+//! refuses an experience over 1 MiB of text, and a conversation turn or a
+//! learning cannot be split. Each event's `content.text` is a JSON
 //! [`Envelope`] (`"v": 2`) carrying the item id, kind, the event's own text
 //! (the body, the turn's text, or the learning's statement), the item's full
 //! [`MemoryMeta`], and the kind's extra fields. CortexDB's experience schema
@@ -41,6 +49,7 @@
 //! an identical item again resolves to the same id and is detected as a
 //! replay by looking that id's label up.
 
+pub(crate) mod chunks;
 pub(crate) mod labels;
 mod rebuild;
 
@@ -53,7 +62,7 @@ use tinymemory_api::{
 
 use crate::cortex::error::{Error, Result};
 
-pub(crate) use rebuild::{Decoded, decode_event, rebuild};
+pub(crate) use rebuild::{Decoded, decode_event, rebuild, rebuild_whole};
 
 /// The TinyMemory root every kind scope sits under.
 pub(crate) const ROOT_SCOPE: &str = "app:tinymemory";
@@ -128,7 +137,31 @@ pub(crate) struct Envelope {
     /// Which turn of a conversation this event is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) turn: Option<TurnInfo>,
+    /// Which piece of a chunked document this event is; absent for a
+    /// document written as one event.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) chunk: Option<ChunkInfo>,
 }
+
+/// A piece of a chunked document: its place, and what it covers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct ChunkInfo {
+    /// Zero-based position.
+    pub(crate) index: u32,
+    /// How many pieces the document has.
+    pub(crate) count: u32,
+    /// The first and last page the piece covers, counted from 1, when the
+    /// document marks its pages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) pages: Option<[u32; 2]>,
+    /// The title of the section the piece starts in, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) section: Option<String>,
+}
+
+/// Room left in a piece's envelope for its section title: the longest title
+/// at the worst JSON escaping, plus its key.
+const SECTION_RESERVE: usize = chunks::MAX_SECTION_CHARS * 6 + 32;
 
 /// A conversation turn's place and attributes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -162,7 +195,18 @@ impl Envelope {
             confidence: None,
             evidence: None,
             turn: None,
+            chunk: None,
         }
+    }
+
+    /// The position of this event within its item: a conversation turn's
+    /// index, a document piece's index, or `None` for an item written as
+    /// one event.
+    pub(crate) fn part(&self) -> Option<u32> {
+        self.turn
+            .as_ref()
+            .map(|turn| turn.index)
+            .or_else(|| self.chunk.as_ref().map(|chunk| chunk.index))
     }
 
     /// The envelopes `item` is written as, one per event, in write order.
@@ -184,10 +228,48 @@ impl Envelope {
                         "document body is an unresolved uri".to_string(),
                     ));
                 };
-                let mut envelope = Self::new(id, ItemKind::Document, text.clone(), meta);
-                envelope.title.clone_from(title);
-                envelope.mime.clone_from(mime);
-                Ok(vec![envelope])
+                let mut whole = Self::new(id, ItemKind::Document, String::new(), meta);
+                whole.title.clone_from(title);
+                whole.mime.clone_from(mime);
+                let paged = text.contains(chunks::PAGE_BREAK);
+                let Some(pieces) = chunks::split(
+                    text,
+                    whole.piece_overhead(paged)?,
+                    chunks::DOCUMENT_CHUNK_TARGET_BYTES,
+                    chunks::MAX_EVENT_TEXT_BYTES,
+                ) else {
+                    // The metadata leaves no room for a piece: the document
+                    // is written whole if it fits, and refused here if not,
+                    // never cut into pieces that would each be over the limit.
+                    whole.text.clone_from(text);
+                    whole.encode_checked()?;
+                    return Ok(vec![whole]);
+                };
+                if pieces.len() <= 1 {
+                    // One piece fits under the limit with a chunk field, so
+                    // the whole envelope (which has none) does too; checked
+                    // all the same, as every envelope this returns is.
+                    whole.text.clone_from(text);
+                    whole.encode_checked()?;
+                    return Ok(vec![whole]);
+                }
+                let count = u32::try_from(pieces.len()).map_err(|_| {
+                    Error::InvalidRequest("document has too many pieces".to_string())
+                })?;
+                Ok((0..count)
+                    .zip(pieces)
+                    .map(|(index, piece)| {
+                        let mut envelope = whole.clone();
+                        envelope.text = piece.text.to_string();
+                        envelope.chunk = Some(ChunkInfo {
+                            index,
+                            count,
+                            pages: piece.pages.map(|(first, last)| [first, last]),
+                            section: piece.section,
+                        });
+                        envelope
+                    })
+                    .collect())
             }
             StoreItem::Learning {
                 text,
@@ -249,6 +331,44 @@ impl Envelope {
     pub(crate) fn encode(&self) -> Result<String> {
         serde_json::to_string(self)
             .map_err(|_| Error::Engine("an item envelope could not be serialised".to_string()))
+    }
+
+    /// The stored text, refused when it is over
+    /// [`chunks::MAX_EVENT_TEXT_BYTES`]: CortexDB would refuse the event,
+    /// so nothing of the item is sent.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::InvalidRequest`] for an envelope over the limit (a
+    /// conversation turn or a learning that long, or metadata too large to
+    /// leave room for a document piece); as [`Envelope::encode`] otherwise.
+    pub(crate) fn encode_checked(&self) -> Result<String> {
+        let encoded = self.encode()?;
+        if encoded.len() > chunks::MAX_EVENT_TEXT_BYTES {
+            return Err(Error::InvalidRequest(format!(
+                "a {:?} event would be {} bytes; CortexDB refuses an event over 1 MiB, so at \
+                 most {} are sent",
+                self.kind,
+                encoded.len(),
+                chunks::MAX_EVENT_TEXT_BYTES
+            )));
+        }
+        Ok(encoded)
+    }
+
+    /// The encoded size of this envelope as a document piece with an empty
+    /// text: the room every piece's own text is added to. A page range is
+    /// reserved only for a document that marks pages (`paged`), since only
+    /// its pieces carry one.
+    fn piece_overhead(&self, paged: bool) -> Result<usize> {
+        let mut probe = self.clone();
+        probe.chunk = Some(ChunkInfo {
+            index: u32::MAX,
+            count: u32::MAX,
+            pages: paged.then_some([u32::MAX, u32::MAX]),
+            section: None,
+        });
+        Ok(probe.encode()?.len() + SECTION_RESERVE)
     }
 
     /// The experience request appending this envelope, with a fresh body

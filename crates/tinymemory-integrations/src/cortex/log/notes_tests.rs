@@ -202,3 +202,24 @@ fn a_newline_in_a_scope_or_a_warning_cannot_forge_a_log_line() {
     assert!(message.contains("\\n[cortex] forged"), "{message}");
     assert!(message.contains("\\nERROR forged line"), "{message}");
 }
+
+#[test]
+fn a_partial_event_is_logged_at_warn_with_its_reason() {
+    capture();
+    let scope = "app:tinymemory/agent:notes-partial/app:documents";
+    let pack = json!({ "layers": { "events": [
+        { "id": "a", "content": { "text": "whole" } },
+        { "id": "b", "content": { "text": "[…]\nslice", "_partial": true,
+                                  "_partial_reason": "budget_excerpt" } },
+        { "id": "c", "content": { "text": "view", "_partial": true } },
+    ] } });
+    assert_eq!(
+        notes(&pack),
+        [Note::Partial(vec!["budget_excerpt", "unknown"])]
+    );
+    report(scope, &pack);
+    let logged = logged_for(scope);
+    assert_eq!(logged.len(), 1, "{logged:?}");
+    assert_eq!(logged[0].0, log::Level::Warn);
+    assert!(logged[0].1.contains("partial_events=2"), "{}", logged[0].1);
+}

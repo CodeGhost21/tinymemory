@@ -208,7 +208,15 @@ async fn an_unscoped_recall_packs_each_held_scope_exactly_and_answers_once() {
                 body["include"],
                 serde_json::json!(["events", "facts", "beliefs", "episodes", "understanding"])
             );
-            assert!(body["budgets"].get("max_tokens").is_none(), "{body}");
+            let events = body["budgets"]["per_layer_limits"]["events"]
+                .as_u64()
+                .unwrap();
+            let whole = (events * crate::cortex::envelope::chunks::MAX_EVENT_TEXT_BYTES as u64)
+                .min(super::fetch::MAX_PACK_TOKENS as u64);
+            assert!(
+                body["budgets"]["max_tokens"].as_u64() >= Some(whole),
+                "room for every event whole: {body}"
+            );
             assert!(body.get("temporal").is_none(), "{body}");
         }
         assert_eq!(seen.answers.len(), 1, "one answer");

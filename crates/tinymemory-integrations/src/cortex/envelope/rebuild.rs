@@ -1,5 +1,7 @@
 //! Reading events back into envelopes and envelopes back into items.
 
+use std::collections::HashSet;
+
 use serde_json::Value;
 use tinymemory_api::{DocumentBody, ItemKind, LearningKind, StoreItem, Turn};
 
@@ -25,7 +27,11 @@ pub(crate) fn decode_event(event: &Value) -> Option<Decoded> {
 
 /// The item a set of one item's envelopes describes.
 ///
-/// A document or learning takes the first envelope. A conversation orders
+/// A learning, or a document written as one event (no `chunk` field, as
+/// every document was before chunking), takes the first envelope. A chunked
+/// document (every piece carries `chunk`) orders its pieces by index, keeps one per
+/// index and concatenates their text, so the full set gives back the body
+/// exactly (and one piece alone gives that piece). A conversation orders
 /// its turns by index and keeps one envelope per index, so a duplicated or
 /// re-written turn does not repeat; turns that were never written (a store
 /// that failed part-way) are simply absent. `None` for an empty set.
@@ -34,7 +40,7 @@ pub(crate) fn rebuild(envelopes: &[Envelope]) -> Option<StoreItem> {
     Some(match first.kind {
         ItemKind::Document => StoreItem::Document {
             title: first.title.clone(),
-            body: DocumentBody::Text(first.text.clone()),
+            body: DocumentBody::Text(document_text(envelopes)),
             mime: first.mime.clone(),
             meta: first.meta.clone(),
         },
@@ -69,4 +75,44 @@ pub(crate) fn rebuild(envelopes: &[Envelope]) -> Option<StoreItem> {
             }
         }
     })
+}
+
+/// [`rebuild`] for a read that returns whole items (`get`, `list`): `None`
+/// for a chunked document missing a piece, from a store that failed part-way
+/// (the next store of the item writes the missing ones) or pieces the engine
+/// does not list yet. A `fetch` hit or a `recall` citation is one piece and
+/// uses [`rebuild`].
+pub(crate) fn rebuild_whole(envelopes: &[Envelope]) -> Option<StoreItem> {
+    if let Some(count) = envelopes.iter().find_map(|e| Some(e.chunk.as_ref()?.count)) {
+        let held: HashSet<u32> = envelopes
+            .iter()
+            .filter_map(|envelope| Some(envelope.chunk.as_ref()?.index))
+            .collect();
+        if (0..count).any(|index| !held.contains(&index)) {
+            log::debug!(
+                "[cortex] chunked document {:?} is missing pieces; not returned whole",
+                envelopes[0].id
+            );
+            return None;
+        }
+    }
+    rebuild(envelopes)
+}
+
+/// A document's text from its envelopes: the first one's, or the pieces of
+/// a chunked document in index order, each once.
+fn document_text(envelopes: &[Envelope]) -> String {
+    let mut pieces: Vec<(u32, &str)> = envelopes
+        .iter()
+        .filter_map(|envelope| Some((envelope.chunk.as_ref()?.index, envelope.text.as_str())))
+        .collect();
+    if pieces.is_empty() {
+        return envelopes
+            .first()
+            .map(|envelope| envelope.text.clone())
+            .unwrap_or_default();
+    }
+    pieces.sort_by_key(|(index, _)| *index);
+    pieces.dedup_by_key(|(index, _)| *index);
+    pieces.into_iter().map(|(_, text)| text).collect()
 }

@@ -68,7 +68,9 @@ let chain = ConverterChain::default().prepend(Box::new(MyPdfConverter));
 ```
 
 The `documents-office` feature ships one such binding, `OfficeConverter`: PDF (text
-layer only — a scanned PDF is refused as having no text), DOCX, PPTX (slides
+layer only — a scanned PDF is refused as having no text; pages are extracted
+one by one, normalized on their own and joined by `PAGE_BREAK`, a form feed,
+so a reader can number them), DOCX, PPTX (slides
 in numeric order) and XLSX (one `sheet | cell | cell` line per row), all pure
 Rust. It refuses hostile input rather than allocating for it: an archive whose
 declared uncompressed size exceeds `MAX_DECOMPRESSED_BYTES` (64 MiB), and a

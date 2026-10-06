@@ -110,10 +110,10 @@ in `ItemKind::ALL` order and then by namespace, each newest first.
    event id (the engine emits each event twice; the cursor remembers the last
    id so this works across page boundaries), decode it, and keep it when it is
    an envelope of the scope's kind and the **full** `MetaFilter` matches.
-4. **Each item once.** A document or learning is one event. A conversation is
-   emitted only on the page holding its **turn 0** event; its text is
-   assembled from all its turns by one label lookup for all the conversations
-   on the page. A conversation whose store failed part way still has turn 0 and
+4. **Each item once.** A learning, or a document written whole, is one
+   event. A conversation, or a chunked document, is emitted only on the page
+   holding its first event (**turn 0**, **piece 0**); its text is assembled
+   from all its events by one label lookup per kind for the page. A conversation whose store failed part way still has turn 0 and
    lists with the turns it holds.
 5. Stop when `limit` items are collected and return a cursor, unless the end
    of the last scope was reached (then there is none).

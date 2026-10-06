@@ -57,7 +57,8 @@ fn str_of<'a>(value: &'a Value, pointer: &str) -> &'a str {
 }
 
 impl CortexLog {
-    /// `POST /v1/experience`: (status, body).
+    /// `POST /v1/experience`: (status, body). Like CortexDB 0.10.4, an
+    /// event over 1 MiB of text is refused (`422 INVALID_ENVELOPE`).
     pub(crate) fn append(&mut self, body: &Value) -> (u16, Value) {
         let key = str_of(body, "/idempotency_key").to_string();
         let text = str_of(body, "/content/text").to_string();
@@ -69,6 +70,9 @@ impl CortexLog {
                 202,
                 json!({ "event_id": id, "replayed_from_idempotency": true }),
             );
+        }
+        if text.len() > 1024 * 1024 {
+            return (422, json!({ "error_code": "INVALID_ENVELOPE" }));
         }
         self.next_id += 1;
         let id = format!("evt_{}", self.next_id);

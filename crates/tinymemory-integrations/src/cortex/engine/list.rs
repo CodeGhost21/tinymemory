@@ -9,9 +9,10 @@
 //! that one label first (see `envelope::labels`); the client-side check runs
 //! regardless, and the cursor stays the engine's.
 //!
-//! **Each item once.** A document or learning is one event. A conversation
-//! is emitted only on the page holding its turn-0 event, and its text is
-//! assembled from all its turns by one label lookup per page. Writes are
+//! **Each item once.** A learning, or a document written whole, is one
+//! event. A conversation, or a chunked document, is emitted only on the page
+//! holding its first event (turn 0, piece 0), and its text is assembled from
+//! all its events by one label lookup per page and kind. Writes are
 //! ordered, so a conversation whose store failed part-way still has its
 //! turn 0 and lists with the turns it holds.
 //!
@@ -20,7 +21,7 @@
 //! cursor remembers the last id). A page that ends mid-way is resumed by
 //! re-reading the same engine page and skipping the consumed events.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use serde_json::Value;
 use tinymemory_api::{Hit, ItemKind, ListPage, ListRequest, Namespace};
@@ -36,11 +37,11 @@ use crate::cortex::log::{MAX_PAGES, PAGE_SIZE};
 /// The cursor tag of a listing.
 const TAG: char = 'l';
 
-/// A hit, or a conversation whose turns are assembled before the page
-/// returns.
+/// A hit, or an item whose events (a conversation's turns, a chunked
+/// document's pieces) are assembled before the page returns.
 enum Pending {
     Ready(Box<Hit>),
-    Conversation(String, Namespace),
+    Assembled(ItemKind, String, Namespace),
 }
 
 impl CortexEngine {
@@ -137,36 +138,45 @@ impl CortexEngine {
         if !keeps(&req.filter, kind, &envelope) {
             return None;
         }
-        let starts = envelope.turn.as_ref().is_none_or(|turn| turn.index == 0);
+        let starts = envelope.part().is_none_or(|index| index == 0);
         if !starts || !seen.insert(envelope.id.clone()) {
             return None;
         }
-        if kind == ItemKind::Conversation {
-            return Some(Pending::Conversation(envelope.id, envelope.meta.namespace));
+        if kind == ItemKind::Conversation || envelope.chunk.is_some() {
+            return Some(Pending::Assembled(
+                kind,
+                envelope.id,
+                envelope.meta.namespace,
+            ));
         }
         let id = envelope.id.clone();
         let item = rebuild(std::slice::from_ref::<Envelope>(&envelope))?;
         Some(Pending::Ready(Box::new(hit(&id, &item, 0.0))))
     }
 
-    /// Assembles the page's conversations (one lookup for all of them) and
-    /// returns the hits in listing order.
+    /// Assembles the page's conversations and chunked documents (one lookup
+    /// per kind) and returns the hits in listing order.
     async fn resolve(&self, pending: Vec<Pending>) -> Result<Vec<Hit>> {
-        let ids: Vec<(String, Namespace)> = pending
-            .iter()
-            .filter_map(|p| match p {
-                Pending::Conversation(id, namespace) => Some((id.clone(), namespace.clone())),
-                Pending::Ready(_) => None,
-            })
-            .collect();
-        let conversations = self.conversations(&ids).await?;
+        let mut assembled = HashMap::new();
+        for kind in [ItemKind::Conversation, ItemKind::Document] {
+            let ids: Vec<(String, Namespace)> = pending
+                .iter()
+                .filter_map(|p| match p {
+                    Pending::Assembled(of, id, namespace) if *of == kind => {
+                        Some((id.clone(), namespace.clone()))
+                    }
+                    _ => None,
+                })
+                .collect();
+            if !ids.is_empty() {
+                assembled.extend(self.assembled(kind, &ids).await?);
+            }
+        }
         Ok(pending
             .into_iter()
             .filter_map(|p| match p {
                 Pending::Ready(hit) => Some(*hit),
-                Pending::Conversation(id, _) => {
-                    conversations.get(&id).map(|item| hit(&id, item, 0.0))
-                }
+                Pending::Assembled(_, id, _) => assembled.get(&id).map(|item| hit(&id, item, 0.0)),
             })
             .collect())
     }
