@@ -63,7 +63,7 @@ Request body (one event). It is the same on both wires:
 {
   "scope": "app:tinymemory/agent:researcher/app:documents",
   "modality": "document",
-  "idempotency_key": "tm3:<56 hex: SHA-256 of this body without the key>",
+  "idempotency_key": "tm3:<the first 56 hex digits (224 bits) of the SHA-256 of this body without the key>",
   "content": { "kind": "message", "role": "user", "text": "<envelope JSON, see below>" },
   "context": {
     "labels": ["tm:i:<16 hex>", "tm:k:<16 hex>"],
@@ -480,7 +480,8 @@ Each was measured against a live CortexDB and was wrong in the first adapter.
 The loopback doubles reproduce all of them (see [testing](testing.md)).
 
 - **Append-only.** There is no update route. A reused body `idempotency_key`
-  with the same body is a replay for 24 hours, and with another body a 409.
+  with the same body is a replay for 24 hours, and with another body a 409
+  (which this crate's keys, derived from the body, never produce).
   Forget by `memory_ids` releases the keys of what it removes (measured on
   0.10.4; the v1 adapter's notes said the opposite, on an unrecorded build).
 - **Accepted is not readable.** An append answers `202` and indexes afterwards.

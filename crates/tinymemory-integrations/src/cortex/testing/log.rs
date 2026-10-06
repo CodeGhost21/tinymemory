@@ -190,6 +190,9 @@ impl CortexLog {
                 .retain(|_, (_, id)| !gone.iter().any(|e| str_of(e, "/id") == id));
             self.events = kept;
         } else {
+            // A scope-wide forget only redacts, so its keys stay held for
+            // their 24 hours (CortexDB's answer for 0.10.3/0.10.4); only a
+            // forget by `memory_ids` releases them.
             self.events.retain(|e| str_of(e, "/scope") != scope);
         }
         let deleted = before - self.events.len();

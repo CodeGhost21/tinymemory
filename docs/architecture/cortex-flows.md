@@ -55,8 +55,9 @@ valid items; an empty or oversized batch is `Error::InvalidRequest`). Then:
 Receipts come back in item order, each `{id, replayed}`. On an error the items
 before the failing one are stored, and storing them again is a replay.
 
-**Body idempotency keys.** Each event's `idempotency_key` is `tm3:` and 56 hex
-digits of the SHA-256 of its request body without the key (60 characters;
+**Body idempotency keys.** Each event's `idempotency_key` is `tm3:` and the
+first 56 hex digits (224 bits) of the SHA-256 of its compact JSON request
+body without the key (60 characters;
 CortexDB refuses one over 64). Measured on CortexDB 0.10.4:
 
 - the same key and body is a replay, answered with the first event's id and
