@@ -16,12 +16,19 @@ pub(crate) struct Decoded {
     pub(crate) envelope: Envelope,
 }
 
-/// Decodes one event from a listing or a recall pack. `None` for an event
-/// with no id or text, or one this crate did not write.
+/// Decodes one event from a listing or a recall pack: a v3 event from its
+/// text and labels, else a v2 event from its text. `None` for an event with
+/// no id or text, or one this crate did not write.
 pub(crate) fn decode_event(event: &Value) -> Option<Decoded> {
     let event_id = event.get("id").and_then(Value::as_str)?.to_string();
     let text = event.pointer("/content/text").and_then(Value::as_str)?;
-    let envelope = Envelope::decode(text)?;
+    let labels = event
+        .pointer("/context/labels")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str);
+    let envelope = Envelope::from_labels(text, labels).or_else(|| Envelope::decode(text))?;
     Some(Decoded { event_id, envelope })
 }
 

@@ -22,9 +22,11 @@
 //! Items live in one scope per kind under the TinyMemory root:
 //! `app:tinymemory/app:documents`, `app:tinymemory/app:conversations`,
 //! `app:tinymemory/app:learnings`. A document or learning is one event; a
-//! conversation is one event per turn. Each event's text is a JSON envelope
-//! (`"v": 2`) carrying the item id ([`tinymemory_api::StoreItem::fingerprint`]),
-//! kind, text and full metadata, and each event carries lookup labels (digests
+//! conversation is one event per turn. Each event's text is the item's own
+//! text, and its labels carry the rest of a v3 envelope: the item id
+//! ([`tinymemory_api::StoreItem::fingerprint`]), kind and full metadata
+//! (events written before v3, and a few that cannot fit their labels, carry
+//! the whole envelope as JSON text, v2). Each event also carries lookup labels (digests
 //! of the item id and of the exact-match metadata fields) so reads can narrow
 //! server-side before the full [`tinymemory_api::MetaFilter`] is applied
 //! client-side. This module's `README.md` summarises the layout and every

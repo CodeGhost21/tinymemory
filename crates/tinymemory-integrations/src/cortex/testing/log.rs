@@ -233,15 +233,13 @@ impl CortexLog {
             })
             .collect();
         scored.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
+        // A pack's event carries its stored text: the `[role] ` marker is
+        // only in `context_block` and the index copy (0.10.3/0.10.4 API
+        // §9.4), which this double does not render.
         let events: Vec<Value> = scored
             .into_iter()
             .take(budget)
-            .map(|(_, mut hit)| {
-                let role = str_of(&hit, "/content/role").to_string();
-                let text = str_of(&hit, "/content/text").to_string();
-                hit["content"]["text"] = json!(format!("[{role}] {text}"));
-                hit
-            })
+            .map(|(_, hit)| hit)
             .collect();
         let wanted = body
             .pointer("/budgets/per_layer_limits/beliefs")

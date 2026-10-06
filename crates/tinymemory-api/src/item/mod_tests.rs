@@ -173,3 +173,16 @@ fn a_turn_renders_its_tool_calls() {
         "assistant: done [tools: shell (call-1), grep]"
     );
 }
+
+#[test]
+fn an_unset_derive_flag_leaves_the_fingerprint_as_it_was() {
+    let item = StoreItem::document("Refunds take five days.", MemoryMeta::default());
+    let json = serde_json::to_string(item.meta()).unwrap();
+    assert!(!json.contains("derive"), "{json}");
+    let mut opted_out = item.clone();
+    opted_out.meta_mut().derive = Some(false);
+    assert_ne!(opted_out.fingerprint(), item.fingerprint());
+    let back: MemoryMeta =
+        serde_json::from_str(&serde_json::to_string(opted_out.meta()).unwrap()).unwrap();
+    assert_eq!(back.derive, Some(false));
+}

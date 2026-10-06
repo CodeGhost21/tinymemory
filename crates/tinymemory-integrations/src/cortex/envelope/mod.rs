@@ -32,13 +32,18 @@
 //! No event is sent whose encoded envelope is over
 //! [`chunks::MAX_EVENT_TEXT_BYTES`] ([`Envelope::encode_checked`]): CortexDB
 //! refuses an experience over 1 MiB of text, and a conversation turn or a
-//! learning cannot be split. Each event's `content.text` is a JSON
-//! [`Envelope`] (`"v": 2`) carrying the item id, kind, the event's own text
-//! (the body, the turn's text, or the learning's statement), the item's full
-//! [`MemoryMeta`], and the kind's extra fields. CortexDB's experience schema
-//! is closed (an unknown field is a 422), so the envelope rides in the one
-//! free-form field there is; anything that does not parse as a v2 envelope is
-//! somebody else's event and is ignored.
+//! learning cannot be split. An [`Envelope`] carries the item id, kind, the
+//! event's own text (the body, the turn's text, or the learning's
+//! statement), the item's full [`MemoryMeta`], and the kind's extra fields.
+//! CortexDB's experience schema is closed (an unknown field is a 422), and
+//! `context.labels` is its app-metadata extension point. So an event is
+//! written as v3: `content.text` is the event's own text, which CortexDB
+//! extracts from and splits for search at sentence boundaries, and the rest
+//! of the envelope rides in `tm:e:<NN>:` labels ([`Envelope::encode_checked`]).
+//! An event with empty text, or too much envelope for its labels, is written
+//! as v2: the whole envelope as JSON text, as every event was before v3.
+//! Both read back ([`decode_event`]); anything else is somebody else's event
+//! and is ignored.
 //!
 //! Each event also carries lookup labels (see [`labels`]) and, when the item
 //! has one, `context.observed_at`.
@@ -67,8 +72,37 @@ pub(crate) use rebuild::{Decoded, decode_event, rebuild, rebuild_whole};
 /// The TinyMemory root every kind scope sits under.
 pub(crate) const ROOT_SCOPE: &str = "app:tinymemory";
 
-/// The envelope version this crate writes and reads.
-const VERSION: u8 = 2;
+/// The envelope version of an event whose text is the whole JSON envelope:
+/// every event before v3, and a v3-era event whose envelope does not fit in
+/// its labels.
+const V2: u8 = 2;
+
+/// The envelope version of an event whose text is the item's own text and
+/// whose envelope (all but the text) rides in its labels.
+const V3: u8 = 3;
+
+/// The label prefix of a v3 envelope part: `tm:e:<NN>:<JSON slice>`.
+const PART_PREFIX: &str = "tm:e:";
+
+/// The most bytes of envelope JSON one part label carries, so a label stays
+/// within the 256 bytes CortexDB asks labels to keep to.
+const PART_BYTES: usize = 240;
+
+/// The most labels one event carries, as CortexDB asks.
+const MAX_LABELS: usize = 64;
+
+/// The longest readable label written; a longer one is left out.
+const MAX_LABEL_BYTES: usize = 256;
+
+/// One event as it is sent: its `content.text` and `context.labels`.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Encoded {
+    /// The item's own text (v3), or the whole JSON envelope (v2).
+    pub(crate) text: String,
+    /// The lookup labels, then (v3) the readable labels and the envelope
+    /// parts.
+    pub(crate) labels: Vec<String>,
+}
 
 /// The leaf segment of `kind`'s scope inside a namespace node.
 pub(crate) fn kind_leaf(kind: ItemKind) -> &'static str {
@@ -109,7 +143,7 @@ pub(crate) fn parse_scope(path: &str) -> Option<(Namespace, ItemKind)> {
 /// One event's payload: the item it belongs to and the event's share of it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct Envelope {
-    /// Always [`VERSION`].
+    /// [`V2`] or [`V3`] as stored; [`V3`] for an envelope laid out here.
     pub(crate) v: u8,
     /// The item id ([`StoreItem::fingerprint`]).
     pub(crate) id: String,
@@ -184,7 +218,7 @@ impl Envelope {
     /// A bare envelope for item `id` of `kind`.
     fn new(id: &str, kind: ItemKind, text: String, meta: &MemoryMeta) -> Self {
         Self {
-            v: VERSION,
+            v: V3,
             id: id.to_string(),
             kind,
             text,
@@ -306,54 +340,135 @@ impl Envelope {
         }
     }
 
-    /// Reads an envelope from an event's text, whichever read path it came
-    /// from.
+    /// Reads a v2 envelope from an event's text, whichever read path it
+    /// came from.
     ///
-    /// The two read paths disagree on the bytes: `/v1/events` returns the
-    /// text as stored, while `/v1/recall` renders it for a reader and
-    /// prefixes the speaker (`[user] {...}`). The prefix is stripped only
-    /// when the text does not parse without it. Anything that is not a v2
-    /// envelope is `None`.
+    /// The two read paths may disagree on the bytes: `/v1/events` returns
+    /// the text as stored, while an older `/v1/recall` rendered it for a
+    /// reader and prefixed the speaker (`[user] {...}`). The prefix is
+    /// stripped only when the text does not parse without it. Anything that
+    /// is not a v2 envelope is `None`.
     pub(crate) fn decode(text: &str) -> Option<Self> {
         let parsed = serde_json::from_str::<Self>(text).ok().or_else(|| {
             let rendered = text.strip_prefix('[')?;
             let (_role, rest) = rendered.split_once("] ")?;
             serde_json::from_str::<Self>(rest).ok()
         })?;
-        (parsed.v == VERSION).then_some(parsed)
+        (parsed.v == V2).then_some(parsed)
     }
 
-    /// The stored text.
+    /// Reads a v3 envelope from an event's text and labels: the envelope
+    /// parts (`tm:e:00:`, `tm:e:01:`, …) joined in order, with `text` as its
+    /// text. `None` when the parts are absent, not numbered `0..n`, or not a
+    /// v3 envelope.
+    pub(crate) fn from_labels<'a>(
+        text: &str,
+        labels: impl IntoIterator<Item = &'a str>,
+    ) -> Option<Self> {
+        let mut parts: Vec<(usize, &str)> = Vec::new();
+        for label in labels {
+            if let Some(rest) = label.strip_prefix(PART_PREFIX) {
+                let (index, json) = rest.split_once(':')?;
+                parts.push((index.parse().ok()?, json));
+            }
+        }
+        parts.sort_by_key(|(index, _)| *index);
+        if parts.is_empty()
+            || parts
+                .iter()
+                .enumerate()
+                .any(|(at, (index, _))| at != *index)
+        {
+            return None;
+        }
+        let json: String = parts.into_iter().map(|(_, json)| json).collect();
+        let mut envelope = serde_json::from_str::<Self>(&json).ok()?;
+        if envelope.v != V3 {
+            return None;
+        }
+        envelope.text = text.to_string();
+        Some(envelope)
+    }
+
+    /// The whole envelope as v2 JSON: what a v2 event's text holds, and the
+    /// size every limit here is checked against.
     ///
     /// # Errors
     ///
     /// [`Error::Engine`] if serialisation fails, which plain data cannot.
     pub(crate) fn encode(&self) -> Result<String> {
-        serde_json::to_string(self)
-            .map_err(|_| Error::Engine("an item envelope could not be serialised".to_string()))
+        let mut v2 = self.clone();
+        v2.v = V2;
+        json_of(&v2)
     }
 
-    /// The stored text, refused when it is over
-    /// [`chunks::MAX_EVENT_TEXT_BYTES`]: CortexDB would refuse the event,
-    /// so nothing of the item is sent.
+    /// The event as sent, refused when its v2 JSON is over
+    /// [`chunks::MAX_EVENT_TEXT_BYTES`]: CortexDB would refuse such an event
+    /// as v2, so nothing of the item is sent. (Checking the v2 size keeps one
+    /// limit for both layouts, and a v3 text is always shorter.)
+    ///
+    /// The event is v3 (the item's own text, the envelope in labels) unless
+    /// its text is empty or its labels would be more than [`MAX_LABELS`];
+    /// then it is v2, as every event was before.
     ///
     /// # Errors
     ///
     /// [`Error::InvalidRequest`] for an envelope over the limit (a
     /// conversation turn or a learning that long, or metadata too large to
     /// leave room for a document piece); as [`Envelope::encode`] otherwise.
-    pub(crate) fn encode_checked(&self) -> Result<String> {
-        let encoded = self.encode()?;
-        if encoded.len() > chunks::MAX_EVENT_TEXT_BYTES {
+    pub(crate) fn encode_checked(&self) -> Result<Encoded> {
+        let v2 = self.encode()?;
+        if v2.len() > chunks::MAX_EVENT_TEXT_BYTES {
             return Err(Error::InvalidRequest(format!(
                 "a {:?} event would be {} bytes; CortexDB refuses an event over 1 MiB, so at \
                  most {} are sent",
                 self.kind,
-                encoded.len(),
+                v2.len(),
                 chunks::MAX_EVENT_TEXT_BYTES
             )));
         }
-        Ok(encoded)
+        let lookup = labels::for_item(&self.id, &self.meta);
+        let mut head = self.clone();
+        head.v = V3;
+        head.text = String::new();
+        let parts = part_labels(&json_of(&head)?);
+        let readable = self.readable_labels();
+        if self.text.is_empty() || lookup.len() + readable.len() + parts.len() > MAX_LABELS {
+            return Ok(Encoded {
+                text: v2,
+                labels: lookup,
+            });
+        }
+        let mut labels = lookup;
+        labels.extend(readable);
+        labels.extend(parts);
+        Ok(Encoded {
+            text: self.text.clone(),
+            labels,
+        })
+    }
+
+    /// Labels a person reading the events can make sense of: the item kind,
+    /// and for a document its file, and a piece's pages and section. Never
+    /// filtered on (the lookup labels are), and left out when longer than
+    /// [`MAX_LABEL_BYTES`].
+    fn readable_labels(&self) -> Vec<String> {
+        let mut out = vec![format!("kind:{}", self.kind.as_str())];
+        if let Some(path) = &self.meta.file_path {
+            out.push(format!("file:{path}"));
+        }
+        if let Some(chunk) = &self.chunk {
+            match chunk.pages {
+                Some([first, last]) if first == last => out.push(format!("page:{first}")),
+                Some([first, last]) => out.push(format!("page:{first}-{last}")),
+                None => {}
+            }
+            if let Some(section) = &chunk.section {
+                out.push(format!("section:{section}"));
+            }
+        }
+        out.retain(|label| label.len() <= MAX_LABEL_BYTES);
+        out
     }
 
     /// The encoded size of this envelope as a document piece with an empty
@@ -371,9 +486,9 @@ impl Envelope {
         Ok(probe.encode()?.len() + SECTION_RESERVE)
     }
 
-    /// The experience request appending this envelope, with a fresh body
-    /// idempotency key.
-    pub(crate) fn request(&self, text: &str) -> Value {
+    /// The experience request appending this envelope as `encoded`, with a
+    /// fresh body idempotency key.
+    pub(crate) fn request(&self, encoded: &Encoded) -> Value {
         let (modality, role) = match (&self.kind, &self.turn) {
             (ItemKind::Conversation, Some(turn)) => ("conversation", role_of(turn.role)),
             (ItemKind::Document, _) => ("document", "user"),
@@ -385,21 +500,51 @@ impl Envelope {
             .and_then(|turn| turn.at)
             .or(self.meta.observed_at);
         let mut context = serde_json::Map::new();
-        context.insert(
-            "labels".to_string(),
-            json!(labels::for_item(&self.id, &self.meta)),
-        );
+        context.insert("labels".to_string(), json!(encoded.labels));
         if let Some(at) = observed_at {
             context.insert("observed_at".to_string(), json!(at.to_rfc3339()));
         }
-        json!({
+        let mut request = json!({
             "scope": scope_path(&self.meta.namespace, self.kind),
             "modality": modality,
             "idempotency_key": crate::cortex::transport::fresh_idempotency_key(),
-            "content": { "kind": "message", "role": role, "text": text },
+            "content": { "kind": "message", "role": role, "text": encoded.text },
             "context": Value::Object(context),
-        })
+        });
+        // Index and embed, derive nothing (no facts, beliefs or concepts)
+        // for an item that opts out, and for a tool's output: raw tool
+        // results are searchable but are not memory about the person.
+        let tool_turn = self
+            .turn
+            .as_ref()
+            .is_some_and(|turn| turn.role == Role::Tool);
+        if self.meta.derive == Some(false) || tool_turn {
+            request["directives"] = json!({ "extract": [] });
+        }
+        request
     }
+}
+
+/// `value` as compact JSON.
+fn json_of(value: &Envelope) -> Result<String> {
+    serde_json::to_string(value)
+        .map_err(|_| Error::Engine("an item envelope could not be serialised".to_string()))
+}
+
+/// `json` cut into numbered part labels of at most [`PART_BYTES`] bytes
+/// each, at char boundaries.
+fn part_labels(json: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = json;
+    while !rest.is_empty() {
+        let mut end = rest.len().min(PART_BYTES);
+        while !rest.is_char_boundary(end) {
+            end -= 1;
+        }
+        out.push(format!("{PART_PREFIX}{:02}:{}", out.len(), &rest[..end]));
+        rest = &rest[end..];
+    }
+    out
 }
 
 /// CortexDB's four-value message role for a turn's speaker.

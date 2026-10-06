@@ -365,14 +365,41 @@ double enforces).
   parent-scope sample.
 - A filter whose `kinds` admits nothing reads no scopes.
 
-## The v2 envelope
+## The envelope (v3, and v2)
 
 A learning is one event; a conversation is one event per turn, appended in
 order. A document is one event unless its envelope would pass 256 KiB; then it
 is one event per piece (see [cortex-chunks.md](cortex-chunks.md)).
-CortexDB's experience schema is closed (an unknown field is
-a 422), so the structured data rides in the one free-form field: the event's
-`content.text` is a JSON **envelope**:
+CortexDB's experience schema is closed (an unknown field is a 422), and its
+`context.labels` are the app-metadata extension point: stored verbatim,
+returned on listings and on recall's `layers.events`, and not counted toward
+the 1 MiB text limit.
+
+**v3 (written now).** An event's `content.text` is the item's own text: the
+document body or piece, the turn's text, or the learning's statement. This is
+what CortexDB extracts from and splits for search at sentence boundaries,
+which a JSON text lacks. Its `context.labels` are, in order:
+
+- the lookup labels (below), `tm:i:` first;
+- readable labels, each at most 256 bytes or left out: `kind:<kind>`,
+  `file:<path>`, and a piece's `page:<n>` or `page:<first>-<last>` and
+  `section:<title>`. Never filtered on; no `lang:` label is ever written
+  (CortexDB reserves it);
+- the **envelope parts**: the envelope below with `"v": 3` and an empty
+  `text`, as compact JSON cut at char boundaries into slices of at most 240
+  bytes, each written `tm:e:<NN>:<slice>`. `NN` is the part's number as a
+  decimal integer, zero-padded to two digits (`00`, `01`, …); an event has
+  at most 64 labels, so there are at most 63 parts. A reader orders parts by
+  that number, never by the label's text, and needs every number from 0 up.
+
+An event whose text is empty (CortexDB requires message text), or whose
+labels would be more than 64, is written as v2 instead.
+
+**v2 (every event before v3).** `content.text` is the whole envelope as JSON,
+with `"v": 2`. Both layouts can live in one scope, and every reader takes
+either: an event whose labels hold envelope parts numbered `0..n` that join to
+a v3 envelope is v3, with its text as the envelope's `text`; otherwise its
+text is tried as a v2 envelope. The envelope:
 
 ```json
 { "v": 2, "id": "<40-hex fingerprint>", "kind": "conversation",
@@ -385,7 +412,7 @@ a 422), so the structured data rides in the one free-form field: the event's
 
 | Field | Present on | Meaning |
 | --- | --- | --- |
-| `v` | every event | always `2`; any other value is ignored |
+| `v` | every event | `3` in envelope parts, `2` in a v2 text; any other value is ignored |
 | `id` | every event | the item id, `StoreItem::fingerprint()` (a content digest) |
 | `kind` | every event | `document`, `conversation` or `learning` |
 | `text` | every event | body, the turn's text, or the learning's statement |
@@ -395,10 +422,10 @@ a 422), so the structured data rides in the one free-form field: the event's
 | `turn` | conversation turns | `index` (0-based), `count`, `role`, `at`, `tool_calls` |
 | `chunk` | pieces of a chunked document only (a document written whole has none) | `index` (0-based), `count`; optional `pages` (`[first, last]`, only when the text marks pages) and `section` (only when the piece starts under a heading) |
 
-Text that is not a v2 envelope is someone else's event and is ignored by
-every reader. Decoding first tries the text as written (`/events` returns it
-as stored), then, failing that, strips a `[role] ` prefix (`/recall` renders
-text for a reader). A document whose body is still an unresolved URI is
+An event that is neither is someone else's and is ignored by every reader. A
+v2 text is first tried as written, then without a leading `[role] ` (an older
+recall rendered one; 0.10.3 and 0.10.4 return the stored text in
+`layers.events`, the marker only in `context_block`). A document whose body is still an unresolved URI is
 refused at write time as `Error::InvalidRequest`.
 
 Rebuilding an item from envelopes: a learning, or a document written whole,
