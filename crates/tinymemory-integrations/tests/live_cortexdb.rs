@@ -439,3 +439,90 @@ async fn a_logged_turn_sent_twice_is_written_once() {
         assert_eq!(report.forgotten, 1);
     }
 }
+
+/// What recall's dropped-pack retry (`engine/recall.rs`) is built on, pinned
+/// against the real server: a forget anywhere, even in an unrelated scope,
+/// drops every pack CortexDB holds, so the next `use_pack_id` answer is a
+/// 404, and a pack built after the forget answers. Direct only: the hosted
+/// wire's answer route sits behind the TinyHumans backend.
+#[tokio::test]
+async fn a_forget_anywhere_drops_every_pack_the_server_holds() {
+    let _alone = ONE_AT_A_TIME.lock().await;
+    let Ok(url) = std::env::var("TINYMEMORY_LIVE_CORTEXDB_URL") else {
+        return;
+    };
+    let url = url.trim_end_matches('/').to_string();
+    let key = std::env::var("TINYMEMORY_TEST_CORTEX_KEY").unwrap_or_else(|_| DEFAULT_KEY.into());
+    let http = reqwest::Client::new();
+    let post = |path: &str, body: serde_json::Value| {
+        http.post(format!("{url}/{path}"))
+            .bearer_auth(&key)
+            .json(&body)
+            .send()
+    };
+    let run = run_id();
+    let (kept, other) = (
+        format!("app:tinymemory-probe/agent:{run}-kept/app:learnings"),
+        format!("app:tinymemory-probe/agent:{run}-other/app:learnings"),
+    );
+    let write = |scope: &str, text: &str| {
+        serde_json::json!({
+            "scope": scope, "modality": "observation", "idempotency_key": format!("{run}-{text}"),
+            "content": { "kind": "message", "role": "user", "text": text },
+        })
+    };
+    let written: serde_json::Value = post(
+        "v1/experience?wait=indexed",
+        write(&other, "to be forgotten"),
+    )
+    .await
+    .expect("write")
+    .json()
+    .await
+    .expect("receipt");
+    post(
+        "v1/experience?wait=indexed",
+        write(&kept, "The office closes at six on Fridays."),
+    )
+    .await
+    .expect("write");
+    let pack = || async {
+        let pack: serde_json::Value = post(
+            "v1/recall",
+            serde_json::json!({ "scope": kept, "query": "office", "view": "granular" }),
+        )
+        .await
+        .expect("recall")
+        .json()
+        .await
+        .expect("pack");
+        pack["pack_id"].as_str().expect("a pack id").to_string()
+    };
+    let answer = |pack_id: String| {
+        post(
+            "v1/answer",
+            serde_json::json!({ "scope": kept, "question": "When does the office close?",
+                                "use_pack_id": pack_id, "answer_instructions": null }),
+        )
+    };
+    let before = pack().await;
+    let forgot = post(
+        "v1/forget",
+        serde_json::json!({ "scope": other, "selector": { "memory_ids": [written["event_id"]] } }),
+    )
+    .await
+    .expect("forget");
+    assert!(forgot.status().is_success(), "{}", forgot.status());
+    let dropped = answer(before).await.expect("answer");
+    assert_eq!(
+        dropped.status(),
+        reqwest::StatusCode::NOT_FOUND,
+        "a forget elsewhere drops the pack"
+    );
+    let fresh = answer(pack().await).await.expect("answer");
+    assert!(
+        fresh.status().is_success(),
+        "a pack built after the forget answers: {}",
+        fresh.status()
+    );
+}

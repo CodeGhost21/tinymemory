@@ -23,8 +23,10 @@
 //! - **Unknown query parameters are ignored, not refused**, so a wrong
 //!   paging parameter re-serves page one for ever. The parameter is exactly
 //!   `cursor`, and a cursor that does not advance is an error.
-//! - **The two read paths return different bytes**: recall prefixes the
-//!   speaker (`[user] {...}`); see `Envelope::decode`.
+//! - **A pack's events carry the stored text.** 0.10.3 and 0.10.4 put the
+//!   `[role] ` marker only in `context_block` and the index copy; an older
+//!   recall prefixed it to `layers.events` text, which the v2 decoder still
+//!   tolerates (see `Envelope::decode`).
 //! - **The forget selector's id field is `memory_ids`.** An unrecognised
 //!   field reads as an *empty* selector, which means the whole scope. This
 //!   crate never sends an empty selector and never sends `confirm_all`.
