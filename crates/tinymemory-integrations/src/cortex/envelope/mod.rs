@@ -62,7 +62,7 @@ use tinymemory_api::{
 
 use crate::cortex::error::{Error, Result};
 
-pub(crate) use rebuild::{Decoded, decode_event, rebuild};
+pub(crate) use rebuild::{Decoded, decode_event, rebuild, rebuild_whole};
 
 /// The TinyMemory root every kind scope sits under.
 pub(crate) const ROOT_SCOPE: &str = "app:tinymemory";

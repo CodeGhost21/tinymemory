@@ -165,6 +165,22 @@ async fn a_store_that_lost_a_piece_writes_only_that_piece_again() {
             .unwrap();
         log.events.remove(last);
     }
+    let got = engine
+        .get(GetRequest {
+            ids: vec![ItemId::new(item.fingerprint())],
+            reach: None,
+        })
+        .await
+        .unwrap();
+    assert!(got.is_empty(), "never a truncated body: {got:?}");
+    let listed = engine
+        .list(ListRequest::new(
+            MetaFilter::kinds([ItemKind::Document]),
+            10,
+        ))
+        .await
+        .unwrap();
+    assert!(listed.items.is_empty(), "never a truncated body");
     let again = engine.store(item.clone()).await.unwrap();
     assert!(!again.replayed, "a piece was missing");
     assert_eq!(events(&state, SCOPE).len(), before, "exactly that piece");

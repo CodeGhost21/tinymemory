@@ -1,5 +1,7 @@
 //! Reading events back into envelopes and envelopes back into items.
 
+use std::collections::HashSet;
+
 use serde_json::Value;
 use tinymemory_api::{DocumentBody, ItemKind, LearningKind, StoreItem, Turn};
 
@@ -73,6 +75,28 @@ pub(crate) fn rebuild(envelopes: &[Envelope]) -> Option<StoreItem> {
             }
         }
     })
+}
+
+/// [`rebuild`] for a read that returns whole items (`get`, `list`): `None`
+/// for a chunked document missing a piece, from a store that failed part-way
+/// (the next store of the item writes the missing ones) or pieces the engine
+/// does not list yet. A `fetch` hit or a `recall` citation is one piece and
+/// uses [`rebuild`].
+pub(crate) fn rebuild_whole(envelopes: &[Envelope]) -> Option<StoreItem> {
+    if let Some(count) = envelopes.iter().find_map(|e| Some(e.chunk.as_ref()?.count)) {
+        let held: HashSet<u32> = envelopes
+            .iter()
+            .filter_map(|envelope| Some(envelope.chunk.as_ref()?.index))
+            .collect();
+        if (0..count).any(|index| !held.contains(&index)) {
+            log::debug!(
+                "[cortex] chunked document {:?} is missing pieces; not returned whole",
+                envelopes[0].id
+            );
+            return None;
+        }
+    }
+    rebuild(envelopes)
 }
 
 /// A document's text from its envelopes: the first one's, or the pieces of

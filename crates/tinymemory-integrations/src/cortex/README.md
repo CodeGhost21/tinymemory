@@ -118,7 +118,7 @@ one event per piece of its body, cut at page breaks and headings and
 packed up to that size (`envelope/chunks.rs`). No event is sent over 768 KiB of
 encoded envelope (CortexDB refuses an experience over 1 MiB); an item that
 cannot fit is refused before anything of its batch is sent. `get` and `list`
-reassemble a chunked document; `fetch` and `recall` give one hit per document,
+reassemble a chunked document, and return it only when every piece is present; `fetch` and `recall` give one hit per document,
 its best-ranked piece, with a `page:<n>` (or `page:<first>-<last>`) tag when the
 document marks its pages and a `section:<title>` tag when the piece starts
 under a heading; a piece with neither carries no extra tag. Each event's

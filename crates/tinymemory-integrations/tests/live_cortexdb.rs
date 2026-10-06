@@ -275,7 +275,13 @@ async fn a_long_document_round_trips_in_pieces() {
             })
             .collect();
         let body = pages.join("\u{c}");
-        assert!(body.len() > 600 * 1024, "{} bytes", body.len());
+        // A document splits once its envelope passes the 256 KiB chunk
+        // target (not the 1 MiB event limit): this one is several pieces.
+        assert!(
+            body.len() > 2 * 256 * 1024,
+            "over twice the chunk target: {} bytes",
+            body.len()
+        );
         let document = StoreItem::Document {
             title: Some("Long contract".into()),
             body: tinymemory_api::DocumentBody::Text(body.clone()),
@@ -295,6 +301,8 @@ async fn a_long_document_round_trips_in_pieces() {
             workspace: Some(workspace.clone()),
             ..MetaFilter::default()
         };
+        // `list` returns a chunked document only once every piece is
+        // listed, so this waits for all of them, not just the first.
         let listed = list_until(&engine, &filter, 1).await;
         assert_eq!(listed.len(), 1, "one item, not one per piece");
         assert_eq!(

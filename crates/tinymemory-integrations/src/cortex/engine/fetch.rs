@@ -82,9 +82,12 @@ pub(super) fn recall_body(scope: &str, query: &str, events: usize, filter: &Meta
     body
 }
 
-/// The most [`whole_items_budget`] asks for: 8 Mi tokens. CortexDB counts
-/// about 3.5 bytes a token, so a pack then holds at most about 28 MiB of
-/// event text, under the 32 MiB request cap.
+/// The most [`whole_items_budget`] asks for: 8 Mi tokens. CortexDB 0.10.4
+/// counts 3 to 3.5 bytes a token (measured: 700,000 bytes of English text
+/// come back whole at 210,000 tokens and are cut at 200,000; 900,000 bytes
+/// of CJK text whole at 300,000; 300,000 random bytes whole at 100,000), so a
+/// pack then holds at most about 24 to 28 MiB of event text, under the
+/// 32 MiB request cap.
 pub(super) const MAX_PACK_TOKENS: usize = 8 * 1024 * 1024;
 
 /// A pack's `budgets.max_tokens` for `items` items: a token per byte of the
@@ -93,10 +96,12 @@ pub(super) const MAX_PACK_TOKENS: usize = 8 * 1024 * 1024;
 /// `budget_excerpt` (0.10.4 API §9.5): a slice of the stored envelope that
 /// no longer decodes, so the hit is lost.
 ///
-/// The budget only stops cutting; `per_layer_limits` still bounds what a
-/// pack holds. A pack of `n` events carries at most `n` × 768 KiB of event
-/// text, and past [`MAX_PACK_TOKENS`] (about 37 events at that size) the
-/// server excerpts again.
+/// A token per byte is at least three times the room an event needs. The
+/// budget only stops cutting; `per_layer_limits` still bounds what a pack
+/// holds. A pack of `n` events carries at most `n` × 768 KiB of event text,
+/// and only past [`MAX_PACK_TOKENS`] (at least 32 events of that size in one
+/// pack, or about 100 at the 256 KiB chunk target) does the server excerpt
+/// again; the pack notes log any excerpt at warn.
 pub(super) fn whole_items_budget(items: usize) -> usize {
     items
         .max(1)

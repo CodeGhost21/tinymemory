@@ -10,7 +10,7 @@ use tinymemory_api::{
 
 use super::CortexEngine;
 use super::scopes::KindScope;
-use crate::cortex::envelope::{Decoded, Envelope, decode_event, labels, rebuild};
+use crate::cortex::envelope::{Decoded, Envelope, decode_event, labels, rebuild, rebuild_whole};
 use crate::cortex::error::Result;
 
 /// The kinds `filter` admits, in the fixed order
@@ -113,7 +113,7 @@ impl CortexEngine {
             }
             for (id, events) in self.item_events(&scope, &ids).await? {
                 let envelopes: Vec<Envelope> = events.into_iter().map(|d| d.envelope).collect();
-                if let Some(item) = rebuild(&envelopes) {
+                if let Some(item) = rebuild_whole(&envelopes) {
                     found.insert(ItemId::new(id.clone()), hit(&id, &item, 0.0));
                 }
             }
@@ -147,7 +147,7 @@ impl CortexEngine {
             let scope = KindScope::new(namespace.clone(), kind);
             for (id, events) in self.item_events(&scope, &ids).await? {
                 let envelopes: Vec<Envelope> = events.into_iter().map(|d| d.envelope).collect();
-                if let Some(item) = rebuild(&envelopes) {
+                if let Some(item) = rebuild_whole(&envelopes) {
                     out.insert(id, item);
                 }
             }

@@ -161,9 +161,12 @@ Response:
   The budget only stops the cutting: `per_layer_limits` still bounds a pack,
   so a pack of `n` events carries at most `n` × 768 KiB of event text (a
   fetch of 5 asks 18 events: at most 13.5 MiB, typically far less). The
-  budget is capped at 8 Mi tokens, about 28 MiB at CortexDB's 3.5 bytes a
-  token; a deeper fetch page past that (about 37 events of the largest size)
-  gets excerpts again, which do not decode.
+  budget is capped at 8 Mi tokens, about 24 to 28 MiB at the 3 to 3.5 bytes
+  a token CortexDB 0.10.4 counts (measured on English, CJK and random text),
+  so a token per byte is at least three times the room an event needs. Only
+  a pack holding more than that (at least 32 events of the largest size, or
+  about 100 at the chunk target) gets excerpts again, which do not decode
+  and are logged at warn (`log/notes.rs`).
 - `temporal` is not sent. `temporal.reference_date` only anchors
   `temporal.natural` (a phrase such as "last 30 days", reduced to a
   capture-time filter) and already defaults to the request time; the field
@@ -384,7 +387,9 @@ its whole envelope. So (`envelope/chunks.rs`):
   (a learning or a conversation turn that long) is `Error::InvalidRequest`.
 - **Identity and replay.** Every piece carries the item's id and label, so
   replay detection, `forget` by id or filter, and `get` see all of them; a
-  store that failed part way writes only the missing pieces.
+  store that failed part way writes only the missing pieces. Until then
+  `get` and `list` do not return the document (never a truncated body);
+  `fetch` and `recall` still hit the pieces that are there.
 - **Reads.** `get` and `list` give the whole document (pieces in index
   order). `fetch` and `recall` give one hit or citation per document, as for
   every item: its best-ranked piece, with the
