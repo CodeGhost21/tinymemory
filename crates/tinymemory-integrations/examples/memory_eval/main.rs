@@ -18,16 +18,28 @@
 //! CORTEX_DB_URL=http://127.0.0.1:3142 CORTEX_DB_KEY=tinymemory-cortex-test \
 //!   cargo run -p tinymemory-integrations --features full --example memory_eval -- \
 //!   --label mock --json target/memory-eval/mock.json
+//!
+//! # Against hosted memory, behind the TinyHumans backend (billed to the
+//! # account the token belongs to; use a test account):
+//! TINYHUMANS_API_URL=https://api.tinyhumans.ai TINYHUMANS_API_KEY=tiny_live_… \
+//!   cargo run -p tinymemory-integrations --features full --example memory_eval -- \
+//!   --engine tinyhumans --llm --json target/memory-eval/hosted.json
 //! ```
 //!
 //! Flags:
 //!
-//! - `--engine reference|cortex`: the default is `cortex` when
-//!   `CORTEX_DB_URL` is set, and `reference` otherwise.
+//! - `--engine reference|cortex|tinyhumans`: the default is `cortex` when
+//!   `CORTEX_DB_URL` is set, and `reference` otherwise. `tinyhumans` reads
+//!   `TINYHUMANS_API_URL` (default: the production backend) and
+//!   `TINYHUMANS_API_KEY` (a session JWT or `tiny_live_` key). Hosted memory
+//!   exposes no admin routes, so the run has no enrichment queue to poll, no
+//!   usage accounting and no derived-layer inspection.
 //! - `--only <scenario>[,<scenario>…]`: run only these scenarios.
 //! - `--enrich-wait <secs>`: the longest to wait for CortexDB's enrichment
 //!   queue (fact extraction) to drain before the belief build (default 600
 //!   against CortexDB, 0 otherwise). With a real model it takes minutes.
+//!   On `tinyhumans`, where the queue cannot be read, it is a plain wait
+//!   (default 60: production derives facts 30–45 s after a write).
 //! - `--json <path>`: write every probe, pack included, as JSON.
 //! - `--label <name>`: name the run in the report.
 //! - `--llm`: also have a model answer every probe from its pack (see
@@ -60,7 +72,9 @@ use tinymemory_api::{
     ConsolidateRequest, ForgetTarget, ListRequest, MemoryEngine, MemoryMeta, Reach, Role,
     StoreItem, Turn,
 };
-use tinymemory_integrations::cortex::{CortexCredential, CortexEngine};
+use tinymemory_integrations::cortex::{
+    CortexCredential, CortexEngine, StaticBearer, TINYHUMANS_API_ENDPOINT,
+};
 use tinymemory_tools::context::{self, Brief, ContextSpec};
 use tinymemory_tools::{
     AgentMemory, BackgroundJob, Brain, BrainDocument, Compaction, ContextPack, JobOutcome,
@@ -72,6 +86,10 @@ use inspect::{Captured, Derived, Inspector, Usage};
 use llm::Llm;
 use scenarios::{MAIN, Probe, Scenario, Step, Via};
 use score::{Latency, ProbeResult, Totals, grade, score};
+
+/// The plain enrichment wait on hosted memory, where the queue cannot be
+/// read: production derives facts 30–45 s after a write.
+const HOSTED_ENRICH_WAIT_SECS: u64 = 60;
 
 type Error = Box<dyn std::error::Error>;
 
@@ -208,11 +226,29 @@ async fn main() -> Result<(), Error> {
             Some(Inspector::new(&url, &key)),
         ),
         "cortex" => return Err("--engine cortex needs CORTEX_DB_URL".into()),
+        "tinyhumans" => {
+            let base = std::env::var("TINYHUMANS_API_URL")
+                .unwrap_or_else(|_| TINYHUMANS_API_ENDPOINT.to_string());
+            let token = std::env::var("TINYHUMANS_API_KEY")
+                .map_err(|_| "--engine tinyhumans needs TINYHUMANS_API_KEY")?;
+            (
+                Arc::new(CortexEngine::tinyhumans(
+                    &base,
+                    Arc::new(StaticBearer::new(token)),
+                )?),
+                None,
+            )
+        }
         other => return Err(format!("unknown engine {other}").into()),
     };
-    let enrich_wait = args
-        .enrich_wait
-        .unwrap_or(if inspector.is_some() { 600 } else { 0 });
+    let hosted = args.engine == "tinyhumans";
+    let enrich_wait = args.enrich_wait.unwrap_or(if inspector.is_some() {
+        600
+    } else if hosted {
+        HOSTED_ENRICH_WAIT_SECS
+    } else {
+        0
+    });
     let llm = if args.llm {
         Some(Llm::from_env()?)
     } else {
@@ -466,6 +502,13 @@ impl Eval {
             let waited = ms(started);
             timings.add("enrichment (queue drained)", waited);
             println!("   enrichment drained in {:.0} s", waited / 1e3);
+        } else if self.enrich_wait > 0 {
+            // No queue to read (hosted): give enrichment its usual lag.
+            tokio::time::sleep(Duration::from_secs(self.enrich_wait)).await;
+            println!(
+                "   waited {} s for enrichment (not observable)",
+                self.enrich_wait
+            );
         }
         for tenant in tenants(scenario) {
             let root = layout(run, scenario.name, tenant)?.root().clone();

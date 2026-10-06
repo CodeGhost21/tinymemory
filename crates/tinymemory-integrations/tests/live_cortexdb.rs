@@ -1,9 +1,16 @@
-//! The `cortexdb` engine against a real CortexDB server.
+//! The CortexDB engines against a real server, on each wire configured:
 //!
-//! Skipped unless `TINYMEMORY_LIVE_CORTEXDB_URL` names one; the harness in
-//! `integration/cortexdb/` boots a pinned server for it, and
-//! `scripts/cortexdb-live.sh` runs this whole file against that harness. The
-//! key defaults to the harness's (`TINYMEMORY_TEST_CORTEX_KEY`).
+//! - `cortexdb` (Direct): when `TINYMEMORY_LIVE_CORTEXDB_URL` names a CortexDB
+//!   server. The harness in `integration/cortexdb/` boots a pinned one, and
+//!   `scripts/cortexdb-live.sh` runs this whole file against it. The key
+//!   defaults to the harness's (`TINYMEMORY_TEST_CORTEX_KEY`).
+//! - `tinyhumans` (hosted, behind the TinyHumans backend): when
+//!   `TINYMEMORY_LIVE_TINYHUMANS_URL` names the backend and
+//!   `TINYMEMORY_TEST_TINYHUMANS_TOKEN` holds a session JWT or `tiny_live_` key
+//!   for a test account. This writes to that account's hosted memory, which
+//!   is billed, and forgets what it wrote.
+//!
+//! With neither set, every test skips.
 //!
 //! Two passes: the shared conformance suite, then the three stores the host
 //! uses (a document, a conversation with a tool call, a learning) read back
@@ -15,12 +22,14 @@
 
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use std::sync::Arc;
 use tinymemory_api::{
     FetchMode, FetchRequest, ForgetTarget, ItemKind, LearningKind, ListRequest, MemoryEngine,
     MemoryMeta, MetaFilter, RecallRequest, Role, SourceKind, SourceRef, StoreItem, ToolCallRef,
     Turn,
 };
-use tinymemory_integrations::cortex::{CortexCredential, CortexEngine};
+
+use tinymemory_integrations::cortex::{CortexCredential, CortexEngine, StaticBearer};
 use tinymemory_tools::context::{ContextSpec, compile};
 
 const DEFAULT_KEY: &str = "tinymemory-cortex-test";
@@ -29,10 +38,33 @@ const DEFAULT_KEY: &str = "tinymemory-cortex-test";
 /// asynchronously, so a write is not visible to the very next read.
 const VISIBILITY: Duration = Duration::from_secs(60);
 
-fn live_engine() -> Option<CortexEngine> {
-    let url = std::env::var("TINYMEMORY_LIVE_CORTEXDB_URL").ok()?;
-    let key = std::env::var("TINYMEMORY_TEST_CORTEX_KEY").unwrap_or_else(|_| DEFAULT_KEY.into());
-    Some(CortexEngine::direct(&url, CortexCredential::api_key(key)).expect("a valid live endpoint"))
+/// Every live engine the environment configures, labelled by wire.
+fn live_engines() -> Vec<(&'static str, CortexEngine)> {
+    let mut engines = Vec::new();
+    if let Ok(url) = std::env::var("TINYMEMORY_LIVE_CORTEXDB_URL") {
+        let key =
+            std::env::var("TINYMEMORY_TEST_CORTEX_KEY").unwrap_or_else(|_| DEFAULT_KEY.into());
+        engines.push((
+            "cortexdb",
+            CortexEngine::direct(&url, CortexCredential::api_key(key))
+                .expect("a valid live CortexDB endpoint"),
+        ));
+    }
+    if let Ok(url) = std::env::var("TINYMEMORY_LIVE_TINYHUMANS_URL") {
+        let token = std::env::var("TINYMEMORY_TEST_TINYHUMANS_TOKEN")
+            .expect("TINYMEMORY_LIVE_TINYHUMANS_URL needs TINYMEMORY_TEST_TINYHUMANS_TOKEN");
+        engines.push((
+            "tinyhumans",
+            CortexEngine::tinyhumans(&url, Arc::new(StaticBearer::new(token)))
+                .expect("a valid live TinyHumans endpoint"),
+        ));
+    }
+    if engines.is_empty() {
+        eprintln!(
+            "neither TINYMEMORY_LIVE_CORTEXDB_URL nor TINYMEMORY_LIVE_TINYHUMANS_URL set; skipping"
+        );
+    }
+    engines
 }
 
 fn run_id() -> String {
@@ -72,21 +104,23 @@ async fn list_until(engine: &CortexEngine, filter: &MetaFilter, want: usize) -> 
 
 #[tokio::test]
 async fn the_live_server_upholds_the_contract() {
-    let Some(engine) = live_engine() else {
-        eprintln!("TINYMEMORY_LIVE_CORTEXDB_URL unset; skipping");
-        return;
-    };
-    tinymemory_api::conformance::run(&engine)
-        .await
-        .expect("the live CortexDB conforms");
+    for (wire, engine) in live_engines() {
+        eprintln!("conformance on {wire}");
+        tinymemory_api::conformance::run(&engine)
+            .await
+            .unwrap_or_else(|error| panic!("the live {wire} engine conforms: {error}"));
+    }
 }
 
 #[tokio::test]
 async fn documents_conversations_and_learnings_round_trip_into_context() {
-    let Some(engine) = live_engine() else {
-        eprintln!("TINYMEMORY_LIVE_CORTEXDB_URL unset; skipping");
-        return;
-    };
+    for (wire, engine) in live_engines() {
+        eprintln!("round trip on {wire}");
+        round_trip(&engine).await;
+    }
+}
+
+async fn round_trip(engine: &CortexEngine) {
     assert!(engine.health().await.is_serving(), "the server is serving");
     let workspace = run_id();
 
@@ -148,17 +182,17 @@ async fn documents_conversations_and_learnings_round_trip_into_context() {
         kinds: vec![kind],
         ..MetaFilter::default()
     };
-    let docs = list_until(&engine, &by_kind(ItemKind::Document), 1).await;
+    let docs = list_until(engine, &by_kind(ItemKind::Document), 1).await;
     assert_eq!(docs.len(), 1, "the document lists back: {docs:?}");
     assert!(docs[0].contains("Project Aurora"));
-    let convs = list_until(&engine, &by_kind(ItemKind::Conversation), 1).await;
+    let convs = list_until(engine, &by_kind(ItemKind::Conversation), 1).await;
     assert_eq!(convs.len(), 1, "the conversation lists back: {convs:?}");
     assert!(
         convs[0].contains("calendar_create (call-1)"),
         "the tool call stays visible: {}",
         convs[0]
     );
-    let learns = list_until(&engine, &by_kind(ItemKind::Learning), 1).await;
+    let learns = list_until(engine, &by_kind(ItemKind::Learning), 1).await;
     assert_eq!(learns.len(), 1, "the learning lists back: {learns:?}");
 
     // Metadata filters narrow server-side and client-side alike.
@@ -167,13 +201,13 @@ async fn documents_conversations_and_learnings_round_trip_into_context() {
         file_path: Some("/notes/aurora.md".into()),
         ..MetaFilter::default()
     };
-    assert_eq!(list_until(&engine, &by_file, 1).await.len(), 1);
+    assert_eq!(list_until(engine, &by_file, 1).await.len(), 1);
     let by_tool = MetaFilter {
         workspace: Some(workspace.clone()),
         tool_call: Some("memory".into()),
         ..MetaFilter::default()
     };
-    assert_eq!(list_until(&engine, &by_tool, 1).await.len(), 1);
+    assert_eq!(list_until(engine, &by_tool, 1).await.len(), 1);
 
     // Fetch: hybrid search over the run's items finds the document.
     let mut fetch = FetchRequest::new("When does Project Aurora launch?", FetchMode::Hybrid, 10);
@@ -199,10 +233,10 @@ async fn documents_conversations_and_learnings_round_trip_into_context() {
     assert!(!answer.citations.is_empty(), "recall cites its evidence");
 
     // context.md: compiled from the same engine, it lists the learning.
-    let context = compile(&engine, &ContextSpec::default())
+    let context = compile(engine, &ContextSpec::default())
         .await
         .expect("compile context");
-    assert_eq!(context.engine, "cortexdb");
+    assert_eq!(context.engine, engine.descriptor().id);
     assert!(
         context
             .markdown
