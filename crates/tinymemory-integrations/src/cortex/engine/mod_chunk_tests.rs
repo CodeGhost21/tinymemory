@@ -323,6 +323,10 @@ async fn a_long_document_without_pages_or_headings_gets_no_extra_tags() {
     assert!(!page.hits.is_empty());
     for hit in &page.hits {
         assert!(hit.meta.tags.is_empty(), "{:?}", hit.meta.tags);
-        assert!(body.contains(&hit.text) || hit.text.len() < body.len());
+        assert!(
+            body.contains(&hit.text),
+            "a hit is a piece of the body: {:?}",
+            &hit.text[..hit.text.len().min(80)]
+        );
     }
 }

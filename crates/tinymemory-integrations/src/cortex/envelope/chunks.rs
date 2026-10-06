@@ -97,7 +97,7 @@ pub(crate) fn split(
         return Some(vec![Piece {
             text,
             pages: paged.then(|| (1, page_count(text))),
-            section: None,
+            section: units(text).into_iter().next().and_then(|unit| unit.section),
         }]);
     }
     let mut pieces: Vec<Piece<'_>> = Vec::new();
@@ -153,7 +153,9 @@ impl Open {
 
 /// The units of `text`: one per page, cut again before every heading line.
 /// A stretch holding only whitespace and page breaks is never a unit of its
-/// own; it joins the unit that follows.
+/// own: it joins the unit that follows, or, at the end of the text, the one
+/// before. A text that is nothing but such a stretch is one unit, so every
+/// byte of the text is in exactly one unit.
 fn units(text: &str) -> Vec<Unit> {
     let mut units = Vec::new();
     let mut page = 1;
@@ -192,12 +194,15 @@ fn units(text: &str) -> Vec<Unit> {
         }
     }
     if start < text.len() {
-        units.push(Unit {
-            start,
-            end: text.len(),
-            page: start_page,
-            section,
-        });
+        match units.last_mut() {
+            Some(last) if blank(&text[start..]) => last.end = text.len(),
+            _ => units.push(Unit {
+                start,
+                end: text.len(),
+                page: start_page,
+                section,
+            }),
+        }
     }
     units
 }

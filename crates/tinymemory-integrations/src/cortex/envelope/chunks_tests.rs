@@ -179,3 +179,26 @@ fn metadata_over_the_target_packs_up_to_the_limit_not_a_few_bytes() {
         assert!(escaped_len(piece.text) > 1_000, "not a few bytes per piece");
     }
 }
+
+#[test]
+fn blank_stretches_are_kept_and_never_a_piece_of_their_own() {
+    for text in ["   ", "\u{c}", "\n\u{c}\n"] {
+        let each = pieces(text, 0, 10_000);
+        assert_eq!(each.len(), 1, "a blank-only text is one piece: {text:?}");
+    }
+    for text in ["  # Heading\nbody", "\n# Heading\nbody"] {
+        let each = pieces(text, 0, 10_000);
+        assert_eq!(each.len(), 1, "{each:?}");
+        assert_eq!(each[0].section.as_deref(), Some("Heading"));
+    }
+    let trailing = pieces("a\u{c}", 0, 10_000);
+    assert_eq!(trailing.len(), 1, "a trailing break joins the unit before");
+    assert_eq!(trailing[0].text, "a\u{c}");
+}
+
+#[test]
+fn a_text_that_fits_keeps_the_section_it_starts_in() {
+    let one = pieces("# Heading\nbody", 1_000, 10_000);
+    assert_eq!(one.len(), 1);
+    assert_eq!(one[0].section.as_deref(), Some("Heading"));
+}

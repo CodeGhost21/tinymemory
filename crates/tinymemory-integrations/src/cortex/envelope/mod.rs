@@ -26,8 +26,8 @@
 //! A learning is one event. A conversation is one event per turn, appended
 //! in order. A document is one event, or, when its envelope would be too big
 //! for one, one event per piece of its body ([`chunks`]), appended in order;
-//! each piece carries its index, and the pages and section it covers, and
-//! the pieces concatenate back to the body.
+//! each piece carries its index and, when available, the page range and
+//! section it covers, and the pieces concatenate back to the body.
 //!
 //! No event is sent whose encoded envelope is over
 //! [`chunks::MAX_EVENT_TEXT_BYTES`] ([`Envelope::encode_checked`]): CortexDB
@@ -242,17 +242,15 @@ impl Envelope {
                     // is written whole if it fits, and refused here if not,
                     // never cut into pieces that would each be over the limit.
                     whole.text.clone_from(text);
-                    let size = whole.encode()?.len();
-                    if size > chunks::MAX_EVENT_TEXT_BYTES {
-                        return Err(Error::InvalidRequest(format!(
-                            "a document event would be {size} bytes and its metadata leaves no \
-                             room to split it; CortexDB refuses an event over 1 MiB"
-                        )));
-                    }
+                    whole.encode_checked()?;
                     return Ok(vec![whole]);
                 };
                 if pieces.len() <= 1 {
+                    // One piece fits under the limit with a chunk field, so
+                    // the whole envelope (which has none) does too; checked
+                    // all the same, as every envelope this returns is.
                     whole.text.clone_from(text);
+                    whole.encode_checked()?;
                     return Ok(vec![whole]);
                 }
                 let count = u32::try_from(pieces.len()).map_err(|_| {
