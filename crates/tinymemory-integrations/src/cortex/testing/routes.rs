@@ -297,6 +297,9 @@ async fn answer(
     if body["use_pack_id"].as_str() != Some("pack_test") {
         return fail(&state, 400, "MISSING_PACK");
     }
+    if take_one(&state.expire_packs) {
+        return fail(&state, 404, "NOT_FOUND");
+    }
     ok(
         &state,
         200,

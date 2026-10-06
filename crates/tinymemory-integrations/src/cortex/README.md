@@ -178,7 +178,9 @@ as prefixes, so they cannot be labelled and are filtered only client-side.
   scopes, or, for an unscoped read, every kind scope the engine holds. With
   nothing to read the answer is empty and nothing is sent. The answer comes
   from the pack holding the most admitted events. The answer route is
-  called **once** with `use_pack_id`. Hosted omits a null
+  called **once** with `use_pack_id` (again, after every pack is built
+  anew, when the packs were dropped in between, up to three rounds:
+  CortexDB drops every pack on any forget). Hosted omits a null
   `answer_instructions`, because its schema is strict; Direct sends `null`.
   Citations come from the packs' decoded events, filtered (reach included),
   merged rank by rank (the most specific node's first), one per item, capped

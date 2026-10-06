@@ -98,6 +98,14 @@ async fn a_built_scope_s_beliefs_are_read_with_and_without_a_query() {
     let belief_pack = state.seen.lock().unwrap().recalls.last().cloned().unwrap();
     assert_eq!(belief_pack["include"], json!(["beliefs"]));
     assert_eq!(belief_pack["view"], "granular");
+    let asked = belief_pack["budgets"]["per_layer_limits"]["beliefs"]
+        .as_u64()
+        .unwrap();
+    assert_eq!(
+        belief_pack["budgets"]["max_tokens"].as_u64(),
+        Some(asked * crate::cortex::envelope::chunks::MAX_EVENT_TEXT_BYTES as u64),
+        "room for each belief asked for"
+    );
     assert_eq!(ranked[0].meta.namespace, node);
     let listed = engine
         .beliefs(BeliefsRequest::new(Reach::exact(node), 5))
