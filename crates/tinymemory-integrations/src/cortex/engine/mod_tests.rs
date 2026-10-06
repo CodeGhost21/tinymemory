@@ -3,7 +3,7 @@
 use super::*;
 use crate::cortex::testing::{both, direct_engine, sample_items as items};
 use std::sync::atomic::Ordering;
-use tinymemory_api::{FetchMode, ItemKind, MemoryMeta, MetaFilter};
+use tinymemory_api::{FetchMode, ItemKind, MemoryMeta, MetaFilter, Namespace, Reach};
 
 #[tokio::test]
 async fn every_kind_round_trips_through_store_list_fetch_and_forget() {
@@ -169,7 +169,7 @@ async fn forget_by_filter_removes_only_what_matches() {
 }
 
 #[tokio::test]
-async fn recall_answers_once_from_one_pack_with_filtered_citations() {
+async fn an_unscoped_recall_packs_each_held_scope_exactly_and_answers_once() {
     for (engine, state) in both().await {
         for item in items() {
             engine.store(item).await.unwrap();
@@ -188,9 +188,29 @@ async fn recall_answers_once_from_one_pack_with_filtered_citations() {
                 .all(|c| c.kind != ItemKind::Document && c.score.is_none())
         );
         let seen = state.seen.lock().unwrap();
-        assert_eq!(seen.recalls.len(), 1, "one pack");
-        assert_eq!(seen.recalls[0]["scope"], "app:tinymemory");
-        assert_eq!(seen.recalls[0]["view"], "descend");
+        let mut scopes: Vec<&str> = seen
+            .recalls
+            .iter()
+            .map(|body| body["scope"].as_str().unwrap())
+            .collect();
+        scopes.sort_unstable();
+        assert_eq!(
+            scopes,
+            [
+                "app:tinymemory/app:conversations",
+                "app:tinymemory/app:learnings",
+            ],
+            "one pack per held scope of the admitted kinds, never the root"
+        );
+        for body in &seen.recalls {
+            assert_eq!(body["view"], "granular", "{body}");
+            assert_eq!(
+                body["include"],
+                serde_json::json!(["events", "facts", "beliefs", "episodes", "understanding"])
+            );
+            assert!(body["budgets"].get("max_tokens").is_none(), "{body}");
+            assert!(body.get("temporal").is_none(), "{body}");
+        }
         assert_eq!(seen.answers.len(), 1, "one answer");
         assert_eq!(seen.answers[0]["use_pack_id"], "pack_test");
     }
@@ -200,7 +220,10 @@ async fn recall_answers_once_from_one_pack_with_filtered_citations() {
 async fn recall_over_one_kind_uses_that_kind_scope() {
     for (engine, state) in both().await {
         let mut req = RecallRequest::new("anything", 3);
-        req.filter = MetaFilter::kinds([ItemKind::Document]);
+        req.filter = MetaFilter {
+            reach: Some(Reach::exact(Namespace::ROOT)),
+            ..MetaFilter::kinds([ItemKind::Document])
+        };
         let answer = engine.recall(req).await.unwrap();
         assert!(
             answer.citations.is_empty(),
@@ -208,8 +231,24 @@ async fn recall_over_one_kind_uses_that_kind_scope() {
         );
         assert!(!answer.answer.is_empty());
         let seen = state.seen.lock().unwrap();
+        assert_eq!(seen.recalls.len(), 1);
         assert_eq!(seen.recalls[0]["scope"], "app:tinymemory/app:documents");
-        assert!(seen.recalls[0].get("view").is_none());
+        assert_eq!(seen.recalls[0]["view"], "granular");
+    }
+}
+
+#[tokio::test]
+async fn an_unscoped_recall_with_nothing_held_answers_empty_without_a_pack() {
+    for (engine, state) in both().await {
+        let answer = engine
+            .recall(RecallRequest::new("anything", 3))
+            .await
+            .unwrap();
+        assert!(answer.answer.is_empty() && answer.citations.is_empty());
+        assert_eq!(answer.model, None);
+        let seen = state.seen.lock().unwrap();
+        assert!(seen.recalls.is_empty(), "{:?}", seen.recalls);
+        assert!(seen.answers.is_empty());
     }
 }
 
@@ -238,10 +277,12 @@ async fn a_pack_without_a_pack_id_or_answer_text_is_an_engine_error() {
         post(|| async { Json(serde_json::json!({ "layers": {} })) }),
     );
     let endpoint = crate::cortex::testing::serve(app).await;
-    let error = direct_engine(&endpoint)
-        .recall(RecallRequest::new("q", 1))
-        .await
-        .unwrap_err();
+    let mut req = RecallRequest::new("q", 1);
+    req.filter = MetaFilter {
+        reach: Some(Reach::exact(Namespace::ROOT)),
+        ..MetaFilter::kinds([ItemKind::Document])
+    };
+    let error = direct_engine(&endpoint).recall(req).await.unwrap_err();
     assert!(matches!(error, Error::Engine(_)), "{error:?}");
 }
 

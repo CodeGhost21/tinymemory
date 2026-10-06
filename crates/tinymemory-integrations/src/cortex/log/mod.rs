@@ -33,6 +33,7 @@
 //! takes an `Idempotency-Key` claim on every write (see `write`).
 
 mod forget;
+mod notes;
 mod read;
 mod visibility;
 mod write;

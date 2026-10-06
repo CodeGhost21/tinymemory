@@ -24,7 +24,7 @@ serde_json = { version = "1", optional = true }
 # The typed errors of `documents`, `sources` and `import`.
 thiserror = { version = "2", optional = true }
 # Diagnostics: a skipped source item, a dropped Slack message, a scrubbing
-# decision.
+# decision, a CortexDB recall pack's warnings and knapsack evictions.
 log = { version = "0.4", optional = true }
 
 # --- brain ---
@@ -109,7 +109,7 @@ default = ["cortex"]
 # `cortex::CortexEngine` over both wires (`cortexdb` direct `/v1/*`, and
 # `tinyhumans` behind the TinyHumans backend `/memory/*`), plus `registry`
 # (`list_engines`, `build_engine`) and `config` (`MemoryConfig`).
-cortex = ["dep:async-trait", "dep:serde", "dep:serde_json", "dep:reqwest", "dep:tokio", "dep:futures", "dep:sha2"]
+cortex = ["dep:async-trait", "dep:serde", "dep:serde_json", "dep:reqwest", "dep:tokio", "dep:futures", "dep:sha2", "dep:log"]
 # `documents`: format sniffing and conversion to markdown, emitting
 # `StoreItem::Document`. Does no I/O.
 documents = ["dep:async-trait", "dep:serde", "dep:serde_json", "dep:thiserror"]

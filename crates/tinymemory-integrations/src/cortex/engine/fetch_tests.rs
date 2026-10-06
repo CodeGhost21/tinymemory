@@ -72,3 +72,23 @@ fn a_labelled_filter_narrows_the_recall_body() {
             .is_none()
     );
 }
+
+#[test]
+fn a_recall_body_reads_one_scope_exactly_and_funds_events_first() {
+    assert_eq!(
+        recall_body(
+            "app:tinymemory/app:documents",
+            "refunds",
+            6,
+            &MetaFilter::default()
+        ),
+        json!({
+            "scope": "app:tinymemory/app:documents",
+            "query": "refunds",
+            "view": "granular",
+            "include": ["events"],
+            "budgets": { "per_layer_limits": { "events": 6 } },
+        }),
+        "exact scope, events funded first, no max_tokens and no temporal"
+    );
+}

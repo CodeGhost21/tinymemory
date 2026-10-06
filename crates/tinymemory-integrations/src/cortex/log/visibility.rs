@@ -94,7 +94,12 @@ impl Log {
     /// Waits, best-effort, until ranked recall returns `event_id`.
     async fn await_settled(&self, scope: &str, event_id: &str, text: &str) {
         let query: String = text.chars().take(SETTLE_QUERY_CHARS).collect();
-        let body = json!({ "scope": scope, "query": query });
+        let body = json!({
+            "scope": scope,
+            "query": query,
+            "view": "granular",
+            "include": ["events"],
+        });
         let deadline = tokio::time::Instant::now() + self.timing.settle;
         let mut delay = self.timing.poll;
         while tokio::time::Instant::now() < deadline {

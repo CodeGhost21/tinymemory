@@ -84,9 +84,10 @@ The hosted backend also re-roots every scope under the caller's tenant.
 `MetaFilter.kinds` and `MetaFilter.reach` pick the scopes read: a reach's own
 node and inherited ancestors are known; a subtree reach or an unscoped read
 discovers the nodes below from the registered scopes (`v1/scopes/list`,
-`memory/scopes`). Every read names its scopes exactly; server-side traversal
-(`view: "descend"`) is used only for an unscoped multi-scope recall, so one
-agent's read never reaches a sibling's scope.
+`memory/scopes`). Every read names its scopes exactly: each recall pack is
+`view: "granular"` over one scope (CortexDB's public recall defaults to
+`holistic`, which also reads ancestors and descendants), so one agent's read
+never reaches a sibling's scope and no read is ever a parent-scope sample.
 
 Namespace segments use CortexDB's built-in `agent`, `team`, `user`, `ws` and
 `project` types, and the root and kind segments its `app` type. From v0.10 a
@@ -158,14 +159,15 @@ as prefixes, so they cannot be labelled and are filtered only client-side.
   interleaved rank by rank. The score is `1/(1+rank)`, because CortexDB
   reports none. The cursor is an offset into the merged ranking; the next page
   asks again with a larger budget, capped at 1000 events.
-- **Recall.** One scope read: one pack over it. An unscoped read over several
-  scopes: one pack over `app:tinymemory` with `view: "descend"`. A reach over
-  several scopes: one pack per scope (four at a time), exact, and the answer
-  comes from the pack holding the most admitted events. The answer route is
+- **Recall.** One pack per scope read (four at a time), exact: a reach's
+  scopes, or, for an unscoped read, every kind scope the engine holds. With
+  nothing to read the answer is empty and nothing is sent. The answer comes
+  from the pack holding the most admitted events. The answer route is
   called **once** with `use_pack_id`. Hosted omits a null
   `answer_instructions`, because its schema is strict; Direct sends `null`.
   Citations come from the packs' decoded events, filtered (reach included),
-  one per item, the most specific node's first, capped at `limit`, with
+  merged rank by rank (the most specific node's first), one per item, capped
+  at `limit`, with
   `score: None`. `model` is `diagnostics.answer_model`.
 - **Get.** Overridden: by the items' id labels, one lookup per scope read,
   rather than a scan.
