@@ -124,7 +124,9 @@ document marks its pages and a `section:<title>` tag when the piece starts
 under a heading; a piece with neither carries no extra tag. Each event's
 `content.text` is the item's own text (the body or piece, the turn's text, or
 the statement), and the rest of its envelope rides in `context.labels` as
-`tm:e:<NN>:` parts of at most 240 bytes of JSON (v3):
+`tm:e:<NN>:` parts of at most 240 bytes of JSON (v3). The parts carry the
+envelope with `text` left empty, because the text is the event's
+`content.text`; joined, they read:
 
 ```json
 { "v": 3, "id": "<40-hex fingerprint>", "kind": "conversation", "text": "",
