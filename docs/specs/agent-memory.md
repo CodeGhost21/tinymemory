@@ -184,7 +184,10 @@ skipped, engine }`.
   - `ingest` and `ingest_with(WaitFor)` store a `BrainDocument` at its
     source's node. The source kind defaults from the `BrainSource`.
   - `ingest_many` batches by `MAX_STORE_MANY`.
-  - Each ingest returns the `BuildBeliefs` job for its source scope.
+  - Each ingest returns the `BuildBeliefs` job for its source scope, and
+    `ingest_many` one per source touched; on an engine that declares
+    `Automatic` neither returns any (`Ingested::job` is `None`, `jobs` is
+    empty), and `Brain::build` asks for one explicitly.
 - **`Brain::search`** fetches within one source or across the whole brain,
   and **`Brain::forget`** erases one source.
 - **`BackgroundJob`** is `BuildBeliefs { request }` or

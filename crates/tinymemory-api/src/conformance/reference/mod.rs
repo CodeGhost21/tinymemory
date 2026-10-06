@@ -59,10 +59,12 @@ impl ReferenceEngine {
         }
     }
 
-    /// The same engine, declaring `consolidation`. Its builds run either
-    /// way, so it serves a host test of how a lifecycle treats an engine
-    /// that declares [`Consolidation::Automatic`]; the conformance suite
-    /// holds it to whatever it declares.
+    /// The same engine, declaring `consolidation`, and consolidating as it
+    /// declares: [`Consolidation::OnDemand`] and [`Consolidation::Automatic`]
+    /// build at once, [`Consolidation::Scheduled`] only acknowledges, and
+    /// [`Consolidation::None`] refuses. For a host test of how a lifecycle
+    /// treats each kind of engine; the conformance suite holds it to what
+    /// it declares.
     #[must_use]
     pub fn with_consolidation(mut self, consolidation: Consolidation) -> Self {
         self.descriptor.consolidation = consolidation;
@@ -216,9 +218,21 @@ impl MemoryEngine for ReferenceEngine {
     }
 
     /// Distils one belief per admitted document or conversation, at once:
-    /// the build is [`ConsolidateStatus::Completed`] on return.
+    /// the build is [`ConsolidateStatus::Completed`] on return. It answers as
+    /// it declares ([`ReferenceEngine::with_consolidation`]): no
+    /// consolidation refuses, a scheduled one only acknowledges.
     async fn consolidate(&self, req: ConsolidateRequest) -> Result<ConsolidateReceipt> {
         req.validate()?;
+        match self.descriptor.consolidation {
+            Consolidation::None => {
+                return Err(Error::Unsupported(format!(
+                    "engine `{}` does not consolidate memory",
+                    self.descriptor.id
+                )));
+            }
+            Consolidation::Scheduled => return Ok(ConsolidateReceipt::scheduled()),
+            Consolidation::OnDemand | Consolidation::Automatic => {}
+        }
         let mut items = self.items()?;
         let beliefs = distil::distil(&items, &req);
         let mut nodes: Vec<&crate::Namespace> = Vec::new();

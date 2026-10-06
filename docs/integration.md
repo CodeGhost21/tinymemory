@@ -180,7 +180,7 @@ let brain = Brain::new(engine.clone(), layout.clone());
 let ingested = brain
     .ingest(BrainDocument::new(BrainSource::Notion, text).titled("Refund policy"))
     .await?;
-queue.push(ingested.job);                                // build this source's beliefs later
+queue.extend(ingested.job);                              // build this source's beliefs later (none on an `Automatic` engine)
 
 // A file: converted, its source picked from the format (PDF → pdf, md → markdown).
 let document = brain_document(&converters, &raw, None, MemoryMeta::default()).await?;
