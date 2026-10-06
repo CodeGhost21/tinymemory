@@ -59,10 +59,19 @@ impl ReferenceEngine {
         }
     }
 
-    /// The same engine, declaring `consolidation`, and consolidating as it
-    /// declares: [`Consolidation::OnDemand`] and [`Consolidation::Automatic`]
-    /// build at once, [`Consolidation::Scheduled`] only acknowledges, and
-    /// [`Consolidation::None`] refuses. For a host test of how a lifecycle
+    /// The same engine, declaring `consolidation`, and answering
+    /// [`MemoryEngine::consolidate`] as it declares:
+    /// [`Consolidation::OnDemand`] and [`Consolidation::Automatic`] build at
+    /// once, [`Consolidation::Scheduled`] only acknowledges, and
+    /// [`Consolidation::None`] refuses.
+    ///
+    /// This in-memory engine has no background builder: declared
+    /// [`Consolidation::Automatic`], it builds only when asked. That is what
+    /// a host test of the lifecycle needs (an `Automatic` engine is handed no
+    /// build jobs, and an explicit build still runs). Building on every write
+    /// would not model CortexDB either: the reference engine keeps beliefs as
+    /// ordinary learning items, so they would appear in every read, where
+    /// CortexDB keeps them in a separate layer. For a host test of how a lifecycle
     /// treats each kind of engine; the conformance suite holds it to what
     /// it declares.
     #[must_use]

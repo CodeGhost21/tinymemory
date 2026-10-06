@@ -240,6 +240,47 @@ async fn live_core_scope_recall_and_promotion_respect_tenant_boundaries() {
     }
 }
 
+/// Polls CortexDB's `v1/derivation/status` for `scope` until its last build
+/// is no older than its last write: the server's own scheduler caught up
+/// with the writes, with no build requested. `false` if that never happens
+/// within a few minutes.
+async fn built_after_last_write(url: &str, key: &str, scope: &str) -> bool {
+    use tinymemory_api::chrono::{DateTime, FixedOffset};
+    let parse = |value: &serde_json::Value| -> Option<DateTime<FixedOffset>> {
+        DateTime::parse_from_rfc3339(value.as_str()?).ok()
+    };
+    let client = reqwest::Client::new();
+    let endpoint = format!("{}/v1/derivation/status", url.trim_end_matches('/'));
+    let deadline = Instant::now() + Duration::from_secs(240);
+    loop {
+        let status: Option<serde_json::Value> = match client
+            .get(&endpoint)
+            .query(&[("scope", scope)])
+            .bearer_auth(key)
+            .send()
+            .await
+        {
+            Ok(response) => response.json().await.ok(),
+            Err(_) => None,
+        };
+        if let Some(status) = &status {
+            let wrote = parse(&status["last_write_at"]);
+            let built = parse(&status["last_built_at"]);
+            if let (Some(wrote), Some(built)) = (wrote, built)
+                && built >= wrote
+            {
+                eprintln!("derivation status: {status}");
+                return true;
+            }
+        }
+        if Instant::now() >= deadline {
+            eprintln!("derivation status at the deadline: {status:?}");
+            return false;
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
+
 #[tokio::test]
 async fn live_an_automatic_engine_queues_no_builds_but_still_builds_on_request() {
     let Ok(url) = std::env::var("TINYMEMORY_LIVE_CORTEXDB_URL") else {
@@ -250,11 +291,11 @@ async fn live_an_automatic_engine_queues_no_builds_but_still_builds_on_request()
     // A self-hosted server that runs its own layer scheduler, declared so in
     // the config, as a host would.
     let settings = EngineSettings {
-        endpoint: Some(url),
+        endpoint: Some(url.clone()),
         consolidation: Some(Consolidation::Automatic),
         ..EngineSettings::default()
     };
-    let engine = build_engine("cortexdb", &settings, EngineCredential::Static(key))
+    let engine = build_engine("cortexdb", &settings, EngineCredential::Static(key.clone()))
         .expect("a valid live engine");
     assert_eq!(engine.descriptor().consolidation, Consolidation::Automatic);
 
@@ -280,6 +321,14 @@ async fn live_an_automatic_engine_queues_no_builds_but_still_builds_on_request()
     assert_eq!(
         ingested.job, None,
         "an automatic engine gets no ingest build"
+    );
+
+    // Nothing asked for a build, yet the server rebuilds the written scope on
+    // its own (the harness runs the layer scheduler: `CORTEX_V1_LAYERS_AUTO`).
+    let scope = format!("app:tinymemory/project:live-auto-{nanos}/source:markdown/app:documents");
+    assert!(
+        built_after_last_write(&url, &key, &scope).await,
+        "the server never rebuilt `{scope}` after the write on its own"
     );
 
     let support = AgentMemory::new(engine.clone(), layout.clone(), "support-01")
