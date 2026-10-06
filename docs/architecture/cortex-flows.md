@@ -169,6 +169,12 @@ cites from the pack.
    included).
 4. The answer comes from the pack holding the **most admitted events**, the
    most specific node on a tie. A missing `pack_id` is `Error::Engine`.
+   `/v1/answer` takes one `use_pack_id` (its scope must match), so the
+   **answer text is grounded on that one pack, while the citations (step 6)
+   come from every pack**. The parent-scope pack this replaced was an
+   unranked storage-order sample, so no coverage was lost; grounding the
+   answer on every scope waits for CortexDB's ranked `subtree` lane to be on
+   by default.
 5. Ask the answer route with that pack's scope and `use_pack_id`. A response
    without `answer` text is `Error::Engine`. `model` is
    `diagnostics.answer_model`.

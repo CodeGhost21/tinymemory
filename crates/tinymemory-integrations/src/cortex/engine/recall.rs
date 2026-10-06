@@ -11,7 +11,13 @@
 //!
 //! The answer route is asked once with `use_pack_id`, so it answers from
 //! exactly the evidence that pack holds: with several packs, the one holding
-//! the most admitted events, the most specific node on a tie.
+//! the most admitted events, the most specific node on a tie. **The answer
+//! text is grounded on that one pack, while the citations come from every
+//! pack.** CortexDB's `/v1/answer` takes one `use_pack_id`, whose scope must
+//! match the request's; it has no multi-pack context. The parent-scope pack
+//! this replaced was a storage-order sample of the children, so no coverage
+//! was lost. Grounding the answer on every scope waits for CortexDB's ranked
+//! `subtree` lane (experimental and off by default in 0.10.4).
 //!
 //! Citations come from the packs' `layers.events`, decoded back to items,
 //! filtered by the full [`tinymemory_api::MetaFilter`] (reach included), and
