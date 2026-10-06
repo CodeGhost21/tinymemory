@@ -102,8 +102,16 @@ async fn list_until(engine: &CortexEngine, filter: &MetaFilter, want: usize) -> 
     }
 }
 
+/// Held by each live test for its whole run, so they reach the server one
+/// at a time. Run together, one test's forgets drop the packs another is
+/// about to answer from, and load the server enough that forgetting a long
+/// document (seconds per ~240 KiB event on 0.10.4) outlasts the request
+/// timeout.
+static ONE_AT_A_TIME: futures::lock::Mutex<()> = futures::lock::Mutex::new(());
+
 #[tokio::test]
 async fn the_live_server_upholds_the_contract() {
+    let _alone = ONE_AT_A_TIME.lock().await;
     for (wire, engine) in live_engines() {
         eprintln!("conformance on {wire}");
         tinymemory_api::conformance::run(&engine)
@@ -114,6 +122,7 @@ async fn the_live_server_upholds_the_contract() {
 
 #[tokio::test]
 async fn documents_conversations_and_learnings_round_trip_into_context() {
+    let _alone = ONE_AT_A_TIME.lock().await;
     for (wire, engine) in live_engines() {
         eprintln!("round trip on {wire}");
         round_trip(&engine).await;
@@ -264,10 +273,11 @@ async fn round_trip(engine: &CortexEngine) {
 /// section, and `forget` removes every piece.
 #[tokio::test]
 async fn a_long_document_round_trips_in_pieces() {
+    let _alone = ONE_AT_A_TIME.lock().await;
     for (wire, engine) in live_engines() {
         eprintln!("long document on {wire}");
         let workspace = format!("ws-long-{}", run_id());
-        let pages: Vec<String> = (1..=12)
+        let pages: Vec<String> = (1..=24)
             .map(|page| {
                 let filler =
                     format!("Clause {page} covers refunds and delivery terms. ").repeat(600);
@@ -276,14 +286,14 @@ async fn a_long_document_round_trips_in_pieces() {
             .collect();
         let body = pages.join("\u{c}");
         // A document splits once its envelope passes the 256 KiB chunk
-        // target (not the 1 MiB event limit): this one is two pieces. It is
-        // kept that small because CortexDB 0.10.4 takes seconds to forget a
-        // ~240 KiB event (8 to 13 s measured), and a bigger document's
-        // forget outlasts the 60 s request timeout while the other live
-        // tests load the server.
+        // target (not the 1 MiB event limit): this one is three pieces, so
+        // two boundaries are crossed. It stays under 1 MiB because CortexDB
+        // 0.10.4 takes seconds to forget a ~240 KiB event (8 to 13 s
+        // measured), and a longer document's forget can outlast the 60 s
+        // request timeout.
         assert!(
-            body.len() > 256 * 1024,
-            "over the chunk target: {} bytes",
+            body.len() > 2 * 256 * 1024,
+            "over twice the chunk target: {} bytes",
             body.len()
         );
         let document = StoreItem::Document {
