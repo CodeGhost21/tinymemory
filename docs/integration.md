@@ -86,7 +86,7 @@ the `EngineCredential`'s alone.
 
 | Engine id | Where it runs | Consolidation (belief builds) |
 | --- | --- | --- |
-| `cortexdb` | a CortexDB server, `v1/*` routes | on demand: `v1/beliefs/build`, built within the request |
+| `cortexdb` | a CortexDB server, `v1/*` routes | automatic on the managed API (`api-v1.cortexdb.ai`), on demand elsewhere: `v1/beliefs/build`, built within the request; `EngineSettings::consolidation` overrides |
 | `tinyhumans` | the hosted TinyHumans backend, `memory/*` routes | on the server's own schedule |
 | `ReferenceEngine` | in process (tests) | on demand, a deterministic toy |
 
@@ -206,7 +206,10 @@ for job in queue.drain(..) {
 
 - `post_turn` hands back a `BuildBeliefs` job every
   `RecallPolicy::build_beliefs_every` turns (10 by default). `Brain::ingest`
-  hands one back per ingest.
+  hands one back per ingest. Neither does on an engine that declares
+  `Consolidation::Automatic` (CortexDB's managed API rebuilds beliefs on its
+  own within about a minute of a write); `Brain::build` and
+  `AgentMemory::history_build` still ask for a refresh.
 - **On CortexDB, a build is only as good as the extraction before it.**
   Beliefs are built from facts, which CortexDB extracts from every event
   with a model, in the background. With a hosted model that takes minutes.

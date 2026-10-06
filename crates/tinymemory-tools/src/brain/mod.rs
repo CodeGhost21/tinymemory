@@ -9,7 +9,10 @@
 //! [`Brain::ingest`] stores one document (by default waiting until it is
 //! readable, since ingestion is not on a live turn) and returns the
 //! [`BackgroundJob`] that would build beliefs from its source — the host runs
-//! it whenever suits, through [`crate::BackgroundRunner`]. Converting a
+//! it whenever suits, through [`crate::BackgroundRunner`]. An engine that
+//! rebuilds beliefs on its own after writes
+//! ([`tinymemory_api::Consolidation::Automatic`]) gets no such job;
+//! [`Brain::build`] still asks for one at any time. Converting a
 //! file's bytes to text is the integrations crate's job; the brain takes
 //! text.
 //!
@@ -47,7 +50,7 @@ use tinymemory_api::{
     MAX_STORE_MANY, MemoryEngine, Reach, Result, StoreItem, WriteOptions,
 };
 
-use crate::background::BackgroundJob;
+use crate::background::{BackgroundJob, builds_on_its_own};
 use crate::layout::{BrainSource, MemoryLayout};
 
 pub use types::{BrainBatch, BrainDocument, Ingested};
@@ -104,10 +107,12 @@ impl Brain {
         let source = document.source.clone();
         let item = document.into_item(&self.layout)?;
         let receipt = self.engine.store_with(item, options).await?;
-        Ok(Ingested {
-            receipt,
-            job: self.build_job(&source)?,
-        })
+        let job = if builds_on_its_own(self.engine.as_ref()) {
+            None
+        } else {
+            Some(self.build(&source)?)
+        };
+        Ok(Ingested { receipt, job })
     }
 
     /// Stores many documents, in order, in batches of at most
@@ -132,10 +137,14 @@ impl Brain {
             receipts.extend(self.engine.store_many(rest).await?);
             rest = tail;
         }
-        let jobs = sources
-            .iter()
-            .map(|source| self.build_job(source))
-            .collect::<Result<Vec<_>>>()?;
+        let jobs = if builds_on_its_own(self.engine.as_ref()) {
+            Vec::new()
+        } else {
+            sources
+                .iter()
+                .map(|source| self.build(source))
+                .collect::<Result<Vec<_>>>()?
+        };
         Ok(BrainBatch { receipts, jobs })
     }
 
@@ -179,8 +188,15 @@ impl Brain {
         self.engine.forget(ForgetTarget::Filter(filter)).await
     }
 
-    /// The belief build for `source`'s documents.
-    fn build_job(&self, source: &BrainSource) -> Result<BackgroundJob> {
+    /// A belief build of `source`'s documents, for the host to run now or
+    /// queue: what an ingest hands back, and a refresh on an engine that
+    /// builds on its own.
+    ///
+    /// # Errors
+    ///
+    /// Never for a layout built by [`MemoryLayout::new`] (see
+    /// [`MemoryLayout::brain`]).
+    pub fn build(&self, source: &BrainSource) -> Result<BackgroundJob> {
         Ok(BackgroundJob::BuildBeliefs {
             request: ConsolidateRequest::new(Reach::exact(self.layout.brain(source)?))
                 .kinds([ItemKind::Document]),

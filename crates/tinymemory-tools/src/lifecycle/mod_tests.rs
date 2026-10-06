@@ -3,8 +3,9 @@
 use async_trait::async_trait;
 use tinymemory_api::conformance::ReferenceEngine;
 use tinymemory_api::{
-    EngineDescriptor, EngineHealth, FetchPage, FetchRequest, ForgetReport, ForgetTarget,
-    LearningKind, ListPage, ListRequest, RecallAnswer, RecallRequest, StoreReceipt, ToolCallRef,
+    Consolidation, EngineDescriptor, EngineHealth, FetchPage, FetchRequest, ForgetReport,
+    ForgetTarget, LearningKind, ListPage, ListRequest, RecallAnswer, RecallRequest, StoreReceipt,
+    ToolCallRef,
 };
 
 use super::*;
@@ -135,6 +136,33 @@ async fn other_agents_turns_appear_once_under_the_team() {
     assert!(md[history..team].contains("refund delayed"));
     assert!(md[team..].contains("deploy failed"));
     assert_eq!(md.matches("refund delayed").count(), 1, "shown once: {md}");
+}
+
+#[tokio::test]
+async fn post_turn_asks_no_build_of_an_engine_that_builds_on_its_own() {
+    let engine = Arc::new(ReferenceEngine::new().with_consolidation(Consolidation::Automatic));
+    let support = memory(&engine, "support-01").with_policy(RecallPolicy {
+        build_beliefs_every: Some(1),
+        ..RecallPolicy::default()
+    });
+    for index in 0..3 {
+        let report = support
+            .post_turn(PostTurn::new("t1", index, format!("reply {index}")))
+            .await
+            .unwrap();
+        assert!(report.jobs.is_empty(), "turn {index}: {:?}", report.jobs);
+    }
+    assert_eq!(engine.len(), 3, "every reply is still logged");
+
+    let refresh = support
+        .run_background(support.history_build())
+        .await
+        .unwrap();
+    assert_eq!(refresh.job, "build_beliefs");
+    assert!(
+        refresh.consolidation.is_some(),
+        "an explicit build still runs"
+    );
 }
 
 #[tokio::test]

@@ -390,7 +390,7 @@ impl Eval {
                         .ingest(BrainDocument::new(source.clone(), *text).titled(*title))
                         .await?;
                     timings.add("brain ingest (visible)", ms(started));
-                    jobs.push(ingested.job);
+                    jobs.extend(ingested.job);
                     *writes.entry(tenant).or_default() += 1;
                 }
                 Step::Learning {

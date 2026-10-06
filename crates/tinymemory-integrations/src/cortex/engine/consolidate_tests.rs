@@ -1,10 +1,12 @@
 //! Belief builds: one `v1/beliefs/build` per held scope on Direct, none on
-//! the hosted wire.
+//! the hosted wire; and which consolidation each engine declares.
 
 use super::*;
+use crate::cortex::CortexCredential;
 use crate::cortex::testing::{both, direct_double, direct_engine, sample_items};
 use tinymemory_api::{
-    ConsolidateRequest, ItemKind, MemoryEngine, MemoryMeta, Namespace, Reach, StoreItem,
+    ConsolidateRequest, Consolidation, ItemKind, MemoryEngine, MemoryMeta, Namespace, Reach,
+    StoreItem,
 };
 
 fn at(namespace: Namespace) -> MemoryMeta {
@@ -158,4 +160,83 @@ async fn a_malformed_request_is_refused_before_any_request() {
         "{error:?}"
     );
     assert!(state.requests().is_empty());
+}
+
+#[test]
+fn a_direct_engine_consolidates_as_its_endpoint_does_unless_told_otherwise() {
+    let key = || CortexCredential::api_key("key");
+    for managed in ["https://api-v1.cortexdb.ai", "https://api-v1.cortexdb.ai/"] {
+        let engine = CortexEngine::direct(managed, key()).unwrap();
+        assert_eq!(
+            engine.descriptor().consolidation,
+            Consolidation::Automatic,
+            "{managed}"
+        );
+    }
+    let self_hosted = CortexEngine::direct("http://127.0.0.1:3141", key()).unwrap();
+    assert_eq!(
+        self_hosted.descriptor().consolidation,
+        Consolidation::OnDemand
+    );
+    let told = self_hosted
+        .with_consolidation(Consolidation::Automatic)
+        .unwrap();
+    assert_eq!(told.descriptor().consolidation, Consolidation::Automatic);
+    let hosted = CortexEngine::tinyhumans(
+        "https://api.example.test",
+        std::sync::Arc::new(crate::cortex::StaticBearer::new("jwt")),
+    )
+    .unwrap();
+    assert_eq!(hosted.descriptor().consolidation, Consolidation::Scheduled);
+}
+
+#[test]
+fn a_consolidation_the_wire_cannot_serve_is_refused() {
+    let direct = || CortexEngine::direct("http://127.0.0.1:3141", CortexCredential::api_key("k"));
+    for refused in [Consolidation::None, Consolidation::Scheduled] {
+        let error = direct().unwrap().with_consolidation(refused).unwrap_err();
+        assert!(
+            matches!(error, crate::cortex::Error::Config(_)),
+            "{refused:?}: {error:?}"
+        );
+    }
+    let hosted = CortexEngine::tinyhumans(
+        "https://api.example.test",
+        std::sync::Arc::new(crate::cortex::StaticBearer::new("jwt")),
+    )
+    .unwrap();
+    for refused in [
+        Consolidation::None,
+        Consolidation::OnDemand,
+        Consolidation::Automatic,
+    ] {
+        assert!(
+            hosted.clone().with_consolidation(refused).is_err(),
+            "{refused:?}"
+        );
+    }
+    hosted.with_consolidation(Consolidation::Scheduled).unwrap();
+}
+
+#[tokio::test]
+async fn an_explicit_build_still_runs_on_an_automatic_engine() {
+    let (endpoint, state) = direct_double().await;
+    let engine = direct_engine(&endpoint)
+        .with_consolidation(Consolidation::Automatic)
+        .unwrap();
+    engine
+        .store(StoreItem::document(
+            "Refunds take five days.",
+            at(Namespace::source("pdf")),
+        ))
+        .await
+        .unwrap();
+    let receipt = engine
+        .consolidate(ConsolidateRequest::new(Reach::exact(Namespace::source(
+            "pdf",
+        ))))
+        .await
+        .unwrap();
+    assert_eq!(receipt.status, ConsolidateStatus::Completed);
+    assert_eq!(state.count("POST /v1/beliefs/build"), 1);
 }

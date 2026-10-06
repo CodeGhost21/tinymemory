@@ -19,10 +19,25 @@
 //!
 //! # Consolidation
 //!
-//! CortexDB builds beliefs on demand at `v1/beliefs/build`, one scope per
-//! call, so the direct descriptor declares [`Consolidation::OnDemand`]. The
-//! TinyHumans backend exposes no build route; CortexDB's own scheduler
-//! consolidates behind it, so the hosted descriptor declares
+//! CortexDB builds a scope's beliefs at `v1/beliefs/build`, one scope per
+//! call. Whether a host also has to ask after its writes depends on the
+//! deployment, not the wire ([`direct_consolidation`]):
+//!
+//! - CortexDB's managed API ([`CORTEX_API_ENDPOINT`]) extracts facts and
+//!   rebuilds a scope's beliefs on its own shortly after each write, so a
+//!   direct engine there declares [`Consolidation::Automatic`]: no build is
+//!   queued after a turn or an ingest, and an explicit build is a refresh.
+//! - A self-hosted CortexDB builds beliefs in the background only when its
+//!   operator turns the layer scheduler on (`CORTEX_V1_LAYERS_AUTO`, off by
+//!   default), so a direct engine anywhere else declares
+//!   [`Consolidation::OnDemand`].
+//!
+//! [`cortexdb_descriptor`] describes the engine at its default endpoint, the
+//! managed API. A host that knows better overrides the choice with
+//! [`crate::cortex::CortexEngine::with_consolidation`].
+//!
+//! The TinyHumans backend exposes no build route; CortexDB consolidates
+//! behind it on its own, so the hosted descriptor declares
 //! [`Consolidation::Scheduled`].
 
 use tinymemory_api::{Consolidation, EngineDescriptor, FetchMode};
@@ -44,7 +59,8 @@ const FETCH_MODES: [FetchMode; 1] = [FetchMode::Hybrid];
 
 /// The descriptor of CortexDB reached directly: not hosted by a third party,
 /// an endpoint is optional ([`CORTEX_API_ENDPOINT`] by default), an API key
-/// is required, fetch is hybrid only, and beliefs build on demand.
+/// is required, fetch is hybrid only, and beliefs build as they do at the
+/// default endpoint: on their own ([`Consolidation::Automatic`]).
 #[must_use]
 pub fn cortexdb_descriptor() -> EngineDescriptor {
     EngineDescriptor {
@@ -57,7 +73,7 @@ pub fn cortexdb_descriptor() -> EngineDescriptor {
         needs_key: true,
         default_endpoint: Some(CORTEX_API_ENDPOINT),
         fetch_modes: FETCH_MODES.to_vec(),
-        consolidation: Consolidation::OnDemand,
+        consolidation: direct_consolidation(CORTEX_API_ENDPOINT),
     }
 }
 
@@ -77,6 +93,25 @@ pub fn tinyhumans_descriptor() -> EngineDescriptor {
         default_endpoint: Some(TINYHUMANS_API_ENDPOINT),
         fetch_modes: FETCH_MODES.to_vec(),
         consolidation: Consolidation::Scheduled,
+    }
+}
+
+/// How a direct engine whose endpoint has `origin` (scheme, host and port,
+/// with no trailing slash) consolidates by
+/// default: [`Consolidation::Automatic`] on CortexDB's managed API,
+/// [`Consolidation::OnDemand`] anywhere else.
+///
+/// This is the one place the choice is made. It goes by the endpoint alone
+/// because a deployment's layer settings are not readable through the public
+/// API today; if CortexDB confirms a readiness signal it can be asked here
+/// instead (for example whether `v1/derivation/status` reports a running
+/// layer scheduler), and every caller follows.
+#[must_use]
+pub(crate) fn direct_consolidation(origin: &str) -> Consolidation {
+    if origin == CORTEX_API_ENDPOINT {
+        Consolidation::Automatic
+    } else {
+        Consolidation::OnDemand
     }
 }
 

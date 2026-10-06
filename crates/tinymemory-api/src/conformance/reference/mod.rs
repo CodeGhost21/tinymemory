@@ -59,6 +59,16 @@ impl ReferenceEngine {
         }
     }
 
+    /// The same engine, declaring `consolidation`. Its builds run either
+    /// way, so it serves a host test of how a lifecycle treats an engine
+    /// that declares [`Consolidation::Automatic`]; the conformance suite
+    /// holds it to whatever it declares.
+    #[must_use]
+    pub fn with_consolidation(mut self, consolidation: Consolidation) -> Self {
+        self.descriptor.consolidation = consolidation;
+        self
+    }
+
     /// How many items the engine holds.
     #[must_use]
     pub fn len(&self) -> usize {

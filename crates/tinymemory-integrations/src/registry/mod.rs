@@ -63,8 +63,9 @@ pub fn list_engines() -> Vec<EngineDescriptor> {
 /// # Errors
 ///
 /// [`Error::Config`] for an unknown id, a missing endpoint or credential, an
-/// endpoint that is not an HTTP(S) URL, or a credentialed cleartext
-/// (`http://`) endpoint that is not loopback.
+/// endpoint that is not an HTTP(S) URL, a credentialed cleartext
+/// (`http://`) endpoint that is not loopback, or a consolidation the engine
+/// cannot serve ([`CortexEngine::with_consolidation`]).
 pub fn build_engine(
     id: &str,
     settings: &EngineSettings,
@@ -93,8 +94,11 @@ pub fn build_engine(
             )));
         }
     };
-    let engine =
+    let mut engine =
         CortexEngine::new(wire, endpoint, credential)?.with_default_headers(&settings.headers)?;
+    if let Some(consolidation) = settings.consolidation {
+        engine = engine.with_consolidation(consolidation)?;
+    }
     Ok(Arc::new(engine))
 }
 

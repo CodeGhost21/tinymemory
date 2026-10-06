@@ -83,10 +83,9 @@ async fn live_an_agent_loop_runs_against_cortexdb() {
     )
     .await
     .expect("convert");
-    let ingested = Brain::new(engine.clone(), layout.clone())
-        .ingest(document)
-        .await
-        .expect("ingest");
+    let source = document.source.clone();
+    let brain = Brain::new(engine.clone(), layout.clone());
+    let ingested = brain.ingest(document).await.expect("ingest");
 
     let support = AgentMemory::new(engine.clone(), layout.clone(), "support-01").expect("agent");
     let coder = AgentMemory::new(engine.clone(), layout.clone(), "coder-42").expect("agent");
@@ -134,7 +133,12 @@ async fn live_an_agent_loop_runs_against_cortexdb() {
     );
 
     let built = support
-        .run_background(ingested.job)
+        // The managed API builds on its own and hands back no job; ask for
+        // one explicitly, as a refresh, so the build route is still proven.
+        .run_background(match ingested.job {
+            Some(job) => job,
+            None => brain.build(&source).expect("build job"),
+        })
         .await
         .expect("a belief build is accepted");
     eprintln!("belief build: {:?}", built.outcome);

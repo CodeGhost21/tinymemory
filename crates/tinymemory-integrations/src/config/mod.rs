@@ -12,6 +12,7 @@
 //!
 //! [engines.cortexdb]
 //! endpoint = "https://cortex.example.com"
+//! consolidation = "automatic"   # optional: this server builds beliefs itself
 //! ```
 //!
 //! `engines` is optional, an engine with no entry uses its defaults, and a
@@ -22,7 +23,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use tinymemory_api::{MemoryEngine, Result};
+use tinymemory_api::{Consolidation, MemoryEngine, Result};
 
 use crate::registry::{EngineCredential, build_engine};
 
@@ -77,6 +78,13 @@ pub struct EngineSettings {
     /// `Authorization` and the other headers it sets itself.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub headers: BTreeMap<String, String>,
+    /// How the engine consolidates, overriding its default: a `cortexdb`
+    /// engine is `automatic` on CortexDB's managed API and `on_demand`
+    /// anywhere else, and `tinyhumans` is always `scheduled`. Set
+    /// `automatic` for a self-hosted CortexDB that runs its own layer
+    /// scheduler.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub consolidation: Option<Consolidation>,
 }
 
 #[cfg(test)]

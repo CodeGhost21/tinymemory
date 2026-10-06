@@ -5,8 +5,9 @@
 //!   id; and a repeat of a visible item is a replay.
 //! - `consolidate` — an invalid request is refused, and a valid one answers
 //!   as the descriptor promises: [`Consolidation::None`] refuses with
-//!   `Unsupported`, [`Consolidation::OnDemand`] starts or completes a build,
-//!   and [`Consolidation::Scheduled`] acknowledges without one. Then
+//!   `Unsupported`, [`Consolidation::OnDemand`] and
+//!   [`Consolidation::Automatic`] start or complete a build, and
+//!   [`Consolidation::Scheduled`] acknowledges without one. Then
 //!   `beliefs` refuses a zero limit, and every belief it returns is a
 //!   learning tagged [`BELIEF_TAG`] within the reach asked for.
 
@@ -119,13 +120,13 @@ fn answers_as_promised(
             check: CHECK,
             source,
         }),
-        (Consolidation::OnDemand, Ok(receipt)) => ensure(
+        (Consolidation::OnDemand | Consolidation::Automatic, Ok(receipt)) => ensure(
             CHECK,
             matches!(
                 receipt.status,
                 ConsolidateStatus::Started | ConsolidateStatus::Completed
             ),
-            || format!("an on-demand engine answered {:?}", receipt.status),
+            || format!("a {promised:?} engine answered {:?}", receipt.status),
         ),
         (Consolidation::Scheduled, Ok(receipt)) => ensure(
             CHECK,
@@ -174,3 +175,7 @@ async fn beliefs(ctx: &Ctx<'_>, node: Namespace) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "lifecycle_tests.rs"]
+mod tests;

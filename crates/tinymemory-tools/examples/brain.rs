@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use tinymemory_api::conformance::ReferenceEngine;
-use tinymemory_tools::{Brain, BrainDocument, BrainSource, MemoryLayout};
+use tinymemory_tools::{BackgroundJob, Brain, BrainDocument, BrainSource, MemoryLayout};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -47,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "{:<9} -> {}  (then: {})",
             source.to_string(),
             layout.brain(&source)?,
-            ingested.job.name()
+            ingested.job.as_ref().map_or("nothing", BackgroundJob::name)
         );
     }
 

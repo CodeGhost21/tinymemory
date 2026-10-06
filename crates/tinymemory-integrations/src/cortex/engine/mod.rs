@@ -27,13 +27,14 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use tinymemory_api::{
-    BeliefsRequest, ConsolidateReceipt, ConsolidateRequest, EngineDescriptor, EngineHealth,
-    FetchPage, FetchRequest, ForgetReport, ForgetTarget, GetRequest, Hit, ListPage, ListRequest,
-    MemoryEngine, RecallAnswer, RecallRequest, StoreItem, StoreReceipt, WaitFor, WriteOptions,
+    BeliefsRequest, ConsolidateReceipt, ConsolidateRequest, Consolidation, EngineDescriptor,
+    EngineHealth, FetchPage, FetchRequest, ForgetReport, ForgetTarget, GetRequest, Hit, ListPage,
+    ListRequest, MemoryEngine, RecallAnswer, RecallRequest, StoreItem, StoreReceipt, WaitFor,
+    WriteOptions,
 };
 
 use crate::cortex::credential::{BearerSource, CortexCredential};
-use crate::cortex::descriptor::{CortexWire, Route};
+use crate::cortex::descriptor::{CortexWire, Route, direct_consolidation};
 use crate::cortex::error::{Error, Result};
 use crate::cortex::log::Log;
 use crate::cortex::transport::{HttpClient, health_reason, urlencode};
@@ -72,11 +73,50 @@ impl CortexEngine {
     /// [`Error::Config`] for an invalid or non-HTTP(S) endpoint, a cleartext
     /// endpoint that is not loopback (the credential would cross the network
     /// in the clear), or a blank static credential.
+    ///
+    /// A direct engine consolidates as its endpoint does by default:
+    /// [`Consolidation::Automatic`] on CortexDB's managed API,
+    /// [`Consolidation::OnDemand`] on any other (see
+    /// [`CortexEngine::with_consolidation`]).
     pub fn new(wire: CortexWire, endpoint: &str, credential: CortexCredential) -> Result<Self> {
+        let client = HttpClient::new(wire, endpoint, credential)?;
+        let mut descriptor = wire.descriptor();
+        if wire == CortexWire::Direct {
+            descriptor.consolidation = direct_consolidation(&client.origin());
+        }
         Ok(Self {
-            descriptor: wire.descriptor(),
-            log: Log::new(HttpClient::new(wire, endpoint, credential)?),
+            descriptor,
+            log: Log::new(client),
         })
+    }
+
+    /// The same engine, declaring `consolidation` instead of the endpoint's
+    /// default: for a self-hosted CortexDB whose operator runs the layer
+    /// scheduler ([`Consolidation::Automatic`]), or a managed one a host
+    /// wants to build by hand ([`Consolidation::OnDemand`]). Either way an
+    /// explicit [`MemoryEngine::consolidate`] still builds.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Config`] for a mode the wire cannot serve: a direct engine
+    /// is [`Consolidation::OnDemand`] or [`Consolidation::Automatic`], and
+    /// the TinyHumans backend only [`Consolidation::Scheduled`].
+    pub fn with_consolidation(mut self, consolidation: Consolidation) -> Result<Self> {
+        let served = match self.wire() {
+            CortexWire::Direct => matches!(
+                consolidation,
+                Consolidation::OnDemand | Consolidation::Automatic
+            ),
+            CortexWire::TinyHumans => consolidation == Consolidation::Scheduled,
+        };
+        if !served {
+            return Err(Error::Config(format!(
+                "the `{}` engine cannot consolidate as {consolidation:?}",
+                self.descriptor.id
+            )));
+        }
+        self.descriptor.consolidation = consolidation;
+        Ok(self)
     }
 
     /// CortexDB's own `/v1/*` API at `endpoint` (for example
@@ -202,8 +242,10 @@ impl MemoryEngine for CortexEngine {
         self.get_items(req).await
     }
 
-    /// Direct: one `v1/beliefs/build` per held scope in reach. Hosted:
-    /// acknowledged as scheduled, with no request.
+    /// Direct: one `v1/beliefs/build` per held scope in reach, whether the
+    /// engine declares [`Consolidation::OnDemand`] or
+    /// [`Consolidation::Automatic`]. Hosted: acknowledged as scheduled, with
+    /// no request.
     async fn consolidate(&self, req: ConsolidateRequest) -> Result<ConsolidateReceipt> {
         self.build_beliefs(req).await
     }

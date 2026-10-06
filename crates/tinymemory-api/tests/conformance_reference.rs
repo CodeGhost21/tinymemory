@@ -21,6 +21,15 @@ async fn the_reference_engine_passes_and_cleans_up() {
 }
 
 #[tokio::test]
+async fn an_engine_that_builds_on_its_own_passes_by_still_building_on_request() {
+    let engine = ReferenceEngine::new().with_consolidation(Consolidation::Automatic);
+    run(&engine)
+        .await
+        .expect("an automatic engine conforms when an explicit build runs");
+    assert!(engine.is_empty());
+}
+
+#[tokio::test]
 async fn the_suite_leaves_foreign_items_alone() {
     let engine = ReferenceEngine::new();
     engine

@@ -81,7 +81,8 @@ by default, or a host node such as `team:acme`.
     the receipt names any job handles, the number of scopes covered and,
     for a completed build that reports it, the beliefs `built`.
 - **`EngineDescriptor::consolidation`** declares how the engine consolidates:
-  `None`, `OnDemand` or `Scheduled`.
+  `None`, `OnDemand`, `Scheduled` or `Automatic` (it rebuilds beliefs on its
+  own after writes, and an explicit `consolidate` still builds at once).
 - **`MemoryEngine::beliefs(BeliefsRequest { reach, query, limit })`** reads
   the beliefs an engine built and keeps apart from its stored items. With a
   query they are ranked for it; without one, the most confident come first,
@@ -174,7 +175,8 @@ skipped, engine }`.
   `TurnContext::log_error` and the pack is still returned.
 - **`post_turn` reports belief builds.** It returns a `BuildBeliefs` job for
   the agent's conversations every `RecallPolicy::build_beliefs_every` turns,
-  counted as `turn_index + 1`.
+  counted as `turn_index + 1`, unless the engine declares `Automatic`; then
+  it returns none, and `history_build` still asks for one.
 
 ### Brain and background
 
@@ -202,6 +204,9 @@ skipped, engine }`.
     that is held in reach and admitted. The server builds within the
     request, so the receipt is `Completed` with the beliefs `built`; an
     answer that names a job instead makes it `Started` with the handles.
+  - It declares `Automatic` when its endpoint is CortexDB's managed API,
+    which rebuilds beliefs on its own after writes, and `OnDemand`
+    anywhere else. `EngineSettings::consolidation` overrides that.
 - **CortexDB, TinyHumans wire:** declares `Scheduled` and sends nothing.
 
 ## Invariants
