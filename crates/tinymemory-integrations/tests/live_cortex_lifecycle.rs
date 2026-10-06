@@ -241,9 +241,11 @@ async fn live_core_scope_recall_and_promotion_respect_tenant_boundaries() {
 }
 
 /// Polls CortexDB's `v1/derivation/status` for `scope` until its last build
-/// is no older than its last write: the server's own scheduler caught up
-/// with the writes, with no build requested. `false` if that never happens
-/// within a few minutes.
+/// is strictly newer than its last write: the server's own scheduler rebuilt
+/// after the write, with no build requested. The scope is unique to the run,
+/// so its last write is this test's. Every request is bounded by the time
+/// left, so the poll ends within its deadline even if the server stalls.
+/// `false` if no such build happens within a few minutes.
 async fn built_after_last_write(url: &str, key: &str, scope: &str) -> bool {
     use tinymemory_api::chrono::{DateTime, FixedOffset};
     let parse = |value: &serde_json::Value| -> Option<DateTime<FixedOffset>> {
@@ -253,21 +255,23 @@ async fn built_after_last_write(url: &str, key: &str, scope: &str) -> bool {
     let endpoint = format!("{}/v1/derivation/status", url.trim_end_matches('/'));
     let deadline = Instant::now() + Duration::from_secs(240);
     loop {
-        let status: Option<serde_json::Value> = match client
-            .get(&endpoint)
-            .query(&[("scope", scope)])
-            .bearer_auth(key)
-            .send()
-            .await
-        {
-            Ok(response) => response.json().await.ok(),
-            Err(_) => None,
+        let left = deadline.saturating_duration_since(Instant::now());
+        let request = async {
+            let response = client
+                .get(&endpoint)
+                .query(&[("scope", scope)])
+                .bearer_auth(key)
+                .send()
+                .await
+                .ok()?;
+            response.json::<serde_json::Value>().await.ok()
         };
+        let status = tokio::time::timeout(left, request).await.ok().flatten();
         if let Some(status) = &status {
             let wrote = parse(&status["last_write_at"]);
             let built = parse(&status["last_built_at"]);
             if let (Some(wrote), Some(built)) = (wrote, built)
-                && built >= wrote
+                && built > wrote
             {
                 eprintln!("derivation status: {status}");
                 return true;
