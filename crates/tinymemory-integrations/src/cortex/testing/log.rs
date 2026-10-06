@@ -12,7 +12,8 @@
 //! - the forget selector reads only `memory_ids`; an empty selector without
 //!   `confirm_all` is refused, and a selector with `confirm_all` is refused
 //!   as ambiguous;
-//! - recall renders text for a reader (`[role] {...}`), honours `view:
+//! - recall returns each event with its stored text (no `[role] ` marker,
+//!   as 0.10.3 and 0.10.4 do in `layers.events`), honours `view:
 //!   "descend"`, metadata label filters and the events budget;
 //! - a belief build turns each of a scope's events into one supported
 //!   belief (`user said <text>`), which recall returns in `layers.beliefs`
