@@ -124,10 +124,19 @@ fn observed_at_and_labels_reach_the_event_context() {
     );
     assert_eq!(request["context"]["labels"][0], labels::item("id"));
     assert_eq!(request["scope"], "app:tinymemory/app:documents");
-    assert_ne!(
+    let key = request["idempotency_key"].as_str().unwrap();
+    assert!(key.starts_with("tm3:") && key.len() <= 64, "{key}");
+    assert_eq!(
         request["idempotency_key"],
         envelope.request(&envelope.encode_checked().unwrap())["idempotency_key"],
-        "every write mints a fresh key"
+        "the same body, the same key: a retry is a replay"
+    );
+    let mut later = envelope.clone();
+    later.meta.observed_at = Some("2026-01-03T00:00:00Z".parse().unwrap());
+    assert_ne!(
+        request["idempotency_key"],
+        later.request(&later.encode_checked().unwrap())["idempotency_key"],
+        "any change to the body is a new key, never a reused key's 409"
     );
 }
 

@@ -24,7 +24,10 @@ valid items; an empty or oversized batch is `Error::InvalidRequest`). Then:
    the same text at two nodes is two items and a re-sync that only restamps
    `observed_at` is a replay.
 2. **Group** the items by scope (kind at namespace node).
-3. **Replay detection.** One id lookup per scope: the listing narrowed by the
+3. **Replay detection.** Skipped only on the turn-logging hot path: a Direct
+   store of one single-turn conversation with `WaitFor::Accepted` (the agent
+   lifecycle makes two per turn), where the body key catches a retry (below).
+   Otherwise one id lookup per scope: the listing narrowed by the
    items' `tm:i:` labels (batches of up to 50 labels), each hit re-checked
    against the envelope's real id. The result is, per id, which turn indexes
    are already held (`None` for a document or learning).
@@ -38,7 +41,9 @@ valid items; an empty or oversized batch is `Error::InvalidRequest`). Then:
    - nothing present: every event is written.
 
    An item repeated inside the batch is a replay of its first copy. Each
-   write uses a fresh idempotency key (see below). The wire call is made per
+   event is keyed by its own body (see below), and a receipt is also a
+   replay when CortexDB answered every written event as one
+   (`replayed_from_idempotency`). The wire call is made per
    item: Direct sends one experience, or one ordered bulk when two or more
    events are due; TinyHumans sends the events one at a time.
 5. **Wait, once per scope.** For the **last event written** in each scope the
@@ -50,11 +55,23 @@ valid items; an empty or oversized batch is `Error::InvalidRequest`). Then:
 Receipts come back in item order, each `{id, replayed}`. On an error the items
 before the failing one are stored, and storing them again is a replay.
 
-**Fresh idempotency keys.** Writes use a fresh `tm-<salt>-<nanos>-<seq>` key,
-never one derived from content. CortexDB never releases a key on forget, so a
-content key would make re-storing a forgotten item a silent no-op; and the
-hosted memory API answers every replay of a claim with 409. Replay detection is
-done by the engine, by looking the item up, before it writes.
+**Body idempotency keys.** Each event's `idempotency_key` is `tm3:` and 56 hex
+digits of the SHA-256 of its request body without the key (60 characters;
+CortexDB refuses one over 64). Measured on CortexDB 0.10.4:
+
+- the same key and body is a replay, answered with the first event's id and
+  `replayed_from_idempotency: true`, and nothing is written;
+- the same key with another body is `409 IDEMPOTENCY_CONFLICT`, which a body
+  key never produces (any change to the body is a new key);
+- `/v1/forget` by `memory_ids` releases the key, so an item stored again
+  after it was forgotten is written again.
+
+A key lasts 24 hours, and an unchanged item restamped with a new
+`observed_at` has a new body, so the key does not replace the lookup. It
+catches retries, and on the hot path it is the only replay check. The hosted
+memory API's `Idempotency-Key` **claim** stays fresh per write
+(`tm-<salt>-<nanos>-<seq>`), reused only across the retries of that write: it
+answers every replay of a claim with 409. The hosted wire always looks up.
 
 ### Waiting for a write to be readable
 

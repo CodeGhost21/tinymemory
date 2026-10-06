@@ -156,15 +156,7 @@ async fn a_store_that_lost_a_piece_writes_only_that_piece_again() {
     let item = handbook(30);
     engine.store(item.clone()).await.unwrap();
     let before = events(&state, SCOPE).len();
-    {
-        let mut log = state.log.lock().unwrap();
-        let last = log
-            .events
-            .iter()
-            .rposition(|event| event["scope"] == SCOPE)
-            .unwrap();
-        log.events.remove(last);
-    }
+    state.log.lock().unwrap().lose_last(SCOPE);
     let got = engine
         .get(GetRequest {
             ids: vec![ItemId::new(item.fingerprint())],

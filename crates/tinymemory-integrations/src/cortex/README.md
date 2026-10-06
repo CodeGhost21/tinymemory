@@ -214,8 +214,10 @@ as prefixes, so they cannot be labelled and are filtered only client-side.
 These were measured against a live CortexDB by the v1 adapter. The doubles in
 `testing/` reproduce all of them.
 
-- **Append-only.** There is no update route. Forget removes events but not
-  their idempotency records.
+- **Append-only.** There is no update route. A body `idempotency_key` replays
+  the same body for 24 hours and refuses another body (409); forget by
+  `memory_ids` releases it. Keys are derived from the body, so a retry is a
+  replay.
 - **Accepted is not readable.** A write first waits until the label-narrowed
   listing carries its event (fatal after 30s). It then waits until ranked
   recall returns it (best-effort, 10s); a recall that is down or slow does not

@@ -409,12 +409,12 @@ async fn recovery_does_not_take_another_turn_with_the_same_words_for_the_lost_on
         meta: MemoryMeta::default(),
     };
     engine.store(item.clone()).await.unwrap();
-    {
-        // The second turn's event is lost.
-        let mut log = state.log.lock().unwrap();
-        let last = log.events.len() - 1;
-        log.events.remove(last);
-    }
+    // The second turn's event is lost.
+    state
+        .log
+        .lock()
+        .unwrap()
+        .lose_last("app:tinymemory/app:conversations");
     // Its re-write is claimed but never applied, so recovery must look for
     // it, and must not take the first turn, which says the same words.
     state.claim_then_fail.store(1, Ordering::SeqCst);

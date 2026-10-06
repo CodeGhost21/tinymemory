@@ -141,3 +141,66 @@ async fn a_single_store_is_listed_and_settled_on_return_like_a_batch_of_one() {
         );
     }
 }
+
+fn turn(text: &str) -> StoreItem {
+    StoreItem::Conversation {
+        turns: vec![tinymemory_api::Turn::new(tinymemory_api::Role::User, text)],
+        meta: MemoryMeta {
+            thread_id: Some("t-hot".into()),
+            ..MemoryMeta::default()
+        },
+    }
+}
+
+#[tokio::test]
+async fn a_logged_turn_skips_the_lookup_and_a_retry_is_a_replay() {
+    use tinymemory_api::WriteOptions;
+    let (endpoint, state) = crate::cortex::testing::direct_double().await;
+    let engine = crate::cortex::testing::direct_engine(&endpoint);
+    let first = engine
+        .store_with(turn("Ship it on Friday."), WriteOptions::accepted())
+        .await
+        .unwrap();
+    assert!(!first.replayed);
+    assert_eq!(
+        state.count("GET /v1/events"),
+        0,
+        "no lookup on the hot path"
+    );
+    let retry = engine
+        .store_with(turn("Ship it on Friday."), WriteOptions::accepted())
+        .await
+        .unwrap();
+    assert!(retry.replayed, "CortexDB answered the retry as a replay");
+    assert_eq!(retry.id, first.id);
+    assert_eq!(state.event_count(), 1, "written once");
+    assert_eq!(state.count("GET /v1/events"), 0);
+}
+
+#[tokio::test]
+async fn every_other_store_still_looks_its_items_up_first() {
+    use tinymemory_api::WriteOptions;
+    for (engine, state) in both().await {
+        let listing = match engine.wire() {
+            crate::cortex::CortexWire::Direct => "GET /v1/events",
+            crate::cortex::CortexWire::TinyHumans => "GET /memory/events",
+        };
+        let cases: Vec<(StoreItem, WriteOptions)> = vec![
+            (doc("A synced file."), WriteOptions::accepted()),
+            (turn("Waited for."), WriteOptions::visible()),
+        ];
+        for (item, options) in cases {
+            let before = state.count(listing);
+            engine.store_with(item.clone(), options).await.unwrap();
+            assert!(state.count(listing) > before, "{:?} looked up", item.kind());
+        }
+        if engine.wire() == crate::cortex::CortexWire::TinyHumans {
+            let before = state.count(listing);
+            engine
+                .store_with(turn("Hosted turn."), WriteOptions::accepted())
+                .await
+                .unwrap();
+            assert!(state.count(listing) > before, "hosted always looks up");
+        }
+    }
+}

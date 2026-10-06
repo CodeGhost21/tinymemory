@@ -196,9 +196,9 @@ Both doubles serve the same in-memory `CortexLog`, which is deliberately
 **unaccommodating**, because a tidy double proves nothing. It reproduces every
 behaviour in [the wire page](cortex-wire.md#cortexdb-behaviours-the-engine-is-shaped-around):
 
-- append-only, a body `idempotency_key` remembered for ever (same key, same
-  body is a replay; same key, different body is `409 IDEMPOTENCY_CONFLICT`;
-  forget does not release it);
+- append-only, a body `idempotency_key` remembered (same key, same body is a
+  replay; same key, different body is `409 IDEMPOTENCY_CONFLICT`); forget by
+  `memory_ids` releases it, as CortexDB 0.10.4 does;
 - the listing is newest first, emits **every event twice**, counts the copies
   in `limit`, ignores unknown query parameters, and pages by offset cursor;
 - the forget selector reads only `memory_ids`; an empty selector without

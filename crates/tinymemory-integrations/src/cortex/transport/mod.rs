@@ -388,15 +388,37 @@ pub(crate) fn credential_header(token: &str) -> Result<HeaderValue> {
     Ok(header)
 }
 
-/// A fresh key for every write: the body's `idempotency_key` and the hosted
-/// `Idempotency-Key` claim.
+/// The body `idempotency_key` of an experience request: `tm3:` and the
+/// first 56 hex digits of the SHA-256 of the request without its key, 60
+/// characters (CortexDB refuses one over 64).
 ///
-/// Never derived from content. CortexDB keeps a forgotten event's
-/// idempotency record, so a content-derived key would make re-storing an item
-/// after forgetting it a silent no-op; and the hosted memory API answers
-/// every replay of a claim with 409, so a content-derived claim would refuse
-/// an identical re-store. Store detects a replay itself, by looking the item
-/// up, before it writes.
+/// Derived from the whole body, so an identical retry replays: CortexDB
+/// 0.10.4 answers it with the first event's id and
+/// `replayed_from_idempotency: true`, and writes nothing, for 24 hours.
+/// Any change to the body (a new `observed_at` on an unchanged item) is a
+/// new key and a new event, never a 409 for a reused key with another body.
+/// `/v1/forget` by `memory_ids` releases a key (measured on 0.10.4), so an
+/// item stored again after it was forgotten is written again. `tm3` names
+/// the event layout the body is in.
+pub(crate) fn body_idempotency_key(request: &Value) -> String {
+    use sha2::{Digest, Sha256};
+    let mut body = request.clone();
+    if let Some(object) = body.as_object_mut() {
+        object.remove("idempotency_key");
+    }
+    let bytes = serde_json::to_vec(&body).unwrap_or_default();
+    let mut key = String::from("tm3:");
+    for byte in Sha256::digest(&bytes).iter().take(28) {
+        key.push_str(&format!("{byte:02x}"));
+    }
+    key
+}
+
+/// A fresh key for every hosted write's `Idempotency-Key` claim.
+///
+/// Never derived from content: the hosted memory API answers every replay
+/// of a claim with 409, so a content-derived claim would refuse an identical
+/// re-store. One claim is reused across the retries of one write.
 ///
 /// Three parts: a per-process salt from the OS-seeded `RandomState`, the
 /// wall-clock nanoseconds, and a counter, so neither two writes in one

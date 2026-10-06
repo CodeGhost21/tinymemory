@@ -43,6 +43,9 @@ pub(crate) struct Written {
     pub(crate) label: String,
     pub(crate) text: String,
     pub(crate) event_id: String,
+    /// Whether CortexDB answered every event of the write as a replay of
+    /// one it already holds (`replayed_from_idempotency`).
+    pub(crate) replayed: bool,
 }
 
 /// How many times a hosted write is sent before a transient fault surfaces.
@@ -59,6 +62,16 @@ fn parts(request: &Value) -> Result<(&str, &str, &str)> {
             "an experience request lacks its scope, text or item label".to_string(),
         )),
     }
+}
+
+/// Whether a write receipt says CortexDB replayed the event rather than
+/// writing it. Absent (an older server, or a hosted answer without it) is
+/// not a replay.
+fn replayed(answer: &Value) -> bool {
+    answer
+        .get("replayed_from_idempotency")
+        .and_then(Value::as_bool)
+        == Some(true)
 }
 
 /// The event id a write receipt names.
@@ -83,14 +96,15 @@ impl Log {
         let Some(last) = requests.last() else {
             return Ok(None);
         };
-        let event_id = match self.client.wire() {
+        let (event_id, replayed) = match self.client.wire() {
             CortexWire::Direct => self.append_direct(requests, wait).await?,
             CortexWire::TinyHumans => {
-                let mut event_id = String::new();
+                let mut last = (String::new(), true);
                 for request in requests {
-                    event_id = self.send_hosted_write(request).await?;
+                    let (event_id, replayed) = self.send_hosted_write(request).await?;
+                    last = (event_id, last.1 && replayed);
                 }
-                event_id
+                last
             }
         };
         let (scope, text, label) = parts(last)?;
@@ -99,6 +113,7 @@ impl Log {
             label: label.to_string(),
             text: text.to_string(),
             event_id,
+            replayed,
         }))
     }
 
@@ -119,8 +134,8 @@ impl Log {
     }
 
     /// One Direct write of one event or one ordered batch; the last event's
-    /// id.
-    async fn append_direct(&self, requests: &[Value], wait: WaitFor) -> Result<String> {
+    /// id, and whether every event was a replay.
+    async fn append_direct(&self, requests: &[Value], wait: WaitFor) -> Result<(String, bool)> {
         let wire = self.client.wire();
         let query = match wait {
             WaitFor::Visible => "?wait=indexed",
@@ -132,7 +147,7 @@ impl Log {
                 .client
                 .json(reqwest::Method::POST, &path, Some(single), Attempts::Once)
                 .await?;
-            return receipt(&answer);
+            return Ok((receipt(&answer)?, replayed(&answer)));
         }
         let path = format!("{}{query}", wire.path(Route::Bulk));
         let body = json!({ "items": requests, "ordering": "strict_temporal" });
@@ -151,23 +166,25 @@ impl Log {
                 requests.len()
             )));
         }
-        results.last().map_or_else(
+        let last = results.last().map_or_else(
             || Err(Error::Engine("empty bulk results".to_string())),
             receipt,
-        )
+        )?;
+        Ok((last, results.iter().all(replayed)))
     }
 
-    /// One hosted write under one claim, with the outcome-unknown recovery.
-    async fn send_hosted_write(&self, request: &Value) -> Result<String> {
+    /// One hosted write under one claim, with the outcome-unknown recovery;
+    /// the event id, and whether it was a replay.
+    async fn send_hosted_write(&self, request: &Value) -> Result<(String, bool)> {
         let path = self.client.wire().path(Route::Experience);
         let claim = fresh_idempotency_key();
         let mut attempt = 0;
         loop {
             attempt += 1;
             match self.client.json_keyed(path, request, &claim).await {
-                Ok(answer) => return receipt(&answer),
+                Ok(answer) => return Ok((receipt(&answer)?, replayed(&answer))),
                 Err(Error::Conflict(_)) if attempt > 1 => {
-                    return self.recover_unknown_write(request).await;
+                    return Ok((self.recover_unknown_write(request).await?, false));
                 }
                 Err(error) if attempt < HOSTED_WRITE_ATTEMPTS && error.is_transient() => {
                     tokio::time::sleep(self.timing.poll * 2_u32.pow(attempt - 1)).await;

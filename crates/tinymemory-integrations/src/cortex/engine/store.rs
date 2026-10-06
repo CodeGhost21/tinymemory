@@ -15,10 +15,15 @@
 //!   are written, in order;
 //! - nothing present — every event is written.
 //!
-//! Writes use fresh idempotency keys (see `transport::fresh_idempotency_key`)
-//! rather than ones derived from content: CortexDB never releases a key on
-//! forget, so a content key would make re-storing a forgotten item a silent
-//! no-op.
+//! Each event is keyed by its own body (`transport::body_idempotency_key`),
+//! so an identical retry is a replay CortexDB answers without writing
+//! (`replayed_from_idempotency`), and forgetting an item releases its keys.
+//! A key lasts 24 hours and changes with any byte of the body, so it does
+//! not replace the lookup: an unchanged file synced again a day later, or
+//! with a new `observed_at`, would be written again without it. The lookup
+//! is skipped only on the turn-logging hot path ([`looks_up`]): a Direct,
+//! accepted-only store of one single-turn conversation, which the agent
+//! lifecycle makes twice per turn, and where a retry is the replay to catch.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -26,6 +31,7 @@ use tinymemory_api::{ItemId, StoreItem, StoreReceipt, WaitFor, validate_many};
 
 use super::CortexEngine;
 use super::scopes::KindScope;
+use crate::cortex::descriptor::CortexWire;
 use crate::cortex::envelope::{Encoded, Envelope};
 use crate::cortex::error::Result;
 use crate::cortex::log::Written;
@@ -71,7 +77,8 @@ impl CortexEngine {
                 .or_default()
                 .push(id.clone());
         }
-        for (scope, of_scope) in &by_scope {
+        let lookup = looks_up(self.wire(), &items, wait);
+        for (scope, of_scope) in by_scope.iter().filter(|_| lookup) {
             for (id, events) in self.item_events(scope, of_scope).await? {
                 held.entry(id)
                     .or_default()
@@ -92,8 +99,9 @@ impl CortexEngine {
                     requests.push(envelope.request(&encoded));
                 }
             }
-            let replayed = requests.is_empty();
+            let mut replayed = requests.is_empty();
             if let Some(written) = self.log.write(&requests, wait).await? {
+                replayed = written.replayed;
                 last_per_scope.retain(|w| w.scope != written.scope);
                 last_per_scope.push(written);
             }
@@ -114,6 +122,20 @@ impl CortexEngine {
         }
         Ok(receipts)
     }
+}
+
+/// Whether a store looks its items up before writing. Always, except on the
+/// turn-logging hot path: a Direct store of one single-turn conversation
+/// that waits only for acceptance. There the body key catches a retry
+/// (Direct answers it as a replay), and a listing per turn would cost the
+/// turn latency. The hosted wire always looks up: its answer need not say
+/// it replayed.
+fn looks_up(wire: CortexWire, items: &[StoreItem], wait: WaitFor) -> bool {
+    let hot = matches!(
+        items,
+        [StoreItem::Conversation { turns, .. }] if turns.len() == 1
+    );
+    !(wire == CortexWire::Direct && wait == WaitFor::Accepted && hot)
 }
 
 #[cfg(test)]
