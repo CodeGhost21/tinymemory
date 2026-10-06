@@ -80,6 +80,7 @@ pub(super) async fn section(
     section: &ScopeSection,
     beliefs: usize,
 ) -> Gathered {
+    let keep = |hit: &Hit| !request.excludes(hit);
     let want = wanted(request, section);
     let outcome = match &section.query {
         SectionQuery::Answer {
@@ -94,7 +95,7 @@ pub(super) async fn section(
                     "[recall] answer failed, fetching instead heading={:?} error={error}",
                     section.heading
                 );
-                fetch(engine, &section.filter, question, want, 0).await
+                fetch(engine, &section.filter, question, want, 0, &keep).await
             }
             Err(error) => Err(error),
         },
@@ -104,11 +105,11 @@ pub(super) async fn section(
                 .or(request.query.as_deref())
                 .filter(|query| !query.trim().is_empty())
             {
-                Some(query) => fetch(engine, &section.filter, query, want, beliefs).await,
-                None => with_listed_beliefs(engine, section, want).await,
+                Some(query) => fetch(engine, &section.filter, query, want, beliefs, &keep).await,
+                None => with_listed_beliefs(engine, section, want, &keep).await,
             }
         }
-        SectionQuery::Latest => with_listed_beliefs(engine, section, want).await,
+        SectionQuery::Latest => with_listed_beliefs(engine, section, want, &keep).await,
     };
     match outcome {
         Ok((hits, beliefs)) => Gathered::Hits { hits, beliefs },
@@ -235,9 +236,13 @@ async fn with_listed_beliefs(
     engine: &dyn MemoryEngine,
     section: &ScopeSection,
     want: usize,
+    keep: &dyn Fn(&Hit) -> bool,
 ) -> tinymemory_api::Result<(Vec<Hit>, Vec<Hit>)> {
     if !reads_learnings(section) {
-        return Ok((latest(engine, &section.filter, want).await?, Vec::new()));
+        return Ok((
+            latest(engine, &section.filter, want, keep).await?,
+            Vec::new(),
+        ));
     }
     let reach = section
         .filter
@@ -245,7 +250,7 @@ async fn with_listed_beliefs(
         .clone()
         .unwrap_or_else(|| Reach::subtree(Namespace::ROOT));
     let (hits, beliefs) = join(
-        latest(engine, &section.filter, want),
+        latest(engine, &section.filter, want, keep),
         engine.beliefs(BeliefsRequest::new(reach, want)),
     )
     .await;
@@ -319,9 +324,10 @@ async fn fetch(
     query: &str,
     limit: usize,
     beliefs: usize,
+    keep: &dyn Fn(&Hit) -> bool,
 ) -> tinymemory_api::Result<(Vec<Hit>, Vec<Hit>)> {
     let Some(mode) = preferred_mode(engine) else {
-        return Ok((latest(engine, filter, limit).await?, Vec::new()));
+        return Ok((latest(engine, filter, limit, keep).await?, Vec::new()));
     };
     let mut request = FetchRequest::new(query, mode, limit);
     request.filter = filter.clone();
@@ -332,10 +338,16 @@ async fn fetch(
 
 /// The newest hits, then the most confident, then the latest turn; ties
 /// keep the engine's order.
+///
+/// Hits `keep` refuses (the request's exclusions: the prompt's own thread
+/// window, ids already shown) are dropped *before* the cut to `limit`, so a
+/// window holding more recent turns than the overfetch allowance cannot
+/// crowd every older turn out of the section.
 async fn latest(
     engine: &dyn MemoryEngine,
     filter: &MetaFilter,
     limit: usize,
+    keep: &dyn Fn(&Hit) -> bool,
 ) -> tinymemory_api::Result<Vec<Hit>> {
     let mut all: Vec<Hit> = Vec::new();
     let mut cursor: Option<String> = None;
@@ -343,7 +355,7 @@ async fn latest(
         let mut request = ListRequest::new(filter.clone(), LATEST_PAGE);
         request.cursor = cursor.take();
         let page = engine.list(request).await?;
-        all.extend(page.items);
+        all.extend(page.items.into_iter().filter(|hit| keep(hit)));
         match page.next_cursor {
             Some(next) => cursor = Some(next),
             None => break,

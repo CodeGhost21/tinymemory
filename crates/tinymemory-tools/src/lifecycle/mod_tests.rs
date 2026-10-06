@@ -648,3 +648,144 @@ async fn core_build_consolidates_exactly_the_core_node() {
     assert_eq!(request.reach, Reach::exact(acme()));
     assert!(request.kinds.is_empty());
 }
+
+// ── a resumed pre-turn: one pack, one budget (openhuman#7023) ───────────────
+
+/// Logs `turns` exchanges on `thread`, each with distinct text.
+async fn log_exchanges(memory: &AgentMemory, thread: &str, turns: u32) {
+    for turn in 0..turns {
+        memory
+            .pre_turn(PreTurn::new(
+                thread,
+                turn * 2,
+                format!("leg {turn}: how far is Porto"),
+            ))
+            .await
+            .unwrap();
+        memory
+            .post_turn(PostTurn::new(
+                thread,
+                turn * 2 + 1,
+                format!("Leg {turn} is about 310 km."),
+            ))
+            .await
+            .unwrap();
+    }
+}
+
+fn bullets(markdown: &str) -> Vec<&str> {
+    markdown
+        .lines()
+        .filter(|line| line.trim_start().starts_with("- "))
+        .collect()
+}
+
+#[tokio::test]
+async fn a_resumed_pre_turn_leads_with_the_thread_in_one_pack_and_repeats_nothing() {
+    let engine = Arc::new(ReferenceEngine::new());
+    let memory = memory(&engine, "assistant");
+    engine
+        .store(StoreItem::learning(
+            "The user prefers metric units",
+            LearningKind::Preference,
+            0.9,
+            MemoryMeta::default(),
+        ))
+        .await
+        .unwrap();
+    log_exchanges(&memory, "t1", 3).await;
+
+    let resumed = memory
+        .pre_turn_resumed(PreTurn {
+            in_prompt_from: 4,
+            ..PreTurn::new("t1", 6, "which units does the user prefer for the distance")
+        })
+        .await
+        .unwrap()
+        .pack;
+    let markdown = &resumed.markdown;
+    assert!(markdown.contains(THREAD_HEADING), "{markdown}");
+    assert!(markdown.contains("metric units"), "{markdown}");
+    assert!(
+        markdown.contains("leg 0"),
+        "an older turn leads: {markdown}"
+    );
+    assert!(
+        !markdown.contains("leg 2:"),
+        "turns in the prompt stay out: {markdown}"
+    );
+    let lines = bullets(markdown);
+    let unique: std::collections::HashSet<&str> = lines.iter().copied().collect();
+    assert_eq!(
+        lines.len(),
+        unique.len(),
+        "a line was injected twice:\n{markdown}"
+    );
+    assert!(resumed.tokens <= RecallPolicy::default().budget_tokens);
+
+    // An ordinary pre-turn has no thread section, as before.
+    let plain = memory
+        .pre_turn(PreTurn {
+            in_prompt_from: 4,
+            ..PreTurn::new("t1", 8, "which units does the user prefer for the distance")
+        })
+        .await
+        .unwrap()
+        .pack;
+    assert!(
+        !plain.markdown.contains(THREAD_HEADING),
+        "{}",
+        plain.markdown
+    );
+}
+
+#[tokio::test]
+async fn a_resumed_pre_turn_honours_a_zero_history_limit() {
+    let engine = Arc::new(ReferenceEngine::new());
+    let memory = memory(&engine, "assistant");
+    log_exchanges(&memory, "t1", 3).await;
+    let quiet = memory.clone().with_policy(RecallPolicy {
+        history_limit: 0,
+        ..memory.policy().clone()
+    });
+
+    let pack = quiet
+        .pre_turn_resumed(PreTurn {
+            in_prompt_from: 4,
+            ..PreTurn::new("t1", 6, "how far is Porto")
+        })
+        .await
+        .unwrap()
+        .pack;
+    assert!(!pack.markdown.contains(THREAD_HEADING), "{}", pack.markdown);
+}
+
+#[tokio::test]
+async fn older_turns_survive_a_prompt_window_bigger_than_the_overfetch() {
+    // 30 exchanges = turns 0..59; the prompt holds turns 8..59 (52 turns),
+    // far more than the section's overfetch allowance. Before the fix the
+    // newest candidates were cut to that allowance first, all of them were
+    // in the window, and the thread section came back empty.
+    let engine = Arc::new(ReferenceEngine::new());
+    let memory = memory(&engine, "assistant");
+    log_exchanges(&memory, "t1", 30).await;
+
+    let pack = memory
+        .pre_turn_resumed(PreTurn {
+            in_prompt_from: 8,
+            ..PreTurn::new("t1", 60, "how far is Porto")
+        })
+        .await
+        .unwrap()
+        .pack;
+    let markdown = &pack.markdown;
+    assert!(markdown.contains(THREAD_HEADING), "{markdown}");
+    assert!(
+        markdown.contains("leg 3"),
+        "the newest turn before the window: {markdown}"
+    );
+    assert!(
+        !markdown.contains("leg 4:"),
+        "turns in the window stay out: {markdown}"
+    );
+}
