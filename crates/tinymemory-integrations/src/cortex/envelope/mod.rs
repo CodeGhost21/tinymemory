@@ -231,17 +231,26 @@ impl Envelope {
                 let mut whole = Self::new(id, ItemKind::Document, String::new(), meta);
                 whole.title.clone_from(title);
                 whole.mime.clone_from(mime);
-                // No room for a piece (metadata alone near the limit) leaves
-                // the document whole: it is written if it fits and refused
-                // by `encode_checked` if not, never cut into pieces that are
-                // each over the limit.
-                let pieces = chunks::split(
+                let paged = text.contains(chunks::PAGE_BREAK);
+                let Some(pieces) = chunks::split(
                     text,
-                    whole.piece_overhead()?,
+                    whole.piece_overhead(paged)?,
                     chunks::DOCUMENT_CHUNK_TARGET_BYTES,
                     chunks::MAX_EVENT_TEXT_BYTES,
-                )
-                .unwrap_or_default();
+                ) else {
+                    // The metadata leaves no room for a piece: the document
+                    // is written whole if it fits, and refused here if not,
+                    // never cut into pieces that would each be over the limit.
+                    whole.text.clone_from(text);
+                    let size = whole.encode()?.len();
+                    if size > chunks::MAX_EVENT_TEXT_BYTES {
+                        return Err(Error::InvalidRequest(format!(
+                            "a document event would be {size} bytes and its metadata leaves no \
+                             room to split it; CortexDB refuses an event over 1 MiB"
+                        )));
+                    }
+                    return Ok(vec![whole]);
+                };
                 if pieces.len() <= 1 {
                     whole.text.clone_from(text);
                     return Ok(vec![whole]);
@@ -350,13 +359,15 @@ impl Envelope {
     }
 
     /// The encoded size of this envelope as a document piece with an empty
-    /// text: the room every piece's own text is added to.
-    fn piece_overhead(&self) -> Result<usize> {
+    /// text: the room every piece's own text is added to. A page range is
+    /// reserved only for a document that marks pages (`paged`), since only
+    /// its pieces carry one.
+    fn piece_overhead(&self, paged: bool) -> Result<usize> {
         let mut probe = self.clone();
         probe.chunk = Some(ChunkInfo {
             index: u32::MAX,
             count: u32::MAX,
-            pages: Some([u32::MAX, u32::MAX]),
+            pages: paged.then_some([u32::MAX, u32::MAX]),
             section: None,
         });
         Ok(probe.encode()?.len() + SECTION_RESERVE)

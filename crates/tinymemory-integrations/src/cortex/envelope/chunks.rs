@@ -82,12 +82,15 @@ pub(crate) fn split(
     let room = limit
         .checked_sub(overhead)
         .filter(|room| *room >= MAX_ESCAPED_CHAR)?;
+    // A target the metadata alone uses up gives way to the room under the
+    // limit, rather than packing a few bytes per piece.
     let pack = if target == 0 {
         room
     } else {
         target
-            .saturating_sub(overhead)
-            .clamp(MAX_ESCAPED_CHAR, room)
+            .checked_sub(overhead)
+            .filter(|pack| *pack >= MAX_ESCAPED_CHAR)
+            .map_or(room, |pack| pack.min(room))
     };
     let paged = text.contains(PAGE_BREAK);
     if target != 0 && escaped_len(text) <= pack {

@@ -355,7 +355,8 @@ its whole envelope. So (`envelope/chunks.rs`):
   `DOCUMENT_CHUNK_TARGET_BYTES` (256 KiB) is one event, byte-identical to an
   unchunked one (no `chunk` field). A longer one is split. The target is the
   only granularity knob: at `0` every page and every section becomes its own
-  event.
+  event, except that a page or section too big for one event is still cut
+  into several (see Where).
 - **Where.** First at page breaks (the form feed the PDF converter puts
   between pages), then before markdown heading lines; a stretch of only
   whitespace never becomes a piece. These units are packed greedily, in order,

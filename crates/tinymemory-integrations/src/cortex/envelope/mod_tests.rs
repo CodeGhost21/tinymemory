@@ -249,35 +249,41 @@ fn a_document_without_pieces_rebuilds_from_its_first_envelope() {
 }
 
 #[test]
-fn metadata_too_large_for_a_piece_keeps_the_document_whole_and_refused() {
+fn metadata_that_leaves_no_room_for_a_piece_keeps_a_fitting_document_whole() {
+    // Metadata just under the limit: no room for a piece's envelope, yet a
+    // short document still fits whole.
+    let mut near = meta();
+    near.tags = vec!["t".repeat(chunks::MAX_EVENT_TEXT_BYTES - 2_000)];
+    let fits = StoreItem::document("Short note.", near);
+    let id = fits.fingerprint();
+    let envelopes = Envelope::for_item(&fits, &id).unwrap();
+    assert_eq!(envelopes.len(), 1, "no pieces are made up");
+    assert_eq!(envelopes[0].chunk, None);
+    envelopes[0].encode_checked().unwrap();
+}
+
+#[test]
+fn a_document_that_cannot_fit_or_be_split_is_refused_when_laid_out() {
     let mut huge = meta();
     huge.tags = vec!["t".repeat(chunks::MAX_EVENT_TEXT_BYTES)];
-    let small = StoreItem::document("Short note.", huge.clone());
-    let id = small.fingerprint();
-    let envelopes = Envelope::for_item(&small, &id).unwrap();
-    assert_eq!(envelopes.len(), 1, "no pieces are made up");
-    assert!(matches!(
-        envelopes[0].encode_checked(),
-        Err(Error::InvalidRequest(_))
-    ));
-    let StoreItem::Document {
-        body, title, mime, ..
-    } = long_document()
-    else {
-        unreachable!("a document");
-    };
-    let long = StoreItem::Document {
-        title,
-        body,
-        mime,
-        meta: huge,
-    };
-    let id = long.fingerprint();
-    let envelopes = Envelope::for_item(&long, &id).unwrap();
-    assert_eq!(
-        envelopes.len(),
-        1,
-        "never pieces that each exceed the limit"
-    );
-    assert!(envelopes[0].encode_checked().is_err());
+    for body in ["Short note.".to_string(), "x".repeat(400_000)] {
+        let item = StoreItem::document(body, huge.clone());
+        let id = item.fingerprint();
+        let refused = Envelope::for_item(&item, &id);
+        assert!(
+            matches!(&refused, Err(Error::InvalidRequest(message)) if message.contains("1 MiB")),
+            "{refused:?}"
+        );
+    }
+}
+
+#[test]
+fn a_whitespace_only_document_keeps_its_text() {
+    for body in ["   \n\n  ", "\u{c}\u{c}", " \u{c} \n"] {
+        let item = StoreItem::document(body, meta());
+        let id = item.fingerprint();
+        let envelopes = Envelope::for_item(&item, &id).unwrap();
+        assert_eq!(envelopes.len(), 1, "{body:?}");
+        assert_eq!(rebuild(&envelopes).unwrap(), item, "{body:?}");
+    }
 }

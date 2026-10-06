@@ -167,3 +167,15 @@ fn every_piece_fits_even_at_the_smallest_room() {
         }
     }
 }
+
+#[test]
+fn metadata_over_the_target_packs_up_to_the_limit_not_a_few_bytes() {
+    let text = "A short note that fits under the limit.";
+    let one = split(text, 900, 500, 10_000).expect("room under the limit");
+    assert_eq!(one.len(), 1, "{one:?}");
+    let long = "word ".repeat(4_000);
+    for piece in split(&long, 900, 500, 10_000).expect("room") {
+        assert!(900 + escaped_len(piece.text) <= 10_000);
+        assert!(escaped_len(piece.text) > 1_000, "not a few bytes per piece");
+    }
+}

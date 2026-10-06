@@ -275,3 +275,54 @@ fn the_double_answers_a_reused_key_as_a_conflict_before_checking_size() {
     }));
     assert_eq!(status, 422, "{body}");
 }
+
+#[test]
+fn a_piece_is_tagged_only_with_the_page_and_section_it_has() {
+    use crate::cortex::envelope::{ChunkInfo, Envelope};
+    let item = StoreItem::document("piece text", meta());
+    let mut envelope = Envelope::for_item(&item, &item.fingerprint())
+        .unwrap()
+        .remove(0);
+    let tags = |pages: Option<[u32; 2]>, section: Option<&str>| {
+        let mut piece = envelope.clone();
+        piece.chunk = Some(ChunkInfo {
+            index: 1,
+            count: 3,
+            pages,
+            section: section.map(str::to_string),
+        });
+        super::items::located_meta(&piece).tags
+    };
+    assert_eq!(
+        tags(Some([3, 3]), Some("Billing")),
+        ["page:3", "section:Billing"]
+    );
+    assert_eq!(tags(Some([3, 5]), None), ["page:3-5"]);
+    assert_eq!(tags(None, Some("Billing")), ["section:Billing"]);
+    assert!(tags(None, None).is_empty(), "no page, no section: no tag");
+    envelope.chunk = None;
+    assert!(super::items::located_meta(&envelope).tags.is_empty());
+}
+
+#[tokio::test]
+async fn a_long_document_without_pages_or_headings_gets_no_extra_tags() {
+    let (endpoint, state) = direct_double().await;
+    let engine = direct_engine(&endpoint);
+    let body = format!("{}\n\n", "Plain paragraph about refunds. ".repeat(40)).repeat(300);
+    let item = StoreItem::Document {
+        title: None,
+        body: DocumentBody::Text(body.clone()),
+        mime: None,
+        meta: meta(),
+    };
+    engine.store(item.clone()).await.unwrap();
+    assert!(events(&state, SCOPE).len() > 1, "written in pieces");
+    let mut request = FetchRequest::new("refunds paragraph", FetchMode::Hybrid, 3);
+    request.filter.reach = Some(Reach::exact(Namespace::source("pdf")));
+    let page = engine.fetch(request).await.unwrap();
+    assert!(!page.hits.is_empty());
+    for hit in &page.hits {
+        assert!(hit.meta.tags.is_empty(), "{:?}", hit.meta.tags);
+        assert!(body.contains(&hit.text) || hit.text.len() < body.len());
+    }
+}
