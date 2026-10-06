@@ -362,7 +362,8 @@ its whole envelope. So (`envelope/chunks.rs`):
   whitespace never becomes a piece. These units are packed greedily, in order,
   up to the target. A unit over the target is cut at blank lines, then line
   ends, then characters. Sizes are JSON-escaped bytes plus the envelope
-  around the piece (its metadata and the `chunk` field at full width).
+  around the piece (its metadata and the `chunk` field at full width, with
+  a page range reserved only when the document marks pages).
 - **Limit.** No event over `MAX_EVENT_TEXT_BYTES` (768 KiB of encoded
   envelope, a quarter under the server's limit) is ever sent: every event of
   a batch is encoded and checked before the first write, and an item over it
