@@ -7,9 +7,10 @@
 //! was wrong in that adapter first. The test doubles reproduce all of them.
 //!
 //! - **It is append-only.** `/v1/experience` only appends; there is no
-//!   update. `/v1/forget` removes events but **not** their idempotency
-//!   records, so a body `idempotency_key` reused after a forget is swallowed
-//!   as a replay. Every write therefore gets a fresh key.
+//!   update. A body `idempotency_key` replays the same body for 24 hours
+//!   (`replayed_from_idempotency`) and refuses another body (409); forget by
+//!   `memory_ids` releases it (0.10.4). Keys are derived from the body, so a
+//!   retry is a replay (`transport::body_idempotency_key`).
 //! - **Accepted is not readable.** `/v1/experience` answers `202 captured`
 //!   and indexes afterwards. Writes wait (see `visibility`): first until the
 //!   listing carries the event, which is fatal on timeout, then until ranked

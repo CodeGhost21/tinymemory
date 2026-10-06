@@ -391,3 +391,51 @@ async fn a_long_document_round_trips_in_pieces() {
         }
     }
 }
+
+/// A turn logged on the hot path (one single-turn conversation, accepted
+/// only) skips the lookup, so a retry is caught by CortexDB itself: the
+/// same body is the same idempotency key, answered as a replay of the
+/// first event. The hosted wire always looks up, so this is Direct only.
+#[tokio::test]
+async fn a_logged_turn_sent_twice_is_written_once() {
+    let _alone = ONE_AT_A_TIME.lock().await;
+    for (wire, engine) in live_engines() {
+        if wire != "cortexdb" {
+            continue;
+        }
+        let thread = run_id();
+        let turn = StoreItem::Conversation {
+            turns: vec![Turn::new(
+                Role::User,
+                format!("Ship the Aurora build on Friday ({thread})."),
+            )],
+            meta: MemoryMeta {
+                thread_id: Some(thread.clone()),
+                ..MemoryMeta::default()
+            },
+        };
+        let first = engine
+            .store_with(turn.clone(), tinymemory_api::WriteOptions::accepted())
+            .await
+            .expect("log the turn");
+        assert!(!first.replayed);
+        let retry = engine
+            .store_with(turn, tinymemory_api::WriteOptions::accepted())
+            .await
+            .expect("log it again");
+        assert!(retry.replayed, "CortexDB answered the retry as a replay");
+        assert_eq!(retry.id, first.id);
+
+        let filter = MetaFilter {
+            thread_id: Some(thread),
+            ..MetaFilter::default()
+        };
+        let listed = list_until(&engine, &filter, 1).await;
+        assert_eq!(listed.len(), 1, "one conversation");
+        let report = engine
+            .forget(ForgetTarget::Ids(vec![first.id]))
+            .await
+            .expect("forget");
+        assert_eq!(report.forgotten, 1);
+    }
+}

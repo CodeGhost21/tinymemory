@@ -2,9 +2,10 @@
 //!
 //! Deliberately unaccommodating, because a tidy double proves nothing:
 //!
-//! - append-only, with the body `idempotency_key` remembered for ever (a
-//!   reused key with a different body is `409 IDEMPOTENCY_CONFLICT`, the
-//!   same body is a replay, and forgetting an event does not release it);
+//! - append-only, with the body `idempotency_key` remembered (a reused key
+//!   with a different body is `409 IDEMPOTENCY_CONFLICT`, the same body is
+//!   a replay); forgetting an event by `memory_ids` releases its key, as
+//!   CortexDB 0.10.4 does;
 //! - the listing is newest first and emits **every event twice**, with
 //!   `limit` counting the copies;
 //! - unknown query parameters are ignored;
@@ -185,8 +186,13 @@ impl CortexLog {
                 });
             self.forgotten
                 .extend(gone.iter().map(|e| str_of(e, "/id").to_string()));
+            self.idempotency
+                .retain(|_, (_, id)| !gone.iter().any(|e| str_of(e, "/id") == id));
             self.events = kept;
         } else {
+            // A scope-wide forget only redacts, so its keys stay held for
+            // their 24 hours (CortexDB's answer for 0.10.3/0.10.4); only a
+            // forget by `memory_ids` releases them.
             self.events.retain(|e| str_of(e, "/scope") != scope);
         }
         let deleted = before - self.events.len();
@@ -194,6 +200,21 @@ impl CortexLog {
             200,
             json!({ "deleted": { "events": deleted }, "requested": ids.len() }),
         )
+    }
+
+    /// Removes the last event of `scope` and its idempotency record, as if
+    /// it had never been written (a store that failed part way).
+    pub(crate) fn lose_last(&mut self, scope: &str) {
+        let Some(at) = self
+            .events
+            .iter()
+            .rposition(|e| str_of(e, "/scope") == scope)
+        else {
+            return;
+        };
+        let lost = self.events.remove(at);
+        let id = str_of(&lost, "/id").to_string();
+        self.idempotency.retain(|_, (_, held)| *held != id);
     }
 
     /// `POST /v1/recall`: events ranked by how many query words they hold.

@@ -63,7 +63,7 @@ Request body (one event). It is the same on both wires:
 {
   "scope": "app:tinymemory/agent:researcher/app:documents",
   "modality": "document",
-  "idempotency_key": "tm-<salt>-<nanos>-<seq>",
+  "idempotency_key": "tm3:<the first 56 hex digits (224 bits) of the SHA-256 of this body without the key>",
   "content": { "kind": "message", "role": "user", "text": "<envelope JSON, see below>" },
   "context": {
     "labels": ["tm:i:<16 hex>", "tm:k:<16 hex>"],
@@ -76,8 +76,9 @@ Request body (one event). It is the same on both wires:
   `conversation` for a turn. `content.role` is `user` for documents and
   learnings and the turn's speaker (`user`, `assistant`, `system`, `tool`)
   for a conversation turn.
-- `idempotency_key` is a fresh value on every write, never derived from
-  content (see [flows: store](cortex-flows.md#store-and-store_many)).
+- `idempotency_key` is derived from the body, so an identical retry is a
+  replay (see [flows: store](cortex-flows.md#store-and-store_many)). The
+  answer's `replayed_from_idempotency` is read; absent counts as `false`.
 - `context.observed_at` is the turn's `at`, else the item's
   `meta.observed_at`; it is omitted when neither is set.
 - `context.labels[0]` is always the item label; the writer relies on that.
@@ -478,9 +479,11 @@ digest cannot, so they are never labelled and are filtered client-side only.
 Each was measured against a live CortexDB and was wrong in the first adapter.
 The loopback doubles reproduce all of them (see [testing](testing.md)).
 
-- **Append-only.** There is no update route. Forget removes events but **not**
-  their idempotency records, so a reused body `idempotency_key` after a forget
-  is swallowed as a replay.
+- **Append-only.** There is no update route. A reused body `idempotency_key`
+  with the same body is a replay for 24 hours, and with another body a 409
+  (which this crate's keys, derived from the body, never produce).
+  Forget by `memory_ids` releases the keys of what it removes (measured on
+  0.10.4; the v1 adapter's notes said the opposite, on an unrecorded build).
 - **Accepted is not readable.** An append answers `202` and indexes afterwards.
   The status route and the lifecycle stream are not readiness signals, so the
   engine waits on the listing and on recall itself (see
