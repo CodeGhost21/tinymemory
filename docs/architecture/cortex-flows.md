@@ -153,7 +153,7 @@ Only `Hybrid`. Other modes fail `Error::Unsupported` before any request.
 ## Recall
 
 Recall builds a pack, asks the answer route **once** with `use_pack_id`
-(again from a rebuilt pack when the pack was dropped in between, step 5), and cites from the pack.
+(again, from every pack built anew, when the packs were dropped in between, step 5), and cites from the packs.
 
 1. Resolve the scopes: a reach's kind scopes (its node and, when it
    inherits, every ancestor; below it too for a subtree reach), or, with **no reach** (an
@@ -181,8 +181,10 @@ Recall builds a pack, asks the answer route **once** with `use_pack_id`
    `diagnostics.answer_model`. A pack lives 60 s, and CortexDB drops every
    pack it holds once anything is forgotten (measured on 0.10.4: a forget in
    an unrelated scope turns the next `use_pack_id` into a 404). On that 404
-   the chosen scope's pack is built again and the answer asked again, up to
-   three answers in all; a third 404 is returned as `Error::NotFound`.
+   the round is repeated from step 1's packs: every scope's pack is built
+   again and steps 3 to 5 run on the new ones, so the answer and the
+   citations both come from packs read after the drop. At most three rounds;
+   a third 404 is returned as `Error::NotFound`.
 6. **Citations** come from the packs' decoded events, merged rank by rank
    (each pack's best first), one per item, the most
    specific node's first, capped at `limit`, with `score: None` and the

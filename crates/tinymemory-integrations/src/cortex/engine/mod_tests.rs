@@ -340,6 +340,19 @@ async fn an_answer_whose_pack_expired_recalls_that_scope_again() {
             assert_eq!(seen.answers.len(), 2, "answered from the fresh pack");
         }
 
+        // With several scopes every pack is read again, so the citations
+        // come from packs read after whatever dropped them, not before.
+        let mut wide = RecallRequest::new("which editor helix", 2);
+        wide.filter = MetaFilter::kinds([ItemKind::Learning, ItemKind::Conversation]);
+        state.seen.lock().unwrap().recalls.clear();
+        state.expire_packs.store(1, Ordering::SeqCst);
+        engine.recall(wide).await.unwrap();
+        assert_eq!(
+            state.seen.lock().unwrap().recalls.len(),
+            4,
+            "two scopes, each packed in both rounds"
+        );
+
         state.seen.lock().unwrap().answers.clear();
         state.expire_packs.store(3, Ordering::SeqCst);
         assert!(

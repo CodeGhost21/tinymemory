@@ -14,7 +14,7 @@ rustdoc next to the code.
 | [operations.md](operations.md) | Step-by-step semantics of store, store_many, fetch, recall, list, forget, explore and get |
 | [namespaces.md](namespaces.md) | The memory tree: `Namespace`, `Segment`, `Reach`, and what each operation does with them |
 | [cortex.md](cortex.md) | The CortexDB engine: wires, scopes, envelopes, recall |
-| [cortex-wire.md](cortex-wire.md), [cortex-flows.md](cortex-flows.md) | The CortexDB wire formats and the step-by-step request flows |
+| [cortex-wire.md](cortex-wire.md), [cortex-flows.md](cortex-flows.md), [cortex-chunks.md](cortex-chunks.md) | The CortexDB wire formats, the step-by-step request flows, and chunked documents |
 | [tools.md](tools.md) | `tinymemory-tools`: the seven agent tools, host-fixed scoping, `context.md` |
 | [lifecycle.md](lifecycle.md) | The agent memory lifecycle: the standard layout (brain, conversations, learnings), holistic recall, pre- and post-turn, compaction, background belief builds |
 | [integrations.md](integrations.md) | `tinymemory-integrations`: registry and config, documents, sources, safety, legacy import |

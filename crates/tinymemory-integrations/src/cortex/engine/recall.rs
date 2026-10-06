@@ -9,9 +9,9 @@
 //! order, not by relevance, so it would answer from an arbitrary sample.
 //! With no scope to read, the answer is empty and nothing is sent.
 //!
-//! The answer route is asked once with `use_pack_id` (again, from that
-//! scope's pack built again, when CortexDB dropped the pack in between, up
-//! to three answers: it drops every pack on any forget), so it answers from
+//! The answer route is asked once with `use_pack_id` (again, after every
+//! pack is built anew, when CortexDB dropped the packs in between, up to
+//! three rounds: it drops every pack on any forget), so it answers from
 //! exactly the evidence that pack holds: with several packs, the one holding
 //! the most admitted events, the most specific node on a tie. **The answer
 //! text is grounded on that one pack, while the citations come from every
@@ -45,8 +45,8 @@ use crate::cortex::error::{Error, Result};
 /// Recall packs built at once when a reach spans several scopes.
 const PACKS_AT_ONCE: usize = 4;
 
-/// Answers asked at most per recall: the first, and one after each pack
-/// CortexDB dropped before it was used.
+/// Rounds (packs, then one answer) at most per recall: the first, and one
+/// after each time CortexDB dropped the packs before the answer used one.
 const ANSWER_ATTEMPTS: usize = 3;
 
 /// The derived layers a pack also draws on, besides events.
@@ -133,48 +133,20 @@ impl CortexEngine {
         let mut ordered: Vec<&KindScope> = scopes.iter().collect();
         ordered.sort_by_key(|scope| std::cmp::Reverse(scope.namespace.depth()));
         let paths: Vec<String> = ordered.into_iter().map(|s| s.path.clone()).collect();
-        let req = &req;
-        let packs: Vec<(String, Value)> = stream::iter(paths)
-            .map(|path| async move {
-                let pack = self.pack(req, &path).await?;
-                Ok::<_, Error>((path, pack))
-            })
-            .buffered(PACKS_AT_ONCE)
-            .try_collect()
-            .await?;
-        let per_pack: Vec<Vec<Envelope>> = packs
-            .iter()
-            .map(|(_, pack)| ranked(pack, None, &req.filter))
-            .collect();
-        let chosen = per_pack
-            .iter()
-            .enumerate()
-            .max_by_key(|(index, events)| (events.len(), std::cmp::Reverse(*index)))
-            .map_or(0, |(index, _)| index);
-        let (scope, pack) = &packs[chosen];
-        let ask = |pack_id: &str| {
-            answer_body(
-                self.wire(),
-                scope,
-                &req.question,
-                pack_id,
-                req.instructions.as_deref(),
-            )
-        };
         // A pack lives 60 s, and CortexDB drops every pack it holds once
         // anything is forgotten (measured on 0.10.4: a forget in another
-        // scope turns the next `use_pack_id` into a 404). On a 404, build
-        // this scope's pack again and answer from it, up to
-        // [`ANSWER_ATTEMPTS`] answers in all.
-        let mut answered = self.log.answer(&ask(pack_id_of(pack)?)).await;
-        for _ in 1..ANSWER_ATTEMPTS {
-            if !matches!(answered, Err(Error::NotFound(_))) {
-                break;
+        // scope turns the next `use_pack_id` into a 404). On a 404 every
+        // pack is built again, so the answer and the citations both come
+        // from packs read after that forget, up to [`ANSWER_ATTEMPTS`]
+        // rounds in all.
+        let mut round = 1;
+        let (per_pack, answered) = loop {
+            let (per_pack, answered) = self.answer_round(&req, &paths).await?;
+            match answered {
+                Err(Error::NotFound(_)) if round < ANSWER_ATTEMPTS => round += 1,
+                answered => break (per_pack, answered?),
             }
-            let fresh = self.pack(req, scope).await?;
-            answered = self.log.answer(&ask(pack_id_of(&fresh)?)).await;
-        }
-        let answered = answered?;
+        };
         let answer = answered
             .get("answer")
             .and_then(Value::as_str)
@@ -205,6 +177,43 @@ impl CortexEngine {
 }
 
 impl CortexEngine {
+    /// One round of recall: a pack per path (four at a time), decoded and
+    /// filtered, and the answer route asked once with the pack holding the
+    /// most admitted events, the most specific node on a tie. The answer's
+    /// own error is handed back, so the caller can tell a dropped pack.
+    async fn answer_round(
+        &self,
+        req: &RecallRequest,
+        paths: &[String],
+    ) -> Result<(Vec<Vec<Envelope>>, Result<Value>)> {
+        let packs: Vec<(String, Value)> = stream::iter(paths.to_vec())
+            .map(|path| async move {
+                let pack = self.pack(req, &path).await?;
+                Ok::<_, Error>((path, pack))
+            })
+            .buffered(PACKS_AT_ONCE)
+            .try_collect()
+            .await?;
+        let per_pack: Vec<Vec<Envelope>> = packs
+            .iter()
+            .map(|(_, pack)| ranked(pack, None, &req.filter))
+            .collect();
+        let chosen = per_pack
+            .iter()
+            .enumerate()
+            .max_by_key(|(index, events)| (events.len(), std::cmp::Reverse(*index)))
+            .map_or(0, |(index, _)| index);
+        let (scope, pack) = &packs[chosen];
+        let body = answer_body(
+            self.wire(),
+            scope,
+            &req.question,
+            pack_id_of(pack)?,
+            req.instructions.as_deref(),
+        );
+        Ok((per_pack, self.log.answer(&body).await))
+    }
+
     /// A recall pack for `req` over exactly `scope`, sized for `req.limit`
     /// citations. It includes the derived layers the answer route reads,
     /// after the events the citations come from.
