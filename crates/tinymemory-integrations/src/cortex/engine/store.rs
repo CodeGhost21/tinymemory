@@ -10,8 +10,9 @@
 //!
 //! - every event present (the whole document, learning, or every turn) —
 //!   a replay: nothing is written and the receipt says so;
-//! - some turns of a conversation present — a previous store failed part
-//!   way, and only the missing turns are written, in order;
+//! - some turns of a conversation, or some pieces of a chunked document,
+//!   present — a previous store failed part way, and only the missing ones
+//!   are written, in order;
 //! - nothing present — every event is written.
 //!
 //! Writes use fresh idempotency keys (see `transport::fresh_idempotency_key`)
@@ -50,6 +51,18 @@ impl CortexEngine {
     ) -> Result<Vec<StoreReceipt>> {
         validate_many(&items)?;
         let ids: Vec<String> = items.iter().map(StoreItem::fingerprint).collect();
+        // Every event of the batch is laid out and size-checked before any is
+        // sent, so an item CortexDB would refuse leaves nothing half-written.
+        let mut planned: Vec<Vec<(Option<u32>, Envelope, String)>> =
+            Vec::with_capacity(items.len());
+        for (item, id) in items.iter().zip(&ids) {
+            let mut events = Vec::new();
+            for envelope in Envelope::for_item(item, id)? {
+                let encoded = envelope.encode_checked()?;
+                events.push((envelope.part(), envelope, encoded));
+            }
+            planned.push(events);
+        }
         let mut held: HashMap<String, HashSet<Option<u32>>> = HashMap::new();
         let mut by_scope: BTreeMap<KindScope, Vec<String>> = BTreeMap::new();
         for (item, id) in items.iter().zip(&ids) {
@@ -60,26 +73,23 @@ impl CortexEngine {
         }
         for (scope, of_scope) in &by_scope {
             for (id, events) in self.item_events(scope, of_scope).await? {
-                held.entry(id).or_default().extend(
-                    events
-                        .iter()
-                        .map(|decoded| decoded.envelope.turn.as_ref().map(|turn| turn.index)),
-                );
+                held.entry(id)
+                    .or_default()
+                    .extend(events.iter().map(|decoded| decoded.envelope.part()));
             }
         }
         let mut receipts = Vec::with_capacity(items.len());
         let mut written_here: HashSet<String> = HashSet::new();
         let mut last_per_scope: Vec<Written> = Vec::new();
-        for (item, id) in items.iter().zip(ids) {
+        for (events, id) in planned.into_iter().zip(ids) {
             let present = held.get(&id);
             let mut requests = Vec::new();
             if !written_here.contains(&id) {
-                for envelope in Envelope::for_item(item, &id)? {
-                    let turn = envelope.turn.as_ref().map(|turn| turn.index);
-                    if present.is_some_and(|present| present.contains(&turn)) {
+                for (part, envelope, encoded) in events {
+                    if present.is_some_and(|present| present.contains(&part)) {
                         continue;
                     }
-                    requests.push(envelope.request(&envelope.encode()?));
+                    requests.push(envelope.request(&encoded));
                 }
             }
             let replayed = requests.is_empty();

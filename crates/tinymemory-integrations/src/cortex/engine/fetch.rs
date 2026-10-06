@@ -33,8 +33,8 @@ use tinymemory_api::{FetchPage, FetchRequest, Hit, ItemKind, MetaFilter};
 use super::CortexEngine;
 use super::beliefs::{beliefs_in, merge};
 use super::cursor::{self, FetchCursor};
-use super::items::{hit, keeps};
-use crate::cortex::envelope::{Envelope, decode_event, labels, rebuild};
+use super::items::{event_hit, hit, keeps};
+use crate::cortex::envelope::{Envelope, decode_event, labels};
 use crate::cortex::error::{Error, Result};
 
 /// The cursor tag of a fetch.
@@ -159,11 +159,12 @@ impl CortexEngine {
             .into_iter()
             .filter_map(|(rank, envelope)| {
                 let score = 1.0 / (1.0 + rank as f32);
-                let item = match envelope.kind {
-                    ItemKind::Conversation => conversations.get(&envelope.id)?.clone(),
-                    _ => rebuild(std::slice::from_ref(&envelope))?,
-                };
-                Some(hit(&envelope.id, &item, score))
+                match envelope.kind {
+                    ItemKind::Conversation => {
+                        Some(hit(&envelope.id, conversations.get(&envelope.id)?, score))
+                    }
+                    _ => event_hit(&envelope, score),
+                }
             })
             .collect();
         let next_cursor = if more {

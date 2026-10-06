@@ -345,10 +345,47 @@ double enforces).
   parent-scope sample.
 - A filter whose `kinds` admits nothing reads no scopes.
 
+## Chunked documents
+
+CortexDB refuses an experience whose flattened text is over 1 MiB
+(`422 INVALID_ENVELOPE`, 0.10.4 API §6.10), and a document's event text is
+its whole envelope. So (`envelope/chunks.rs`):
+
+- **When.** A document whose encoded envelope fits in
+  `DOCUMENT_CHUNK_TARGET_BYTES` (256 KiB) is one event, byte-identical to an
+  unchunked one (no `chunk` field). A longer one is split. The target is the
+  only granularity knob: at `0` every page and every section becomes its own
+  event.
+- **Where.** First at page breaks (the form feed the PDF converter puts
+  between pages), then before markdown heading lines; a stretch of only
+  whitespace never becomes a piece. These units are packed greedily, in order,
+  up to the target. A unit over the target is cut at blank lines, then line
+  ends, then characters. Sizes are JSON-escaped bytes plus the envelope
+  around the piece (its metadata and the `chunk` field at full width).
+- **Limit.** No event over `MAX_EVENT_TEXT_BYTES` (768 KiB of encoded
+  envelope, a quarter under the server's limit) is ever sent: every event of
+  a batch is encoded and checked before the first write, and an item over it
+  (a learning or a conversation turn that long) is `Error::InvalidRequest`.
+- **Identity and replay.** Every piece carries the item's id and label, so
+  replay detection, `forget` by id or filter, and `get` see all of them; a
+  store that failed part way writes only the missing pieces.
+- **Reads.** `get` and `list` give the whole document (pieces in index
+  order). A ranked hit or citation on a piece gives that piece, with the
+  item's id and its metadata plus `page:<n>` (or `page:<first>-<last>`) and
+  `section:<title>` tags. Readable CortexDB labels for page and section are
+  not written yet.
+- **Why one piece per target rather than per page.** CortexDB 0.10.4
+  already fragments every event over about 500 bytes for retrieval
+  (`matched_fragments`) and serves an over-budget event as an excerpt, and a
+  hosted write is billed per event, so splitting is used only to stay under
+  the limit, along the document's structure.
+
 ## The v2 envelope
 
-A document or learning is one event; a conversation is one event per turn,
-appended in order. CortexDB's experience schema is closed (an unknown field is
+A learning is one event; a conversation is one event per turn, appended in
+order. A document is one event unless its envelope would pass 256 KiB; then it
+is one event per piece (see [Chunked documents](#chunked-documents)).
+CortexDB's experience schema is closed (an unknown field is
 a 422), so the structured data rides in the one free-form field: the event's
 `content.text` is a JSON **envelope**:
 
@@ -371,6 +408,7 @@ a 422), so the structured data rides in the one free-form field: the event's
 | `title`, `mime` | documents, when set | |
 | `learning_kind`, `confidence`, `evidence` | learnings (`evidence` when set) | |
 | `turn` | conversation turns | `index` (0-based), `count`, `role`, `at`, `tool_calls` |
+| `chunk` | pieces of a chunked document | `index` (0-based), `count`, `pages` (`[first, last]`, when the text marks pages), `section` (the heading the piece starts under) |
 
 Text that is not a v2 envelope is someone else's event and is ignored by
 every reader. Decoding first tries the text as written (`/events` returns it
@@ -378,8 +416,11 @@ as stored), then, failing that, strips a `[role] ` prefix (`/recall` renders
 text for a reader). A document whose body is still an unresolved URI is
 refused at write time as `Error::InvalidRequest`.
 
-Rebuilding an item from envelopes: a document or learning takes the first
-envelope; a conversation orders turns by `index` and keeps one per index (so a
+Rebuilding an item from envelopes: a learning, or a document written whole,
+takes the first envelope; a chunked document orders its pieces by `index`,
+keeps one per index and concatenates their text (the pieces are contiguous
+slices, so all of them give back the body exactly, and one gives that piece);
+a conversation orders turns by `index` and keeps one per index (so a
 duplicated or re-written turn does not repeat, and a turn that was never
 written is absent). A learning with no `learning_kind` reads back as `Other`.
 

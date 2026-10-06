@@ -4,7 +4,9 @@
 use std::collections::{BTreeMap, HashMap};
 
 use tinymemory_api::explore::in_request_order;
-use tinymemory_api::{GetRequest, Hit, ItemId, ItemKind, MetaFilter, Namespace, StoreItem};
+use tinymemory_api::{
+    GetRequest, Hit, ItemId, ItemKind, MemoryMeta, MetaFilter, Namespace, StoreItem,
+};
 
 use super::CortexEngine;
 use super::scopes::KindScope;
@@ -23,6 +25,35 @@ pub(super) fn admitted(filter: &MetaFilter) -> Vec<ItemKind> {
 /// Whether a decoded event is an item of `kind` that `filter` keeps.
 pub(super) fn keeps(filter: &MetaFilter, kind: ItemKind, envelope: &Envelope) -> bool {
     envelope.kind == kind && filter.matches(kind, &envelope.meta)
+}
+
+/// An envelope's metadata, located: for a piece of a chunked document, the
+/// item's metadata plus a `page:<n>` (or `page:<first>-<last>`) tag and a
+/// `section:<title>` tag for what the piece covers. Read-side only: the
+/// stored item carries neither.
+pub(super) fn located_meta(envelope: &Envelope) -> MemoryMeta {
+    let mut meta = envelope.meta.clone();
+    if let Some(chunk) = &envelope.chunk {
+        match chunk.pages {
+            Some([first, last]) if first == last => meta.tags.push(format!("page:{first}")),
+            Some([first, last]) => meta.tags.push(format!("page:{first}-{last}")),
+            None => {}
+        }
+        if let Some(section) = &chunk.section {
+            meta.tags.push(format!("section:{section}"));
+        }
+    }
+    meta
+}
+
+/// A ranked hit for one event's envelope: a learning or a whole document as
+/// it was stored, or, for a piece of a chunked document, that piece (the
+/// item's id, the piece's text, its located metadata).
+pub(super) fn event_hit(envelope: &Envelope, score: f32) -> Option<Hit> {
+    let item = rebuild(std::slice::from_ref(envelope))?;
+    let mut found = hit(&envelope.id, &item, score);
+    found.meta = located_meta(envelope);
+    Some(found)
 }
 
 /// A hit for `item`.
@@ -96,13 +127,24 @@ impl CortexEngine {
         &self,
         ids: &[(String, Namespace)],
     ) -> Result<HashMap<String, StoreItem>> {
+        self.assembled(ItemKind::Conversation, ids).await
+    }
+
+    /// The whole items of `kind` named by `ids`, each at its namespace,
+    /// rebuilt from all their events: a conversation's turns, a chunked
+    /// document's pieces (one lookup per namespace).
+    pub(super) async fn assembled(
+        &self,
+        kind: ItemKind,
+        ids: &[(String, Namespace)],
+    ) -> Result<HashMap<String, StoreItem>> {
         let mut by_node: BTreeMap<&Namespace, Vec<String>> = BTreeMap::new();
         for (id, namespace) in ids {
             by_node.entry(namespace).or_default().push(id.clone());
         }
         let mut out = HashMap::new();
         for (namespace, ids) in by_node {
-            let scope = KindScope::new(namespace.clone(), ItemKind::Conversation);
+            let scope = KindScope::new(namespace.clone(), kind);
             for (id, events) in self.item_events(&scope, &ids).await? {
                 let envelopes: Vec<Envelope> = events.into_iter().map(|d| d.envelope).collect();
                 if let Some(item) = rebuild(&envelopes) {

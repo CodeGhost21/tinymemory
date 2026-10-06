@@ -54,6 +54,12 @@ pub mod language;
 #[cfg(feature = "documents-office")]
 pub mod office;
 
+/// The character converted text puts between two pages of a paged source
+/// (a PDF): a form feed, one per page boundary, so page `n` follows the
+/// `n - 1`th. Readers that split a document (the CortexDB engine writes a
+/// long one as several events) number pages by it.
+pub const PAGE_BREAK: char = '\u{c}';
+
 pub use convert::{
     ConvertedDocument, ConverterChain, DocumentConverter, MAX_DOCUMENT_BYTES, NativeConverter,
     RawDocument, check_size, markdown_from_text,

@@ -34,7 +34,7 @@ use tinymemory_api::{Citation, ItemId, Namespace, Reach, RecallAnswer, RecallReq
 
 use super::CortexEngine;
 use super::fetch::{interleave, ranked, recall_body};
-use super::items::admitted;
+use super::items::{admitted, located_meta};
 use super::scopes::KindScope;
 use crate::cortex::descriptor::CortexWire;
 use crate::cortex::envelope::Envelope;
@@ -164,10 +164,10 @@ impl CortexEngine {
             .filter(|envelope| seen.insert(envelope.id.clone()))
             .take(req.limit)
             .map(|envelope| Citation {
+                meta: located_meta(&envelope),
                 id: ItemId::new(envelope.id),
                 kind: envelope.kind,
                 snippet: envelope.text,
-                meta: envelope.meta,
                 score: None,
             })
             .collect();

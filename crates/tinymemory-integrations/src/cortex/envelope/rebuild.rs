@@ -25,7 +25,10 @@ pub(crate) fn decode_event(event: &Value) -> Option<Decoded> {
 
 /// The item a set of one item's envelopes describes.
 ///
-/// A document or learning takes the first envelope. A conversation orders
+/// A learning, or a document written as one event, takes the first
+/// envelope. A chunked document orders its pieces by index, keeps one per
+/// index and concatenates their text, so the full set gives back the body
+/// exactly (and one piece alone gives that piece). A conversation orders
 /// its turns by index and keeps one envelope per index, so a duplicated or
 /// re-written turn does not repeat; turns that were never written (a store
 /// that failed part-way) are simply absent. `None` for an empty set.
@@ -34,7 +37,7 @@ pub(crate) fn rebuild(envelopes: &[Envelope]) -> Option<StoreItem> {
     Some(match first.kind {
         ItemKind::Document => StoreItem::Document {
             title: first.title.clone(),
-            body: DocumentBody::Text(first.text.clone()),
+            body: DocumentBody::Text(document_text(envelopes)),
             mime: first.mime.clone(),
             meta: first.meta.clone(),
         },
@@ -69,4 +72,22 @@ pub(crate) fn rebuild(envelopes: &[Envelope]) -> Option<StoreItem> {
             }
         }
     })
+}
+
+/// A document's text from its envelopes: the first one's, or the pieces of
+/// a chunked document in index order, each once.
+fn document_text(envelopes: &[Envelope]) -> String {
+    let mut pieces: Vec<(u32, &str)> = envelopes
+        .iter()
+        .filter_map(|envelope| Some((envelope.chunk.as_ref()?.index, envelope.text.as_str())))
+        .collect();
+    if pieces.is_empty() {
+        return envelopes
+            .first()
+            .map(|envelope| envelope.text.clone())
+            .unwrap_or_default();
+    }
+    pieces.sort_by_key(|(index, _)| *index);
+    pieces.dedup_by_key(|(index, _)| *index);
+    pieces.into_iter().map(|(_, text)| text).collect()
 }
