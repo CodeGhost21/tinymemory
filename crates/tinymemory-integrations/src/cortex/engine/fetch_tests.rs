@@ -87,8 +87,19 @@ fn a_recall_body_reads_one_scope_exactly_and_funds_events_first() {
             "query": "refunds",
             "view": "granular",
             "include": ["events"],
-            "budgets": { "per_layer_limits": { "events": 6 } },
+            "budgets": {
+                "max_tokens": 6 * MAX_EVENT_TEXT_BYTES,
+                "per_layer_limits": { "events": 6 },
+            },
         }),
-        "exact scope, events funded first, no max_tokens and no temporal"
+        "exact scope, events funded first, room for each event whole, no temporal"
     );
+}
+
+#[test]
+fn a_pack_budget_fits_each_event_whole_up_to_a_ceiling() {
+    assert_eq!(whole_items_budget(0), MAX_EVENT_TEXT_BYTES, "never zero");
+    assert_eq!(whole_items_budget(6), 6 * MAX_EVENT_TEXT_BYTES);
+    assert_eq!(whole_items_budget(MAX_PACK_EVENTS), MAX_PACK_TOKENS);
+    assert_eq!(whole_items_budget(usize::MAX), MAX_PACK_TOKENS);
 }

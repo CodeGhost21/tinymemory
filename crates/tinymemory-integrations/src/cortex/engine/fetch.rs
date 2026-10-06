@@ -34,6 +34,7 @@ use super::CortexEngine;
 use super::beliefs::{beliefs_in, merge};
 use super::cursor::{self, FetchCursor};
 use super::items::{event_hit, hit, keeps};
+use crate::cortex::envelope::chunks::MAX_EVENT_TEXT_BYTES;
 use crate::cortex::envelope::{Envelope, decode_event, labels};
 use crate::cortex::error::{Error, Result};
 
@@ -61,21 +62,46 @@ const EVENTS_PER_HIT: usize = 3;
 /// - `include` lists `events` first, so the cross-layer token budget funds
 ///   the events this crate reads before any derived layer (by default it
 ///   evicts events first). A caller that reads more layers names them after.
-/// - No `budgets.max_tokens`: the server's default only ever evicts, and an
-///   evicted event is a hit this crate never sees. Its client-side token
-///   budget applies after the read.
+/// - `budgets.max_tokens` is [`whole_items_budget`]: room for every event
+///   asked for to come back whole. Its client-side token budget applies
+///   after the read.
 pub(super) fn recall_body(scope: &str, query: &str, events: usize, filter: &MetaFilter) -> Value {
     let mut body = json!({
         "scope": scope,
         "query": query,
         "view": "granular",
         "include": ["events"],
-        "budgets": { "per_layer_limits": { "events": events } },
+        "budgets": {
+            "max_tokens": whole_items_budget(events),
+            "per_layer_limits": { "events": events },
+        },
     });
     if let Some(labels) = labels::narrowing(filter) {
         body["filters"] = json!({ "metadata": { "labels": labels } });
     }
     body
+}
+
+/// The most [`whole_items_budget`] asks for: 8 Mi tokens. CortexDB counts
+/// about 3.5 bytes a token, so a pack then holds at most about 28 MiB of
+/// event text, under the 32 MiB request cap.
+pub(super) const MAX_PACK_TOKENS: usize = 8 * 1024 * 1024;
+
+/// A pack's `budgets.max_tokens` for `items` items: a token per byte of the
+/// largest event this crate writes, for each, at most [`MAX_PACK_TOKENS`].
+/// CortexDB's default, 4000 tokens (about 14 KB), cuts a longer event to a
+/// `budget_excerpt` (0.10.4 API §9.5): a slice of the stored envelope that
+/// no longer decodes, so the hit is lost.
+///
+/// The budget only stops cutting; `per_layer_limits` still bounds what a
+/// pack holds. A pack of `n` events carries at most `n` × 768 KiB of event
+/// text, and past [`MAX_PACK_TOKENS`] (about 37 events at that size) the
+/// server excerpts again.
+pub(super) fn whole_items_budget(items: usize) -> usize {
+    items
+        .max(1)
+        .saturating_mul(MAX_EVENT_TEXT_BYTES)
+        .min(MAX_PACK_TOKENS)
 }
 
 /// The distinct items of `kind` a pack's events decode to, best rank first,

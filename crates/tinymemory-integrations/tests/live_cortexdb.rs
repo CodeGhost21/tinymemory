@@ -316,14 +316,20 @@ async fn a_long_document_round_trips_in_pieces() {
             "get reassembles the body"
         );
 
+        // Ranking may lag the write; poll as `list_until` polls the listing.
         let mut fetch = FetchRequest::new("Clause 7 refunds and delivery", FetchMode::Hybrid, 5);
         fetch.filter = filter.clone();
-        let page = engine.fetch(fetch).await.expect("fetch");
-        let hit = page
-            .hits
-            .iter()
-            .find(|hit| hit.id == receipt.id)
-            .expect("fetch finds the document");
+        let deadline = Instant::now() + VISIBILITY;
+        let hit = loop {
+            let page = engine.fetch(fetch.clone()).await.expect("fetch");
+            if let Some(hit) = page.hits.into_iter().find(|hit| hit.id == receipt.id) {
+                break hit;
+            }
+            if Instant::now() >= deadline {
+                panic!("fetch never found the document");
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        };
         assert!(hit.text.len() < body.len(), "a piece, not the whole");
         assert!(
             hit.meta.tags.iter().any(|tag| tag.starts_with("page:"))

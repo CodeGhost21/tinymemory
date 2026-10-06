@@ -135,7 +135,7 @@ Response:
 ```json
 { "scope": "app:tinymemory/app:documents", "query": "...",
   "view": "granular", "include": ["events"],
-  "budgets": { "per_layer_limits": { "events": 30 } },
+  "budgets": { "max_tokens": 23592960, "per_layer_limits": { "events": 30 } },
   "filters": { "metadata": { "labels": ["tm:t:<16 hex>"] } } }
 ```
 
@@ -152,8 +152,18 @@ Response:
   are evicted first. A fetch that wants beliefs sends `["events", "beliefs"]`,
   an answer pack `["events", "facts", "beliefs", "episodes",
   "understanding"]`, a beliefs read `["beliefs"]`.
-- `max_tokens` is not sent: the default only ever evicts, and an evicted
-  event is a hit the engine never sees.
+- `max_tokens` is sent, sized so every event asked for comes back whole: a
+  token per byte of the largest event this crate writes (768 KiB), for each
+  event (and, in an answer pack, each derived item). The default, 4000
+  tokens (about 14 KB), cuts a longer event to a `budget_excerpt` (0.10.4
+  API §9.5): a slice of the stored envelope that no longer decodes, so a
+  document piece would never be a hit. It also evicts.
+  The budget only stops the cutting: `per_layer_limits` still bounds a pack,
+  so a pack of `n` events carries at most `n` × 768 KiB of event text (a
+  fetch of 5 asks 18 events: at most 13.5 MiB, typically far less). The
+  budget is capped at 8 Mi tokens, about 28 MiB at CortexDB's 3.5 bytes a
+  token; a deeper fetch page past that (about 37 events of the largest size)
+  gets excerpts again, which do not decode.
 - `temporal` is not sent. `temporal.reference_date` only anchors
   `temporal.natural` (a phrase such as "last 30 days", reduced to a
   capture-time filter) and already defaults to the request time; the field
@@ -253,7 +263,8 @@ The beliefs land in a derived layer, read two ways:
 
   ```json
   { "scope": "…", "query": "…",
-    "budgets": { "per_layer_limits": { "events": 0, "facts": 0, "episodes": 0,
+    "budgets": { "max_tokens": 786432,
+                 "per_layer_limits": { "events": 0, "facts": 0, "episodes": 0,
                                        "understanding": 0, "beliefs": 8 } } }
   ```
 

@@ -33,7 +33,7 @@ use serde_json::{Value, json};
 use tinymemory_api::{Citation, ItemId, Namespace, Reach, RecallAnswer, RecallRequest};
 
 use super::CortexEngine;
-use super::fetch::{interleave, ranked, recall_body};
+use super::fetch::{interleave, ranked, recall_body, whole_items_budget};
 use super::items::{admitted, located_meta};
 use super::scopes::KindScope;
 use crate::cortex::descriptor::CortexWire;
@@ -190,6 +190,7 @@ impl CortexEngine {
         let mut body = recall_body(scope, &req.question, 0, &req.filter);
         body["include"] = pack_layers();
         body["budgets"]["per_layer_limits"] = pack_budgets(req.limit);
+        body["budgets"]["max_tokens"] = json!(whole_items_budget(req.limit.saturating_mul(3)));
         self.log.recall(&body).await
     }
 }

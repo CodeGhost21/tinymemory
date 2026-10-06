@@ -9,8 +9,8 @@
 //!   storage order, not ranked. This crate reads one exact scope per pack
 //!   (`view: "granular"`), so it must never appear; if it does, a read
 //!   strayed into a parent scope.
-//! - **Knapsack evictions.** `budgets.max_tokens` (4000 by default) is a
-//!   cross-layer budget; items it evicts are counted in
+//! - **Knapsack evictions.** `budgets.max_tokens` is a cross-layer budget
+//!   (this crate sizes it to fit every event whole; see `whole_items_budget`); items it evicts are counted in
 //!   `diagnostics.knapsack_evictions` (when the caller may read
 //!   diagnostics), and a rendered event evicted from `layers.events` is named
 //!   by the `context_contributors` provenance entry with
