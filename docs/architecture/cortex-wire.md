@@ -351,7 +351,8 @@ CortexDB refuses an experience whose flattened text is over 1 MiB
 (`422 INVALID_ENVELOPE`, 0.10.4 API §6.10), and a document's event text is
 its whole envelope. So (`envelope/chunks.rs`):
 
-- **When.** A document whose encoded envelope fits in
+- **When.** Measured as a piece would be written (the envelope with its
+  `chunk` field): a document whose encoded envelope fits in
   `DOCUMENT_CHUNK_TARGET_BYTES` (256 KiB) is one event, byte-identical to an
   unchunked one (no `chunk` field). A longer one is split. The target is the
   only granularity knob: at `0` every page and every section becomes its own
@@ -359,7 +360,9 @@ its whole envelope. So (`envelope/chunks.rs`):
   into several (see Where).
 - **Where.** First at page breaks (the form feed the PDF converter puts
   between pages), then before markdown heading lines; a stretch of only
-  whitespace never becomes a piece. These units are packed greedily, in order,
+  whitespace (or page breaks) never becomes a piece of its own but joins the
+  unit next to it, except in a text that is nothing else, which is then one
+  piece, so every byte is kept. These units are packed greedily, in order,
   up to the target. A unit over the target is cut at blank lines, then line
   ends, then characters. Sizes are JSON-escaped bytes plus the envelope
   around the piece (its metadata and the `chunk` field at full width, with
@@ -372,12 +375,15 @@ its whole envelope. So (`envelope/chunks.rs`):
   replay detection, `forget` by id or filter, and `get` see all of them; a
   store that failed part way writes only the missing pieces.
 - **Reads.** `get` and `list` give the whole document (pieces in index
-  order). A ranked hit or citation on a piece gives that piece, with the
+  order). `fetch` and `recall` give one hit or citation per document, as for
+  every item: its best-ranked piece, with the
   item's id and its metadata plus, when known, a `page:<n>` (or
   `page:<first>-<last>`) tag and a `section:<title>` tag: a document without
   page breaks gets no page tag, a piece before the first heading no section
-  tag. These tags are read-side metadata, not part of the item's identity. Readable CortexDB labels for page and section are
-  not written yet.
+  tag. These tags are read-side metadata, not part of the item's identity.
+  `pages` is an inclusive range `[first, last]`, counted from 1, so a piece
+  on one page has `first == last`. Readable CortexDB labels for page and
+  section are not written yet.
 - **Why one piece per target rather than per page.** CortexDB 0.10.4
   already fragments every event over about 500 bytes for retrieval
   (`matched_fragments`) and serves an over-budget event as an excerpt, and a

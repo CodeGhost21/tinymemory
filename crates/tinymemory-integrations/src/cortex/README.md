@@ -111,14 +111,15 @@ operator key is served as `user:local`; a server with no `whoami` route gets
 no header. The hosted (TinyHumans) wire names the actor itself.
 
 **Events.** A learning is one event; a conversation is one event per turn,
-appended in order; a document is one event, or, when its envelope would pass
-256 KiB (`envelope::chunks::DOCUMENT_CHUNK_TARGET_BYTES`, the one granularity
-knob), one event per piece of its body, cut at page breaks and headings and
+appended in order; a document is one event, or, when its text with a piece's
+envelope (metadata plus the `chunk` field) would pass 256 KiB
+(`envelope::chunks::DOCUMENT_CHUNK_TARGET_BYTES`, the one granularity knob),
+one event per piece of its body, cut at page breaks and headings and
 packed up to that size (`envelope/chunks.rs`). No event is sent over 768 KiB of
 encoded envelope (CortexDB refuses an experience over 1 MiB); an item that
 cannot fit is refused before anything of its batch is sent. `get` and `list`
-reassemble a chunked document; a `fetch` or `recall` hit on a piece carries
-that piece, with a `page:<n>` (or `page:<first>-<last>`) tag when the
+reassemble a chunked document; `fetch` and `recall` give one hit per document,
+its best-ranked piece, with a `page:<n>` (or `page:<first>-<last>`) tag when the
 document marks its pages and a `section:<title>` tag when the piece starts
 under a heading; a piece with neither carries no extra tag. Each event's
 `content.text` is a JSON envelope:

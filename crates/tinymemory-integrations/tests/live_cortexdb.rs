@@ -257,3 +257,98 @@ async fn round_trip(engine: &CortexEngine) {
     assert_eq!(report.forgotten, 3, "all three items are forgotten");
     let _ = (conversation, learning);
 }
+
+/// A long, paged, sectioned document goes to the real server as several
+/// events, each under its 1 MiB limit, and comes back whole: `get` and
+/// `list` reassemble it, a `fetch` hit is one piece tagged with its page and
+/// section, and `forget` removes every piece.
+#[tokio::test]
+async fn a_long_document_round_trips_in_pieces() {
+    for (wire, engine) in live_engines() {
+        eprintln!("long document on {wire}");
+        let workspace = format!("ws-long-{}", run_id());
+        let pages: Vec<String> = (1..=24)
+            .map(|page| {
+                let filler =
+                    format!("Clause {page} covers refunds and delivery terms. ").repeat(600);
+                format!("# Section {page}\n\n{filler}\n")
+            })
+            .collect();
+        let body = pages.join("\u{c}");
+        assert!(body.len() > 600 * 1024, "{} bytes", body.len());
+        let document = StoreItem::Document {
+            title: Some("Long contract".into()),
+            body: tinymemory_api::DocumentBody::Text(body.clone()),
+            mime: Some("application/pdf".into()),
+            meta: MemoryMeta {
+                workspace: Some(workspace.clone()),
+                file_path: Some("/contracts/long.pdf".into()),
+                ..MemoryMeta::from_source(SourceKind::File, Some("contracts".into()))
+            },
+        };
+        let receipt = engine
+            .store(document.clone())
+            .await
+            .expect("store in pieces");
+
+        let filter = MetaFilter {
+            workspace: Some(workspace.clone()),
+            ..MetaFilter::default()
+        };
+        let listed = list_until(&engine, &filter, 1).await;
+        assert_eq!(listed.len(), 1, "one item, not one per piece");
+        assert_eq!(
+            listed[0],
+            document.render_text(),
+            "list reassembles the body"
+        );
+        let got = engine
+            .get(tinymemory_api::GetRequest {
+                ids: vec![receipt.id.clone()],
+                reach: None,
+            })
+            .await
+            .expect("get");
+        assert_eq!(got.len(), 1);
+        assert_eq!(
+            got[0].text,
+            document.render_text(),
+            "get reassembles the body"
+        );
+
+        let mut fetch = FetchRequest::new("Clause 7 refunds and delivery", FetchMode::Hybrid, 5);
+        fetch.filter = filter.clone();
+        let page = engine.fetch(fetch).await.expect("fetch");
+        let hit = page
+            .hits
+            .iter()
+            .find(|hit| hit.id == receipt.id)
+            .expect("fetch finds the document");
+        assert!(hit.text.len() < body.len(), "a piece, not the whole");
+        assert!(
+            hit.meta.tags.iter().any(|tag| tag.starts_with("page:"))
+                && hit
+                    .meta
+                    .tags
+                    .iter()
+                    .any(|tag| tag.starts_with("section:Section ")),
+            "{:?}",
+            hit.meta.tags
+        );
+
+        let report = engine
+            .forget(ForgetTarget::Ids(vec![receipt.id]))
+            .await
+            .expect("forget");
+        assert_eq!(report.forgotten, 1);
+        assert!(
+            engine
+                .list(ListRequest::new(filter, 10))
+                .await
+                .expect("list after forget")
+                .items
+                .is_empty(),
+            "no piece is left behind"
+        );
+    }
+}
