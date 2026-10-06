@@ -387,7 +387,10 @@ which a JSON text lacks. Its `context.labels` are, in order:
   (CortexDB reserves it);
 - the **envelope parts**: the envelope below with `"v": 3` and an empty
   `text`, as compact JSON cut at char boundaries into slices of at most 240
-  bytes, each written `tm:e:<NN>:<slice>` with `NN` counting from `00`.
+  bytes, each written `tm:e:<NN>:<slice>`. `NN` is the part's number as a
+  decimal integer, zero-padded to two digits (`00`, `01`, …); an event has
+  at most 64 labels, so there are at most 63 parts. A reader orders parts by
+  that number, never by the label's text, and needs every number from 0 up.
 
 An event whose text is empty (CortexDB requires message text), or whose
 labels would be more than 64, is written as v2 instead.
