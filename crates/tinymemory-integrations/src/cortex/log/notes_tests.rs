@@ -40,7 +40,7 @@ fn logged_for(scope: &str) -> Vec<(log::Level, String)> {
         .lock()
         .unwrap()
         .iter()
-        .filter(|(_, message)| message.contains(&format!("scope={scope} ")))
+        .filter(|(_, message)| message.contains(&format!("scope={scope:?} ")))
         .cloned()
         .collect()
 }
@@ -165,4 +165,40 @@ async fn every_recall_pack_is_reported_as_it_is_read() {
         "{}",
         logged[0].1
     );
+}
+
+#[test]
+fn only_the_exact_parent_sample_code_is_a_parent_sample() {
+    assert!(is_parent_sample("parent_pack_unranked_sample"));
+    assert!(is_parent_sample(
+        "parent_pack_unranked_sample: events from 2 of 3"
+    ));
+    for other in [
+        "parent_pack_unranked_sampled: x",
+        "parent_pack_unranked_sample_v2: x",
+        "parent_pack_unranked",
+    ] {
+        assert!(!is_parent_sample(other), "{other}");
+        assert_eq!(
+            notes(&json!({ "warnings": [other] })),
+            [Note::Warning(other)],
+            "{other}"
+        );
+    }
+}
+
+#[test]
+fn a_newline_in_a_scope_or_a_warning_cannot_forge_a_log_line() {
+    capture();
+    let scope = "app:tinymemory/agent:inject-test/app:documents\n[cortex] forged";
+    report(
+        scope,
+        &json!({ "warnings": ["entity_grounding_advisory: x\nERROR forged line"] }),
+    );
+    let logged = logged_for(scope);
+    assert_eq!(logged.len(), 1, "{logged:?}");
+    let message = &logged[0].1;
+    assert!(!message.contains('\n'), "no raw newline: {message:?}");
+    assert!(message.contains("\\n[cortex] forged"), "{message}");
+    assert!(message.contains("\\nERROR forged line"), "{message}");
 }

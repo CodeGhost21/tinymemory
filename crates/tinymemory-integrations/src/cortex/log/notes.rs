@@ -61,7 +61,7 @@ pub(crate) fn notes(pack: &Value) -> Vec<Note<'_>> {
         .flatten()
         .filter_map(Value::as_str)
         .map(|warning| {
-            if warning.starts_with(PARENT_SAMPLE_WARNING) {
+            if is_parent_sample(warning) {
                 Note::ParentSample(warning)
             } else {
                 Note::Warning(warning)
@@ -88,7 +88,19 @@ pub(crate) fn notes(pack: &Value) -> Vec<Note<'_>> {
     notes
 }
 
-/// Logs every note `pack` carries for `scope`.
+/// Whether `warning` is the parent-scope sample warning: its code alone, or
+/// its code followed by `:` and the detail. Another code that merely starts
+/// the same way is not.
+fn is_parent_sample(warning: &str) -> bool {
+    warning
+        .strip_prefix(PARENT_SAMPLE_WARNING)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with(':'))
+}
+
+/// Logs every note `pack` carries for `scope`. The scope and every warning
+/// are written with `Debug` escaping: both come from outside this process
+/// (the request, the server's answer), and a raw newline in either would
+/// forge a log line.
 pub(crate) fn report(scope: &str, pack: &Value) {
     for note in notes(pack) {
         let level = note.level();
@@ -96,17 +108,17 @@ pub(crate) fn report(scope: &str, pack: &Value) {
             Note::Warning(warning) => {
                 log::log!(
                     level,
-                    "[cortex] recall pack warning scope={scope} warning={warning}"
+                    "[cortex] recall pack warning scope={scope:?} warning={warning:?}"
                 );
             }
             Note::ParentSample(warning) => log::log!(
                 level,
-                "[cortex] recall pack is an unranked parent-scope sample scope={scope} \
-                 warning={warning}"
+                "[cortex] recall pack is an unranked parent-scope sample scope={scope:?} \
+                 warning={warning:?}"
             ),
             Note::Evicted { count, events } => log::log!(
                 level,
-                "[cortex] recall pack evicted items to fit its token budget scope={scope} \
+                "[cortex] recall pack evicted items to fit its token budget scope={scope:?} \
                  knapsack_evictions={} evicted_events={}",
                 count.map_or_else(|| "unreported".to_string(), |count| count.to_string()),
                 events.len()
