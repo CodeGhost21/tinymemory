@@ -34,7 +34,7 @@ use tinymemory_api::{
 };
 
 use super::CortexEngine;
-use super::fetch::recall_body;
+use super::fetch::{recall_body, whole_items_budget};
 use super::items::hit;
 use crate::cortex::descriptor::{CortexWire, Route};
 use crate::cortex::envelope::parse_scope;
@@ -174,6 +174,7 @@ impl CortexEngine {
         body["budgets"]["per_layer_limits"] = json!({
             "events": 0, "facts": 0, "episodes": 0, "understanding": 0, "beliefs": limit,
         });
+        body["budgets"]["max_tokens"] = json!(whole_items_budget(limit));
         let pack = self.log.recall(&body).await?;
         Ok(beliefs_in(&pack, "/layers/beliefs"))
     }

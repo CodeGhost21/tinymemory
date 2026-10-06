@@ -83,35 +83,52 @@ pub(crate) fn rebuild(envelopes: &[Envelope]) -> Option<StoreItem> {
 /// does not list yet. A `fetch` hit or a `recall` citation is one piece and
 /// uses [`rebuild`].
 pub(crate) fn rebuild_whole(envelopes: &[Envelope]) -> Option<StoreItem> {
-    if let Some(count) = envelopes.iter().find_map(|e| Some(e.chunk.as_ref()?.count)) {
-        let held: HashSet<u32> = envelopes
-            .iter()
-            .filter_map(|envelope| Some(envelope.chunk.as_ref()?.index))
-            .collect();
-        if (0..count).any(|index| !held.contains(&index)) {
-            log::debug!(
-                "[cortex] chunked document {:?} is missing pieces; not returned whole",
-                envelopes[0].id
-            );
-            return None;
-        }
+    if !pieces_complete(envelopes) {
+        log::debug!(
+            "[cortex] chunked document {:?} is missing pieces or disagrees on its layout; \
+             not returned whole",
+            envelopes.first().map(|envelope| &envelope.id)
+        );
+        return None;
     }
     rebuild(envelopes)
 }
 
-/// A document's text from its envelopes: the first one's, or the pieces of
-/// a chunked document in index order, each once.
+/// Whether `envelopes` hold a whole item: one written as a single event
+/// (a document's unchunked envelope is its whole body), or every piece of a
+/// chunked document, all agreeing on one positive count with every index
+/// below it and each index present.
+fn pieces_complete(envelopes: &[Envelope]) -> bool {
+    if envelopes.iter().any(|envelope| envelope.chunk.is_none()) {
+        return true;
+    }
+    let Some(count) = envelopes.iter().find_map(|e| Some(e.chunk.as_ref()?.count)) else {
+        return true;
+    };
+    let mut held = HashSet::new();
+    for chunk in envelopes
+        .iter()
+        .filter_map(|envelope| envelope.chunk.as_ref())
+    {
+        if chunk.count != count || chunk.index >= count {
+            return false;
+        }
+        held.insert(chunk.index);
+    }
+    count > 0 && held.len() == count as usize
+}
+
+/// A document's text from its envelopes: an unchunked envelope's (the whole
+/// body: the same item written before chunking, since an id is a content
+/// digest), else the pieces of a chunked document in index order, each once.
 fn document_text(envelopes: &[Envelope]) -> String {
+    if let Some(whole) = envelopes.iter().find(|envelope| envelope.chunk.is_none()) {
+        return whole.text.clone();
+    }
     let mut pieces: Vec<(u32, &str)> = envelopes
         .iter()
         .filter_map(|envelope| Some((envelope.chunk.as_ref()?.index, envelope.text.as_str())))
         .collect();
-    if pieces.is_empty() {
-        return envelopes
-            .first()
-            .map(|envelope| envelope.text.clone())
-            .unwrap_or_default();
-    }
     pieces.sort_by_key(|(index, _)| *index);
     pieces.dedup_by_key(|(index, _)| *index);
     pieces.into_iter().map(|(_, text)| text).collect()

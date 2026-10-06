@@ -77,6 +77,9 @@ pub(crate) struct Double {
     pub(crate) rate_limit_forget: AtomicUsize,
     /// Recall answers 500.
     pub(crate) recall_down: AtomicBool,
+    /// Answers refuse their `use_pack_id` as expired (404) this many times,
+    /// as CortexDB does once anything is forgotten after the pack was built.
+    pub(crate) expire_packs: AtomicUsize,
     /// Once the next write is applied, rate limit this many listings and
     /// hide the listing this many more times: (429s, hidden). Lets a test
     /// aim at the reads a write makes after it is sent, not the replay

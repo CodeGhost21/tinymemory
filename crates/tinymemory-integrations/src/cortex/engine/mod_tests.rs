@@ -320,3 +320,33 @@ async fn a_store_succeeds_when_ranked_recall_is_down() {
         assert_eq!(listed.items.len(), 1, "the settle probe is best-effort");
     }
 }
+
+#[tokio::test]
+async fn an_answer_whose_pack_expired_recalls_that_scope_again() {
+    for (engine, state) in both().await {
+        for item in items() {
+            engine.store(item).await.unwrap();
+        }
+        let mut req = RecallRequest::new("which editor helix", 2);
+        req.filter = MetaFilter::kinds([ItemKind::Learning]);
+        state.seen.lock().unwrap().recalls.clear();
+        state.expire_packs.store(1, Ordering::SeqCst);
+        let answer = engine.recall(req.clone()).await.unwrap();
+        assert_eq!(answer.answer, "grounded answer for which editor helix");
+        {
+            let seen = state.seen.lock().unwrap();
+            assert_eq!(seen.recalls.len(), 2, "the one scope, packed again");
+            assert_eq!(seen.recalls[0], seen.recalls[1], "the same pack request");
+            assert_eq!(seen.answers.len(), 2, "answered from the fresh pack");
+        }
+
+        state.seen.lock().unwrap().answers.clear();
+        state.expire_packs.store(3, Ordering::SeqCst);
+        assert!(
+            matches!(engine.recall(req).await, Err(Error::NotFound(_))),
+            "a bounded retry, not forever"
+        );
+        assert_eq!(state.seen.lock().unwrap().answers.len(), 3);
+        state.expire_packs.store(0, Ordering::SeqCst);
+    }
+}

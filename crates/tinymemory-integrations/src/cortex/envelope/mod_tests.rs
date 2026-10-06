@@ -287,3 +287,51 @@ fn a_whitespace_only_document_keeps_its_text() {
         assert_eq!(rebuild(&envelopes).unwrap(), item, "{body:?}");
     }
 }
+
+#[test]
+fn a_whole_read_needs_every_piece_of_one_agreed_layout() {
+    let item = long_document();
+    let pieces = Envelope::for_item(&item, "id").unwrap();
+    assert!(pieces.len() > 1);
+    assert_eq!(rebuild_whole(&pieces), Some(item.clone()));
+    assert_eq!(rebuild_whole(&pieces[1..]), None, "a piece missing");
+
+    let relaid = |edit: &dyn Fn(&mut ChunkInfo)| {
+        let mut changed = pieces.clone();
+        edit(changed[0].chunk.as_mut().unwrap());
+        rebuild_whole(&changed)
+    };
+    assert_eq!(relaid(&|chunk| chunk.count += 1), None, "counts disagree");
+    assert_eq!(
+        relaid(&|chunk| chunk.index = 99),
+        None,
+        "an index past the count"
+    );
+    let mut zero = pieces[..1].to_vec();
+    zero[0].chunk = Some(ChunkInfo {
+        index: 0,
+        count: 0,
+        pages: None,
+        section: None,
+    });
+    assert_eq!(rebuild_whole(&zero), None, "a zero count");
+
+    let mut whole = Envelope::for_item(&StoreItem::document("x", meta()), "id")
+        .unwrap()
+        .remove(0);
+    whole.text = match &item {
+        StoreItem::Document {
+            body: DocumentBody::Text(text),
+            ..
+        } => text.clone(),
+        _ => unreachable!("a document"),
+    };
+    whole.title.clone_from(&pieces[0].title);
+    whole.meta = pieces[0].meta.clone();
+    let mixed = vec![pieces[1].clone(), whole];
+    assert_eq!(
+        rebuild_whole(&mixed),
+        Some(item),
+        "the same item written whole before chunking reads as that body"
+    );
+}

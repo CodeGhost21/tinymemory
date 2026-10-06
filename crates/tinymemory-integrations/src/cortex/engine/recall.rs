@@ -9,7 +9,9 @@
 //! order, not by relevance, so it would answer from an arbitrary sample.
 //! With no scope to read, the answer is empty and nothing is sent.
 //!
-//! The answer route is asked once with `use_pack_id`, so it answers from
+//! The answer route is asked once with `use_pack_id` (again, from that
+//! scope's pack built again, when CortexDB dropped the pack in between, up
+//! to three answers: it drops every pack on any forget), so it answers from
 //! exactly the evidence that pack holds: with several packs, the one holding
 //! the most admitted events, the most specific node on a tie. **The answer
 //! text is grounded on that one pack, while the citations come from every
@@ -43,6 +45,10 @@ use crate::cortex::error::{Error, Result};
 /// Recall packs built at once when a reach spans several scopes.
 const PACKS_AT_ONCE: usize = 4;
 
+/// Answers asked at most per recall: the first, and one after each pack
+/// CortexDB dropped before it was used.
+const ANSWER_ATTEMPTS: usize = 3;
+
 /// The derived layers a pack also draws on, besides events.
 const DERIVED_LAYERS: [&str; 4] = ["facts", "beliefs", "episodes", "understanding"];
 
@@ -69,6 +75,13 @@ fn pack_budgets(limit: usize) -> Value {
         );
     }
     Value::Object(layers)
+}
+
+/// The id a recall pack names.
+fn pack_id_of(pack: &Value) -> Result<&str> {
+    pack.get("pack_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| Error::Engine("CortexDB recall omitted pack_id".to_string()))
 }
 
 /// The answer request body.
@@ -139,20 +152,29 @@ impl CortexEngine {
             .max_by_key(|(index, events)| (events.len(), std::cmp::Reverse(*index)))
             .map_or(0, |(index, _)| index);
         let (scope, pack) = &packs[chosen];
-        let pack_id = pack
-            .get("pack_id")
-            .and_then(Value::as_str)
-            .ok_or_else(|| Error::Engine("CortexDB recall omitted pack_id".to_string()))?;
-        let answered = self
-            .log
-            .answer(&answer_body(
+        let ask = |pack_id: &str| {
+            answer_body(
                 self.wire(),
                 scope,
                 &req.question,
                 pack_id,
                 req.instructions.as_deref(),
-            ))
-            .await?;
+            )
+        };
+        // A pack lives 60 s, and CortexDB drops every pack it holds once
+        // anything is forgotten (measured on 0.10.4: a forget in another
+        // scope turns the next `use_pack_id` into a 404). On a 404, build
+        // this scope's pack again and answer from it, up to
+        // [`ANSWER_ATTEMPTS`] answers in all.
+        let mut answered = self.log.answer(&ask(pack_id_of(pack)?)).await;
+        for _ in 1..ANSWER_ATTEMPTS {
+            if !matches!(answered, Err(Error::NotFound(_))) {
+                break;
+            }
+            let fresh = self.pack(req, scope).await?;
+            answered = self.log.answer(&ask(pack_id_of(&fresh)?)).await;
+        }
+        let answered = answered?;
         let answer = answered
             .get("answer")
             .and_then(Value::as_str)

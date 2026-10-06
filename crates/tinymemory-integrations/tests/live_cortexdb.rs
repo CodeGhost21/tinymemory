@@ -267,7 +267,7 @@ async fn a_long_document_round_trips_in_pieces() {
     for (wire, engine) in live_engines() {
         eprintln!("long document on {wire}");
         let workspace = format!("ws-long-{}", run_id());
-        let pages: Vec<String> = (1..=24)
+        let pages: Vec<String> = (1..=12)
             .map(|page| {
                 let filler =
                     format!("Clause {page} covers refunds and delivery terms. ").repeat(600);
@@ -276,10 +276,14 @@ async fn a_long_document_round_trips_in_pieces() {
             .collect();
         let body = pages.join("\u{c}");
         // A document splits once its envelope passes the 256 KiB chunk
-        // target (not the 1 MiB event limit): this one is several pieces.
+        // target (not the 1 MiB event limit): this one is two pieces. It is
+        // kept that small because CortexDB 0.10.4 takes seconds to forget a
+        // ~240 KiB event (8 to 13 s measured), and a bigger document's
+        // forget outlasts the 60 s request timeout while the other live
+        // tests load the server.
         assert!(
-            body.len() > 2 * 256 * 1024,
-            "over twice the chunk target: {} bytes",
+            body.len() > 256 * 1024,
+            "over the chunk target: {} bytes",
             body.len()
         );
         let document = StoreItem::Document {
@@ -351,7 +355,7 @@ async fn a_long_document_round_trips_in_pieces() {
         );
 
         let report = engine
-            .forget(ForgetTarget::Ids(vec![receipt.id]))
+            .forget(ForgetTarget::Ids(vec![receipt.id.clone()]))
             .await
             .expect("forget");
         assert_eq!(report.forgotten, 1);
@@ -362,7 +366,18 @@ async fn a_long_document_round_trips_in_pieces() {
                 .expect("list after forget")
                 .items
                 .is_empty(),
-            "no piece is left behind"
+            "the document is gone"
         );
+        // `list` hides a document missing a piece, so ask ranked recall,
+        // which hits single pieces: none may be left behind.
+        let deadline = Instant::now() + VISIBILITY;
+        loop {
+            let page = engine.fetch(fetch.clone()).await.expect("fetch");
+            if !page.hits.iter().any(|hit| hit.id == receipt.id) {
+                break;
+            }
+            assert!(Instant::now() < deadline, "a piece outlived forget");
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
     }
 }

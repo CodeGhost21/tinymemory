@@ -199,6 +199,11 @@ ones).
 Response fields read: `answer` (required, string) and
 `diagnostics.answer_model` (optional, becomes `RecallAnswer.model`).
 
+A 404 means the pack is gone: packs live 60 s, and CortexDB drops every
+pack it holds once anything is forgotten. The scope's pack is then built
+again and the answer asked again, up to three answers in all (see
+[recall](cortex-flows.md#recall), step 5).
+
 `answer_instructions` is the request's instructions when set. When unset,
 Direct sends `null` and TinyHumans **omits the key**: its answer schema is
 strict (an unknown key, or a `null` instructions, is a 400).
@@ -266,7 +271,7 @@ The beliefs land in a derived layer, read two ways:
 
   ```json
   { "scope": "…", "query": "…",
-    "budgets": { "max_tokens": 786432,
+    "budgets": { "max_tokens": 6291456,
                  "per_layer_limits": { "events": 0, "facts": 0, "episodes": 0,
                                        "understanding": 0, "beliefs": 8 } } }
   ```
