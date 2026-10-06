@@ -155,7 +155,8 @@ Only `Hybrid`. Other modes fail `Error::Unsupported` before any request.
 Recall builds a pack, asks the answer route **once** with `use_pack_id`, and
 cites from the pack.
 
-1. Resolve the scopes: a reach's kind scopes, or, with **no reach** (an
+1. Resolve the scopes: a reach's kind scopes (its node and, when it
+   inherits, every ancestor; below it too for a subtree reach), or, with **no reach** (an
    unscoped, administrative read), every kind scope the engine holds
    (`v1/scopes/list`). No scope to read (nothing held, or a filter that
    admits no kinds) answers empty without a request. Then one pack per scope,
