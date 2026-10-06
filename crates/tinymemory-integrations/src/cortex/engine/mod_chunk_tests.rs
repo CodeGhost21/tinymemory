@@ -253,3 +253,25 @@ async fn an_event_over_the_limit_is_refused_before_anything_is_sent() {
         assert_eq!(state.count("POST"), writes_before, "nothing was written");
     }
 }
+
+#[test]
+fn the_double_answers_a_reused_key_as_a_conflict_before_checking_size() {
+    let mut log = crate::cortex::testing::CortexLog::default();
+    let event = |text: String| {
+        json!({
+            "scope": SCOPE,
+            "modality": "document",
+            "idempotency_key": "k",
+            "content": { "kind": "message", "role": "user", "text": text },
+        })
+    };
+    assert_eq!(log.append(&event("small".into())).0, 202);
+    let (status, body) = log.append(&event("x".repeat(2 * 1024 * 1024)));
+    assert_eq!(status, 409, "{body}");
+    let (status, body) = log.append(&json!({
+        "scope": SCOPE,
+        "idempotency_key": "other",
+        "content": { "text": "x".repeat(2 * 1024 * 1024) },
+    }));
+    assert_eq!(status, 422, "{body}");
+}

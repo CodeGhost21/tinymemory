@@ -25,8 +25,9 @@ pub(crate) fn decode_event(event: &Value) -> Option<Decoded> {
 
 /// The item a set of one item's envelopes describes.
 ///
-/// A learning, or a document written as one event, takes the first
-/// envelope. A chunked document orders its pieces by index, keeps one per
+/// A learning, or a document written as one event (no `chunk` field, as
+/// every document was before chunking), takes the first envelope. A chunked
+/// document (every piece carries `chunk`) orders its pieces by index, keeps one per
 /// index and concatenates their text, so the full set gives back the body
 /// exactly (and one piece alone gives that piece). A conversation orders
 /// its turns by index and keeps one envelope per index, so a duplicated or

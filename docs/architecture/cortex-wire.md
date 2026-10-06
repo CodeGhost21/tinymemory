@@ -371,8 +371,10 @@ its whole envelope. So (`envelope/chunks.rs`):
   store that failed part way writes only the missing pieces.
 - **Reads.** `get` and `list` give the whole document (pieces in index
   order). A ranked hit or citation on a piece gives that piece, with the
-  item's id and its metadata plus `page:<n>` (or `page:<first>-<last>`) and
-  `section:<title>` tags. Readable CortexDB labels for page and section are
+  item's id and its metadata plus, when known, a `page:<n>` (or
+  `page:<first>-<last>`) tag and a `section:<title>` tag: a document without
+  page breaks gets no page tag, a piece before the first heading no section
+  tag. These tags are read-side metadata, not part of the item's identity. Readable CortexDB labels for page and section are
   not written yet.
 - **Why one piece per target rather than per page.** CortexDB 0.10.4
   already fragments every event over about 500 bytes for retrieval
@@ -408,7 +410,7 @@ a 422), so the structured data rides in the one free-form field: the event's
 | `title`, `mime` | documents, when set | |
 | `learning_kind`, `confidence`, `evidence` | learnings (`evidence` when set) | |
 | `turn` | conversation turns | `index` (0-based), `count`, `role`, `at`, `tool_calls` |
-| `chunk` | pieces of a chunked document | `index` (0-based), `count`, `pages` (`[first, last]`, when the text marks pages), `section` (the heading the piece starts under) |
+| `chunk` | pieces of a chunked document only (a document written whole has none) | `index` (0-based), `count`; optional `pages` (`[first, last]`, only when the text marks pages) and `section` (only when the piece starts under a heading) |
 
 Text that is not a v2 envelope is someone else's event and is ignored by
 every reader. Decoding first tries the text as written (`/events` returns it

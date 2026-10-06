@@ -62,9 +62,6 @@ impl CortexLog {
     pub(crate) fn append(&mut self, body: &Value) -> (u16, Value) {
         let key = str_of(body, "/idempotency_key").to_string();
         let text = str_of(body, "/content/text").to_string();
-        if text.len() > 1024 * 1024 {
-            return (422, json!({ "error_code": "INVALID_ENVELOPE" }));
-        }
         if let Some((seen, id)) = self.idempotency.get(&key) {
             if seen != &text {
                 return (409, json!({ "error_code": "IDEMPOTENCY_CONFLICT" }));
@@ -73,6 +70,9 @@ impl CortexLog {
                 202,
                 json!({ "event_id": id, "replayed_from_idempotency": true }),
             );
+        }
+        if text.len() > 1024 * 1024 {
+            return (422, json!({ "error_code": "INVALID_ENVELOPE" }));
         }
         self.next_id += 1;
         let id = format!("evt_{}", self.next_id);

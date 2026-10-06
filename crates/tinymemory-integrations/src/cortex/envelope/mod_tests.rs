@@ -189,3 +189,95 @@ fn an_item_is_written_to_its_namespace_scope() {
         "app:tinymemory/agent:researcher/app:documents"
     );
 }
+
+/// A document long enough to be written as several pieces.
+fn long_document() -> StoreItem {
+    let body: String = (1..=30)
+        .map(|n| {
+            format!(
+                "# Part {n}\n\n{}\n",
+                "Body text for this part. ".repeat(600)
+            )
+        })
+        .collect();
+    StoreItem::Document {
+        title: Some("Long".into()),
+        body: DocumentBody::Text(body),
+        mime: None,
+        meta: meta(),
+    }
+}
+
+#[test]
+fn a_chunked_document_rebuilds_from_pieces_in_any_order_each_once() {
+    let item = long_document();
+    let id = item.fingerprint();
+    let mut pieces = Envelope::for_item(&item, &id).unwrap();
+    assert!(pieces.len() >= 2, "{} pieces", pieces.len());
+    assert!(pieces.iter().all(|piece| piece.chunk.is_some()));
+
+    pieces.reverse();
+    let duplicated = pieces[1].clone();
+    pieces.push(duplicated);
+    let rebuilt = rebuild(&pieces).unwrap();
+    assert_eq!(
+        rebuilt, item,
+        "shuffled and duplicated pieces give the body"
+    );
+    assert_eq!(rebuilt.fingerprint(), id);
+
+    let one = rebuild(std::slice::from_ref(&pieces[0])).unwrap();
+    let StoreItem::Document {
+        body: DocumentBody::Text(text),
+        ..
+    } = one
+    else {
+        panic!("a document");
+    };
+    assert_eq!(text, pieces[0].text, "one piece alone gives that piece");
+}
+
+#[test]
+fn a_document_without_pieces_rebuilds_from_its_first_envelope() {
+    let item = StoreItem::document("Short note.", meta());
+    let id = item.fingerprint();
+    let envelopes = Envelope::for_item(&item, &id).unwrap();
+    assert_eq!(envelopes.len(), 1);
+    assert_eq!(envelopes[0].chunk, None);
+    assert!(!envelopes[0].encode().unwrap().contains("\"chunk\""));
+    assert_eq!(rebuild(&envelopes).unwrap(), item);
+}
+
+#[test]
+fn metadata_too_large_for_a_piece_keeps_the_document_whole_and_refused() {
+    let mut huge = meta();
+    huge.tags = vec!["t".repeat(chunks::MAX_EVENT_TEXT_BYTES)];
+    let small = StoreItem::document("Short note.", huge.clone());
+    let id = small.fingerprint();
+    let envelopes = Envelope::for_item(&small, &id).unwrap();
+    assert_eq!(envelopes.len(), 1, "no pieces are made up");
+    assert!(matches!(
+        envelopes[0].encode_checked(),
+        Err(Error::InvalidRequest(_))
+    ));
+    let StoreItem::Document {
+        body, title, mime, ..
+    } = long_document()
+    else {
+        unreachable!("a document");
+    };
+    let long = StoreItem::Document {
+        title,
+        body,
+        mime,
+        meta: huge,
+    };
+    let id = long.fingerprint();
+    let envelopes = Envelope::for_item(&long, &id).unwrap();
+    assert_eq!(
+        envelopes.len(),
+        1,
+        "never pieces that each exceed the limit"
+    );
+    assert!(envelopes[0].encode_checked().is_err());
+}

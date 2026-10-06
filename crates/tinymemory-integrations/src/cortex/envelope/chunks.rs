@@ -63,23 +63,39 @@ struct Unit {
     section: Option<String>,
 }
 
+/// The most bytes one character takes JSON-escaped (`\u0001`): the least
+/// room a piece needs to make progress.
+const MAX_ESCAPED_CHAR: usize = 6;
+
 /// The pieces of `text`, each at most `target` (or, at `0`, one per unit)
 /// and never over `limit`, both as encoded bytes on top of `overhead` (the
 /// envelope around the piece). One piece for a text that fits.
-pub(crate) fn split(text: &str, overhead: usize, target: usize, limit: usize) -> Vec<Piece<'_>> {
-    let room = limit.saturating_sub(overhead).max(1);
+///
+/// `None` when `overhead` leaves less than one escaped character of room
+/// under `limit`: no piece could be written, so none is made up.
+pub(crate) fn split(
+    text: &str,
+    overhead: usize,
+    target: usize,
+    limit: usize,
+) -> Option<Vec<Piece<'_>>> {
+    let room = limit
+        .checked_sub(overhead)
+        .filter(|room| *room >= MAX_ESCAPED_CHAR)?;
     let pack = if target == 0 {
         room
     } else {
-        target.saturating_sub(overhead).clamp(1, room)
+        target
+            .saturating_sub(overhead)
+            .clamp(MAX_ESCAPED_CHAR, room)
     };
     let paged = text.contains(PAGE_BREAK);
     if target != 0 && escaped_len(text) <= pack {
-        return vec![Piece {
+        return Some(vec![Piece {
             text,
             pages: paged.then(|| (1, page_count(text))),
             section: None,
-        }];
+        }]);
     }
     let mut pieces: Vec<Piece<'_>> = Vec::new();
     let mut open: Option<Open> = None;
@@ -109,7 +125,7 @@ pub(crate) fn split(text: &str, overhead: usize, target: usize, limit: usize) ->
         }
     }
     pieces.extend(open.map(|done| done.piece(text, paged)));
-    pieces
+    Some(pieces)
 }
 
 /// The piece being packed.

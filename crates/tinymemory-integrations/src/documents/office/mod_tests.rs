@@ -319,6 +319,9 @@ async fn a_pdf_without_a_text_layer_says_so_rather_than_storing_nothing() {
     // succeeded.
     let reason = refusal("scan.pdf", pdf("")).await;
     assert!(reason.contains("no text"), "{reason}");
+    // Several empty pages are joined by page breaks, which are not text.
+    let reason = refusal("scan.pdf", pdf_pages(&["", "", ""])).await;
+    assert!(reason.contains("no text"), "{reason}");
 }
 
 #[tokio::test]

@@ -5,7 +5,7 @@ use super::*;
 /// The pieces of `text` under a small overhead and the given sizes,
 /// checked to concatenate back to `text`.
 fn pieces(text: &str, target: usize, limit: usize) -> Vec<Piece<'_>> {
-    let pieces = split(text, 10, target, limit);
+    let pieces = split(text, 10, target, limit).expect("room for a piece");
     let joined: String = pieces.iter().map(|piece| piece.text).collect();
     assert_eq!(joined, text, "the pieces concatenate to the text");
     pieces
@@ -140,4 +140,30 @@ fn heading_lines_are_markdown_atx_headings_only() {
     assert_eq!(heading("# "), None);
     let long = format!("# {}", "t".repeat(500));
     assert_eq!(heading(&long).unwrap().chars().count(), MAX_SECTION_CHARS);
+}
+
+#[test]
+fn no_room_for_one_escaped_character_makes_no_piece() {
+    assert_eq!(split("a", 10, 0, 10), None, "overhead equals the limit");
+    assert_eq!(split("a", 10, 0, 15), None, "five bytes of room");
+    assert_eq!(split("", 20, 0, 10), None, "overhead over the limit");
+    assert!(split("a", 10, 0, 16).is_some(), "six bytes of room");
+}
+
+#[test]
+fn every_piece_fits_even_at_the_smallest_room() {
+    for text in ["\u{1}\u{1}\u{1}", "\"\"\"\"", "ééé", "a\nb\nc"] {
+        for target in [0, 1, 7] {
+            let cut = split(text, 10, target, 16).expect("six bytes of room");
+            let joined: String = cut.iter().map(|piece| piece.text).collect();
+            assert_eq!(joined, text);
+            for piece in &cut {
+                assert!(
+                    10 + escaped_len(piece.text) <= 16,
+                    "{text:?} at target {target}: {:?}",
+                    piece.text
+                );
+            }
+        }
+    }
 }

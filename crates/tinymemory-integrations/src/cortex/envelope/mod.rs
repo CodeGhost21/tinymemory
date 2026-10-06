@@ -231,12 +231,17 @@ impl Envelope {
                 let mut whole = Self::new(id, ItemKind::Document, String::new(), meta);
                 whole.title.clone_from(title);
                 whole.mime.clone_from(mime);
+                // No room for a piece (metadata alone near the limit) leaves
+                // the document whole: it is written if it fits and refused
+                // by `encode_checked` if not, never cut into pieces that are
+                // each over the limit.
                 let pieces = chunks::split(
                     text,
                     whole.piece_overhead()?,
                     chunks::DOCUMENT_CHUNK_TARGET_BYTES,
                     chunks::MAX_EVENT_TEXT_BYTES,
-                );
+                )
+                .unwrap_or_default();
                 if pieces.len() <= 1 {
                     whole.text.clone_from(text);
                     return Ok(vec![whole]);
