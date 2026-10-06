@@ -172,3 +172,37 @@ fn fixed_headers_are_applied_and_a_credential_header_is_refused() {
     assert!(matches!(refused, Error::Config(_)), "{refused:?}");
     assert!(!refused.to_string().contains("smuggled"));
 }
+
+#[test]
+fn a_configured_consolidation_overrides_the_endpoint_default() {
+    let self_hosted = settings(Some("https://cortex.example.test"));
+    let key = || EngineCredential::Static("key".into());
+    let default = build_engine("cortexdb", &self_hosted, key()).unwrap();
+    assert_eq!(
+        default.descriptor().consolidation,
+        tinymemory_api::Consolidation::OnDemand
+    );
+    let managed = build_engine("cortexdb", &settings(None), key()).unwrap();
+    assert_eq!(
+        managed.descriptor().consolidation,
+        tinymemory_api::Consolidation::Automatic
+    );
+    let told = EngineSettings {
+        consolidation: Some(tinymemory_api::Consolidation::Automatic),
+        ..self_hosted
+    };
+    let automatic = build_engine("cortexdb", &told, key()).unwrap();
+    assert_eq!(
+        automatic.descriptor().consolidation,
+        tinymemory_api::Consolidation::Automatic
+    );
+    let message = config_error(build_engine(
+        "tinyhumans",
+        &EngineSettings {
+            consolidation: Some(tinymemory_api::Consolidation::OnDemand),
+            ..settings(None)
+        },
+        EngineCredential::Dynamic(Arc::new(Session)),
+    ));
+    assert!(message.contains("cannot consolidate"), "{message}");
+}

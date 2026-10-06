@@ -21,6 +21,11 @@
 //! - [`Consolidation::Scheduled`] — the engine consolidates on its own
 //!   schedule; `consolidate` acknowledges with
 //!   [`ConsolidateStatus::Scheduled`] and does nothing more.
+//! - [`Consolidation::Automatic`] — the engine rebuilds beliefs on its own
+//!   shortly after each write, so a host need not ask after its writes;
+//!   `consolidate` still runs a build at once, as a refresh before a read
+//!   that must see the latest, and answers as [`Consolidation::OnDemand`]
+//!   does.
 //!
 //! **Reading beliefs.** An engine that keeps what it builds apart from its
 //! stored items (CortexDB's belief layer) serves it through
@@ -49,6 +54,9 @@ pub enum Consolidation {
     OnDemand,
     /// The engine consolidates on its own schedule.
     Scheduled,
+    /// The engine rebuilds beliefs on its own after writes; an explicit
+    /// [`crate::MemoryEngine::consolidate`] still runs a build at once.
+    Automatic,
 }
 
 /// What to consolidate.

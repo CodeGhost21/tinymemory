@@ -138,8 +138,8 @@ pub trait MemoryEngine: Send + Sync {
     /// builds surfaces through ordinary reads.
     ///
     /// The default refuses: an engine declaring
-    /// [`Consolidation::OnDemand`] or [`Consolidation::Scheduled`] overrides
-    /// it.
+    /// [`Consolidation::OnDemand`], [`Consolidation::Scheduled`] or
+    /// [`Consolidation::Automatic`] overrides it.
     ///
     /// # Errors
     ///

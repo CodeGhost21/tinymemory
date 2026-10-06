@@ -2,7 +2,8 @@
 
 use tinymemory_api::conformance::ReferenceEngine;
 use tinymemory_api::{
-    ConsolidateRequest, Error, ListRequest, MemoryMeta, Namespace, SourceKind, SourceRef,
+    ConsolidateRequest, Consolidation, Error, ListRequest, MemoryMeta, Namespace, SourceKind,
+    SourceRef,
 };
 
 use super::*;
@@ -31,10 +32,10 @@ async fn a_document_lands_at_its_source_node_without_an_agent() {
         .unwrap();
     assert_eq!(
         ingested.job,
-        BackgroundJob::BuildBeliefs {
+        Some(BackgroundJob::BuildBeliefs {
             request: ConsolidateRequest::new(Reach::exact(Namespace::source("pdf")))
                 .kinds([ItemKind::Document]),
-        }
+        })
     );
     let listed = engine
         .list(ListRequest::new(Default::default(), 10))
@@ -136,4 +137,41 @@ async fn search_and_forget_stay_inside_one_source() {
             .unwrap()
             .is_empty()
     );
+}
+
+#[tokio::test]
+async fn an_engine_that_builds_on_its_own_gets_no_build_from_an_ingest() {
+    let engine = Arc::new(ReferenceEngine::new().with_consolidation(Consolidation::Automatic));
+    let brain = Brain::new(engine.clone(), MemoryLayout::default());
+    let ingested = brain
+        .ingest(BrainDocument::new(
+            BrainSource::Pdf,
+            "Refunds take five days.",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(ingested.job, None);
+    let batch = brain
+        .ingest_many(vec![
+            BrainDocument::new(BrainSource::Notion, "Deploys run on Fridays."),
+            BrainDocument::new(BrainSource::Github, "CI runs on every push."),
+        ])
+        .await
+        .unwrap();
+    assert!(batch.jobs.is_empty(), "{:?}", batch.jobs);
+    assert_eq!(engine.len(), 3, "the documents are still stored");
+
+    let refresh = brain.build(&BrainSource::Pdf).unwrap();
+    assert_eq!(
+        refresh,
+        BackgroundJob::BuildBeliefs {
+            request: ConsolidateRequest::new(Reach::exact(Namespace::source("pdf")))
+                .kinds([ItemKind::Document]),
+        }
+    );
+    let report = crate::background::BackgroundRunner::new(engine, MemoryLayout::default())
+        .run(refresh)
+        .await
+        .unwrap();
+    assert_eq!(report.outcome, crate::background::JobOutcome::Done);
 }

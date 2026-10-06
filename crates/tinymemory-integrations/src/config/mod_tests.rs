@@ -41,3 +41,22 @@ fn building_from_config_applies_the_registry_rules() {
         Err(tinymemory_api::Error::Config(_))
     ));
 }
+
+#[test]
+fn a_consolidation_override_is_read_by_its_snake_case_name() {
+    let config: MemoryConfig = toml::from_str(
+        r#"
+        engine = "cortexdb"
+
+        [engines.cortexdb]
+        endpoint = "http://127.0.0.1:3141"
+        consolidation = "automatic"
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        config.settings().consolidation,
+        Some(Consolidation::Automatic)
+    );
+    assert_eq!(EngineSettings::default().consolidation, None);
+}

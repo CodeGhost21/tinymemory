@@ -41,8 +41,12 @@ From `tinymemory_integrations::cortex`:
 
 Beyond the contract's reads and writes, the engine consolidates: Direct
 posts `v1/beliefs/build` once per held scope a `ConsolidateRequest` admits
-(`engine/consolidate.rs`, declared `Consolidation::OnDemand`) and reports the
-beliefs built, since the server builds within the request; hosted
+(`engine/consolidate.rs`) and reports the beliefs built, since the server
+builds within the request. It declares `Consolidation::Automatic` on the
+managed API, which rebuilds beliefs on its own after writes, so the lifecycle
+queues no build there, and `Consolidation::OnDemand` on any other endpoint
+(`descriptor::direct_consolidation`, overridden by
+`CortexEngine::with_consolidation`); hosted
 declares `Consolidation::Scheduled` and sends nothing. What was built is
 read back by `beliefs` (`engine/beliefs.rs`): a `beliefs`-only recall per
 held scope for a query, or the `v1/beliefs` listing without one, each belief

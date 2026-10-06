@@ -96,7 +96,7 @@ async fn an_agent_loop_runs_the_same_on_either_wire() {
             resumed.markdown
         );
 
-        for job in report.jobs.into_iter().chain([ingested.job]) {
+        for job in report.jobs.into_iter().chain(ingested.job) {
             let ran = support.run_background(job).await.unwrap();
             match wire {
                 CortexWire::Direct => assert_eq!(ran.outcome, JobOutcome::Done),

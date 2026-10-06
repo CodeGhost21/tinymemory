@@ -51,3 +51,11 @@ fn round_trips_through_json() {
     );
     assert_eq!(Consolidation::default(), Consolidation::None);
 }
+
+#[test]
+fn automatic_consolidation_round_trips_by_its_snake_case_name() {
+    let json = serde_json::to_value(Consolidation::Automatic).unwrap();
+    assert_eq!(json, serde_json::json!("automatic"));
+    let back: Consolidation = serde_json::from_value(json).unwrap();
+    assert_eq!(back, Consolidation::Automatic);
+}

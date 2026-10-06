@@ -9,7 +9,7 @@
 //! | --- | --- | --- |
 //! | session start or resume | [`AgentMemory::start_session`] | reads only |
 //! | user turn, before the model | [`AgentMemory::pre_turn`] | logs the turn (accepted, not indexed) while fetching the pack |
-//! | after the reply | [`AgentMemory::post_turn`] | logs the reply; may return a belief build |
+//! | after the reply | [`AgentMemory::post_turn`] | logs the reply; may return a belief build (never on an engine that builds on its own) |
 //! | prompt truncated | [`AgentMemory::recall_for_compaction`] | an answered summary of the thread, plus related memory |
 //! | any time | [`AgentMemory::recall`] | a pre-turn pack without logging |
 //! | off the turn | [`AgentMemory::run_background`] | the job |
@@ -79,7 +79,7 @@ use tinymemory_api::{
     Result, Role, SourceKind, SourceRef, StoreItem, StoreReceipt, Turn, TurnRange, WriteOptions,
 };
 
-use crate::background::{BackgroundJob, BackgroundRunner, JobReport};
+use crate::background::{BackgroundJob, BackgroundRunner, JobReport, builds_on_its_own};
 use crate::brain::Brain;
 use crate::layout::{CoreScope, MemoryLayout};
 use crate::recall::{
@@ -397,7 +397,9 @@ impl AgentMemory {
     }
 
     /// Logs the assistant's reply, and returns the belief build the policy
-    /// asks for at this turn, if any.
+    /// asks for at this turn, if any. An engine that rebuilds beliefs on its
+    /// own ([`tinymemory_api::Consolidation::Automatic`]) gets none;
+    /// [`AgentMemory::history_build`] still asks for one at any time.
     ///
     /// # Errors
     ///
@@ -419,10 +421,11 @@ impl AgentMemory {
             .engine
             .store_with(item, WriteOptions::accepted())
             .await?;
-        let due = self
-            .policy
-            .build_beliefs_every
-            .is_some_and(|every| every > 0 && (turn.turn_index + 1).is_multiple_of(every));
+        let due = !builds_on_its_own(self.engine.as_ref())
+            && self
+                .policy
+                .build_beliefs_every
+                .is_some_and(|every| every > 0 && (turn.turn_index + 1).is_multiple_of(every));
         let jobs = if due {
             vec![self.history_build()]
         } else {

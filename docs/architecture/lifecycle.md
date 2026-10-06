@@ -99,6 +99,9 @@ duplicates.
 - `Brain::ingest` returns a `BuildBeliefs` job for the source's scope.
 - `post_turn` returns one every `build_beliefs_every` turns, for the agent's
   conversations.
+- Neither does on an engine that declares `Automatic`: it rebuilds beliefs
+  on its own after writes. `Brain::build` and `AgentMemory::history_build`
+  still hand back a build to run at once, as a refresh.
 - `BackgroundJob::IngestBrain` defers a whole ingestion. Its report hands
   back the follow-up builds.
 
@@ -107,7 +110,8 @@ What a build does depends on the engine's `consolidation`:
 | Engine | `consolidation` | `run_background(BuildBeliefs)` |
 | --- | --- | --- |
 | Reference | `OnDemand` | distils one `Fact` per item at once → `Done` |
-| CortexDB direct | `OnDemand` | `POST v1/beliefs/build` per held scope, built within the request → `Done` |
+| CortexDB direct, managed API | `Automatic` | none queued; an explicit build posts `v1/beliefs/build` per held scope → `Done` |
+| CortexDB direct, elsewhere | `OnDemand` | `POST v1/beliefs/build` per held scope, built within the request → `Done` |
 | CortexDB via TinyHumans | `Scheduled` | nothing sent → `Scheduled` |
 | an engine without it | `None` | `Skipped { reason }` |
 

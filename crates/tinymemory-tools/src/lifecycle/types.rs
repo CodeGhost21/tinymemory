@@ -27,7 +27,9 @@ pub struct RecallPolicy {
     /// conversations out.
     pub team_limit: usize,
     /// Ask for a belief build of this agent's conversations after every this
-    /// many turns (by `turn_index + 1`); `None` never asks.
+    /// many turns (by `turn_index + 1`); `None` never asks, and neither does
+    /// an engine that rebuilds beliefs on its own
+    /// ([`tinymemory_api::Consolidation::Automatic`]).
     pub build_beliefs_every: Option<u32>,
 }
 

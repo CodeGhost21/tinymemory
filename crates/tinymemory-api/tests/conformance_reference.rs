@@ -21,6 +21,22 @@ async fn the_reference_engine_passes_and_cleans_up() {
 }
 
 #[tokio::test]
+async fn the_reference_engine_conforms_whatever_consolidation_it_declares() {
+    for declared in [
+        Consolidation::None,
+        Consolidation::OnDemand,
+        Consolidation::Scheduled,
+        Consolidation::Automatic,
+    ] {
+        let engine = ReferenceEngine::new().with_consolidation(declared);
+        run(&engine)
+            .await
+            .unwrap_or_else(|error| panic!("declaring {declared:?}: {error}"));
+        assert!(engine.is_empty(), "{declared:?}");
+    }
+}
+
+#[tokio::test]
 async fn the_suite_leaves_foreign_items_alone() {
     let engine = ReferenceEngine::new();
     engine

@@ -90,8 +90,9 @@ pub struct Ingested {
     /// The engine's receipt.
     pub receipt: StoreReceipt,
     /// The belief build for the document's source, for the host to run when
-    /// it suits.
-    pub job: BackgroundJob,
+    /// it suits; `None` on an engine that rebuilds beliefs on its own
+    /// ([`tinymemory_api::Consolidation::Automatic`]).
+    pub job: Option<BackgroundJob>,
 }
 
 /// What [`crate::Brain::ingest_many`] did.
@@ -99,6 +100,7 @@ pub struct Ingested {
 pub struct BrainBatch {
     /// One receipt per document, in order.
     pub receipts: Vec<StoreReceipt>,
-    /// One belief build per source touched.
+    /// One belief build per source touched; none on an engine that rebuilds
+    /// beliefs on its own ([`tinymemory_api::Consolidation::Automatic`]).
     pub jobs: Vec<BackgroundJob>,
 }

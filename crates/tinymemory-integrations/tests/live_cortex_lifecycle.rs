@@ -19,13 +19,16 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tinymemory_api::{
-    ForgetTarget, LearningKind, MemoryEngine, MemoryMeta, MetaFilter, Namespace, Reach, StoreItem,
+    Consolidation, ForgetTarget, LearningKind, MemoryEngine, MemoryMeta, MetaFilter, Namespace,
+    Reach, StoreItem,
 };
 use tinymemory_integrations::brain::brain_document;
 use tinymemory_integrations::cortex::{CortexCredential, CortexEngine};
 use tinymemory_integrations::documents::{ConverterChain, RawDocument};
+use tinymemory_integrations::{EngineCredential, EngineSettings, build_engine};
 use tinymemory_tools::{
-    AgentMemory, Brain, ContextPack, CoreScope, MemoryLayout, PostTurn, PreTurn,
+    AgentMemory, Brain, BrainDocument, BrainSource, ContextPack, CoreScope, JobOutcome,
+    MemoryLayout, PostTurn, PreTurn, RecallPolicy,
 };
 
 const DEFAULT_KEY: &str = "tinymemory-cortex-test";
@@ -83,10 +86,9 @@ async fn live_an_agent_loop_runs_against_cortexdb() {
     )
     .await
     .expect("convert");
-    let ingested = Brain::new(engine.clone(), layout.clone())
-        .ingest(document)
-        .await
-        .expect("ingest");
+    let source = document.source.clone();
+    let brain = Brain::new(engine.clone(), layout.clone());
+    let ingested = brain.ingest(document).await.expect("ingest");
 
     let support = AgentMemory::new(engine.clone(), layout.clone(), "support-01").expect("agent");
     let coder = AgentMemory::new(engine.clone(), layout.clone(), "coder-42").expect("agent");
@@ -134,7 +136,12 @@ async fn live_an_agent_loop_runs_against_cortexdb() {
     );
 
     let built = support
-        .run_background(ingested.job)
+        // The managed API builds on its own and hands back no job; ask for
+        // one explicitly, as a refresh, so the build route is still proven.
+        .run_background(match ingested.job {
+            Some(job) => job,
+            None => brain.build(&source).expect("build job"),
+        })
         .await
         .expect("a belief build is accepted");
     eprintln!("belief build: {:?}", built.outcome);
@@ -231,4 +238,138 @@ async fn live_core_scope_recall_and_promotion_respect_tenant_boundaries() {
             .expect("clean up test data");
         assert_eq!(forgotten.forgotten, 1, "{forgotten:?}");
     }
+}
+
+/// Polls CortexDB's `v1/derivation/status` for `scope` until its last build
+/// is strictly newer than its last write: the server's own scheduler rebuilt
+/// after the write, with no build requested. The scope is unique to the run,
+/// so its last write is this test's. Every request is bounded by the time
+/// left, so the poll ends within its deadline even if the server stalls.
+/// `false` if no such build happens within a few minutes.
+async fn built_after_last_write(url: &str, key: &str, scope: &str) -> bool {
+    use tinymemory_api::chrono::{DateTime, FixedOffset};
+    let parse = |value: &serde_json::Value| -> Option<DateTime<FixedOffset>> {
+        DateTime::parse_from_rfc3339(value.as_str()?).ok()
+    };
+    let client = reqwest::Client::new();
+    let endpoint = format!("{}/v1/derivation/status", url.trim_end_matches('/'));
+    let deadline = Instant::now() + Duration::from_secs(240);
+    loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let request = async {
+            let response = client
+                .get(&endpoint)
+                .query(&[("scope", scope)])
+                .bearer_auth(key)
+                .send()
+                .await
+                .ok()?;
+            response.json::<serde_json::Value>().await.ok()
+        };
+        let status = tokio::time::timeout(left, request).await.ok().flatten();
+        if let Some(status) = &status {
+            let wrote = parse(&status["last_write_at"]);
+            let built = parse(&status["last_built_at"]);
+            if let (Some(wrote), Some(built)) = (wrote, built)
+                && built > wrote
+            {
+                eprintln!("derivation status: {status}");
+                return true;
+            }
+        }
+        if Instant::now() >= deadline {
+            eprintln!("derivation status at the deadline: {status:?}");
+            return false;
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
+
+#[tokio::test]
+async fn live_an_automatic_engine_queues_no_builds_but_still_builds_on_request() {
+    let Ok(url) = std::env::var("TINYMEMORY_LIVE_CORTEXDB_URL") else {
+        eprintln!("TINYMEMORY_LIVE_CORTEXDB_URL unset; skipping");
+        return;
+    };
+    let key = std::env::var("TINYMEMORY_TEST_CORTEX_KEY").unwrap_or_else(|_| DEFAULT_KEY.into());
+    // A self-hosted server that runs its own layer scheduler, declared so in
+    // the config, as a host would.
+    let settings = EngineSettings {
+        endpoint: Some(url.clone()),
+        consolidation: Some(Consolidation::Automatic),
+        ..EngineSettings::default()
+    };
+    let engine = build_engine("cortexdb", &settings, EngineCredential::Static(key.clone()))
+        .expect("a valid live engine");
+    assert_eq!(engine.descriptor().consolidation, Consolidation::Automatic);
+
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after the epoch")
+        .as_nanos();
+    let layout = MemoryLayout::new(
+        format!("project:live-auto-{nanos}")
+            .parse()
+            .expect("a valid root"),
+    )
+    .expect("a valid layout");
+
+    let brain = Brain::new(engine.clone(), layout.clone());
+    let ingested = brain
+        .ingest(BrainDocument::new(
+            BrainSource::Markdown,
+            "Expense reports are due on the fifth of each month.",
+        ))
+        .await
+        .expect("ingest");
+    assert_eq!(
+        ingested.job, None,
+        "an automatic engine gets no ingest build"
+    );
+
+    // Nothing asked for a build, yet the server rebuilds the written scope on
+    // its own (the harness runs the layer scheduler: `CORTEX_V1_LAYERS_AUTO`).
+    let scope = format!("app:tinymemory/project:live-auto-{nanos}/source:markdown/app:documents");
+    assert!(
+        built_after_last_write(&url, &key, &scope).await,
+        "the server never rebuilt `{scope}` after the write on its own"
+    );
+
+    let support = AgentMemory::new(engine.clone(), layout.clone(), "support-01")
+        .expect("agent")
+        .with_policy(RecallPolicy {
+            build_beliefs_every: Some(1),
+            ..RecallPolicy::default()
+        });
+    let report = support
+        .post_turn(PostTurn::new("auto-1", 1, "They are due on the fifth."))
+        .await
+        .expect("post_turn");
+    assert!(report.jobs.is_empty(), "no turn build: {:?}", report.jobs);
+
+    // An explicit refresh still reaches `v1/beliefs/build` on the real server.
+    let built = support
+        .run_background(brain.build(&BrainSource::Markdown).expect("build job"))
+        .await
+        .expect("a belief build is accepted");
+    assert!(
+        matches!(built.outcome, JobOutcome::Done | JobOutcome::Started),
+        "{:?}",
+        built.outcome
+    );
+    let history = support
+        .run_background(support.history_build())
+        .await
+        .expect("a history build is accepted");
+    assert!(
+        matches!(history.outcome, JobOutcome::Done | JobOutcome::Started),
+        "{:?}",
+        history.outcome
+    );
+
+    let forgotten = engine
+        .forget(ForgetTarget::Filter(layout.holistic_filter()))
+        .await
+        .expect("forget");
+    assert!(forgotten.forgotten >= 2, "{forgotten:?}");
 }

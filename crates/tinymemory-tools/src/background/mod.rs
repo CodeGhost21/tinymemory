@@ -22,8 +22,17 @@ use tinymemory_api::{
     StoreReceipt,
 };
 
+use tinymemory_api::Consolidation;
+
 use crate::brain::{Brain, BrainDocument};
 use crate::layout::MemoryLayout;
+
+/// Whether `engine` rebuilds beliefs on its own after writes
+/// ([`Consolidation::Automatic`]), so the lifecycle and the brain hand back
+/// no belief build after a turn or an ingest.
+pub(crate) fn builds_on_its_own(engine: &dyn MemoryEngine) -> bool {
+    engine.descriptor().consolidation == Consolidation::Automatic
+}
 
 /// One unit of deferred work.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -81,7 +81,8 @@ by default, or a host node such as `team:acme`.
     the receipt names any job handles, the number of scopes covered and,
     for a completed build that reports it, the beliefs `built`.
 - **`EngineDescriptor::consolidation`** declares how the engine consolidates:
-  `None`, `OnDemand` or `Scheduled`.
+  `None`, `OnDemand`, `Scheduled` or `Automatic` (it rebuilds beliefs on its
+  own after writes, and an explicit `consolidate` still builds at once).
 - **`MemoryEngine::beliefs(BeliefsRequest { reach, query, limit })`** reads
   the beliefs an engine built and keeps apart from its stored items. With a
   query they are ranked for it; without one, the most confident come first,
@@ -174,7 +175,8 @@ skipped, engine }`.
   `TurnContext::log_error` and the pack is still returned.
 - **`post_turn` reports belief builds.** It returns a `BuildBeliefs` job for
   the agent's conversations every `RecallPolicy::build_beliefs_every` turns,
-  counted as `turn_index + 1`.
+  counted as `turn_index + 1`, unless the engine declares `Automatic`; then
+  it returns none, and `history_build` still asks for one.
 
 ### Brain and background
 
@@ -182,7 +184,10 @@ skipped, engine }`.
   - `ingest` and `ingest_with(WaitFor)` store a `BrainDocument` at its
     source's node. The source kind defaults from the `BrainSource`.
   - `ingest_many` batches by `MAX_STORE_MANY`.
-  - Each ingest returns the `BuildBeliefs` job for its source scope.
+  - Each ingest returns the `BuildBeliefs` job for its source scope, and
+    `ingest_many` one per source touched; on an engine that declares
+    `Automatic` neither returns any (`Ingested::job` is `None`, `jobs` is
+    empty), and `Brain::build` asks for one explicitly.
 - **`Brain::search`** fetches within one source or across the whole brain,
   and **`Brain::forget`** erases one source.
 - **`BackgroundJob`** is `BuildBeliefs { request }` or
@@ -202,6 +207,9 @@ skipped, engine }`.
     that is held in reach and admitted. The server builds within the
     request, so the receipt is `Completed` with the beliefs `built`; an
     answer that names a job instead makes it `Started` with the handles.
+  - It declares `Automatic` when its endpoint is CortexDB's managed API,
+    which rebuilds beliefs on its own after writes, and `OnDemand`
+    anywhere else. `EngineSettings::consolidation` overrides that.
 - **CortexDB, TinyHumans wire:** declares `Scheduled` and sends nothing.
 
 ## Invariants

@@ -85,7 +85,7 @@ async fn main() -> Result<(), Error> {
         let source = document.source.clone();
         let ingested = brain.ingest(document).await?;
         took(&format!("ingest {file} -> source:{source}"), started);
-        jobs.push(ingested.job);
+        jobs.extend(ingested.job);
     }
 
     let policy = RecallPolicy {

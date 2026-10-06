@@ -45,3 +45,32 @@ fn every_hosted_route_is_under_memory_and_every_direct_one_under_v1() {
     assert_eq!(CortexWire::TinyHumans.descriptor().id, TINYHUMANS_ENGINE_ID);
     assert_eq!(CortexWire::Direct.descriptor().id, CORTEXDB_ENGINE_ID);
 }
+
+#[test]
+fn only_the_managed_api_consolidates_on_its_own_by_default() {
+    assert_eq!(
+        cortexdb_descriptor().consolidation,
+        Consolidation::Automatic,
+        "the direct descriptor describes its default endpoint, the managed API"
+    );
+    assert_eq!(
+        tinyhumans_descriptor().consolidation,
+        Consolidation::Scheduled
+    );
+    assert_eq!(
+        direct_consolidation("https://api-v1.cortexdb.ai"),
+        Consolidation::Automatic
+    );
+    for self_hosted in [
+        "http://127.0.0.1:3141",
+        "https://cortex.example.test",
+        "https://api-v1.cortexdb.ai:8443",
+        "http://api-v1.cortexdb.ai",
+    ] {
+        assert_eq!(
+            direct_consolidation(self_hosted),
+            Consolidation::OnDemand,
+            "{self_hosted}"
+        );
+    }
+}
