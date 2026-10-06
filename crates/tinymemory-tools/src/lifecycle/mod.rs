@@ -7,8 +7,9 @@
 //!
 //! | When | Call | Engine work |
 //! | --- | --- | --- |
-//! | session start or resume | [`AgentMemory::start_session`] | reads only |
+//! | session start, before any user turn | [`AgentMemory::start_session`] | reads only |
 //! | user turn, before the model | [`AgentMemory::pre_turn`] | logs the turn (accepted, not indexed) while fetching the pack |
+//! | first user turn after a compaction | [`AgentMemory::pre_turn_resumed`] | as `pre_turn`, with the thread's earlier turns leading the same pack |
 //! | after the reply | [`AgentMemory::post_turn`] | logs the reply; may return a belief build (never on an engine that builds on its own) |
 //! | prompt truncated | [`AgentMemory::recall_for_compaction`] | an answered summary of the thread, plus related memory |
 //! | any time | [`AgentMemory::recall`] | a pre-turn pack without logging |
@@ -330,14 +331,7 @@ impl AgentMemory {
         let mut sections = Vec::new();
         if let Some(thread_id) = &start.thread_id {
             let thread_id = non_blank(thread_id, "thread id")?;
-            sections.push(ScopeSection::latest(
-                THREAD_HEADING,
-                MetaFilter {
-                    thread_id: Some(thread_id.to_string()),
-                    ..self.layout.conversations_filter(Some(&self.agent_id))
-                },
-                self.policy.history_limit.max(1),
-            ));
+            sections.push(self.thread_section(thread_id, self.policy.history_limit.max(1)));
         }
         sections.extend(self.standard_sections());
         self.read(start.focus, sections).await
@@ -355,6 +349,24 @@ impl AgentMemory {
     /// [`Error::InvalidRequest`] for a blank thread id or text. Engine
     /// failures never fail the call.
     pub async fn pre_turn(&self, turn: PreTurn) -> Result<TurnContext> {
+        self.pre_turn_with(turn, false).await
+    }
+
+    /// [`AgentMemory::pre_turn`] for a session that resumes this thread after
+    /// a compaction: the one pack leads with the thread's earlier turns (those
+    /// before [`PreTurn::in_prompt_from`]), sharing the turn's budget and the
+    /// cross-section dedupe, instead of a separate
+    /// [`AgentMemory::start_session`] pack pasted beside it. A policy with
+    /// `history_limit == 0` gets no thread section, as everywhere else.
+    ///
+    /// # Errors
+    ///
+    /// As [`AgentMemory::pre_turn`].
+    pub async fn pre_turn_resumed(&self, turn: PreTurn) -> Result<TurnContext> {
+        self.pre_turn_with(turn, true).await
+    }
+
+    async fn pre_turn_with(&self, turn: PreTurn, resumed: bool) -> Result<TurnContext> {
         let thread_id = non_blank(&turn.thread_id, "thread id")?;
         let text = non_blank(&turn.user_text, "user text")?;
         let item = self.turn_item(
@@ -370,7 +382,12 @@ impl AgentMemory {
             thread_id: thread_id.to_string(),
             from_turn: turn.in_prompt_from,
         };
-        let mut request = self.request(Some(text.to_string()), self.standard_sections());
+        let mut sections = Vec::new();
+        if resumed && self.policy.history_limit > 0 {
+            sections.push(self.thread_section(thread_id, self.policy.history_limit));
+        }
+        sections.extend(self.standard_sections());
+        let mut request = self.request(Some(text.to_string()), sections);
         request.exclude_ids = vec![id];
         request.exclude_thread = Some(window);
         let (logged, pack) = join(
@@ -507,6 +524,18 @@ impl AgentMemory {
 
     /// Learnings, each core scope, brain, this agent's history, then the
     /// team's, each filled by fetch; a zero limit leaves its section out.
+    /// The thread's own latest turns, up to `limit`.
+    fn thread_section(&self, thread_id: &str, limit: usize) -> ScopeSection {
+        ScopeSection::latest(
+            THREAD_HEADING,
+            MetaFilter {
+                thread_id: Some(thread_id.to_string()),
+                ..self.layout.conversations_filter(Some(&self.agent_id))
+            },
+            limit,
+        )
+    }
+
     fn standard_sections(&self) -> Vec<ScopeSection> {
         let policy = &self.policy;
         let learnings = (
