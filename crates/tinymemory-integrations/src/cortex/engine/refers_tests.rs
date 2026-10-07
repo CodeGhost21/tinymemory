@@ -140,3 +140,40 @@ async fn a_refusal_that_is_not_about_the_hint_is_returned_and_keeps_the_gate() {
         );
     }
 }
+
+#[tokio::test]
+async fn an_unreadable_version_route_is_probed_once_and_hints_are_sent() {
+    let (endpoint, state) = direct_double().await;
+    let engine = direct_engine(&endpoint);
+    engine.store(on_day("launch plan", 2)).await.unwrap();
+    state.seen.lock().unwrap().recalls.clear();
+    state.version_down.store(true, Ordering::SeqCst);
+    for _ in 0..3 {
+        engine.fetch(fetch(Some(india(3)))).await.unwrap();
+    }
+    let seen = state.seen.lock().unwrap();
+    let probes = seen
+        .requests
+        .iter()
+        .filter(|r| r.starts_with("GET /v1/admin/version"))
+        .count();
+    assert_eq!(probes, 1, "{:?}", seen.requests);
+    assert!(
+        seen.recalls
+            .iter()
+            .filter(|r| r.get("query").is_some())
+            .all(|r| r.get("temporal").is_some())
+    );
+}
+
+#[tokio::test]
+async fn a_refusal_recorded_during_the_probe_is_not_overwritten() {
+    let (endpoint, _state) = direct_double().await;
+    let engine = direct_engine(&endpoint);
+    engine.refers_refused(&crate::cortex::error::Error::InvalidRequest(
+        "refused".into(),
+    ));
+    // A probe that started before the refusal now answers "listed".
+    assert!(!engine.record_probe(true), "the refusal stands");
+    assert!(!engine.sends_refers().await);
+}

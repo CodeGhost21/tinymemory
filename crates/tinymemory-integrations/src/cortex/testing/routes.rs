@@ -363,6 +363,9 @@ async fn version(State(state): State<Shared>, uri: Uri, headers: HeaderMap) -> R
     if let Some(early) = gate(&state, "GET", &uri, &headers) {
         return early;
     }
+    if state.version_down.load(Ordering::SeqCst) {
+        return fail(&state, 500, "INTERNAL");
+    }
     let capabilities = if state.refers_unlisted.load(Ordering::SeqCst) {
         json!(["temporal_lenient_v1"])
     } else {

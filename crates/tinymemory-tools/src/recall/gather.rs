@@ -100,7 +100,7 @@ pub(super) async fn section(
             question,
             instructions,
             fallback_to_fetch,
-        } => match answer(engine, section, question, instructions.clone()).await {
+        } => match answer(engine, request, section, question, instructions.clone()).await {
             Ok(Some(filled)) => return filled,
             Ok(None) => Ok((Vec::new(), Vec::new())),
             Err(error) if *fallback_to_fetch => {
@@ -108,7 +108,16 @@ pub(super) async fn section(
                     "[recall] answer failed, fetching instead heading={:?} error={error}",
                     section.heading
                 );
-                fetch(engine, &section.filter, question, want, 0, &keep, None).await
+                fetch(
+                    engine,
+                    &section.filter,
+                    question,
+                    want,
+                    0,
+                    &keep,
+                    request.refers_to.clone(),
+                )
+                .await
             }
             Err(error) => Err(error),
         },
@@ -181,6 +190,7 @@ fn skipped_section(section: &ScopeSection, reason: String) -> SkippedSection {
 /// One recall; `None` when it cited nothing or answered blank.
 async fn answer(
     engine: &dyn MemoryEngine,
+    request: &HolisticRecall,
     section: &ScopeSection,
     question: &str,
     instructions: Option<String>,
@@ -191,7 +201,7 @@ async fn answer(
             filter: section.filter.clone(),
             limit: section.limit,
             instructions,
-            refers_to: None,
+            refers_to: request.refers_to.clone(),
         })
         .await?;
     if answer.citations.is_empty() || answer.answer.trim().is_empty() {

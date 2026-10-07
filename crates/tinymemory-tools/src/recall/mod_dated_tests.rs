@@ -112,3 +112,78 @@ async fn a_date_known_up_front_ranks_the_same_way() {
     let pack = holistic_recall(&engine, &request).await.unwrap();
     assert_eq!(shown(&pack), ["dinner at Truffles"]);
 }
+
+/// The reference engine, recording what reaches recall and fetch; recall
+/// always fails, so an answered section falls back to fetch.
+struct Recording {
+    inner: ReferenceEngine,
+    recalls: std::sync::Mutex<Vec<Option<TimeHint>>>,
+    fetches: std::sync::Mutex<Vec<Option<TimeHint>>>,
+}
+
+#[async_trait::async_trait]
+impl MemoryEngine for Recording {
+    fn descriptor(&self) -> &tinymemory_api::EngineDescriptor {
+        self.inner.descriptor()
+    }
+    async fn health(&self) -> tinymemory_api::EngineHealth {
+        tinymemory_api::EngineHealth::Ok
+    }
+    async fn recall(
+        &self,
+        req: tinymemory_api::RecallRequest,
+    ) -> tinymemory_api::Result<tinymemory_api::RecallAnswer> {
+        self.recalls.lock().unwrap().push(req.refers_to);
+        Err(tinymemory_api::Error::Unavailable("no answers here".into()))
+    }
+    async fn fetch(
+        &self,
+        req: tinymemory_api::FetchRequest,
+    ) -> tinymemory_api::Result<tinymemory_api::FetchPage> {
+        self.fetches.lock().unwrap().push(req.refers_to.clone());
+        self.inner.fetch(req).await
+    }
+    async fn store(&self, item: StoreItem) -> tinymemory_api::Result<tinymemory_api::StoreReceipt> {
+        self.inner.store(item).await
+    }
+    async fn forget(
+        &self,
+        target: tinymemory_api::ForgetTarget,
+    ) -> tinymemory_api::Result<tinymemory_api::ForgetReport> {
+        self.inner.forget(target).await
+    }
+    async fn list(
+        &self,
+        req: tinymemory_api::ListRequest,
+    ) -> tinymemory_api::Result<tinymemory_api::ListPage> {
+        self.inner.list(req).await
+    }
+}
+
+#[tokio::test]
+async fn an_answered_section_and_its_fetch_fallback_carry_the_date() {
+    let engine = Recording {
+        inner: seeded().await,
+        recalls: Default::default(),
+        fetches: Default::default(),
+    };
+    let mut section = ScopeSection::answer(
+        "Dinners",
+        "where did I eat",
+        MetaFilter::kinds([ItemKind::Document]),
+        1,
+    );
+    if let SectionQuery::Answer {
+        fallback_to_fetch, ..
+    } = &mut section.query
+    {
+        *fallback_to_fetch = true;
+    }
+    let request = HolisticRecall {
+        refers_to: Some(day(3)),
+        ..HolisticRecall::new(None, vec![section])
+    };
+    holistic_recall(&engine, &request).await.unwrap();
+    assert_eq!(*engine.recalls.lock().unwrap(), [Some(day(3))]);
+    assert_eq!(*engine.fetches.lock().unwrap(), [Some(day(3))]);
+}

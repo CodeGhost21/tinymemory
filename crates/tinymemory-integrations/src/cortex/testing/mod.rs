@@ -90,6 +90,8 @@ pub(crate) struct Double {
     pub(crate) recall_down: AtomicBool,
     /// `v1/admin/version` does not list `refers_to_v1`.
     pub(crate) refers_unlisted: AtomicBool,
+    /// `v1/admin/version` answers 500.
+    pub(crate) version_down: AtomicBool,
     /// A recall carrying `temporal` is refused with 422, as a server that
     /// does not know the field refuses it.
     pub(crate) refers_refused: AtomicBool,
