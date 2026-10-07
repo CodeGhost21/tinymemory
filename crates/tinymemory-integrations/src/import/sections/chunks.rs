@@ -17,7 +17,7 @@ use std::path::{Component, Path};
 use rusqlite::params;
 use tinymemory_api::{DocumentBody, Role, StoreItem, Turn, TurnRange};
 
-use super::{Mark, Scanned, count_of, has_text, import_meta, push_unique, sql_limit};
+use super::{Mark, Scanned, import_meta, push_unique, sql_limit};
 use crate::import::checkpoint::ChunkCursor;
 use crate::import::convert;
 use crate::import::error::{Error, Result};
@@ -67,23 +67,31 @@ pub(super) fn page(
         .collect()
 }
 
-/// Sources with a chunk whose stored preview has text, or whose body lives
-/// in a file (not read here).
+/// Sources with a chunk that has text, resolved by the same reader the
+/// import uses: a chunk's text may live in a file, so this reads the chunk
+/// bodies (but decodes no item).
 pub(super) fn count(ws: &LegacyWorkspace) -> Result<u64> {
     let Some(store) = &ws.chunks else {
         return Ok(0);
     };
-    let file = if store.content_path {
-        " OR (content_path IS NOT NULL AND content_path <> '')"
-    } else {
-        ""
-    };
-    let sql = format!(
-        "SELECT COUNT(*) FROM (SELECT DISTINCT source_kind, source_id FROM mem_tree_chunks \
-         WHERE {}{file})",
-        has_text("content")
-    );
-    Ok(count_of(store.conn.query_row(&sql, [], |row| row.get(0))?))
+    let mut stmt = store
+        .conn
+        .prepare("SELECT DISTINCT source_kind, source_id FROM mem_tree_chunks")?;
+    let sources = stmt
+        .query_map([], |row| {
+            Ok(ChunkCursor {
+                source_kind: row.get(0)?,
+                source_id: row.get(1)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut total = 0;
+    for source in sources {
+        if !chunks(store, &source)?.is_empty() {
+            total += 1;
+        }
+    }
+    Ok(total)
 }
 
 fn source_item(

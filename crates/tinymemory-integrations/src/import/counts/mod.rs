@@ -2,9 +2,10 @@
 //!
 //! A host sizes an import (and decides whether there is anything to import
 //! at all) from [`crate::import::LegacyWorkspace::counts`]: one aggregate
-//! query per section, no item decoded and no chunk body read from disk. That
-//! is fast where a full [`crate::import::LegacyWorkspace::items`] pass reads
-//! every body.
+//! query per `memory.db` section, and the chunk store's bodies read but no
+//! item decoded. Every section counts with the very predicate its scan
+//! filters by, so the counts are exactly what
+//! [`crate::import::LegacyWorkspace::items`] yields.
 
 use serde::{Deserialize, Serialize};
 
@@ -12,12 +13,8 @@ use crate::import::error::Result;
 use crate::import::sections::{ORDER, Section};
 use crate::import::workspace::LegacyWorkspace;
 
-/// How many items each section of a legacy workspace yields.
-///
-/// Exact for every section but one edge case, where it may count an item
-/// that [`crate::import::LegacyWorkspace::items`] then skips: a chunk source
-/// whose stored previews are blank and whose bodies all resolve to blank
-/// files (a count reads no file).
+/// How many items each section of a legacy workspace yields: exactly what
+/// [`crate::import::LegacyWorkspace::items`] yields from the same store.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LegacyCounts {
     /// `memory_docs` documents.

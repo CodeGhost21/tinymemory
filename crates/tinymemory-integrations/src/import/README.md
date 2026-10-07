@@ -51,11 +51,10 @@ skipped silently. Without a `memory.db` it is the store, and an unusable one
 is `NotLegacy`.
 
 `counts()` sizes a store without importing it, so a host can tell whether
-there is anything to import and show progress against a total. It applies
-the same blank-text test as `items()` (a SQL function over Rust's `str::trim`),
-so it is exact except for a chunk source whose stored previews are blank and
-whose bodies all resolve to blank files: a count reads no file, so it counts
-that source, which `items()` then skips.
+there is anything to import and show progress against a total. Every section
+counts with the very predicate its scan filters by (a SQL function over Rust's
+`str::trim`, and for the chunk store the chunk reader itself, which reads
+bodies from their files), so the counts are exactly what `items()` yields.
 
 Per-profile stores (`memory-<id>/memory.db`) are not read; open each one as its
 own workspace if needed.

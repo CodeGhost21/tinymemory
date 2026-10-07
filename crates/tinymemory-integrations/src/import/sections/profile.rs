@@ -72,7 +72,8 @@ pub(super) fn page(
     } else {
         "NULL"
     };
-    let filters = live_filters(ws);
+    // Same rows `count` counts: live facets whose value has text.
+    let filters = format!(" AND {}{}", has_text("value"), live_filters(ws));
     let sql = format!(
         "SELECT facet_id, facet_type, key, value, confidence, last_seen_at, {class}, {evidence} \
          FROM user_profile WHERE (?1 IS NULL OR facet_id > ?1){filters} \

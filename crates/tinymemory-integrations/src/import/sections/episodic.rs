@@ -23,10 +23,11 @@ pub(super) fn page(
     let Some(memory) = &ws.memory else {
         return Ok(Vec::new());
     };
-    let mut stmt = memory.prepare(
+    let mut stmt = memory.prepare(&format!(
         "SELECT DISTINCT session_id FROM episodic_log WHERE (?1 IS NULL OR session_id > ?1) \
-         ORDER BY session_id LIMIT ?2",
-    )?;
+             AND {} ORDER BY session_id LIMIT ?2",
+        has_text("content")
+    ))?;
     let sessions = stmt
         .query_map(params![after, sql_limit(limit)], |row| {
             row.get::<_, String>(0)

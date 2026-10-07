@@ -1242,3 +1242,121 @@ fn a_counts_total_saturates() {
     };
     assert_eq!(counts.total(), u64::MAX);
 }
+
+#[test]
+fn chunk_counts_resolve_bodies_as_the_import_does() {
+    let dir = tempfile::tempdir().unwrap();
+    let chunks = chunk_store(dir.path());
+    std::fs::write(
+        dir.path().join("memory_tree/content/blank.md"),
+        " \u{00a0}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("memory_tree/content/full.md"),
+        "the real body",
+    )
+    .unwrap();
+    // A preview with text whose file body is blank: the file wins, skipped.
+    chunk(
+        &chunks,
+        "k1",
+        "email",
+        "e1",
+        0,
+        1_000,
+        "preview",
+        "[]",
+        Some("blank.md"),
+    );
+    // A blank preview whose file body has text: imported.
+    chunk(
+        &chunks,
+        "k2",
+        "email",
+        "e2",
+        0,
+        1_000,
+        "  ",
+        "[]",
+        Some("full.md"),
+    );
+    drop(chunks);
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let ids: Vec<String> = all(&ws).iter().map(|i| source_id(&i.item)).collect();
+    assert_eq!(ids, ["mem_tree_chunks:email:e2"]);
+    assert_eq!(ws.counts().unwrap().chunks, 1);
+}
+
+#[test]
+fn a_chunk_store_that_is_not_sqlite_alone_is_not_legacy() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("memory_tree")).unwrap();
+    std::fs::write(dir.path().join("memory_tree/chunks.db"), "not a database").unwrap();
+    let err = LegacyWorkspace::open(dir.path()).unwrap_err();
+    assert!(matches!(err, Error::NotLegacy { .. }), "{err:?}");
+}
+
+#[test]
+fn blank_rows_never_fill_a_page() {
+    let (dir, conn) = workspace(support::MEMORY_DDL);
+    for i in 0..3 {
+        doc(
+            &conn,
+            &format!("a{i}"),
+            "document_notes",
+            None,
+            "t",
+            " ",
+            "[]",
+            "{}",
+            T0,
+        );
+        turn(&conn, &format!("s{i}"), 1.0, "user", "\u{00a0}", None);
+        facet(
+            &conn,
+            &format!("b{i}"),
+            "preference",
+            &format!("k{i}"),
+            " ",
+            0.5,
+            T0,
+            "active",
+            "auto",
+            None,
+        );
+    }
+    doc(
+        &conn,
+        "z",
+        "document_notes",
+        None,
+        "t",
+        "kept",
+        "[]",
+        "{}",
+        T0,
+    );
+    turn(&conn, "z", 1.0, "user", "kept", None);
+    facet(
+        &conn,
+        "z",
+        "preference",
+        "kz",
+        "kept",
+        0.5,
+        T0,
+        "active",
+        "auto",
+        None,
+    );
+    drop(conn);
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let paged: Vec<String> = ws
+        .items()
+        .with_page_size(1)
+        .map(|i| source_id(&i.unwrap().item))
+        .collect();
+    assert_eq!(paged, ["memory_docs:z", "episodic_log:z", "user_profile:z"]);
+    assert_eq!(ws.counts().unwrap().total(), 3);
+}

@@ -144,11 +144,7 @@ pub(super) fn count(ws: &LegacyWorkspace, learnings: bool) -> Result<u64> {
     let mut total = 0;
     for group in groups {
         let (namespace, logical_namespace, rows) = group?;
-        let logical = match logical_namespace {
-            Some(logical) if !logical.trim().is_empty() => logical,
-            _ => restore_namespace(&namespace),
-        };
-        let wanted = match classify(&logical) {
+        let wanted = match classify(&resolve_logical(&namespace, logical_namespace.as_deref())) {
             RowClass::Document => !learnings,
             RowClass::Learning(_) | RowClass::Global => learnings,
             RowClass::Event => false,
@@ -177,8 +173,9 @@ fn rows(ws: &LegacyWorkspace, after: Option<&str>, limit: usize) -> Result<Vec<D
     };
     let sql = format!(
         "SELECT document_id, namespace, {logical}, title, content, tags_json, metadata_json, \
-         updated_at, {taint} FROM memory_docs WHERE (?1 IS NULL OR document_id > ?1) \
-         ORDER BY document_id LIMIT ?2"
+         updated_at, {taint} FROM memory_docs WHERE (?1 IS NULL OR document_id > ?1) AND {} \
+         ORDER BY document_id LIMIT ?2",
+        has_text("content")
     );
     let mut stmt = memory.prepare(&sql)?;
     let rows = stmt.query_map(params![after, sql_limit(limit)], |row| {
@@ -210,9 +207,16 @@ fn mark_taint(row: &DocRow, tags: &mut Vec<String>) {
 }
 
 fn logical_namespace(row: &DocRow) -> String {
-    match &row.logical_namespace {
-        Some(logical) if !logical.trim().is_empty() => logical.clone(),
-        _ => restore_namespace(&row.namespace),
+    resolve_logical(&row.namespace, row.logical_namespace.as_deref())
+}
+
+/// A row's logical namespace: `logical` when set and not blank, else
+/// `namespace` with the sanitiser undone. The one rule both the sections and
+/// [`count`] classify by.
+fn resolve_logical(namespace: &str, logical: Option<&str>) -> String {
+    match logical {
+        Some(logical) if !logical.trim().is_empty() => logical.to_string(),
+        _ => restore_namespace(namespace),
     }
 }
 
