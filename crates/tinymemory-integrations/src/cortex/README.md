@@ -93,8 +93,9 @@ discovers the nodes below from the registered scopes (`v1/scopes/list`,
 `holistic`, which also reads ancestors and descendants), so one agent's read
 never reaches a sibling's scope and no read is ever a parent-scope sample.
 
-Namespace segments use CortexDB's built-in `agent`, `team`, `user`, `ws` and
-`project` types, and the root and kind segments its `app` type. From v0.10 a
+Namespace segments use CortexDB's built-in `agent`, `team`, `user`, `ws`,
+`project`, `source` and `service` types, and the root and kind segments its
+`app` type. From v0.10 a
 deployment admits only the scope types in its policy's `allowed_scope_types`
 (`org, dept, team, app, user, agent, service, ws, project, global, system,
 source` in every shipped preset) and refuses any other with `422

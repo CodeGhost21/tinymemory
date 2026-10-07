@@ -338,6 +338,7 @@ scope segment of the same text, using the contract's prefixes:
 | Workspace | `ws` |
 | Project | `project` |
 | Source | `source` |
+| Service | `service` |
 | TinyMemory root and each kind leaf | `app` |
 
 These are CortexDB's built-in types, chosen on purpose. From CortexDB v0.10 a

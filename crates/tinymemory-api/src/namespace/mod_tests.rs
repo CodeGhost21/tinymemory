@@ -14,7 +14,9 @@ fn parses_and_prints_paths() {
     assert_eq!(writer.segments()[0].kind(), SegmentKind::Team);
     assert_eq!(writer.segments()[1].id(), "writer");
     assert_eq!(ns("ws:shared").to_string(), "ws:shared");
-    for kind in ["agent", "team", "user", "ws", "project", "source"] {
+    for kind in [
+        "agent", "team", "user", "ws", "project", "source", "service",
+    ] {
         let segment = ns(&format!("{kind}:x")).segments()[0].clone();
         assert_eq!(segment.kind().as_str(), kind);
     }
