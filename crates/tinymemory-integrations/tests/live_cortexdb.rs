@@ -488,7 +488,11 @@ async fn a_fetch_hit_is_the_whole_conversation_one_turn_or_longer() {
             }
             tokio::time::sleep(Duration::from_millis(500)).await;
         };
-        assert_eq!(hits.len(), 2, "{wire}: {hits:?}");
+        let mut found: Vec<&str> = hits.iter().map(|hit| hit.id.as_str()).collect();
+        let mut stored: Vec<&str> = receipts.iter().map(|receipt| receipt.id.as_str()).collect();
+        found.sort_unstable();
+        stored.sort_unstable();
+        assert_eq!(found, stored, "{wire}: one hit for each conversation");
         let whole = engine
             .get(tinymemory_api::GetRequest {
                 ids: hits.iter().map(|hit| hit.id.clone()).collect(),
