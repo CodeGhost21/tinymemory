@@ -23,8 +23,13 @@ use crate::import::error::Result;
 /// Sections added later come after the earlier ones, so a checkpoint
 /// persisted before they existed resumes correctly: they start from their
 /// beginning once the earlier sections are done.
+///
+/// Non-exhaustive, since every new section adds a field: a host persists it
+/// with [`Checkpoint::to_json`] or builds one from `default()` and assigns
+/// fields, and neither breaks when a field is added.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct Checkpoint {
     /// Last `memory_docs.document_id` yielded as a document.
     #[serde(skip_serializing_if = "Option::is_none")]

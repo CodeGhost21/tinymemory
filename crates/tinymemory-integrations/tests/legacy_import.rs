@@ -241,6 +241,14 @@ fn rich() -> tempfile::TempDir {
     dir
 }
 
+/// The checkpoint after document `id` (`Checkpoint` is non-exhaustive, so a
+/// caller assigns its fields).
+fn after_document(id: &str) -> Checkpoint {
+    let mut checkpoint = Checkpoint::default();
+    checkpoint.documents = Some(id.to_string());
+    checkpoint
+}
+
 fn all(ws: &LegacyWorkspace) -> Vec<ImportedItem> {
     ws.items().collect::<Result<_, _>>().expect("import")
 }
@@ -956,6 +964,7 @@ fn a_row_sqlite_cannot_decode_is_a_sqlite_error() {
 // --- migrate: a v1 workspace into an engine, in resumable batches ---
 
 mod migration {
+    use super::after_document;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use tinymemory_api::conformance::ReferenceEngine;
@@ -1052,10 +1061,7 @@ mod migration {
                 stored: COUNT,
                 replayed: 0,
                 batches: 3,
-                checkpoint: Checkpoint {
-                    documents: Some("d249".into()),
-                    ..Checkpoint::default()
-                },
+                checkpoint: after_document("d249"),
             }
         );
         assert_eq!(engine.len(), COUNT);
@@ -1142,10 +1148,7 @@ mod migration {
             fail_on: 1,
             calls: AtomicUsize::new(0),
         };
-        let start = Checkpoint {
-            documents: Some("d009".into()),
-            ..Checkpoint::default()
-        };
+        let start = after_document("d009");
         let error = migrate(&engine, legacy, Some(start.clone()))
             .await
             .unwrap_err();
