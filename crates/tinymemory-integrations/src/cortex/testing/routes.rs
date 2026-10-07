@@ -204,6 +204,24 @@ async fn bulk(
     )
 }
 
+/// One delayed listing counted in `listings_in_flight` while it is held,
+/// and uncounted when dropped, even when the request is cancelled mid-sleep.
+struct InFlight<'a>(&'a Shared);
+
+impl<'a> InFlight<'a> {
+    fn enter(state: &'a Shared) -> Self {
+        let now = state.listings_in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+        state.listings_peak.fetch_max(now, Ordering::SeqCst);
+        Self(state)
+    }
+}
+
+impl Drop for InFlight<'_> {
+    fn drop(&mut self) {
+        self.0.listings_in_flight.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 async fn events(
     State(state): State<Shared>,
     uri: Uri,
@@ -227,10 +245,8 @@ async fn events(
     }
     let delay = state.listing_delay_ms.load(Ordering::SeqCst);
     if delay > 0 {
-        let now = state.listings_in_flight.fetch_add(1, Ordering::SeqCst) + 1;
-        state.listings_peak.fetch_max(now, Ordering::SeqCst);
+        let _held = InFlight::enter(&state);
         tokio::time::sleep(std::time::Duration::from_millis(delay as u64)).await;
-        state.listings_in_flight.fetch_sub(1, Ordering::SeqCst);
     }
     let mut page = state.log.lock().unwrap().page(&params);
     if take_one(&state.hide_listing_for) {

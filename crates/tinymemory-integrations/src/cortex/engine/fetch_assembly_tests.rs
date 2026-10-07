@@ -121,3 +121,28 @@ async fn assembly_lookups_run_a_few_at_a_time() {
         "at most LOOKUPS_AT_ONCE at once: peak {peak}"
     );
 }
+
+#[tokio::test]
+async fn a_cancelled_listing_is_not_left_counted() {
+    let (endpoint, state) = direct_double().await;
+    state.listing_delay_ms.store(400, Ordering::SeqCst);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(50))
+        .build()
+        .unwrap();
+    let cancelled = client
+        .get(format!(
+            "{endpoint}/v1/events?scope=app:tinymemory/app:documents"
+        ))
+        .bearer_auth(crate::cortex::testing::TEST_TOKEN)
+        .send()
+        .await;
+    assert!(cancelled.is_err(), "the client gave up mid-listing");
+    tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+    assert_eq!(state.listings_peak.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        state.listings_in_flight.load(Ordering::SeqCst),
+        0,
+        "the dropped listing is uncounted"
+    );
+}
