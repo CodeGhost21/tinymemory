@@ -48,6 +48,17 @@
 //! Each event also carries lookup labels (see [`labels`]) and, when the item
 //! has one, `context.observed_at`.
 //!
+//! # Local paths
+//!
+//! No local path leaves the machine ([`wire_meta`]): an envelope keeps a
+//! file's name but not its folders, and no `folder`. A `workspace` that is
+//! an absolute path (an agent's working folder) is left out too; a logical
+//! workspace id is kept. In their place the envelope carries digests
+//! ([`PathDigests`]) that a `file_path`, `folder` or `workspace` filter is
+//! matched against, exactly as the full value would be. Reads therefore give
+//! back a file's name as its `file_path`, and no folder or absolute
+//! workspace.
+//!
 //! # Identity
 //!
 //! The item id is [`StoreItem::fingerprint`]: a content digest, so storing
@@ -151,8 +162,12 @@ pub(crate) struct Envelope {
     pub(crate) kind: ItemKind,
     /// The document body, the turn's text, or the learning's statement.
     pub(crate) text: String,
-    /// The item's metadata, whole, on every event.
+    /// The item's metadata on every event, without local paths
+    /// ([`wire_meta`]).
     pub(crate) meta: MemoryMeta,
+    /// What filters match the paths `meta` leaves out against.
+    #[serde(flatten)]
+    pub(crate) paths: PathDigests,
     /// Document title.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) title: Option<String>,
@@ -197,6 +212,54 @@ pub(crate) struct ChunkInfo {
 /// at the worst JSON escaping, plus its key.
 const SECTION_RESERVE: usize = chunks::MAX_SECTION_CHARS * 6 + 32;
 
+/// Digests of the local paths an envelope leaves out ([`wire_meta`]), each
+/// a [`labels::path_digest`], so a filter on the full value still matches.
+/// A path digest is as strong as an item id, so a match is the match.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct PathDigests {
+    /// The absolute `workspace`.
+    #[serde(default, rename = "ws", skip_serializing_if = "Option::is_none")]
+    pub(crate) workspace: Option<String>,
+    /// The `file_path` and each folder above it ([`prefixes`]).
+    #[serde(default, rename = "fp", skip_serializing_if = "Vec::is_empty")]
+    pub(crate) file_path: Vec<String>,
+    /// The `folder` and each folder above it ([`prefixes`]).
+    #[serde(default, rename = "fd", skip_serializing_if = "Vec::is_empty")]
+    pub(crate) folder: Vec<String>,
+}
+
+impl PathDigests {
+    /// The digests of `meta`'s local paths.
+    fn of(meta: &MemoryMeta) -> Self {
+        Self {
+            workspace: meta
+                .workspace
+                .as_deref()
+                .filter(|workspace| is_absolute(workspace))
+                .map(labels::path_digest),
+            file_path: prefixes(meta.file_path.as_deref()),
+            folder: prefixes(meta.folder.as_deref()),
+        }
+    }
+}
+
+/// The digest of `path` and of each prefix of it that ends before a `/`:
+/// every value a `MetaFilter` path filter can name and still match `path`
+/// (an exact path, or a folder above it at a `/`). Only `/` ends a folder,
+/// as in `MetaFilter`'s own path matching, so a `\` never does.
+fn prefixes(path: Option<&str>) -> Vec<String> {
+    let Some(path) = path else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = path
+        .match_indices('/')
+        .map(|(at, _)| labels::path_digest(&path[..at]))
+        .collect();
+    out.push(labels::path_digest(path));
+    out.dedup();
+    out
+}
+
 /// A conversation turn's place and attributes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct TurnInfo {
@@ -222,7 +285,8 @@ impl Envelope {
             id: id.to_string(),
             kind,
             text,
-            meta: meta.clone(),
+            meta: wire_meta(meta),
+            paths: PathDigests::of(meta),
             title: None,
             mime: None,
             learning_kind: None,
@@ -427,7 +491,8 @@ impl Envelope {
                 chunks::MAX_EVENT_TEXT_BYTES
             )));
         }
-        let lookup = labels::for_item(&self.id, &self.meta);
+        let mut lookup = labels::for_item(&self.id, &self.meta);
+        lookup.extend(self.paths.workspace.as_deref().map(labels::workspace));
         let mut head = self.clone();
         head.v = V3;
         head.text = String::new();
@@ -525,6 +590,36 @@ impl Envelope {
             json!(crate::cortex::transport::body_idempotency_key(&request));
         request
     }
+}
+
+/// `meta` as it may leave the machine: a file's name without its folders,
+/// no `folder`, and no absolute `workspace` (local paths, which name a
+/// person's home folder).
+fn wire_meta(meta: &MemoryMeta) -> MemoryMeta {
+    MemoryMeta {
+        file_path: meta.file_path.as_deref().and_then(file_name),
+        folder: None,
+        workspace: meta
+            .workspace
+            .clone()
+            .filter(|workspace| !is_absolute(workspace)),
+        ..meta.clone()
+    }
+}
+
+/// Whether `path` is absolute on any system: `/…`, `~…`, `\\…` or `C:…`.
+fn is_absolute(path: &str) -> bool {
+    let drive = matches!(path.as_bytes(), [letter, b':', ..] if letter.is_ascii_alphabetic());
+    path.starts_with(['/', '~', '\\']) || drive
+}
+
+/// The last component of `path`, split at `/` or `\`, whichever system
+/// wrote it; `None` when it is empty.
+fn file_name(path: &str) -> Option<String> {
+    path.rsplit(['/', '\\'])
+        .next()
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
 }
 
 /// `value` as compact JSON.

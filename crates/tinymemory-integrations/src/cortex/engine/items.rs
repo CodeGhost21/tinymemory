@@ -22,9 +22,43 @@ pub(super) fn admitted(filter: &MetaFilter) -> Vec<ItemKind> {
         .collect()
 }
 
-/// Whether a decoded event is an item of `kind` that `filter` keeps.
+/// Whether a decoded event is an item of `kind` that `filter` keeps. A
+/// path the envelope left out (see `envelope`) is matched by its digests as
+/// well as by what the envelope kept.
 pub(super) fn keeps(filter: &MetaFilter, kind: ItemKind, envelope: &Envelope) -> bool {
-    envelope.kind == kind && filter.matches(kind, &envelope.meta)
+    if envelope.kind != kind {
+        return false;
+    }
+    let paths = &envelope.paths;
+    let mut rest = filter.clone();
+    if let (Some(wanted), Some(held)) = (&filter.workspace, &paths.workspace) {
+        if labels::path_digest(wanted) != *held {
+            return false;
+        }
+        rest.workspace = None;
+    }
+    for (wanted, held, cleared) in [
+        (&filter.file_path, &paths.file_path, &mut rest.file_path),
+        (&filter.folder, &paths.folder, &mut rest.folder),
+    ] {
+        // Matched by the full path's digests, or else by what the envelope
+        // kept (a file's name, which reads give back).
+        if wanted
+            .as_deref()
+            .is_some_and(|wanted| names_a_prefix(wanted, held))
+        {
+            *cleared = None;
+        }
+    }
+    rest.matches(kind, &envelope.meta)
+}
+
+/// Whether the path filter `wanted` matches a path whose prefixes have the
+/// digests `held`: as the path itself, or as a folder above it.
+fn names_a_prefix(wanted: &str, held: &[String]) -> bool {
+    [wanted, wanted.trim_end_matches('/')]
+        .iter()
+        .any(|value| held.contains(&labels::path_digest(value)))
 }
 
 /// An envelope's metadata, located: for a piece of a chunked document, the

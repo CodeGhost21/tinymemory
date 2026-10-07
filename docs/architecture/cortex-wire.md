@@ -383,7 +383,7 @@ which a JSON text lacks. Its `context.labels` are, in order:
 
 - the lookup labels (below), `tm:i:` first;
 - readable labels, each at most 256 bytes or left out: `kind:<kind>`,
-  `file:<path>`, and a piece's `page:<n>` or `page:<first>-<last>` and
+  `file:<name>` (the file's name only), and a piece's `page:<n>` or `page:<first>-<last>` and
   `section:<title>`. Never filtered on; no `lang:` label is ever written
   (CortexDB reserves it);
 - the **envelope parts**: the envelope below with `"v": 3` and an empty
@@ -448,7 +448,7 @@ the first 16 lowercase hex digits (64 bits) of the SHA-256 of the value:
 | `tm:t:` | `meta.thread_id` | when set |
 | `tm:s:` | `meta.source.id` | when set |
 | `tm:r:` | `meta.repo` | when set |
-| `tm:w:` | `meta.workspace` | when set |
+| `tm:w:` | `meta.workspace` (kept even when the envelope drops it) | when set |
 | `tm:a:` | `meta.agent_id` | when set |
 | `tm:l:` | `meta.language` | when set |
 | `tm:k:` | the source kind (`meta.source.kind`) | every event |
@@ -472,7 +472,8 @@ Reads use labels two ways:
 The label only ever narrows. Every reader **always** re-applies the full
 `MetaFilter` to the decoded envelope, so a digest collision costs a wasted row
 and never a wrong answer. `folder` and `file_path` match as prefixes, which a
-digest cannot, so they are never labelled and are filtered client-side only.
+label cannot, so they are filtered client-side only. No local path is sent:
+see [cortex-local-paths.md](cortex-local-paths.md).
 
 ## CortexDB behaviours the engine is shaped around
 

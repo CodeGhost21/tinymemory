@@ -17,17 +17,44 @@ use tinymemory_api::{MemoryMeta, MetaFilter};
 /// Hex digits of the SHA-256 a label keeps: 64 bits.
 const DIGEST_CHARS: usize = 16;
 
+/// Hex digits of the SHA-256 a path digest keeps: 160 bits, as many as an
+/// item id ([`tinymemory_api::StoreItem::fingerprint`]).
+const PATH_DIGEST_CHARS: usize = 40;
+
 /// The first [`DIGEST_CHARS`] lowercase hex digits of `value`'s SHA-256.
 pub(crate) fn digest(value: &str) -> String {
-    let mut out = String::with_capacity(DIGEST_CHARS + 2);
+    hex_prefix(value, DIGEST_CHARS)
+}
+
+/// The first [`PATH_DIGEST_CHARS`] lowercase hex digits of `value`'s
+/// SHA-256: the digest an envelope keeps in place of a local path, which a
+/// filter is matched against with nothing left to re-check, so it is as
+/// strong as an item id. Its first [`DIGEST_CHARS`] are [`digest`].
+pub(crate) fn path_digest(value: &str) -> String {
+    hex_prefix(value, PATH_DIGEST_CHARS)
+}
+
+/// The first `chars` lowercase hex digits of `value`'s SHA-256.
+fn hex_prefix(value: &str, chars: usize) -> String {
+    let mut out = String::with_capacity(chars + 2);
     for byte in Sha256::digest(value.as_bytes()) {
-        if out.len() >= DIGEST_CHARS {
+        if out.len() >= chars {
             break;
         }
         out.push_str(&format!("{byte:02x}"));
     }
-    out.truncate(DIGEST_CHARS);
+    out.truncate(chars);
     out
+}
+
+/// Prefix of the workspace label.
+const WORKSPACE_PREFIX: &str = "tm:w:";
+
+/// The workspace label for a workspace whose [`path_digest`] is `digest`:
+/// an envelope keeps only that, and a label's [`digest`] is its prefix.
+pub(crate) fn workspace(digest: &str) -> String {
+    let short = digest.get(..DIGEST_CHARS).unwrap_or(digest);
+    format!("{WORKSPACE_PREFIX}{short}")
 }
 
 /// The label every event of item `id` carries.
@@ -63,7 +90,7 @@ const META_FIELDS: [MetaField; 6] = [
         wanted: |f| f.repo.as_deref(),
     },
     MetaField {
-        prefix: "tm:w:",
+        prefix: WORKSPACE_PREFIX,
         held: |m| m.workspace.as_deref(),
         wanted: |f| f.workspace.as_deref(),
     },
