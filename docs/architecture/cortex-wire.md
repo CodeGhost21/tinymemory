@@ -333,19 +333,19 @@ backend's own text (everything after a spaced em-dash).
 ## Scope layout
 
 Every item lives in the scope of its **kind** at its **namespace node**,
-under the TinyMemory root `app:tinymemory` (`envelope::scope_path`):
+below the engine's root: `app:tinymemory` (legacy, the default), or a host's
+own root such as `user:<id>` (v3). [cortex-layout.md](cortex-layout.md) has
+both layouts. Legacy, for example:
 
 ```text
-app:tinymemory/app:{documents,conversations,learnings}                   the root node
 app:tinymemory/agent:researcher/app:{documents,conversations,learnings}  an agent
-app:tinymemory/team:acme/agent:writer/app:learnings                      a team member
 ```
 
 So within every node, documents, conversations and learnings are separate
 scopes and CortexDB can recall, retain and erase each on its own. The
 hosted backend re-roots every scope under the caller's tenant, which is
 invisible to the engine except that scope paths it reads back may carry a
-prefix: `parse_scope` finds `app:tinymemory` wherever it sits.
+prefix: the root is found wherever it sits.
 
 **Scope-type mapping.** A namespace segment `kind:id` becomes the CortexDB
 scope segment of the same text, using the contract's prefixes:
@@ -379,9 +379,10 @@ double enforces).
   ancestor. The nodes are known, so no request is made; a node nothing was
   written to simply lists empty.
 - A **subtree reach, or no reach**, needs the nodes below. They are
-  discovered once per call from the scopes registered under the TinyMemory
-  root (or under the reach's own node), and the root's kind scopes are always
-  read.
+  discovered once per call from the scopes registered under the reach's own
+  node (its layout prefixes, [cortex-layout.md](cortex-layout.md); the whole
+  root for no reach), and the root's kind scopes are always read. Neither
+  enters a `service:` sandbox below its node.
 - Reads are always exact: every pack is `view: "granular"` over one scope,
   so one agent's read never reaches a sibling's scope and no read is a
   parent-scope sample.

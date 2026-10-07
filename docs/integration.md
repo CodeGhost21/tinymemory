@@ -84,6 +84,12 @@ every request; the transport refuses `Authorization`, `Idempotency-Key`, the
 actor header and the headers the HTTP stack sets, so the credential stays
 the `EngineCredential`'s alone.
 
+To keep one person's memory as one subtree, give a CortexDB engine a scope
+root (`"engines": { "cortexdb": { "scope_root": "user:42", "scope_owner":
+"user:42" } }`, or `CortexEngine::with_scope_root`): layout v3, see
+[cortex-layout.md](architecture/cortex-layout.md). Without one, the legacy
+`app:tinymemory` tree is kept. Switching moves nothing.
+
 | Engine id | Where it runs | Consolidation (belief builds) |
 | --- | --- | --- |
 | `cortexdb` | a CortexDB server, `v1/*` routes | automatic on the managed API (`api-v1.cortexdb.ai`), on demand elsewhere: `v1/beliefs/build`, built within the request; `EngineSettings::consolidation` overrides |

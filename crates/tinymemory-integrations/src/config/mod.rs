@@ -85,6 +85,17 @@ pub struct EngineSettings {
     /// scheduler.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub consolidation: Option<Consolidation>,
+    /// The scope every item is laid out below (layout v3), such as one
+    /// person's `user:<id>`; unset keeps the legacy `app:tinymemory` tree.
+    /// Switching it moves nothing: memory under the other layout is no
+    /// longer read until a host moves it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_root: Option<String>,
+    /// The actor that owns [`EngineSettings::scope_root`] (`user:<id>`): a
+    /// direct CortexDB engine registers the root with it before its first
+    /// write. Ignored without a root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_owner: Option<String>,
 }
 
 #[cfg(test)]

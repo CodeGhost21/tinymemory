@@ -33,7 +33,7 @@ use super::CortexEngine;
 use super::scopes::KindScope;
 use crate::cortex::descriptor::CortexWire;
 use crate::cortex::envelope::{Encoded, Envelope};
-use crate::cortex::error::Result;
+use crate::cortex::error::{Error, Result};
 use crate::cortex::log::Written;
 
 impl CortexEngine {
@@ -56,6 +56,17 @@ impl CortexEngine {
         wait: WaitFor,
     ) -> Result<Vec<StoreReceipt>> {
         validate_many(&items)?;
+        if let Some(item) = items
+            .iter()
+            .find(|item| self.layout.repeats_root(&item.meta().namespace))
+        {
+            return Err(Error::InvalidRequest(format!(
+                "namespace `{}` repeats the scope root `{}`; nodes go below the root",
+                item.meta().namespace,
+                self.layout.root()
+            )));
+        }
+        self.register_root().await;
         let ids: Vec<String> = items.iter().map(StoreItem::fingerprint).collect();
         // Every event of the batch is laid out and size-checked before any is
         // sent, so an item CortexDB would refuse leaves nothing half-written.
@@ -73,7 +84,11 @@ impl CortexEngine {
         let mut by_scope: BTreeMap<KindScope, Vec<String>> = BTreeMap::new();
         for (item, id) in items.iter().zip(&ids) {
             by_scope
-                .entry(KindScope::new(item.meta().namespace.clone(), item.kind()))
+                .entry(KindScope::new(
+                    &self.layout,
+                    item.meta().namespace.clone(),
+                    item.kind(),
+                ))
                 .or_default()
                 .push(id.clone());
         }
@@ -96,7 +111,7 @@ impl CortexEngine {
                     if present.is_some_and(|present| present.contains(&part)) {
                         continue;
                     }
-                    requests.push(envelope.request(&encoded));
+                    requests.push(envelope.request(&encoded, &self.layout));
                 }
             }
             let mut replayed = requests.is_empty();

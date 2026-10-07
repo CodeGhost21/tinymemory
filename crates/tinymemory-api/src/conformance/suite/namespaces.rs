@@ -119,7 +119,15 @@ pub(super) async fn namespaces(ctx: &Ctx<'_>) -> Result<()> {
         })?;
     }
 
-    let all = vec![root.clone(), a.clone(), b.clone(), scout.clone()];
+    // The service item is named too: a get within agent b's reach leaves it
+    // out like any namespace beyond the reach.
+    let all = vec![
+        root.clone(),
+        a.clone(),
+        b.clone(),
+        scout.clone(),
+        job.clone(),
+    ];
     let hits = ctx
         .call(
             CHECK,

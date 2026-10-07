@@ -48,6 +48,8 @@ pub(crate) struct Seen {
     pub(crate) builds: Vec<serde_json::Value>,
     /// Every write body (`experience` and `experience/bulk`), whole.
     pub(crate) writes: Vec<serde_json::Value>,
+    /// Every scope registration body that registered a scope.
+    pub(crate) registrations: Vec<serde_json::Value>,
 }
 
 /// One double's state and knobs.
@@ -59,6 +61,8 @@ pub(crate) struct Double {
     pub(crate) seen: Mutex<Seen>,
     /// When set, every request fails with this status and code.
     pub(crate) fail_all: Mutex<Option<(u16, &'static str)>>,
+    /// When set, every scope registration fails with this status and code.
+    pub(crate) fail_registration: Mutex<Option<(u16, &'static str)>>,
     /// The only token accepted; `None` accepts any non-empty bearer.
     pub(crate) accept_token: Mutex<Option<String>>,
     /// Claimed `Idempotency-Key`s (hosted).

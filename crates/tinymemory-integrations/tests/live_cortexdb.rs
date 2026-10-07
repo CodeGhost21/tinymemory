@@ -143,6 +143,112 @@ async fn the_live_server_upholds_the_contract() {
     }
 }
 
+/// Layout v3 on the real server: the whole contract below a fresh person's
+/// root, which a direct engine registers with that person as owner.
+#[tokio::test]
+async fn the_live_server_upholds_the_contract_in_layout_v3() {
+    let _alone = ONE_AT_A_TIME.lock().await;
+    let mut roots = Vec::new();
+    for (wire, engine) in live_engines() {
+        // A fresh root per wire, so the registration checked below is this
+        // run's own on this wire.
+        let root = format!("user:{}", run_id());
+        roots.push((wire, root.clone()));
+        eprintln!("layout v3 conformance on {wire} below {root}");
+        let engine = engine
+            .with_scope_root(&root, Some(&root))
+            .expect("a valid scope root");
+        tinymemory_api::conformance::run(&engine)
+            .await
+            .unwrap_or_else(|error| panic!("the live {wire} engine conforms in v3: {error}"));
+    }
+    let Ok(url) = std::env::var("TINYMEMORY_LIVE_CORTEXDB_URL") else {
+        return;
+    };
+    let Some((_, root)) = roots.into_iter().find(|(wire, _)| *wire == "cortexdb") else {
+        return;
+    };
+    let key = std::env::var("TINYMEMORY_TEST_CORTEX_KEY").unwrap_or_else(|_| DEFAULT_KEY.into());
+    let record: serde_json::Value = reqwest::Client::new()
+        .get(format!("{url}/v1/scopes"))
+        .query(&[("path", root.as_str())])
+        .bearer_auth(key)
+        .send()
+        .await
+        .expect("look the root up")
+        .json()
+        .await
+        .expect("a scope record");
+    let owners: Vec<&str> = record["members"]
+        .as_array()
+        .expect("members")
+        .iter()
+        .filter(|member| member["role"] == "owner")
+        .filter_map(|member| member["actor"].as_str())
+        .collect();
+    assert!(owners.contains(&root.as_str()), "{record}");
+    assert_eq!(
+        record["auto_provisioned"], false,
+        "registered, not auto-made: {record}"
+    );
+}
+
+/// No write claims a v3 root: CortexDB registers only the scope a write
+/// lands in, and v3 never writes to the root itself. So a root written to
+/// before its owner registration (one that failed, say) is still free, and
+/// the next write with an owner registers it to that owner. Direct only.
+#[tokio::test]
+async fn a_write_never_claims_a_v3_root_before_its_owner() {
+    let _alone = ONE_AT_A_TIME.lock().await;
+    let Ok(url) = std::env::var("TINYMEMORY_LIVE_CORTEXDB_URL") else {
+        eprintln!("TINYMEMORY_LIVE_CORTEXDB_URL unset; skipping");
+        return;
+    };
+    let key = std::env::var("TINYMEMORY_TEST_CORTEX_KEY").unwrap_or_else(|_| DEFAULT_KEY.into());
+    let root = format!("user:{}", run_id());
+    let record = || async {
+        reqwest::Client::new()
+            .get(format!("{url}/v1/scopes"))
+            .query(&[("path", root.as_str())])
+            .bearer_auth(&key)
+            .send()
+            .await
+            .expect("look the root up")
+    };
+    let engine = |owner: Option<&str>| {
+        CortexEngine::direct(&url, CortexCredential::api_key(key.clone()))
+            .expect("a valid live CortexDB endpoint")
+            .with_scope_root(&root, owner)
+            .expect("a valid scope root")
+    };
+    let item =
+        |text: &str| StoreItem::learning(text, LearningKind::Fact, 0.8, MemoryMeta::default());
+
+    engine(None)
+        .store(item("written before any owner"))
+        .await
+        .expect("store without an owner");
+    assert_eq!(
+        record().await.status(),
+        reqwest::StatusCode::NOT_FOUND,
+        "a write below the root left the root unregistered"
+    );
+
+    engine(Some(&root))
+        .store(item("written with an owner"))
+        .await
+        .expect("store with an owner");
+    let record: serde_json::Value = record().await.json().await.expect("a scope record");
+    let owners: Vec<&str> = record["members"]
+        .as_array()
+        .expect("members")
+        .iter()
+        .filter(|member| member["role"] == "owner")
+        .filter_map(|member| member["actor"].as_str())
+        .collect();
+    assert!(owners.contains(&root.as_str()), "{record}");
+}
+
 #[tokio::test]
 async fn every_kind_is_exported_whole_across_pages() {
     let _alone = ONE_AT_A_TIME.lock().await;

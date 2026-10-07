@@ -149,6 +149,8 @@ impl CortexWire {
             (Self::Direct, Route::Answer) => "v1/answer",
             (Self::Direct, Route::Health) => "v1/admin/health",
             (Self::Direct, Route::Scopes) => "v1/scopes/list",
+            (Self::Direct, Route::RegisterScope) => "v1/scopes",
+            (Self::Direct, Route::ScopeMembers) => "v1/scopes/members",
             (Self::Direct, Route::BuildBeliefs) => "v1/beliefs/build",
             (Self::Direct, Route::Beliefs) => "v1/beliefs",
             (Self::Direct, Route::Erasures) => "v1/erasures",
@@ -166,6 +168,8 @@ impl CortexWire {
             // Never sent: the backend proxies no erasure route, so `erase`
             // refuses on this wire without a request.
             (Self::TinyHumans, Route::Erasures) => "memory/erasures",
+            // Never sent: the hosted backend keeps its own tenancy.
+            (Self::TinyHumans, Route::RegisterScope | Route::ScopeMembers) => "memory/scopes",
         }
     }
 }
@@ -189,6 +193,11 @@ pub(crate) enum Route {
     Health,
     /// List the caller's registered scopes under a prefix.
     Scopes,
+    /// Register a scope with its members, or (GET) read its record (Direct
+    /// only).
+    RegisterScope,
+    /// Replace a registered scope's members (Direct only).
+    ScopeMembers,
     /// Build one scope's beliefs on demand (Direct only).
     BuildBeliefs,
     /// List one scope's beliefs (Direct only).

@@ -67,6 +67,7 @@
 
 pub(crate) mod chunks;
 pub(crate) mod labels;
+mod layout;
 mod rebuild;
 
 use serde::{Deserialize, Serialize};
@@ -78,6 +79,7 @@ use tinymemory_api::{
 
 use crate::cortex::error::{Error, Result};
 
+pub(crate) use layout::ScopeLayout;
 pub(crate) use rebuild::{Decoded, decode_event, rebuild, rebuild_whole};
 
 /// The TinyMemory root every kind scope sits under.
@@ -554,7 +556,7 @@ impl Envelope {
     /// The experience request appending this envelope as `encoded`, keyed by
     /// its own body (`transport::body_idempotency_key`), so an identical
     /// retry is a replay.
-    pub(crate) fn request(&self, encoded: &Encoded) -> Value {
+    pub(crate) fn request(&self, encoded: &Encoded, layout: &ScopeLayout) -> Value {
         let (modality, role) = match (&self.kind, &self.turn) {
             (ItemKind::Conversation, Some(turn)) => ("conversation", role_of(turn.role)),
             (ItemKind::Document, _) => ("document", "user"),
@@ -571,7 +573,7 @@ impl Envelope {
             context.insert("observed_at".to_string(), json!(at.to_rfc3339()));
         }
         let mut request = json!({
-            "scope": scope_path(&self.meta.namespace, self.kind),
+            "scope": layout.path(&self.meta.namespace, self.kind),
             "modality": modality,
             "content": { "kind": "message", "role": role, "text": encoded.text },
             "context": Value::Object(context),

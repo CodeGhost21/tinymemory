@@ -25,6 +25,7 @@ mod scopes;
 mod store;
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
 use tinymemory_api::{
@@ -36,6 +37,7 @@ use tinymemory_api::{
 
 use crate::cortex::credential::{BearerSource, CortexCredential};
 use crate::cortex::descriptor::{CortexWire, Route, direct_consolidation};
+use crate::cortex::envelope::ScopeLayout;
 use crate::cortex::error::{Error, Result};
 use crate::cortex::log::Log;
 use crate::cortex::transport::{HttpClient, health_reason, urlencode};
@@ -55,6 +57,11 @@ const HEALTH_PROBE_SCOPE: &str = "tmh:probe";
 pub struct CortexEngine {
     descriptor: EngineDescriptor,
     log: Log,
+    layout: ScopeLayout,
+    /// The actor a v3 root is registered as owned by.
+    owner: Option<String>,
+    /// Whether the v3 root is registered (shared by clones).
+    registered: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for CortexEngine {
@@ -88,7 +95,129 @@ impl CortexEngine {
         Ok(Self {
             descriptor,
             log: Log::new(client),
+            layout: ScopeLayout::Legacy,
+            owner: None,
+            registered: Arc::new(AtomicBool::new(false)),
         })
+    }
+
+    /// The same engine, laying its scopes out below `root` (layout v3)
+    /// instead of the legacy `app:tinymemory` tree: one person's memory as
+    /// one subtree (`user:<id>`), each kind under a leaf of its own (see the
+    /// `envelope` module docs). With an `owner` actor (`user:<id>`), a
+    /// direct engine registers the root as owned by it before its first
+    /// write, so the person owns their root rather than whichever key wrote
+    /// first; the hosted backend keeps its own tenancy and is never asked.
+    ///
+    /// Switching layout moves nothing: what was written under the other
+    /// layout stays there and is no longer read.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Config`] for a root that is not `type:id` segments of
+    /// CortexDB's hosted scope types, or a blank owner.
+    pub fn with_scope_root(mut self, root: &str, owner: Option<&str>) -> Result<Self> {
+        let owner = owner.map(str::trim);
+        if owner.is_some_and(str::is_empty) {
+            return Err(Error::Config("a scope root's owner is blank".to_string()));
+        }
+        self.layout = ScopeLayout::v3(root, self.wire() == CortexWire::TinyHumans)?;
+        self.owner = owner.map(str::to_string);
+        self.registered = Arc::new(AtomicBool::new(false));
+        Ok(self)
+    }
+
+    /// Registers the v3 root as owned by its owner, once, before a write.
+    /// Already registered (`409`), the root's record is read and the owner
+    /// added to its members when it is not an owner yet, so a `409` never
+    /// passes for ownership. Any failure does not fail the write, which
+    /// CortexDB then admits as usual, and the next write tries again. That
+    /// cannot hand the root to another owner:
+    /// CortexDB auto-registers only the scope a write lands in, and v3
+    /// writes only to leaves below the root, never to the root itself, so
+    /// the root stays unregistered until this succeeds.
+    async fn register_root(&self) {
+        let (ScopeLayout::V3 { root, .. }, Some(owner)) = (&self.layout, &self.owner) else {
+            return;
+        };
+        if self.wire() != CortexWire::Direct || self.registered.load(Ordering::Acquire) {
+            return;
+        }
+        let body = serde_json::json!({
+            "path": root,
+            "members": [{ "actor": owner, "role": "owner" }],
+        });
+        let path = self.wire().path(Route::RegisterScope);
+        match self
+            .log
+            .client
+            .json(
+                reqwest::Method::POST,
+                path,
+                Some(&body),
+                crate::cortex::transport::Attempts::Once,
+            )
+            .await
+        {
+            Ok(_) => self.registered.store(true, Ordering::Release),
+            Err(Error::Conflict(_)) => match self.claim_root(root, owner).await {
+                Ok(()) => self.registered.store(true, Ordering::Release),
+                Err(error) => {
+                    log::warn!("[cortex] making `{owner}` an owner of `{root}` failed: {error}");
+                }
+            },
+            Err(error) => {
+                log::warn!("[cortex] registering the scope root `{root}` failed: {error}");
+            }
+        }
+    }
+
+    /// Makes `owner` an owner of the already registered `root`: reads its
+    /// record, and when `owner` is not among its owners, writes the members
+    /// back with it added (CortexDB's member edit takes the whole list).
+    async fn claim_root(&self, root: &str, owner: &str) -> Result<()> {
+        let path = format!(
+            "{}?path={}",
+            self.wire().path(Route::RegisterScope),
+            urlencode(root)
+        );
+        let record = self
+            .log
+            .client
+            .json(
+                reqwest::Method::GET,
+                &path,
+                None,
+                crate::cortex::transport::Attempts::RetryTransient,
+            )
+            .await?;
+        let mut members: Vec<serde_json::Value> = record
+            .get("members")
+            .and_then(serde_json::Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let owns = members
+            .iter()
+            .any(|member| member["actor"] == owner && member["role"] == "owner");
+        if owns {
+            return Ok(());
+        }
+        members.push(serde_json::json!({ "actor": owner, "role": "owner" }));
+        let path = format!(
+            "{}?path={}",
+            self.wire().path(Route::ScopeMembers),
+            urlencode(root)
+        );
+        self.log
+            .client
+            .json(
+                reqwest::Method::PUT,
+                &path,
+                Some(&serde_json::json!({ "members": members })),
+                crate::cortex::transport::Attempts::Once,
+            )
+            .await
+            .map(|_| ())
     }
 
     /// The same engine, declaring `consolidation` instead of the endpoint's
@@ -291,6 +420,10 @@ mod direct_tests;
 #[cfg(test)]
 #[path = "mod_hosted_tests.rs"]
 mod hosted_tests;
+
+#[cfg(test)]
+#[path = "mod_layout_tests.rs"]
+mod layout_tests;
 
 #[cfg(test)]
 #[path = "engine_test_support.rs"]

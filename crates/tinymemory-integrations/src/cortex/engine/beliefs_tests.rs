@@ -2,6 +2,7 @@
 //! recall pack or listing.
 
 use super::*;
+use crate::cortex::envelope::ScopeLayout;
 use crate::cortex::testing::{both, direct_double, direct_engine};
 use tinymemory_api::{MemoryEngine, Namespace, Reach};
 
@@ -25,6 +26,7 @@ const SCOPE: &str = "app:tinymemory/agent:coder-42/app:conversations";
 #[test]
 fn a_belief_reads_as_a_tagged_learning_sentence_at_its_node() {
     let hit = belief_hit(
+        &ScopeLayout::default(),
         &belief(SCOPE, "user", "prefers_using", "pnpm over npm", "supported"),
         0,
     )
@@ -40,23 +42,52 @@ fn a_belief_reads_as_a_tagged_learning_sentence_at_its_node() {
 
 #[test]
 fn a_contested_belief_says_so_and_a_retired_one_is_left_out() {
-    let contested = belief_hit(&belief(SCOPE, "Acme", "has_plan", "Team", "contested"), 0);
+    let contested = belief_hit(
+        &ScopeLayout::default(),
+        &belief(SCOPE, "Acme", "has_plan", "Team", "contested"),
+        0,
+    );
     assert_eq!(contested.unwrap().text, "Acme has plan Team (contested)");
     assert!(
         belief_hit(
+            &ScopeLayout::default(),
             &belief(SCOPE, "backup", "succeeded", "true", "deprecated"),
             0
         )
         .is_none()
     );
-    assert!(belief_hit(&belief("org:elsewhere/x", "a", "b", "c", "supported"), 0).is_none());
-    assert!(belief_hit(&json!({ "id": "b", "scope": SCOPE }), 0).is_none());
+    assert!(
+        belief_hit(
+            &ScopeLayout::default(),
+            &belief("org:elsewhere/x", "a", "b", "c", "supported"),
+            0
+        )
+        .is_none()
+    );
+    assert!(
+        belief_hit(
+            &ScopeLayout::default(),
+            &json!({ "id": "b", "scope": SCOPE }),
+            0
+        )
+        .is_none()
+    );
 }
 
 #[test]
 fn merging_keeps_each_sentence_once_rank_by_rank() {
-    let a = belief_hit(&belief(SCOPE, "user", "likes", "tea", "supported"), 0).unwrap();
-    let b = belief_hit(&belief(SCOPE, "user", "likes", "coffee", "supported"), 1).unwrap();
+    let a = belief_hit(
+        &ScopeLayout::default(),
+        &belief(SCOPE, "user", "likes", "tea", "supported"),
+        0,
+    )
+    .unwrap();
+    let b = belief_hit(
+        &ScopeLayout::default(),
+        &belief(SCOPE, "user", "likes", "coffee", "supported"),
+        1,
+    )
+    .unwrap();
     let merged = merge(vec![vec![a.clone(), b.clone()], vec![a.clone()]], 10);
     assert_eq!(merged, [a.clone(), b]);
     assert_eq!(merge(vec![vec![a.clone()]], 0), Vec::<Hit>::new());
