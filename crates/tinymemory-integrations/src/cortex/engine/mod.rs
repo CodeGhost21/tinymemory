@@ -121,7 +121,7 @@ impl CortexEngine {
         if owner.is_some_and(str::is_empty) {
             return Err(Error::Config("a scope root's owner is blank".to_string()));
         }
-        self.layout = ScopeLayout::v3(root)?;
+        self.layout = ScopeLayout::v3(root, self.wire() == CortexWire::TinyHumans)?;
         self.owner = owner.map(str::to_string);
         self.registered = Arc::new(AtomicBool::new(false));
         Ok(self)
@@ -135,7 +135,7 @@ impl CortexEngine {
     /// writes only to leaves below the root, never to the root itself, so
     /// the root stays unregistered until this succeeds.
     async fn register_root(&self) {
-        let (ScopeLayout::V3 { root }, Some(owner)) = (&self.layout, &self.owner) else {
+        let (ScopeLayout::V3 { root, .. }, Some(owner)) = (&self.layout, &self.owner) else {
             return;
         };
         if self.wire() != CortexWire::Direct || self.registered.load(Ordering::Acquire) {

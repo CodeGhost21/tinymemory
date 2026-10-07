@@ -60,18 +60,22 @@ pub(crate) enum ScopeLayout {
     V3 {
         /// The root path, `type:id` segments joined by `/`.
         root: String,
+        /// Whether paths read back may carry a tenant prefix before the root
+        /// (the hosted backend's); CortexDB's own API never adds one.
+        prefixed: bool,
     },
 }
 
 impl ScopeLayout {
-    /// The v3 layout below `root`.
+    /// The v3 layout below `root`, whose paths read back may carry a tenant
+    /// prefix when `prefixed`.
     ///
     /// # Errors
     ///
     /// [`Error::Config`] for a root that is not `type:id` segments of the
     /// hosted scope types with `[A-Za-z0-9_-]` ids, or that holds the legacy
     /// root.
-    pub(crate) fn v3(root: &str) -> Result<Self> {
+    pub(crate) fn v3(root: &str, prefixed: bool) -> Result<Self> {
         let root = root.trim().trim_matches('/');
         let refuse = |why: &str| Error::Config(format!("scope root `{root}` {why}"));
         if root.is_empty() {
@@ -99,6 +103,7 @@ impl ScopeLayout {
         }
         Ok(Self::V3 {
             root: root.to_string(),
+            prefixed,
         })
     }
 
@@ -106,13 +111,13 @@ impl ScopeLayout {
     pub(crate) fn root(&self) -> &str {
         match self {
             Self::Legacy => ROOT_SCOPE,
-            Self::V3 { root } => root,
+            Self::V3 { root, .. } => root,
         }
     }
 
     /// The scope items of `kind` at `namespace` live in.
     pub(crate) fn path(&self, namespace: &Namespace, kind: ItemKind) -> String {
-        let Self::V3 { root } = self else {
+        let Self::V3 { root, .. } = self else {
             return scope_path(namespace, kind);
         };
         let mut parts = vec![root.clone()];
@@ -137,34 +142,70 @@ impl ScopeLayout {
         parts.join("/")
     }
 
-    /// The prefix the scopes at or below `namespace` are listed under: the
-    /// node's own path for the legacy layout, the whole root for v3 (where a
-    /// sourced document is grouped under `app:brain`, so a node's scopes
-    /// share no one prefix).
-    pub(crate) fn node_prefix(&self, namespace: &Namespace) -> String {
-        if namespace.is_root() || matches!(self, Self::V3 { .. }) {
-            return self.root().to_string();
+    /// The prefixes the scopes at or below `namespace` are listed under.
+    /// Legacy: the node's own path. V3: the node's path with its grouping
+    /// nodes (`app:flows` before a `service:`), and, for a node holding a
+    /// `source:`, the same with `app:brain` before it too, where that
+    /// node's sourced documents sit. A node without a `source:` needs one
+    /// prefix, since a sourced document below it is grouped after it.
+    pub(crate) fn node_prefixes(&self, namespace: &Namespace) -> Vec<String> {
+        let Self::V3 { root, .. } = self else {
+            if namespace.is_root() {
+                return vec![ROOT_SCOPE.to_string()];
+            }
+            let mut path = scope_path(namespace, ItemKind::Document);
+            path.truncate(path.rfind('/').unwrap_or(path.len()));
+            return vec![path];
+        };
+        let render = |brain: bool| {
+            let mut parts = vec![root.clone()];
+            let (mut grouped_brain, mut grouped_flows) = (false, false);
+            for segment in namespace.segments() {
+                if segment.kind() == SegmentKind::Service && !grouped_flows {
+                    parts.push(FLOWS.to_string());
+                    grouped_flows = true;
+                }
+                if brain && segment.kind() == SegmentKind::Source && !grouped_brain {
+                    parts.push(BRAIN.to_string());
+                    grouped_brain = true;
+                }
+                parts.push(segment.to_string());
+            }
+            parts.join("/")
+        };
+        let sourced = namespace
+            .segments()
+            .iter()
+            .any(|segment| segment.kind() == SegmentKind::Source);
+        if sourced {
+            vec![render(false), render(true)]
+        } else {
+            vec![render(false)]
         }
-        let mut path = scope_path(namespace, ItemKind::Document);
-        path.truncate(path.rfind('/').unwrap_or(path.len()));
-        path
     }
 
     /// The namespace and kind of a scope path of this layout, wherever it is
     /// rooted (the hosted backend prefixes the caller's tenant); `None` for
-    /// any other scope, including one of the other layout. The root is
-    /// matched at its last occurrence, so a tenant prefix spelled like the
-    /// root (`user:42/user:42/app:learnings`) reads as the root's own
-    /// learnings: the layout never nests a root's segments in a namespace.
+    /// any other scope, including one of the other layout. Unprefixed (the
+    /// direct wire), a path must start at the root, so a namespace that
+    /// begins like the root (`user:42/user:42/app:learnings`) is read as
+    /// that namespace. Prefixed (hosted), the root is matched at its last
+    /// occurrence, so a tenant prefix spelled like the root reads as a
+    /// prefix; only there would a namespace repeating the root's own
+    /// segments read back as the root, and a layout never builds one.
     pub(crate) fn parse(&self, path: &str) -> Option<(Namespace, ItemKind)> {
-        let Self::V3 { root } = self else {
+        let Self::V3 { root, prefixed } = self else {
             return parse_scope(path);
         };
         let parts: Vec<&str> = path.split('/').collect();
         let wanted: Vec<&str> = root.split('/').collect();
-        let start = parts
-            .windows(wanted.len())
-            .rposition(|window| window == wanted.as_slice())?;
+        let start = if *prefixed {
+            parts
+                .windows(wanted.len())
+                .rposition(|window| window == wanted.as_slice())?
+        } else {
+            parts.starts_with(&wanted).then_some(0)?
+        };
         let rest = &parts[start + wanted.len()..];
         let (kind, nodes) = match rest.split_last()? {
             (&LEARNINGS, nodes) => (ItemKind::Learning, nodes),

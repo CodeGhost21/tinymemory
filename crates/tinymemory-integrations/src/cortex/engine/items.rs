@@ -199,9 +199,7 @@ impl CortexEngine {
         }
         let lookups: Vec<(KindScope, Vec<String>)> = by_node
             .into_iter()
-            .map(|(namespace, ids)| {
-                (KindScope::new(&self.layout, namespace.clone(), kind), ids)
-            })
+            .map(|(namespace, ids)| (KindScope::new(&self.layout, namespace.clone(), kind), ids))
             .collect();
         let found: Vec<HashMap<String, Vec<Decoded>>> = stream::iter(lookups)
             .map(|(scope, ids)| async move { self.item_events(&scope, &ids).await })

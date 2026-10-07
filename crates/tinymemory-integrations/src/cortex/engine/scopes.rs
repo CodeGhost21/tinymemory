@@ -176,13 +176,15 @@ impl CortexEngine {
                 .into_iter()
                 .collect(),
         };
-        let prefix = self
-            .layout
-            .node_prefix(reach.map_or(&Namespace::ROOT, |reach| &reach.at));
-        let paths = match listing {
-            Listing::Lenient => self.log.scopes(&prefix).await?,
-            Listing::Complete => self.log.all_scopes(&prefix).await?,
-        };
+        let root = Namespace::ROOT;
+        let at = reach.map_or(&root, |reach| &reach.at);
+        let mut paths = Vec::new();
+        for prefix in self.layout.node_prefixes(at) {
+            paths.extend(match listing {
+                Listing::Lenient => self.log.scopes(&prefix).await?,
+                Listing::Complete => self.log.all_scopes(&prefix).await?,
+            });
+        }
         for path in paths {
             let Some((namespace, kind)) = self.layout.parse(&path) else {
                 continue;
