@@ -98,6 +98,12 @@ impl CortexEngine {
     /// As [`Self::scopes_for`], refusing when the engine cannot list every
     /// scope (see `log::read::all_scopes`): for an export, which must not
     /// silently miss items.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::cortex::Error::Engine`] when the scope listing reaches its
+    /// limit and may be missing scopes, and the backend failures of the
+    /// listing itself.
     pub(super) async fn all_scopes_for(&self, filter: &MetaFilter) -> Result<Vec<KindScope>> {
         self.scopes_listed(filter, Listing::Complete).await
     }
