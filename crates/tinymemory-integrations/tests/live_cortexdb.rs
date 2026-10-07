@@ -24,9 +24,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use std::sync::Arc;
 use tinymemory_api::{
-    FetchMode, FetchRequest, ForgetTarget, ItemKind, LearningKind, ListRequest, MemoryEngine,
-    MemoryMeta, MetaFilter, RecallRequest, Role, SourceKind, SourceRef, StoreItem, ToolCallRef,
-    Turn,
+    EraseRequest, FetchMode, FetchRequest, ForgetTarget, ItemKind, LearningKind, ListRequest,
+    MemoryEngine, MemoryMeta, MetaFilter, RecallRequest, Role, SourceKind, SourceRef, StoreItem,
+    ToolCallRef, Turn,
 };
 
 use tinymemory_integrations::cortex::{CortexCredential, CortexEngine, StaticBearer};
@@ -226,6 +226,75 @@ async fn every_kind_is_exported_whole_across_pages() {
             let again = engine.store(found.item.clone()).await.expect("store");
             assert!(again.replayed, "storing it where it was is a replay");
         }
+        engine
+            .forget(ForgetTarget::Filter(filter))
+            .await
+            .expect("cleanup");
+    }
+}
+
+/// Direct only: the hosted wire has no erasure route.
+#[tokio::test]
+async fn an_erased_node_is_gone_and_its_items_store_anew() {
+    let _alone = ONE_AT_A_TIME.lock().await;
+    for (wire, engine) in live_engines() {
+        if wire != "cortexdb" {
+            continue;
+        }
+        let run = run_id();
+        let node: tinymemory_api::Namespace =
+            format!("agent:{run}-erased").parse().expect("a namespace");
+        let child: tinymemory_api::Namespace = format!("agent:{run}-erased/agent:step")
+            .parse()
+            .expect("a namespace");
+        let kept: tinymemory_api::Namespace =
+            format!("agent:{run}-kept").parse().expect("a namespace");
+        let fact = |text: &str, namespace: &tinymemory_api::Namespace| {
+            StoreItem::learning(
+                format!("{run} {text}"),
+                LearningKind::Fact,
+                0.9,
+                MemoryMeta {
+                    namespace: namespace.clone(),
+                    workspace: Some(run.clone()),
+                    ..MemoryMeta::default()
+                },
+            )
+        };
+        let items = [
+            fact("node", &node),
+            fact("step", &child),
+            fact("kept", &kept),
+        ];
+        for item in &items {
+            engine.store(item.clone()).await.expect("store");
+        }
+        let report = engine
+            .erase(EraseRequest::new(tinymemory_api::Reach::subtree(
+                node.clone(),
+            )))
+            .await
+            .expect("erase");
+        assert_eq!(report.erased_scopes, 2, "{report:?}");
+        assert!(
+            report.receipts.iter().all(|r| r.starts_with("erasure_")),
+            "{report:?}"
+        );
+        let filter = MetaFilter {
+            workspace: Some(run.clone()),
+            ..MetaFilter::default()
+        };
+        let left = list_until(&engine, &filter, 1).await;
+        assert_eq!(
+            left,
+            vec![format!("{run} kept")],
+            "only the sibling is left"
+        );
+        for erased in &items[..2] {
+            let again = engine.store(erased.clone()).await.expect("store");
+            assert!(!again.replayed, "an erased item stores anew");
+        }
+        assert_eq!(list_until(&engine, &filter, 3).await.len(), 3);
         engine
             .forget(ForgetTarget::Filter(filter))
             .await

@@ -151,3 +151,24 @@ async fn the_whole_tree_needs_its_interlock() {
     whole.whole_tree = true;
     engine.erase(whole).await.unwrap();
 }
+
+#[tokio::test]
+async fn the_double_drops_beliefs_built_from_erased_events() {
+    let (endpoint, state) = direct_double().await;
+    let engine = direct_engine(&endpoint);
+    let at = node("agent:assistant");
+    engine.store(learning("a fact", &at)).await.unwrap();
+    let scope = "app:tinymemory/agent:assistant/app:learnings";
+    {
+        let mut log = state.log.lock().unwrap();
+        let source = log.events[0]["id"].clone();
+        log.beliefs
+            .push(serde_json::json!({ "scope": scope, "source": source, "text": "built" }));
+    }
+    engine
+        .erase(EraseRequest::new(Reach::exact(at)))
+        .await
+        .unwrap();
+    assert!(state.log.lock().unwrap().beliefs.is_empty());
+    assert_eq!(state.log.lock().unwrap().forgotten.len(), 1);
+}

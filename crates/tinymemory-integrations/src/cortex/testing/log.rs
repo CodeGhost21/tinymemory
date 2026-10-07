@@ -226,17 +226,23 @@ impl CortexLog {
         let (gone, kept): (Vec<Value>, Vec<Value>) =
             std::mem::take(&mut self.events).into_iter().partition(|e| {
                 let at = str_of(e, "/scope");
-                at == scope || at.starts_with(&below)
+                scope.is_empty() || at == scope || at.starts_with(&below)
             });
         let deleted: Vec<String> = gone
             .iter()
-            .filter(|e| str_of(e, "/scope") == scope)
+            .filter(|e| scope.is_empty() || str_of(e, "/scope") == scope)
             .map(|e| str_of(e, "/id").to_string())
             .collect();
         self.idempotency
             .retain(|_, (_, id)| !deleted.iter().any(|gone| gone == id));
-        self.forgotten
-            .extend(gone.iter().map(|e| str_of(e, "/id").to_string()));
+        // Only deleted events count as forgotten; a redacted descendant keeps
+        // its key. Beliefs built from any erased event go with it.
+        self.beliefs.retain(|belief| {
+            !gone
+                .iter()
+                .any(|e| str_of(e, "/id") == str_of(belief, "/source"))
+        });
+        self.forgotten.extend(deleted);
         self.events = kept;
         self.erasures += 1;
         (
