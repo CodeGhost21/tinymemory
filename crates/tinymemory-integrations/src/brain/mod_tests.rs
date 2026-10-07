@@ -4,19 +4,22 @@ use super::*;
 use crate::documents::ConverterChain;
 
 #[test]
-fn every_format_has_a_source() {
-    assert_eq!(source_for(DocumentFormat::Pdf), BrainSource::Pdf);
-    assert_eq!(source_for(DocumentFormat::PlainText), BrainSource::Markdown);
-    assert_eq!(source_for(DocumentFormat::Html), BrainSource::Web);
-    assert_eq!(
-        source_for(DocumentFormat::Xlsx),
-        BrainSource::Other("xlsx".into())
-    );
-    assert_eq!(source_for(DocumentFormat::Unknown).to_string(), "other");
+fn every_format_is_a_file() {
+    for format in [
+        DocumentFormat::Pdf,
+        DocumentFormat::PlainText,
+        DocumentFormat::Markdown,
+        DocumentFormat::Html,
+        DocumentFormat::Xlsx,
+        DocumentFormat::Code,
+        DocumentFormat::Unknown,
+    ] {
+        assert_eq!(source_for(format), BrainSource::Files, "{format:?}");
+    }
 }
 
 #[tokio::test]
-async fn html_lands_on_the_web_unless_the_caller_says_otherwise() {
+async fn html_is_a_file_unless_the_caller_says_otherwise() {
     let page = RawDocument::new(
         "<html><head><title>Pricing</title></head><body><p>Pro is $20.</p></body></html>",
     )
@@ -25,7 +28,7 @@ async fn html_lands_on_the_web_unless_the_caller_says_otherwise() {
     let document = brain_document(&chain, &page, None, MemoryMeta::default())
         .await
         .unwrap();
-    assert_eq!(document.source, BrainSource::Web);
+    assert_eq!(document.source, BrainSource::Files);
     assert_eq!(document.mime.as_deref(), Some("text/html"));
     assert!(document.text.contains("Pro is $20."));
 
@@ -50,7 +53,7 @@ async fn the_caller_s_metadata_is_kept_and_language_filled() {
     let document = brain_document(&ConverterChain::default(), &file, None, meta)
         .await
         .unwrap();
-    assert_eq!(document.source, BrainSource::Other("code".into()));
+    assert_eq!(document.source, BrainSource::Files);
     assert_eq!(document.meta.repo.as_deref(), Some("acme/app"));
     assert_eq!(document.meta.language.as_deref(), Some("rust"));
 }

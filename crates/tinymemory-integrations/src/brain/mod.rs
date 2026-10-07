@@ -4,10 +4,8 @@
 //! [`tinymemory_tools::Brain`] stores text; this module is the step before
 //! it. [`brain_document`] runs a [`RawDocument`] through a
 //! [`DocumentConverter`] (the [`crate::documents`] pipeline) and places the
-//! markdown under a [`BrainSource`] — the one the caller names, or the one
-//! its detected format implies ([`source_for`]): a PDF lands in
-//! `source:pdf`, markdown and plain text in `source:markdown`, HTML in
-//! `source:web`.
+//! markdown under a [`BrainSource`]: the one the caller names, else
+//! `source:files` ([`source_for`]), whatever the file's format.
 //!
 //! # Example
 //!
@@ -25,7 +23,7 @@
 //!     .with_filename("handbook/refunds.md");
 //! let document = brain_document(&ConverterChain::default(), &file, None, MemoryMeta::default())
 //!     .await?;
-//! assert_eq!(document.source, BrainSource::Markdown);
+//! assert_eq!(document.source, BrainSource::Files);
 //! assert_eq!(document.title.as_deref(), Some("Refunds"));
 //!
 //! let brain = Brain::new(Arc::new(ReferenceEngine::new()), MemoryLayout::default());
@@ -42,22 +40,13 @@ use crate::documents::{
     DocumentConverter, DocumentFormat, Error, RawDocument, Result, converted_item,
 };
 
-/// The brain source a document of `format` belongs to when the caller names
-/// none: PDFs to `pdf`, markdown and plain text to `markdown`, HTML to `web`,
-/// and each other format to a source of its own name (`docx`, `xlsx`,
-/// `pptx`, `code`, `other`).
+/// The brain source a file of `format` belongs to when the caller names
+/// none: [`BrainSource::Files`], whatever the format. A source is where a
+/// document came from, so every local file shares one, and the format stays
+/// on the document (its MIME type and `kind:` label).
 #[must_use]
-pub fn source_for(format: DocumentFormat) -> BrainSource {
-    match format {
-        DocumentFormat::Pdf => BrainSource::Pdf,
-        DocumentFormat::Markdown | DocumentFormat::PlainText => BrainSource::Markdown,
-        DocumentFormat::Html => BrainSource::Web,
-        DocumentFormat::Docx => BrainSource::Other("docx".to_string()),
-        DocumentFormat::Xlsx => BrainSource::Other("xlsx".to_string()),
-        DocumentFormat::Pptx => BrainSource::Other("pptx".to_string()),
-        DocumentFormat::Code => BrainSource::Other("code".to_string()),
-        DocumentFormat::Unknown => BrainSource::Other("other".to_string()),
-    }
+pub fn source_for(_format: DocumentFormat) -> BrainSource {
+    BrainSource::Files
 }
 
 /// Converts `document` through `converter` into a brain document of

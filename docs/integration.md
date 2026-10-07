@@ -105,7 +105,7 @@ let layout = MemoryLayout::new("team:acme".parse()?)?;   // or MemoryLayout::def
 
 ```text
 team:acme
-├── source:pdf, source:notion, …   the brain: documents, no agent id
+├── source:files, source:notion, …  the brain: documents by connector, no agent id
 ├── agent:support-01               one agent's conversations (a turn per item)
 ├── agent:coder-42
 └── (the root itself)              shared learnings; beliefs are built in every scope

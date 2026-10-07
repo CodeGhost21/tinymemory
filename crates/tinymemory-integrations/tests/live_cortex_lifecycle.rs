@@ -44,6 +44,25 @@ fn live_engine() -> Option<Arc<dyn MemoryEngine>> {
     ))
 }
 
+/// Searches `source` for `query` until it returns `want` hits or
+/// [`VISIBILITY`] runs out: a write is ranked by recall some time after it
+/// is accepted.
+async fn search_until(
+    brain: &Brain,
+    query: &str,
+    source: &BrainSource,
+    want: usize,
+) -> Vec<tinymemory_api::Hit> {
+    let deadline = Instant::now() + VISIBILITY;
+    loop {
+        let hits = brain.search(query, Some(source), 10).await.expect("search");
+        if hits.len() >= want || Instant::now() >= deadline {
+            return hits;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
+
 /// Recalls `query` until the pack contains every one of `wanted` or
 /// [`VISIBILITY`] runs out.
 async fn recall_until(memory: &AgentMemory, query: &str, wanted: &[&str]) -> ContextPack {
@@ -87,8 +106,15 @@ async fn live_an_agent_loop_runs_against_cortexdb() {
     .await
     .expect("convert");
     let source = document.source.clone();
+    assert_eq!(source, BrainSource::Files, "a converted file is a file");
     let brain = Brain::new(engine.clone(), layout.clone());
     let ingested = brain.ingest(document).await.expect("ingest");
+    let filed = search_until(&brain, "billing disputes", &BrainSource::Files, 1).await;
+    assert_eq!(filed.len(), 1, "the handbook is searchable in source:files");
+    assert_eq!(
+        filed[0].meta.namespace,
+        layout.brain(&BrainSource::Files).expect("files"),
+    );
 
     let support = AgentMemory::new(engine.clone(), layout.clone(), "support-01").expect("agent");
     let coder = AgentMemory::new(engine.clone(), layout.clone(), "coder-42").expect("agent");
@@ -372,4 +398,60 @@ async fn live_an_automatic_engine_queues_no_builds_but_still_builds_on_request()
         .await
         .expect("forget");
     assert!(forgotten.forgotten >= 2, "{forgotten:?}");
+}
+
+#[tokio::test]
+async fn live_forgetting_a_source_forgets_its_collections() {
+    let Some(engine) = live_engine() else {
+        eprintln!("TINYMEMORY_LIVE_CORTEXDB_URL unset; skipping");
+        return;
+    };
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after the epoch")
+        .as_nanos();
+    let layout = MemoryLayout::new(
+        format!("project:live-coll-{nanos}")
+            .parse()
+            .expect("a valid root"),
+    )
+    .expect("a valid layout");
+    let brain = Brain::new(engine.clone(), layout.clone());
+    brain
+        .ingest(BrainDocument::new(
+            BrainSource::Github,
+            "The deploy checklist lives in the wiki.",
+        ))
+        .await
+        .expect("ingest at the source");
+    let repo = layout
+        .brain_collection(&BrainSource::Github, "acme-api")
+        .expect("a collection node");
+    for (namespace, text) in [
+        (repo, "Issue 12: the deploy job times out on large images."),
+        (
+            layout.brain(&BrainSource::Files).expect("files"),
+            "The deploy budget is two hours.",
+        ),
+    ] {
+        let meta = MemoryMeta {
+            namespace,
+            ..MemoryMeta::default()
+        };
+        engine
+            .store(StoreItem::document(text, meta))
+            .await
+            .expect("store");
+    }
+
+    let hits = search_until(&brain, "deploy", &BrainSource::Github, 2).await;
+    assert_eq!(hits.len(), 2, "the source and its collection: {hits:?}");
+
+    let report = brain.forget(&BrainSource::Github).await.expect("forget");
+    assert_eq!(report.forgotten, 2, "{report:?}");
+    let left = engine
+        .forget(ForgetTarget::Filter(layout.holistic_filter()))
+        .await
+        .expect("cleanup");
+    assert_eq!(left.forgotten, 1, "only the files document was left");
 }

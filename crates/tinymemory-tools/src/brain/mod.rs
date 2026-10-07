@@ -1,10 +1,13 @@
-//! The brain: an agent-independent store of documents, kept apart by source
-//! type.
+//! The brain: an agent-independent store of documents, kept apart by source:
+//! the connector or app each came from.
 //!
-//! Company knowledge — PDFs, markdown, Notion exports, GitHub — belongs to no
-//! agent, so a brain document carries no agent id and lives at its source's
-//! node in the [`MemoryLayout`] (`source:pdf`, `source:notion`). Every agent
-//! reads it through the holistic recall.
+//! Company knowledge (local files, Notion pages, GitHub issues, mail) belongs
+//! to no agent, so a brain document carries no agent id and lives at its
+//! source's node in the [`MemoryLayout`] (`source:files`, `source:notion`),
+//! or at one of the source's collections below it
+//! (`source:github/project:acme-api`, [`MemoryLayout::brain_collection`]).
+//! Every agent reads it through the holistic recall. Forgetting or
+//! rebuilding a source covers its collections too.
 //!
 //! [`Brain::ingest`] stores one document (by default waiting until it is
 //! readable, since ingestion is not on a live turn) and returns the
@@ -176,21 +179,23 @@ impl Brain {
         Ok(self.engine.fetch(request).await?.hits)
     }
 
-    /// Erases one source's documents (and the beliefs an engine built in
-    /// that source's scope are the engine's to drop).
+    /// Erases one source's documents, its collections' included (and the
+    /// beliefs an engine built in those scopes are the engine's to drop).
     ///
     /// # Errors
     ///
     /// The engine's failures.
     pub async fn forget(&self, source: &BrainSource) -> Result<ForgetReport> {
+        // The reach is set from `brain(source)?`, not left to
+        // `brain_filter`, which falls back to the whole layout.
         let mut filter = self.layout.brain_filter(Some(source));
-        filter.reach = Some(Reach::exact(self.layout.brain(source)?));
+        filter.reach = Some(Reach::subtree(self.layout.brain(source)?));
         self.engine.forget(ForgetTarget::Filter(filter)).await
     }
 
-    /// A belief build of `source`'s documents, for the host to run now or
-    /// queue: what an ingest hands back, and a refresh on an engine that
-    /// builds on its own.
+    /// A belief build of `source`'s documents, its collections' included,
+    /// for the host to run now or queue: what an ingest hands back, and a
+    /// refresh on an engine that builds on its own.
     ///
     /// # Errors
     ///
@@ -198,7 +203,7 @@ impl Brain {
     /// [`MemoryLayout::brain`]).
     pub fn build(&self, source: &BrainSource) -> Result<BackgroundJob> {
         Ok(BackgroundJob::BuildBeliefs {
-            request: ConsolidateRequest::new(Reach::exact(self.layout.brain(source)?))
+            request: ConsolidateRequest::new(Reach::subtree(self.layout.brain(source)?))
                 .kinds([ItemKind::Document]),
         })
     }
