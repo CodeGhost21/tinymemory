@@ -167,6 +167,7 @@ async fn experience(
     if let Some(early) = gate(&state, "POST", &uri, &headers) {
         return early;
     }
+    state.seen.lock().unwrap().writes.push(body.clone());
     write_one(&state, &headers, &body)
 }
 
@@ -179,6 +180,7 @@ async fn bulk(
     if let Some(early) = gate(&state, "POST", &uri, &headers) {
         return early;
     }
+    state.seen.lock().unwrap().writes.push(body.clone());
     let mut results = Vec::new();
     for (index, item) in body["items"]
         .as_array()
