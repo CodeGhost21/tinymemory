@@ -26,6 +26,23 @@ fn parses_and_prints_paths() {
 }
 
 #[test]
+fn a_service_node_prints_parses_and_serializes() {
+    let flow = ns("ws:main/service:newsletter");
+    assert_eq!(flow.segments()[1].kind(), SegmentKind::Service);
+    assert_eq!(flow.segments()[1].id(), "newsletter");
+    assert_eq!(flow.to_string(), "ws:main/service:newsletter");
+    let json = serde_json::to_string(&flow).unwrap();
+    assert_eq!(json, r#""ws:main/service:newsletter""#);
+    assert_eq!(serde_json::from_str::<Namespace>(&json).unwrap(), flow);
+    assert_eq!(
+        serde_json::to_string(&SegmentKind::Service).unwrap(),
+        r#""service""#
+    );
+    let sanitized = Segment::sanitized(SegmentKind::Service, "flow 7");
+    assert!(sanitized.to_string().starts_with("service:flow-7-"));
+}
+
+#[test]
 fn refuses_malformed_paths() {
     for bad in [
         "agent",
