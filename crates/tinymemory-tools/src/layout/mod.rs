@@ -28,6 +28,11 @@
 //! below a node of its own (`team:acme`), which keeps tenants apart on one
 //! engine.
 //!
+//! **Pooled conversations.** A host whose agents share one chat history
+//! ([`MemoryLayout::with_pooled_conversations`]) keeps every agent's turns at
+//! one node (`ws:main`), each turn labelled with its agent id: an agent's
+//! history is that node filtered to its id, and the team's is the whole node.
+//!
 //! **Core scopes** share memory beyond one layout. A host that nests every
 //! tenant under one company node (`ws:acme/team:hive`) can name an ancestor
 //! of the root as a [`CoreScope`]: a hive-wide core or a company brain that
@@ -66,6 +71,8 @@ const MAX_ROOT_DEPTH: usize = 7;
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct MemoryLayout {
     root: Namespace,
+    /// Where every agent's conversations live, when they are pooled.
+    pooled: Option<Namespace>,
 }
 
 impl MemoryLayout {
@@ -81,7 +88,27 @@ impl MemoryLayout {
                 "a memory layout root nests at most {MAX_ROOT_DEPTH} deep, `{root}` is deeper"
             )));
         }
-        Ok(Self { root })
+        Ok(Self { root, pooled: None })
+    }
+
+    /// The same layout, keeping every agent's conversations at `node` below
+    /// the root (`ws:main`) rather than at a node per agent. Each turn
+    /// carries its agent id, so an agent's history is still its own.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::InvalidRequest`] for the root itself, or a node too deep
+    /// below the root.
+    pub fn with_pooled_conversations(mut self, node: &Namespace) -> Result<Self> {
+        if node.is_root() {
+            return Err(Error::InvalidRequest(
+                "pooled conversations need a node below the root".to_string(),
+            ));
+        }
+        let mut segments = self.root.segments().to_vec();
+        segments.extend(node.segments().iter().cloned());
+        self.pooled = Some(Namespace::new(segments)?);
+        Ok(self)
     }
 
     /// The layout's root: `core`.
@@ -143,13 +170,16 @@ impl MemoryLayout {
             .child(Segment::sanitized(SegmentKind::Project, collection))
     }
 
-    /// The node `agent_id`'s conversations live at. The id is sanitized
-    /// ([`Segment::sanitized`]).
+    /// The node `agent_id`'s conversations live at: its own (the id
+    /// sanitized, [`Segment::sanitized`]), or the pooled node.
     ///
     /// # Errors
     ///
     /// As [`MemoryLayout::brain`].
     pub fn conversations(&self, agent_id: &str) -> Result<Namespace> {
+        if let Some(pooled) = &self.pooled {
+            return Ok(pooled.clone());
+        }
         self.root
             .child(Segment::sanitized(SegmentKind::Agent, agent_id))
     }
@@ -176,8 +206,16 @@ impl MemoryLayout {
     }
 
     /// Conversations: one agent's (and its sub-agents'), or every agent's.
+    /// Pooled, one agent's are the pooled node's turns carrying its id.
     #[must_use]
     pub fn conversations_filter(&self, agent_id: Option<&str>) -> MetaFilter {
+        if let Some(pooled) = &self.pooled {
+            return MetaFilter {
+                reach: Some(Reach::exact(pooled.clone())),
+                agent_id: agent_id.map(str::to_string),
+                ..MetaFilter::kinds([ItemKind::Conversation])
+            };
+        }
         let at = agent_id
             .and_then(|agent| self.conversations(agent).ok())
             .unwrap_or_else(|| self.root.clone());

@@ -35,6 +35,13 @@ On CortexDB every node becomes a scope family under `app:tinymemory/…` (see
 [cortex-wire.md](cortex-wire.md#scope-layout)). For example,
 `source:files/app:documents` and `agent:coder-42/app:conversations`.
 
+**Pooled conversations.** `MemoryLayout::with_pooled_conversations(ws:main)`
+keeps every agent's turns at one node (`<root>/ws:main`) instead of a node
+per agent. Each turn carries its `agent_id`, so **History** is that node
+filtered to the agent's id, and **Team** is the whole node (a host that
+pools usually sets `RecallPolicy::team_limit` to `0`). Brain and learnings
+stay where they were.
+
 ## One turn
 
 ```text

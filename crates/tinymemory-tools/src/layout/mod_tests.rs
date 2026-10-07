@@ -160,3 +160,47 @@ fn a_core_scope_reads_its_node_exactly() {
         CoreScope::new("ws:acme".parse().unwrap(), "Company")
     );
 }
+
+#[test]
+fn pooled_conversations_share_one_node_told_apart_by_agent() {
+    let chats: Namespace = "ws:main".parse().unwrap();
+    let layout = MemoryLayout::new("team:acme".parse().unwrap())
+        .unwrap()
+        .with_pooled_conversations(&chats)
+        .unwrap();
+    let pooled: Namespace = "team:acme/ws:main".parse().unwrap();
+    assert_eq!(layout.conversations("coder").unwrap(), pooled);
+    assert_eq!(layout.conversations("support").unwrap(), pooled);
+
+    let coder = layout.conversations_filter(Some("coder"));
+    assert_eq!(coder.agent_id.as_deref(), Some("coder"));
+    assert_eq!(coder.reach, Some(Reach::exact(pooled.clone())));
+    assert_eq!(coder.kinds, [ItemKind::Conversation]);
+    let team = layout.conversations_filter(None);
+    assert_eq!(team.agent_id, None);
+    assert_eq!(team.reach, Some(Reach::exact(pooled)));
+
+    // Everything else is where it was.
+    assert_eq!(layout.learnings().to_string(), "team:acme");
+    assert_eq!(
+        layout.brain(&BrainSource::Pdf).unwrap().to_string(),
+        "team:acme/source:pdf"
+    );
+}
+
+#[test]
+fn pooled_conversations_need_a_node_that_fits() {
+    let layout = MemoryLayout::default();
+    assert!(matches!(
+        layout.clone().with_pooled_conversations(&Namespace::ROOT),
+        Err(Error::InvalidRequest(_))
+    ));
+    let deep: Namespace = ["agent:a"; 7].join("/").parse().unwrap();
+    let two: Namespace = "ws:a/ws:b".parse().unwrap();
+    assert!(
+        MemoryLayout::new(deep)
+            .unwrap()
+            .with_pooled_conversations(&two)
+            .is_err()
+    );
+}
