@@ -244,6 +244,8 @@ These were measured against a live CortexDB by the v1 adapter. The doubles in
   and a cursor that does not advance is an error. An empty scope (a
   registration left after a forget) costs a page of its own, so the cap is per
   scope, not per call.
+- **The scope listing has no cursor** and answers at most 1000 paths. A read
+  takes what was listed and logs it; an export refuses.
 - **Unknown query parameters are ignored**, so paging uses exactly `cursor`.
 - **Recall renders text** as `[role] {...}`; the prefix is stripped when
   decoding.

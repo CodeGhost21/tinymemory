@@ -74,6 +74,15 @@ pub(crate) fn known(reach: &Reach, kinds: &[ItemKind]) -> Vec<KindScope> {
     scopes
 }
 
+/// How a discovery treats a scope listing that may be missing scopes.
+#[derive(Clone, Copy)]
+enum Listing {
+    /// Reads what was listed (the listing logs what it could not list).
+    Lenient,
+    /// Refuses: the caller must see every scope.
+    Complete,
+}
+
 /// Whether reading `reach` needs the engine's list of nodes.
 fn needs_discovery(reach: Option<&Reach>) -> bool {
     reach.is_none_or(|reach| reach.descendants)
@@ -83,13 +92,24 @@ impl CortexEngine {
     /// The scopes `filter` reads, kind first then namespace. See the module
     /// docs.
     pub(super) async fn scopes_for(&self, filter: &MetaFilter) -> Result<Vec<KindScope>> {
+        self.scopes_listed(filter, Listing::Lenient).await
+    }
+
+    /// As [`Self::scopes_for`], refusing when the engine cannot list every
+    /// scope (see `log::read::all_scopes`): for an export, which must not
+    /// silently miss items.
+    pub(super) async fn all_scopes_for(&self, filter: &MetaFilter) -> Result<Vec<KindScope>> {
+        self.scopes_listed(filter, Listing::Complete).await
+    }
+
+    async fn scopes_listed(&self, filter: &MetaFilter, listing: Listing) -> Result<Vec<KindScope>> {
         let kinds = admitted(filter);
         if kinds.is_empty() {
             return Ok(Vec::new());
         }
         let reach = filter.reach.as_ref();
         let Some(base) = reach.filter(|_| !needs_discovery(reach)) else {
-            return self.discovered(reach, &kinds).await;
+            return self.discovered(reach, &kinds, listing).await;
         };
         Ok(known(base, &kinds))
     }
@@ -116,6 +136,7 @@ impl CortexEngine {
         &self,
         reach: Option<&Reach>,
         kinds: &[ItemKind],
+        listing: Listing,
     ) -> Result<Vec<KindScope>> {
         let mut found: BTreeSet<KindScope> = match reach {
             Some(reach) => known(reach, kinds).into_iter().collect(),
@@ -131,7 +152,11 @@ impl CortexEngine {
             }
             _ => ROOT_SCOPE.to_string(),
         };
-        for path in self.log.scopes(&prefix).await? {
+        let paths = match listing {
+            Listing::Lenient => self.log.scopes(&prefix).await?,
+            Listing::Complete => self.log.all_scopes(&prefix).await?,
+        };
+        for path in paths {
             let Some((namespace, kind)) = parse_scope(&path) else {
                 continue;
             };

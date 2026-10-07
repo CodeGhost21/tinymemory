@@ -235,6 +235,12 @@ The reader accepts either `{"items": [{"path": "..."}]}` (Direct) or
 object with `path`. A `404` means "no scope listing" and is treated as no
 scopes.
 
+CortexDB's listing has **no cursor**, and `prefix` matches whole segments
+(`agent:b1` does not match `agent:b10`). `limit` defaults to 50 and is clamped to
+1000; `cursor`, `after` and `offset` are ignored (measured on v0.10.5). So a
+listing that answers 1000 paths may be missing some. Reads take what was listed
+and log a warning; an export refuses rather than move part of the memory.
+
 ### Build beliefs: `v1/beliefs/build` (Direct only)
 
 `consolidate` resolves its reach and kinds to the kind scopes that CortexDB

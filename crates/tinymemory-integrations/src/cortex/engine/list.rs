@@ -55,7 +55,7 @@ impl CortexEngine {
     /// See the module docs. An item that cannot be assembled whole is left
     /// out.
     pub(super) async fn list_page(&self, req: ListRequest) -> Result<ListPage> {
-        let (items, next_cursor) = self.items_page(req).await?;
+        let (items, next_cursor) = self.items_page(req, false).await?;
         Ok(ListPage {
             items: items
                 .into_iter()
@@ -67,6 +67,8 @@ impl CortexEngine {
 
     /// The same walk as [`Self::list_page`], handing each item back whole;
     /// an item that cannot be assembled whole is named, not left out.
+    /// Every scope must be listable: an export that silently missed some
+    /// would move part of the memory and report it all moved.
     ///
     /// # Errors
     ///
@@ -74,7 +76,7 @@ impl CortexEngine {
     /// engine fails to answer, and a walk past its page cap. Nothing is
     /// returned partially on an error; the caller retries from its cursor.
     pub(super) async fn export_page(&self, req: ListRequest) -> Result<ExportPage> {
-        let (items, next_cursor) = self.items_page(req).await?;
+        let (items, next_cursor) = self.items_page(req, true).await?;
         let mut page = ExportPage {
             next_cursor,
             ..ExportPage::default()
@@ -91,10 +93,15 @@ impl CortexEngine {
         Ok(page)
     }
 
-    /// One page of the walk the module docs describe.
-    async fn items_page(&self, req: ListRequest) -> Result<ItemsPage> {
+    /// One page of the walk the module docs describe; `complete` refuses
+    /// when the engine cannot list every scope.
+    async fn items_page(&self, req: ListRequest, complete: bool) -> Result<ItemsPage> {
         req.validate()?;
-        let scopes = self.scopes_for(&req.filter).await?;
+        let scopes = if complete {
+            self.all_scopes_for(&req.filter).await?
+        } else {
+            self.scopes_for(&req.filter).await?
+        };
         if scopes.is_empty() {
             return Ok((Vec::new(), None));
         }

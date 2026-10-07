@@ -260,6 +260,9 @@ route (`v1/scopes/list` or `memory/scopes`) with `prefix` set to
 not TinyMemory kind scopes are skipped, and those whose namespace the reach
 admits and whose kind the filter admits are added to the known nodes. A `404`
 from the scopes route yields no extra scopes. Discovery runs once per call.
+A listing that reaches 1000 paths may be missing some (the route has no
+cursor): a read goes on with what was listed and logs a warning, and an export
+fails rather than silently skip scopes.
 
 ## Health
 

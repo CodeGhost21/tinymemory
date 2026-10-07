@@ -166,6 +166,31 @@ async fn a_chunked_document_missing_a_piece_is_named_not_dropped() {
 }
 
 #[tokio::test]
+async fn an_export_refuses_when_the_engine_cannot_list_every_scope() {
+    for (engine, state) in both().await {
+        engine.store(items().remove(2)).await.unwrap();
+        state
+            .padding_scopes
+            .store(1000, std::sync::atomic::Ordering::SeqCst);
+        let error = engine
+            .export(ListRequest::new(MetaFilter::default(), 10))
+            .await
+            .expect_err("a listing at the clamp may be missing scopes");
+        assert!(
+            error.to_string().contains("more than 1000 scopes"),
+            "{error}"
+        );
+        assert!(
+            engine
+                .list(ListRequest::new(MetaFilter::default(), 10))
+                .await
+                .is_ok(),
+            "an ordinary read still answers with what it could list"
+        );
+    }
+}
+
+#[tokio::test]
 async fn an_export_below_the_clamp_reads_every_scope() {
     for (engine, state) in both().await {
         engine.store(items().remove(2)).await.unwrap();
