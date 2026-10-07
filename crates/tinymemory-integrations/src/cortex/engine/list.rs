@@ -114,24 +114,24 @@ impl CortexEngine {
         let mut pending = Vec::new();
         let mut seen = HashSet::new();
         let mut next = None;
-        // The cap guards against a cursor that never ends, for the whole
-        // request. Every scope gets one page on top of it: an empty scope (a
-        // registration left after a forget) costs a page of its own, so a
-        // bare cap would refuse a store with many of them while every cursor
-        // was ending. The scope listing bounds how many there are.
-        let budget = MAX_PAGES + scopes.len();
-        let mut pages = 0;
+        // Two caps. Per scope, against a cursor that never ends. Per request,
+        // on pages that held events, bounding the real work as before. An
+        // empty scope (a registration left after a forget) costs one empty
+        // page and counts only against its own cap, so many of them never
+        // refuse a request.
+        let mut filled_pages = 0;
         'scopes: for (index, scope) in scopes.iter().enumerate().skip(start) {
             let kind = scope.kind;
+            let mut pages = 0;
             if index > start || at.scope.as_deref() != Some(scope.path.as_str()) {
                 at = ListCursor::at(&scope.path);
             }
             loop {
                 pages += 1;
-                if pages > budget {
+                if pages > MAX_PAGES || filled_pages > MAX_PAGES {
                     return Err(Error::Engine(format!(
-                        "listing read {budget} pages (stopped in {}) without filling a page of \
-                         results; refusing to walk further",
+                        "listing read {MAX_PAGES} pages (stopped in {}) without filling a page \
+                         of results; refusing to walk further",
                         scope.path
                     )));
                 }
@@ -145,6 +145,9 @@ impl CortexEngine {
                     )
                     .await?;
                 let len = page.items.len();
+                if len > 0 {
+                    filled_pages += 1;
+                }
                 for (position, event) in page.items.iter().enumerate().skip(at.offset) {
                     at.offset = position + 1;
                     let id = event.get("id").and_then(Value::as_str);
