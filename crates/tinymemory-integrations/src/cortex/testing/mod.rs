@@ -67,6 +67,9 @@ pub(crate) struct Double {
     pub(crate) hide_listing_for: AtomicUsize,
     /// Listings answer 429 for this many requests.
     pub(crate) rate_limit_events: AtomicUsize,
+    /// Listings answer CortexDB's retriable `503 AUTHORIZATION_STATE_CHANGED`
+    /// for this many requests.
+    pub(crate) state_change_events: AtomicUsize,
     /// Writes answer the backend's own 429 (before any claim) this many
     /// times.
     pub(crate) rate_limit_experience: AtomicUsize,

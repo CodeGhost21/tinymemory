@@ -245,6 +245,9 @@ async fn events(
     if take_one(&state.rate_limit_events) {
         return fail(&state, 429, "RATE_LIMITED");
     }
+    if take_one(&state.state_change_events) {
+        return fail(&state, 503, "AUTHORIZATION_STATE_CHANGED");
+    }
     let delay = state.listing_delay_ms.load(Ordering::SeqCst);
     if delay > 0 {
         let _held = InFlight::enter(&state);
