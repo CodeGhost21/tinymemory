@@ -44,6 +44,25 @@ fn live_engine() -> Option<Arc<dyn MemoryEngine>> {
     ))
 }
 
+/// Searches `source` for `query` until it returns `want` hits or
+/// [`VISIBILITY`] runs out: a write is ranked by recall some time after it
+/// is accepted.
+async fn search_until(
+    brain: &Brain,
+    query: &str,
+    source: &BrainSource,
+    want: usize,
+) -> Vec<tinymemory_api::Hit> {
+    let deadline = Instant::now() + VISIBILITY;
+    loop {
+        let hits = brain.search(query, Some(source), 10).await.expect("search");
+        if hits.len() >= want || Instant::now() >= deadline {
+            return hits;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
+
 /// Recalls `query` until the pack contains every one of `wanted` or
 /// [`VISIBILITY`] runs out.
 async fn recall_until(memory: &AgentMemory, query: &str, wanted: &[&str]) -> ContextPack {
@@ -87,8 +106,15 @@ async fn live_an_agent_loop_runs_against_cortexdb() {
     .await
     .expect("convert");
     let source = document.source.clone();
+    assert_eq!(source, BrainSource::Files, "a converted file is a file");
     let brain = Brain::new(engine.clone(), layout.clone());
     let ingested = brain.ingest(document).await.expect("ingest");
+    let filed = search_until(&brain, "billing disputes", &BrainSource::Files, 1).await;
+    assert_eq!(filed.len(), 1, "the handbook is searchable in source:files");
+    assert_eq!(
+        filed[0].meta.namespace,
+        layout.brain(&BrainSource::Files).expect("files"),
+    );
 
     let support = AgentMemory::new(engine.clone(), layout.clone(), "support-01").expect("agent");
     let coder = AgentMemory::new(engine.clone(), layout.clone(), "coder-42").expect("agent");
@@ -418,10 +444,7 @@ async fn live_forgetting_a_source_forgets_its_collections() {
             .expect("store");
     }
 
-    let hits = brain
-        .search("deploy", Some(&BrainSource::Github), 10)
-        .await
-        .expect("search");
+    let hits = search_until(&brain, "deploy", &BrainSource::Github, 2).await;
     assert_eq!(hits.len(), 2, "the source and its collection: {hits:?}");
 
     let report = brain.forget(&BrainSource::Github).await.expect("forget");
