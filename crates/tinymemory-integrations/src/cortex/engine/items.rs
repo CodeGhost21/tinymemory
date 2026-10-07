@@ -34,6 +34,19 @@ pub(super) fn keeps(filter: &MetaFilter, kind: ItemKind, envelope: &Envelope) ->
 /// made a read's latency grow with the number of namespaces it hit.
 pub(super) const LOOKUPS_AT_ONCE: usize = 4;
 
+/// The whole conversation `envelope` holds when it is the conversation's
+/// only turn (`turn.count == 1`), as every turn a host logs per item is:
+/// nothing more is stored, so no lookup can add to it. `None` otherwise.
+pub(super) fn one_turn_conversation(envelope: &Envelope) -> Option<StoreItem> {
+    let one_turn = envelope.kind == ItemKind::Conversation
+        && envelope.turn.as_ref().is_some_and(|turn| turn.count == 1);
+    if one_turn {
+        rebuild_whole(std::slice::from_ref(envelope))
+    } else {
+        None
+    }
+}
+
 /// An envelope's metadata, located: for a piece of a chunked document, the
 /// item's metadata plus a `page:<n>` (or `page:<first>-<last>`) tag and a
 /// `section:<title>` tag for what the piece covers. Read-side only: the

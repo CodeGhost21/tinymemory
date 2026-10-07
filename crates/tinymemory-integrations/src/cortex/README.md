@@ -181,8 +181,9 @@ as prefixes, so they cannot be labelled and are filtered only client-side.
 - **Fetch (hybrid).** One recall per scope read with
   `budgets.per_layer_limits.events`. Events are decoded to items and the full
   filter is applied. Each item is kept once, at its best rank, and scopes are
-  interleaved rank by rank. A conversation hit is assembled from its turns
-  (four namespace lookups at a time). The score is `1/(1+rank)`, because CortexDB
+  interleaved rank by rank. A one-turn conversation hit is whole in its pack
+  event; only longer conversations are assembled from their turns (four
+  namespace lookups at a time). The score is `1/(1+rank)`, because CortexDB
   reports none. The cursor is an offset into the merged ranking; the next page
   asks again with a larger budget, capped at 1000 events.
 - **Recall.** One pack per scope read (four at a time), exact: a reach's

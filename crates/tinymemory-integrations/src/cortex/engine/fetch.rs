@@ -10,7 +10,9 @@
 //! are dropped keeping its best rank, and the scopes are interleaved rank by
 //! rank. The scopes are read a few at a time, in order. CortexDB reports no per-hit score, so the score is the rank's,
 //! `1 / (1 + rank)`. A conversation hit carries the whole conversation's
-//! text, assembled from all its turns.
+//! text: a one-turn conversation's comes from its pack event, and a longer
+//! one's is assembled from all its turns (`items::assembled`, a few
+//! namespaces at a time).
 //!
 //! **Beliefs.** When the request asks for beliefs
 //! ([`FetchRequest::beliefs`]), each scope's pack also budgets the `beliefs`
@@ -24,16 +26,16 @@
 //! asks again with a budget large enough to reach past it. A page ends the
 //! ranking (`next_cursor: None`) when no hit beyond it was found.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use futures::{StreamExt, TryStreamExt, stream};
 use serde_json::{Value, json};
-use tinymemory_api::{FetchPage, FetchRequest, Hit, ItemKind, MetaFilter};
+use tinymemory_api::{FetchPage, FetchRequest, Hit, ItemKind, MetaFilter, Namespace, StoreItem};
 
 use super::CortexEngine;
 use super::beliefs::{beliefs_in, merge};
 use super::cursor::{self, FetchCursor};
-use super::items::{event_hit, hit, keeps};
+use super::items::{event_hit, hit, keeps, one_turn_conversation};
 use crate::cortex::envelope::chunks::MAX_EVENT_TEXT_BYTES;
 use crate::cortex::envelope::{Envelope, decode_event, labels};
 use crate::cortex::error::{Error, Result};
@@ -177,15 +179,18 @@ impl CortexEngine {
             .skip(offset)
             .take(req.limit)
             .collect();
-        let conversations = self
-            .conversations(
-                &page
-                    .iter()
-                    .filter(|(_, e)| e.kind == ItemKind::Conversation)
-                    .map(|(_, e)| (e.id.clone(), e.meta.namespace.clone()))
-                    .collect::<Vec<_>>(),
-            )
-            .await?;
+        // A one-turn conversation is whole in its pack event; only longer
+        // ones are assembled from their turns.
+        let mut conversations: HashMap<String, StoreItem> = page
+            .iter()
+            .filter_map(|(_, e)| Some((e.id.clone(), one_turn_conversation(e)?)))
+            .collect();
+        let longer: Vec<(String, Namespace)> = page
+            .iter()
+            .filter(|(_, e)| e.kind == ItemKind::Conversation && !conversations.contains_key(&e.id))
+            .map(|(_, e)| (e.id.clone(), e.meta.namespace.clone()))
+            .collect();
+        conversations.extend(self.conversations(&longer).await?);
         let hits: Vec<Hit> = page
             .into_iter()
             .filter_map(|(rank, envelope)| {
