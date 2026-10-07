@@ -243,3 +243,39 @@ async fn an_accepted_write_neither_asks_for_indexing_nor_waits_to_be_listed() {
         "only the replay lookup, one per item: no visibility polling"
     );
 }
+
+/// The race a concurrent scope registration causes, through the engine's
+/// own read paths: a store's replay lookup and a list wait out up to five
+/// `503 AUTHORIZATION_STATE_CHANGED` answers, and a sixth gives up with the
+/// code leading the error.
+#[tokio::test]
+async fn reads_wait_out_a_scope_authorization_change() {
+    let (endpoint, state) = direct_double().await;
+    let engine = direct_engine(&endpoint);
+    state.state_change_events.store(5, Ordering::SeqCst);
+    engine.store(sample_items().remove(0)).await.unwrap();
+    assert_eq!(state.state_change_events.load(Ordering::SeqCst), 0);
+
+    state.state_change_events.store(5, Ordering::SeqCst);
+    let listed = engine
+        .list(ListRequest::new(MetaFilter::default(), 5))
+        .await
+        .unwrap();
+    assert_eq!(listed.items.len(), 1);
+
+    state.state_change_events.store(6, Ordering::SeqCst);
+    let before = state.count("GET /v1/events");
+    let error = engine
+        .list(ListRequest::new(MetaFilter::default(), 5))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&error, Error::Unavailable(m) if m.starts_with("[AUTHORIZATION_STATE_CHANGED]")),
+        "{error:?}"
+    );
+    assert_eq!(
+        state.count("GET /v1/events") - before,
+        6,
+        "six attempts, then it gives up"
+    );
+}

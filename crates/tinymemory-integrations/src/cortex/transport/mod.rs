@@ -37,6 +37,13 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// Attempts a retrying read makes.
 const READ_ATTEMPTS: u32 = 3;
 
+/// Attempts a retrying read makes when CortexDB answers that the scope
+/// authorization it was checking changed under it (`503
+/// AUTHORIZATION_STATE_CHANGED`, retriable): a concurrent write is
+/// registering a scope, which takes longer to settle than the usual cap
+/// waits, so it is waited out for about 8 seconds.
+const STATE_CHANGE_ATTEMPTS: u32 = 6;
+
 /// First read-retry gap; it doubles per attempt.
 const READ_BACKOFF: Duration = Duration::from_millis(250);
 
@@ -245,7 +252,7 @@ impl HttpClient {
                 loop {
                     tried += 1;
                     match self.attempt(method.clone(), path, body, None).await {
-                        Err(Error::Unavailable(_)) if tried < READ_ATTEMPTS => {
+                        Err(Error::Unavailable(message)) if tried < read_attempts(&message) => {
                             tokio::time::sleep(self.read_backoff * 2_u32.pow(tried - 1)).await;
                         }
                         other => return other,
@@ -386,6 +393,20 @@ pub(crate) fn credential_header(token: &str) -> Result<HeaderValue> {
     })?;
     header.set_sensitive(true);
     Ok(header)
+}
+
+/// How many attempts a read that failed with `message` gets: the error's
+/// code leads the message as `[CODE] ` (`failure`), matched exactly.
+fn read_attempts(message: &str) -> u32 {
+    let code = message
+        .strip_prefix('[')
+        .and_then(|rest| rest.split_once(']'))
+        .map(|(code, _)| code);
+    if code == Some(failure::STATE_CHANGED) {
+        STATE_CHANGE_ATTEMPTS
+    } else {
+        READ_ATTEMPTS
+    }
 }
 
 /// The body `idempotency_key` of an experience request: `tm3:` and the

@@ -147,8 +147,23 @@ pub(crate) fn direct_status_error(
         ),
         _ => format!("memory API {label} on {host} returned HTTP {status}"),
     };
+    // The one code a read waits out (`read_attempts`) leads the message as
+    // `[CODE] `, as a hosted code does, read from the body's own field.
+    let code = serde_json::from_str::<Value>(body).ok().and_then(|v| {
+        v.get("error_code")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    });
+    let head = match code.as_deref() {
+        Some(code @ STATE_CHANGED) => format!("[{code}] {head}"),
+        _ => head,
+    };
     by_status(status, head, &excerpt(body))
 }
+
+/// The error code CortexDB answers a read with while a scope's
+/// authorization changes under it (`503`, retriable).
+pub(crate) const STATE_CHANGED: &str = "AUTHORIZATION_STATE_CHANGED";
 
 /// The error for a TinyHumans failure: a non-2xx status or a
 /// `{success:false}` body. The backend's `errorCode` leads the message as
