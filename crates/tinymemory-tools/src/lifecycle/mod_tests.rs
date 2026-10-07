@@ -789,3 +789,41 @@ async fn older_turns_survive_a_prompt_window_bigger_than_the_overfetch() {
         "turns in the window stay out: {markdown}"
     );
 }
+
+#[tokio::test]
+async fn pooled_agents_log_to_one_node_and_keep_their_own_history() {
+    let engine = with_brain().await;
+    let chats: Namespace = "ws:main".parse().unwrap();
+    let layout = MemoryLayout::default()
+        .with_pooled_conversations(&chats)
+        .unwrap();
+    let coder = AgentMemory::new(engine.clone(), layout.clone(), "coder-42").unwrap();
+    let support = AgentMemory::new(engine.clone(), layout, "support-01").unwrap();
+    coder
+        .pre_turn(PreTurn::new("c1", 0, "the refund service deploy failed"))
+        .await
+        .unwrap();
+    support
+        .pre_turn(PreTurn::new("s1", 0, "refund delayed for a customer"))
+        .await
+        .unwrap();
+
+    let listed = engine
+        .list(ListRequest::new(
+            MetaFilter {
+                reach: Some(Reach::exact(chats)),
+                ..MetaFilter::kinds([ItemKind::Conversation])
+            },
+            10,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(listed.items.len(), 2, "both agents' turns at ws:main");
+
+    let md = support.recall("refund").await.unwrap().markdown;
+    let history = md.find("## This agent's history").unwrap();
+    let team = md.find("## Team conversations").unwrap();
+    assert!(md[history..team].contains("refund delayed"), "{md}");
+    assert!(!md[history..team].contains("deploy failed"), "{md}");
+    assert!(md[team..].contains("deploy failed"), "{md}");
+}
