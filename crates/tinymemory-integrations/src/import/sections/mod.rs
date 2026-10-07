@@ -115,10 +115,10 @@ impl Section {
     }
 }
 
-/// A SQL condition true when `column` holds text other than ASCII
-/// whitespace: the importer skips blank rows.
+/// A SQL condition true when `column` holds text that is not blank by
+/// [`str::trim`], the test the sections apply to the rows they read.
 pub(crate) fn has_text(column: &str) -> String {
-    format!("trim({column}, ' ' || char(9) || char(10) || char(13)) <> ''")
+    format!("{}({column})", crate::import::workspace::HAS_TEXT_FN)
 }
 
 /// A SQLite count as `u64`.

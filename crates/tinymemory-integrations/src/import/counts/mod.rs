@@ -14,10 +14,10 @@ use crate::import::workspace::LegacyWorkspace;
 
 /// How many items each section of a legacy workspace yields.
 ///
-/// Exact for every section but two edge cases, where it may count an item
-/// that [`crate::import::LegacyWorkspace::items`] then skips: a row whose
-/// text is only whitespace other than space, tab, CR or LF, and a chunk
-/// source whose bodies all resolve to blank files.
+/// Exact for every section but one edge case, where it may count an item
+/// that [`crate::import::LegacyWorkspace::items`] then skips: a chunk source
+/// whose stored previews are blank and whose bodies all resolve to blank
+/// files (a count reads no file).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LegacyCounts {
     /// `memory_docs` documents.
@@ -33,10 +33,19 @@ pub struct LegacyCounts {
 }
 
 impl LegacyCounts {
-    /// Every item, across the sections.
+    /// Every item, across the sections, saturating at `u64::MAX` (a value
+    /// deserialised from elsewhere may hold anything).
     #[must_use]
     pub fn total(&self) -> u64 {
-        self.documents + self.chunks + self.conversations + self.learnings + self.profile
+        [
+            self.documents,
+            self.chunks,
+            self.conversations,
+            self.learnings,
+            self.profile,
+        ]
+        .into_iter()
+        .fold(0, u64::saturating_add)
     }
 
     /// Whether the workspace holds nothing to import.

@@ -1168,3 +1168,77 @@ mod migration {
         assert_send(&migrate(&engine, legacy, None));
     }
 }
+
+#[test]
+fn counts_skip_rows_blank_by_unicode_whitespace_as_the_import_does() {
+    let (dir, conn) = workspace(support::MEMORY_DDL);
+    // A no-break space and an ideographic space: blank to `str::trim`, not
+    // to SQLite's own `trim`.
+    let blank = "\u{00a0}\u{3000}";
+    doc(
+        &conn,
+        "d1",
+        "document_notes",
+        None,
+        "t",
+        blank,
+        "[]",
+        "{}",
+        T0,
+    );
+    doc(&conn, "d2", "global", None, "t", blank, "[]", "{}", T0);
+    turn(&conn, "t-1", 1.0, "user", blank, None);
+    facet(
+        &conn,
+        "f1",
+        "preference",
+        "k",
+        blank,
+        0.5,
+        T0,
+        "active",
+        "auto",
+        None,
+    );
+    doc(
+        &conn,
+        "d3",
+        "document_notes",
+        None,
+        "t",
+        "kept",
+        "[]",
+        "{}",
+        T0,
+    );
+    drop(conn);
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let counts = ws.counts().unwrap();
+    assert_eq!(counts, counted(&all(&ws)));
+    assert_eq!(counts.total(), 1);
+}
+
+#[test]
+fn refuses_a_memory_db_that_is_not_a_file_even_beside_a_chunk_store() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("memory/memory.db")).unwrap();
+    let chunks = chunk_store(dir.path());
+    chunk(&chunks, "k1", "chat", "c1", 0, 3_000, "c: one", "[]", None);
+    drop(chunks);
+    let err = LegacyWorkspace::open(dir.path()).unwrap_err();
+    assert!(matches!(err, Error::NotLegacy { .. }), "{err:?}");
+    assert!(
+        err.to_string().contains("memory/memory.db is not a file"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_counts_total_saturates() {
+    let counts = LegacyCounts {
+        documents: u64::MAX,
+        chunks: 1,
+        ..LegacyCounts::default()
+    };
+    assert_eq!(counts.total(), u64::MAX);
+}

@@ -23,6 +23,8 @@ mod schema;
 
 use std::path::{Path, PathBuf};
 
+use rusqlite::functions::FunctionFlags;
+use rusqlite::types::ValueRef;
 use rusqlite::{Connection, OpenFlags};
 
 pub(crate) use schema::{ChunkStore, MemorySchema};
@@ -76,6 +78,9 @@ impl LegacyWorkspace {
             return Err(not_legacy(&root, "not a directory"));
         }
         let db = root.join("memory").join("memory.db");
+        if db.exists() && !db.is_file() {
+            return Err(not_legacy(&root, "memory/memory.db is not a file"));
+        }
         let (memory, schema) = if db.is_file() {
             let memory = open_read_only(&db)?;
             let schema = match MemorySchema::probe(&memory) {
@@ -154,13 +159,31 @@ impl LegacyWorkspace {
     }
 }
 
-/// Opens a SQLite file read-only.
+/// Opens a SQLite file read-only, with [`HAS_TEXT_FN`] attached.
 pub(crate) fn open_read_only(path: &Path) -> rusqlite::Result<Connection> {
-    Connection::open_with_flags(
+    let conn = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
+    )?;
+    conn.create_scalar_function(
+        HAS_TEXT_FN,
+        1,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| {
+            Ok(match ctx.get_raw(0) {
+                ValueRef::Text(bytes) => !String::from_utf8_lossy(bytes).trim().is_empty(),
+                _ => false,
+            })
+        },
+    )?;
+    Ok(conn)
 }
+
+/// A SQL function true when its argument is text with something other than
+/// whitespace in it, by Rust's [`str::trim`]: the test every section applies
+/// to the rows it reads, so a count in SQL skips exactly the rows the import
+/// skips.
+pub(crate) const HAS_TEXT_FN: &str = "tm_has_text";
 
 /// Whether SQLite refused the file as not being a database.
 pub(crate) fn is_not_a_database(err: &rusqlite::Error) -> bool {
