@@ -1547,3 +1547,33 @@ fn a_partial_event_table_is_skipped() {
     assert_eq!(ws.items().count(), 0);
     assert_eq!(ws.counts().unwrap().events, 0);
 }
+
+#[test]
+fn blank_events_and_lessons_never_fill_a_page() {
+    let (dir, conn) = workspace(support::MEMORY_DDL);
+    conn.execute_batch(support::EVENTS_DDL).unwrap();
+    conn.execute_batch(
+        "INSERT INTO event_log (event_id, segment_id, session_id, event_type, content,
+           confidence, created_at) VALUES
+           ('e1', 's', 't', 'fact', ' ', 0.5, 1.0), ('e2', 's', 't', 'fact', 'kept', 0.5, 1.0);",
+    )
+    .unwrap();
+    turn(&conn, "t", 1.0, "assistant", "a", None);
+    turn(&conn, "t", 2.0, "assistant", "b", None);
+    conn.execute_batch(
+        "UPDATE episodic_log SET lesson = char(160) WHERE content = 'a';
+         UPDATE episodic_log SET lesson = 'kept lesson' WHERE content = 'b';",
+    )
+    .unwrap();
+    drop(conn);
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let ids: Vec<String> = ws
+        .items()
+        .with_page_size(1)
+        .map(|i| source_id(&i.unwrap().item))
+        .filter(|id| !id.starts_with("episodic_log:t"))
+        .collect();
+    assert_eq!(ids, ["event_log:e2", "episodic_log:lesson:2"]);
+    let counts = ws.counts().unwrap();
+    assert_eq!((counts.events, counts.lessons), (1, 1));
+}

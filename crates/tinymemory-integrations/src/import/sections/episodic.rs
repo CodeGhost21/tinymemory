@@ -121,10 +121,12 @@ pub(super) fn lessons(
     let Some(memory) = ws.memory.as_ref().filter(|_| ws.schema.lesson) else {
         return Ok(Vec::new());
     };
-    let mut stmt = memory.prepare(
+    // Same rows `count_lessons` counts: turns whose lesson has text.
+    let mut stmt = memory.prepare(&format!(
         "SELECT id, session_id, timestamp, lesson FROM episodic_log \
-         WHERE (?1 IS NULL OR id > ?1) AND lesson IS NOT NULL ORDER BY id LIMIT ?2",
-    )?;
+         WHERE (?1 IS NULL OR id > ?1) AND {} ORDER BY id LIMIT ?2",
+        has_text("lesson")
+    ))?;
     let rows = stmt.query_map(params![after, sql_limit(limit)], |row| {
         Ok((
             row.get::<_, i64>(0)?,
@@ -162,7 +164,7 @@ pub(super) fn count_lessons(ws: &LegacyWorkspace) -> Result<u64> {
         return Ok(0);
     };
     let sql = format!(
-        "SELECT COUNT(*) FROM episodic_log WHERE lesson IS NOT NULL AND {}",
+        "SELECT COUNT(*) FROM episodic_log WHERE {}",
         has_text("lesson")
     );
     Ok(count_of(memory.query_row(&sql, [], |row| row.get(0))?))

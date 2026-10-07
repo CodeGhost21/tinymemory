@@ -41,10 +41,12 @@ pub(super) fn page(
     let Some(memory) = ws.memory.as_ref().filter(|_| ws.schema.event_log) else {
         return Ok(Vec::new());
     };
-    let mut stmt = memory.prepare(
+    // Same rows `count` counts: events whose content has text.
+    let mut stmt = memory.prepare(&format!(
         "SELECT event_id, session_id, event_type, content, subject, confidence, created_at \
-         FROM event_log WHERE (?1 IS NULL OR event_id > ?1) ORDER BY event_id LIMIT ?2",
-    )?;
+         FROM event_log WHERE (?1 IS NULL OR event_id > ?1) AND {} ORDER BY event_id LIMIT ?2",
+        has_text("content")
+    ))?;
     let rows = stmt.query_map(params![after, sql_limit(limit)], |row| {
         Ok(EventRow {
             event_id: row.get(0)?,
