@@ -225,6 +225,13 @@ async fn events(
     if take_one(&state.rate_limit_events) {
         return fail(&state, 429, "RATE_LIMITED");
     }
+    let delay = state.listing_delay_ms.load(Ordering::SeqCst);
+    if delay > 0 {
+        let now = state.listings_in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+        state.listings_peak.fetch_max(now, Ordering::SeqCst);
+        tokio::time::sleep(std::time::Duration::from_millis(delay as u64)).await;
+        state.listings_in_flight.fetch_sub(1, Ordering::SeqCst);
+    }
     let mut page = state.log.lock().unwrap().page(&params);
     if take_one(&state.hide_listing_for) {
         page["items"] = json!([]);
