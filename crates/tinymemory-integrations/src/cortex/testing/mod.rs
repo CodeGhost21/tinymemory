@@ -48,6 +48,8 @@ pub(crate) struct Seen {
     pub(crate) builds: Vec<serde_json::Value>,
     /// Every write body (`experience` and `experience/bulk`), whole.
     pub(crate) writes: Vec<serde_json::Value>,
+    /// Every scope registration body that registered a scope.
+    pub(crate) registrations: Vec<serde_json::Value>,
 }
 
 /// One double's state and knobs.

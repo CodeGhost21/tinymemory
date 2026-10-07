@@ -143,6 +143,49 @@ async fn the_live_server_upholds_the_contract() {
     }
 }
 
+/// Layout v3 on the real server: the whole contract below a fresh person's
+/// root, which a direct engine registers with that person as owner.
+#[tokio::test]
+async fn the_live_server_upholds_the_contract_in_layout_v3() {
+    let _alone = ONE_AT_A_TIME.lock().await;
+    let root = format!("user:{}", run_id());
+    for (wire, engine) in live_engines() {
+        eprintln!("layout v3 conformance on {wire} below {root}");
+        let engine = engine
+            .with_scope_root(&root, Some(&root))
+            .expect("a valid scope root");
+        tinymemory_api::conformance::run(&engine)
+            .await
+            .unwrap_or_else(|error| panic!("the live {wire} engine conforms in v3: {error}"));
+    }
+    let Ok(url) = std::env::var("TINYMEMORY_LIVE_CORTEXDB_URL") else {
+        return;
+    };
+    let key = std::env::var("TINYMEMORY_TEST_CORTEX_KEY").unwrap_or_else(|_| DEFAULT_KEY.into());
+    let record: serde_json::Value = reqwest::Client::new()
+        .get(format!("{url}/v1/scopes"))
+        .query(&[("path", root.as_str())])
+        .bearer_auth(key)
+        .send()
+        .await
+        .expect("look the root up")
+        .json()
+        .await
+        .expect("a scope record");
+    let owners: Vec<&str> = record["members"]
+        .as_array()
+        .expect("members")
+        .iter()
+        .filter(|member| member["role"] == "owner")
+        .filter_map(|member| member["actor"].as_str())
+        .collect();
+    assert!(owners.contains(&root.as_str()), "{record}");
+    assert_eq!(
+        record["auto_provisioned"], false,
+        "registered, not auto-made: {record}"
+    );
+}
+
 #[tokio::test]
 async fn every_kind_is_exported_whole_across_pages() {
     let _alone = ONE_AT_A_TIME.lock().await;

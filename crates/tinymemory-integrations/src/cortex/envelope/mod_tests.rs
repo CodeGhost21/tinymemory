@@ -74,7 +74,10 @@ fn a_conversation_is_one_event_per_turn_in_order() {
         .map(|e| e.turn.as_ref().map(|t| (t.index, t.count)))
         .collect();
     assert_eq!(turns, vec![Some((0, 2)), Some((1, 2))]);
-    let request = envelopes[1].request(&envelopes[1].encode_checked().unwrap());
+    let request = envelopes[1].request(
+        &envelopes[1].encode_checked().unwrap(),
+        &ScopeLayout::default(),
+    );
     assert_eq!(request["content"]["role"], "assistant");
     assert_eq!(request["scope"], "app:tinymemory/app:conversations");
     assert_eq!(request["modality"], "conversation");
@@ -119,7 +122,7 @@ fn observed_at_and_labels_reach_the_event_context() {
     meta.observed_at = Some("2026-01-02T03:04:05Z".parse().unwrap());
     let item = StoreItem::document("text", meta);
     let envelope = &Envelope::for_item(&item, "id").unwrap()[0];
-    let request = envelope.request(&envelope.encode_checked().unwrap());
+    let request = envelope.request(&envelope.encode_checked().unwrap(), &ScopeLayout::default());
     assert_eq!(
         request["context"]["observed_at"],
         "2026-01-02T03:04:05+00:00"
@@ -130,14 +133,14 @@ fn observed_at_and_labels_reach_the_event_context() {
     assert!(key.starts_with("tm3:") && key.len() <= 64, "{key}");
     assert_eq!(
         request["idempotency_key"],
-        envelope.request(&envelope.encode_checked().unwrap())["idempotency_key"],
+        envelope.request(&envelope.encode_checked().unwrap(), &ScopeLayout::default())["idempotency_key"],
         "the same body, the same key: a retry is a replay"
     );
     let mut later = envelope.clone();
     later.meta.observed_at = Some("2026-01-03T00:00:00Z".parse().unwrap());
     assert_ne!(
         request["idempotency_key"],
-        later.request(&later.encode_checked().unwrap())["idempotency_key"],
+        later.request(&later.encode_checked().unwrap(), &ScopeLayout::default())["idempotency_key"],
         "any change to the body is a new key, never a reused key's 409"
     );
 }
@@ -195,7 +198,7 @@ fn an_item_is_written_to_its_namespace_scope() {
     let item = StoreItem::document("notes", meta);
     let id = item.fingerprint();
     let envelope = Envelope::for_item(&item, &id).unwrap().remove(0);
-    let request = envelope.request(&envelope.encode_checked().unwrap());
+    let request = envelope.request(&envelope.encode_checked().unwrap(), &ScopeLayout::default());
     assert_eq!(
         request["scope"],
         "app:tinymemory/agent:researcher/app:documents"
@@ -356,14 +359,14 @@ fn an_item_that_opts_out_of_derivation_asks_to_extract_nothing() {
     let envelope = Envelope::for_item(&item, &item.fingerprint())
         .unwrap()
         .remove(0);
-    let request = envelope.request(&envelope.encode_checked().unwrap());
+    let request = envelope.request(&envelope.encode_checked().unwrap(), &ScopeLayout::default());
     assert_eq!(request["directives"], serde_json::json!({ "extract": [] }));
 
     let plain = StoreItem::document("A note.", meta());
     let envelope = Envelope::for_item(&plain, &plain.fingerprint())
         .unwrap()
         .remove(0);
-    let request = envelope.request(&envelope.encode_checked().unwrap());
+    let request = envelope.request(&envelope.encode_checked().unwrap(), &ScopeLayout::default());
     assert!(request.get("directives").is_none(), "{request}");
 }
 
@@ -387,7 +390,7 @@ fn an_event_is_written_as_its_own_text_with_the_envelope_in_labels() {
         .remove(0);
     let encoded = envelope.encode_checked().unwrap();
     assert_eq!(encoded.text, "Refunds take five days.", "prose, not JSON");
-    let request = envelope.request(&encoded);
+    let request = envelope.request(&encoded, &ScopeLayout::default());
     let labels: Vec<&str> = request["context"]["labels"]
         .as_array()
         .unwrap()
@@ -416,7 +419,8 @@ fn every_piece_and_turn_round_trips_through_its_labels() {
         let read: Vec<Envelope> = envelopes
             .iter()
             .map(|envelope| {
-                let request = envelope.request(&envelope.encode_checked().unwrap());
+                let request =
+                    envelope.request(&envelope.encode_checked().unwrap(), &ScopeLayout::default());
                 assert!(
                     !request["content"]["text"]
                         .as_str()
@@ -470,7 +474,10 @@ fn an_envelope_too_big_for_its_labels_or_with_no_text_is_written_as_v2() {
             .iter()
             .any(|label| label.starts_with("tm:e:"))
     );
-    let decoded = decode_event(&stored(&envelope.request(&encoded))).unwrap();
+    let decoded = decode_event(&stored(
+        &envelope.request(&encoded, &ScopeLayout::default()),
+    ))
+    .unwrap();
     assert_eq!(rebuild(&[decoded.envelope]).unwrap(), item);
 
     let mut silent = Envelope::for_item(&conversation(), "id").unwrap().remove(0);
@@ -478,7 +485,7 @@ fn an_envelope_too_big_for_its_labels_or_with_no_text_is_written_as_v2() {
     let encoded = silent.encode_checked().unwrap();
     assert!(encoded.text.starts_with('{'), "never an empty message text");
     assert_eq!(
-        decode_event(&stored(&silent.request(&encoded)))
+        decode_event(&stored(&silent.request(&encoded, &ScopeLayout::default())))
             .unwrap()
             .envelope
             .text,
@@ -533,7 +540,7 @@ fn a_tool_turn_asks_to_extract_nothing_and_other_turns_do_not() {
     let extract: Vec<Value> = Envelope::for_item(&item, "id")
         .unwrap()
         .iter()
-        .map(|envelope| envelope.request(&envelope.encode_checked().unwrap())["directives"].clone())
+        .map(|envelope| envelope.request(&envelope.encode_checked().unwrap(), &ScopeLayout::default())["directives"].clone())
         .collect();
     assert_eq!(
         extract,

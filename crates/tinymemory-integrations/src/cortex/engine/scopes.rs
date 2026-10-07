@@ -30,7 +30,7 @@ use tinymemory_api::{ItemKind, MetaFilter, Namespace, Reach};
 
 use super::CortexEngine;
 use super::items::admitted;
-use crate::cortex::envelope::{ROOT_SCOPE, parse_scope, scope_path};
+use crate::cortex::envelope::ScopeLayout;
 use crate::cortex::error::Result;
 
 /// One scope to read: a kind at a namespace node.
@@ -47,14 +47,14 @@ pub(crate) struct KindScope {
 }
 
 impl KindScope {
-    /// The scope of `kind` at `namespace`.
-    pub(crate) fn new(namespace: Namespace, kind: ItemKind) -> Self {
+    /// The scope of `kind` at `namespace` in `layout`.
+    pub(crate) fn new(layout: &ScopeLayout, namespace: Namespace, kind: ItemKind) -> Self {
         Self {
             order: ItemKind::ALL
                 .iter()
                 .position(|k| *k == kind)
                 .unwrap_or_default(),
-            path: scope_path(&namespace, kind),
+            path: layout.path(&namespace, kind),
             namespace,
             kind,
         }
@@ -62,14 +62,14 @@ impl KindScope {
 }
 
 /// The scopes `reach` reads exactly (no discovery): its nodes for each kind.
-pub(crate) fn known(reach: &Reach, kinds: &[ItemKind]) -> Vec<KindScope> {
+pub(crate) fn known(layout: &ScopeLayout, reach: &Reach, kinds: &[ItemKind]) -> Vec<KindScope> {
     let mut scopes: Vec<KindScope> = reach
         .nodes()
         .into_iter()
         .flat_map(|node| {
             kinds
                 .iter()
-                .map(move |kind| KindScope::new(node.clone(), *kind))
+                .map(move |kind| KindScope::new(layout, node.clone(), *kind))
         })
         .collect();
     scopes.sort();
@@ -83,16 +83,6 @@ enum Listing {
     Lenient,
     /// Refuses: the caller must see every scope.
     Complete,
-}
-
-/// The scope-listing prefix that covers `node` and everything below it.
-fn node_prefix(node: &Namespace) -> String {
-    if node.is_root() {
-        return ROOT_SCOPE.to_string();
-    }
-    let mut path = scope_path(node, ItemKind::Document);
-    path.truncate(path.rfind('/').unwrap_or(path.len()));
-    path
 }
 
 /// Whether reading `reach` needs the engine's list of nodes.
@@ -129,7 +119,7 @@ impl CortexEngine {
         let Some(base) = reach.filter(|_| !needs_discovery(reach)) else {
             return self.discovered(reach, &kinds, listing).await;
         };
-        Ok(known(base, &kinds))
+        Ok(known(&self.layout, base, &kinds))
     }
 
     /// The scopes of `kinds` in `reach` that CortexDB has registered — only
@@ -138,12 +128,12 @@ impl CortexEngine {
     /// wasted model time.
     pub(super) async fn held(&self, reach: &Reach, kinds: &[ItemKind]) -> Result<Vec<KindScope>> {
         let mut found = BTreeSet::new();
-        for path in self.log.scopes(ROOT_SCOPE).await? {
-            let Some((namespace, kind)) = parse_scope(&path) else {
+        for path in self.log.scopes(self.layout.root()).await? {
+            let Some((namespace, kind)) = self.layout.parse(&path) else {
                 continue;
             };
             if reach.admits(&namespace) && kinds.contains(&kind) {
-                found.insert(KindScope::new(namespace, kind));
+                found.insert(KindScope::new(&self.layout, namespace, kind));
             }
         }
         Ok(found.into_iter().collect())
@@ -162,12 +152,12 @@ impl CortexEngine {
             ..reach.clone()
         };
         let mut found = BTreeSet::new();
-        for path in self.log.all_scopes(&node_prefix(&reach.at)).await? {
-            let Some((namespace, kind)) = parse_scope(&path) else {
+        for path in self.log.all_scopes(&self.layout.node_prefix(&reach.at)).await? {
+            let Some((namespace, kind)) = self.layout.parse(&path) else {
                 continue;
             };
             if reach.admits(&namespace) && kinds.contains(&kind) {
-                found.insert(KindScope::new(namespace, kind));
+                found.insert(KindScope::new(&self.layout, namespace, kind));
             }
         }
         Ok(found.into_iter().collect())
@@ -181,22 +171,24 @@ impl CortexEngine {
         listing: Listing,
     ) -> Result<Vec<KindScope>> {
         let mut found: BTreeSet<KindScope> = match reach {
-            Some(reach) => known(reach, kinds).into_iter().collect(),
-            None => known(&Reach::exact(Namespace::ROOT), kinds)
+            Some(reach) => known(&self.layout, reach, kinds).into_iter().collect(),
+            None => known(&self.layout, &Reach::exact(Namespace::ROOT), kinds)
                 .into_iter()
                 .collect(),
         };
-        let prefix = node_prefix(reach.map_or(&Namespace::ROOT, |reach| &reach.at));
+        let prefix = self
+            .layout
+            .node_prefix(reach.map_or(&Namespace::ROOT, |reach| &reach.at));
         let paths = match listing {
             Listing::Lenient => self.log.scopes(&prefix).await?,
             Listing::Complete => self.log.all_scopes(&prefix).await?,
         };
         for path in paths {
-            let Some((namespace, kind)) = parse_scope(&path) else {
+            let Some((namespace, kind)) = self.layout.parse(&path) else {
                 continue;
             };
             if Reach::admitted_by(reach, &namespace) && kinds.contains(&kind) {
-                found.insert(KindScope::new(namespace, kind));
+                found.insert(KindScope::new(&self.layout, namespace, kind));
             }
         }
         Ok(found.into_iter().collect())
@@ -212,12 +204,13 @@ impl CortexEngine {
     /// [`crate::cortex::Error::Engine`] when the scope listing reaches its
     /// limit, and the backend failures of the listing itself.
     pub(super) async fn every_scope(&self) -> Result<Vec<KindScope>> {
-        let mut found: BTreeSet<KindScope> = known(&Reach::exact(Namespace::ROOT), &ItemKind::ALL)
-            .into_iter()
-            .collect();
-        for path in self.log.all_scopes(ROOT_SCOPE).await? {
-            if let Some((namespace, kind)) = parse_scope(&path) {
-                found.insert(KindScope::new(namespace, kind));
+        let mut found: BTreeSet<KindScope> =
+            known(&self.layout, &Reach::exact(Namespace::ROOT), &ItemKind::ALL)
+                .into_iter()
+                .collect();
+        for path in self.log.all_scopes(self.layout.root()).await? {
+            if let Some((namespace, kind)) = self.layout.parse(&path) {
+                found.insert(KindScope::new(&self.layout, namespace, kind));
             }
         }
         Ok(found.into_iter().collect())

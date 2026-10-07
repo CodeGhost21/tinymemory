@@ -86,6 +86,14 @@ app:tinymemory/agent:researcher/app:{documents,conversations,learnings} an agent
 app:tinymemory/team:acme/agent:writer/app:learnings                     a team member
 ```
 
+That is the legacy layout, the default. With a scope root
+(`EngineSettings::scope_root`, `CortexEngine::with_scope_root`), such as one
+person's `user:<id>`, every item is laid out below that root instead, each
+kind under a leaf of its own (`user:42/ws:main/app:conversations`,
+`user:42/app:brain/source:gmail`), and a direct engine registers the root
+with its owner before the first write. See
+[cortex-layout.md](../../../../docs/architecture/cortex-layout.md).
+
 The hosted backend also re-roots every scope under the caller's tenant.
 `MetaFilter.kinds` and `MetaFilter.reach` pick the scopes read: a reach's own
 node and inherited ancestors are known; a subtree reach or an unscoped read

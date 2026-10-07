@@ -32,7 +32,7 @@ use super::CortexEngine;
 use super::cursor::{self, ListCursor};
 use super::items::{hit, keeps};
 use super::scopes::KindScope;
-use crate::cortex::envelope::{Envelope, decode_event, labels, parse_scope, rebuild};
+use crate::cortex::envelope::{Envelope, ScopeLayout, decode_event, labels, rebuild};
 use crate::cortex::error::{Error, Result};
 use crate::cortex::log::{MAX_PAGES, PAGE_SIZE};
 
@@ -109,7 +109,7 @@ impl CortexEngine {
             Some(raw) => cursor::decode::<ListCursor>(TAG, raw)?,
             None => ListCursor::at(&scopes[0].path),
         };
-        let start = resume_at(&scopes, &mut at);
+        let start = resume_at(&self.layout, &scopes, &mut at);
         let narrowing = labels::narrowing(&req.filter);
         let mut pending = Vec::new();
         let mut seen = HashSet::new();
@@ -247,7 +247,7 @@ impl CortexEngine {
 /// Where in `scopes` a listing at `at` resumes. The cursor's scope is found
 /// by path; one that no longer exists resumes at the next scope in order,
 /// from its first page.
-fn resume_at(scopes: &[KindScope], at: &mut ListCursor) -> usize {
+fn resume_at(layout: &ScopeLayout, scopes: &[KindScope], at: &mut ListCursor) -> usize {
     let Some(path) = at.scope.clone() else {
         return 0;
     };
@@ -255,10 +255,10 @@ fn resume_at(scopes: &[KindScope], at: &mut ListCursor) -> usize {
         return index;
     }
     *at = ListCursor::default();
-    let Some((namespace, kind)) = parse_scope(&path) else {
+    let Some((namespace, kind)) = layout.parse(&path) else {
         return scopes.len();
     };
-    let gone = KindScope::new(namespace, kind);
+    let gone = KindScope::new(layout, namespace, kind);
     scopes
         .iter()
         .position(|scope| *scope > gone)

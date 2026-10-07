@@ -37,7 +37,7 @@ use super::CortexEngine;
 use super::fetch::{recall_body, whole_items_budget};
 use super::items::hit;
 use crate::cortex::descriptor::{CortexWire, Route};
-use crate::cortex::envelope::parse_scope;
+use crate::cortex::envelope::ScopeLayout;
 use crate::cortex::error::{Error, Result};
 use crate::cortex::transport::{Attempts, urlencode};
 
@@ -67,7 +67,7 @@ fn part(value: Option<&Value>) -> Option<String> {
 /// One belief as a learning hit at `rank`; `None` for a belief that is not
 /// shown (a stance other than [`SHOWN_STANCES`], no claim, or a scope this
 /// crate did not write).
-pub(super) fn belief_hit(belief: &Value, rank: usize) -> Option<Hit> {
+pub(super) fn belief_hit(layout: &ScopeLayout, belief: &Value, rank: usize) -> Option<Hit> {
     let id = belief.get("id").and_then(Value::as_str)?;
     let stance = belief
         .get("stance")
@@ -76,7 +76,7 @@ pub(super) fn belief_hit(belief: &Value, rank: usize) -> Option<Hit> {
     if !SHOWN_STANCES.contains(&stance) {
         return None;
     }
-    let (namespace, _) = parse_scope(belief.get("scope").and_then(Value::as_str)?)?;
+    let (namespace, _) = layout.parse(belief.get("scope").and_then(Value::as_str)?)?;
     let claim = belief.get("claim")?;
     let predicate = part(claim.get("predicate"))?.replace('_', " ");
     let object = part(claim.get("object"))?;
@@ -105,14 +105,14 @@ pub(super) fn belief_hit(belief: &Value, rank: usize) -> Option<Hit> {
 }
 
 /// The beliefs of one recall pack or listing.
-pub(super) fn beliefs_in(answer: &Value, pointer: &str) -> Vec<Hit> {
+pub(super) fn beliefs_in(layout: &ScopeLayout, answer: &Value, pointer: &str) -> Vec<Hit> {
     answer
         .pointer(pointer)
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
         .enumerate()
-        .filter_map(|(rank, belief)| belief_hit(belief, rank))
+        .filter_map(|(rank, belief)| belief_hit(layout, belief, rank))
         .collect()
 }
 
@@ -176,7 +176,7 @@ impl CortexEngine {
         });
         body["budgets"]["max_tokens"] = json!(whole_items_budget(limit));
         let pack = self.log.recall(&body).await?;
-        Ok(beliefs_in(&pack, "/layers/beliefs"))
+        Ok(beliefs_in(&self.layout, &pack, "/layers/beliefs"))
     }
 
     /// The beliefs CortexDB lists for `scope`, at most `limit`.
@@ -196,7 +196,7 @@ impl CortexEngine {
             Err(Error::NotFound(_)) => return Ok(Vec::new()),
             Err(error) => return Err(error),
         };
-        Ok(beliefs_in(&listed, "/items"))
+        Ok(beliefs_in(&self.layout, &listed, "/items"))
     }
 }
 

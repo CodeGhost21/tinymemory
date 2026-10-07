@@ -428,6 +428,28 @@ async fn build_beliefs(
     )
 }
 
+/// CortexDB's `POST v1/scopes`: registers a path once; a second time is
+/// `409 SCOPE_REGISTRATION_EXISTS`.
+async fn register_scope(
+    State(state): State<Shared>,
+    uri: Uri,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Reply {
+    if let Some(early) = gate(&state, "POST", &uri, &headers) {
+        return early;
+    }
+    let Some(path) = body["path"].as_str().filter(|path| !path.is_empty()) else {
+        return fail(&state, 422, "INVALID_BODY");
+    };
+    let mut seen = state.seen.lock().unwrap();
+    if seen.registrations.iter().any(|known| known["path"] == path) {
+        return fail(&state, 409, "SCOPE_REGISTRATION_EXISTS");
+    }
+    seen.registrations.push(body.clone());
+    ok(&state, 201, body)
+}
+
 async fn beliefs(
     State(state): State<Shared>,
     uri: Uri,
@@ -457,6 +479,7 @@ pub(super) fn direct(state: Shared) -> Router {
         .route("/v1/answer", post(answer))
         .route("/v1/admin/health", get(health))
         .route("/v1/scopes/list", get(scopes))
+        .route("/v1/scopes", post(register_scope))
         .route("/v1/beliefs/build", post(build_beliefs))
         .route("/v1/beliefs", get(beliefs))
         .with_state(state)

@@ -9,10 +9,14 @@ fn ns(value: &str) -> Namespace {
 #[test]
 fn an_agent_reads_its_node_and_ancestors_per_kind() {
     let reach = Reach::of(ns("team:acme/agent:writer"));
-    let paths: Vec<String> = known(&reach, &[ItemKind::Learning, ItemKind::Document])
-        .into_iter()
-        .map(|scope| scope.path)
-        .collect();
+    let paths: Vec<String> = known(
+        &ScopeLayout::default(),
+        &reach,
+        &[ItemKind::Learning, ItemKind::Document],
+    )
+    .into_iter()
+    .map(|scope| scope.path)
+    .collect();
     assert_eq!(
         paths,
         [

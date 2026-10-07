@@ -25,6 +25,7 @@ mod scopes;
 mod store;
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
 use tinymemory_api::{
@@ -36,6 +37,7 @@ use tinymemory_api::{
 
 use crate::cortex::credential::{BearerSource, CortexCredential};
 use crate::cortex::descriptor::{CortexWire, Route, direct_consolidation};
+use crate::cortex::envelope::ScopeLayout;
 use crate::cortex::error::{Error, Result};
 use crate::cortex::log::Log;
 use crate::cortex::transport::{HttpClient, health_reason, urlencode};
@@ -55,6 +57,11 @@ const HEALTH_PROBE_SCOPE: &str = "tmh:probe";
 pub struct CortexEngine {
     descriptor: EngineDescriptor,
     log: Log,
+    layout: ScopeLayout,
+    /// The actor a v3 root is registered as owned by.
+    owner: Option<String>,
+    /// Whether the v3 root is registered (shared by clones).
+    registered: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for CortexEngine {
@@ -88,7 +95,72 @@ impl CortexEngine {
         Ok(Self {
             descriptor,
             log: Log::new(client),
+            layout: ScopeLayout::Legacy,
+            owner: None,
+            registered: Arc::new(AtomicBool::new(false)),
         })
+    }
+
+    /// The same engine, laying its scopes out below `root` (layout v3)
+    /// instead of the legacy `app:tinymemory` tree: one person's memory as
+    /// one subtree (`user:<id>`), each kind under a leaf of its own (see the
+    /// `envelope` module docs). With an `owner` actor (`user:<id>`), a
+    /// direct engine registers the root as owned by it before its first
+    /// write, so the person owns their root rather than whichever key wrote
+    /// first; the hosted backend keeps its own tenancy and is never asked.
+    ///
+    /// Switching layout moves nothing: what was written under the other
+    /// layout stays there and is no longer read.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Config`] for a root that is not `type:id` segments of
+    /// CortexDB's hosted scope types, or a blank owner.
+    pub fn with_scope_root(mut self, root: &str, owner: Option<&str>) -> Result<Self> {
+        let owner = owner.map(str::trim);
+        if owner.is_some_and(str::is_empty) {
+            return Err(Error::Config("a scope root's owner is blank".to_string()));
+        }
+        self.layout = ScopeLayout::v3(root)?;
+        self.owner = owner.map(str::to_string);
+        self.registered = Arc::new(AtomicBool::new(false));
+        Ok(self)
+    }
+
+    /// Registers the v3 root as owned by its owner, once, before a write.
+    /// Already registered (`409`) counts as done. Any other failure does not
+    /// fail the write, which CortexDB then admits as usual, and the next
+    /// write tries again.
+    // ponytail: a root CortexDB auto-registered before an owner was set
+    // keeps its first owner; add a member edit when a host needs that fixed.
+    async fn register_root(&self) {
+        let (ScopeLayout::V3 { root }, Some(owner)) = (&self.layout, &self.owner) else {
+            return;
+        };
+        if self.wire() != CortexWire::Direct || self.registered.load(Ordering::Acquire) {
+            return;
+        }
+        let body = serde_json::json!({
+            "path": root,
+            "members": [{ "actor": owner, "role": "owner" }],
+        });
+        let path = self.wire().path(Route::RegisterScope);
+        match self
+            .log
+            .client
+            .json(
+                reqwest::Method::POST,
+                path,
+                Some(&body),
+                crate::cortex::transport::Attempts::Once,
+            )
+            .await
+        {
+            Ok(_) | Err(Error::Conflict(_)) => self.registered.store(true, Ordering::Release),
+            Err(error) => {
+                log::warn!("[cortex] registering the scope root `{root}` failed: {error}")
+            }
+        }
     }
 
     /// The same engine, declaring `consolidation` instead of the endpoint's
@@ -291,6 +363,10 @@ mod direct_tests;
 #[cfg(test)]
 #[path = "mod_hosted_tests.rs"]
 mod hosted_tests;
+
+#[cfg(test)]
+#[path = "mod_layout_tests.rs"]
+mod layout_tests;
 
 #[cfg(test)]
 #[path = "engine_test_support.rs"]
