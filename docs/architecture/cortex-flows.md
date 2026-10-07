@@ -163,7 +163,8 @@ Only `Hybrid`. Other modes fail `Error::Unsupported` before any request.
 4. **Interleave** the scopes rank by rank: every scope's best, then every
    scope's second, and so on.
 5. Take the page `[offset, end)`. A conversation hit carries the whole
-   conversation, assembled from all its turns (one lookup per namespace node).
+   conversation, assembled from all its turns (one lookup per namespace node,
+   four nodes at a time).
 6. Score each hit `1 / (1 + rank)`, since CortexDB reports no score.
 7. `next_cursor` is `offset = end` when the merged ranking held more than `end`
    items, else none. The next page asks again with a larger budget.

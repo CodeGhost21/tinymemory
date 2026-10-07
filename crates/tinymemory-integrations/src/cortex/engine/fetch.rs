@@ -230,3 +230,7 @@ pub(super) fn interleave(mut lists: Vec<Vec<Envelope>>) -> Vec<Envelope> {
 #[cfg(test)]
 #[path = "fetch_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "fetch_assembly_tests.rs"]
+mod assembly_tests;

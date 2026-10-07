@@ -3,6 +3,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use futures::{StreamExt, TryStreamExt, stream};
+
 use tinymemory_api::explore::in_request_order;
 use tinymemory_api::{
     GetRequest, Hit, ItemId, ItemKind, MemoryMeta, MetaFilter, Namespace, StoreItem,
@@ -26,6 +28,11 @@ pub(super) fn admitted(filter: &MetaFilter) -> Vec<ItemKind> {
 pub(super) fn keeps(filter: &MetaFilter, kind: ItemKind, envelope: &Envelope) -> bool {
     envelope.kind == kind && filter.matches(kind, &envelope.meta)
 }
+
+/// Namespaces whose item events are looked up at once when assembling
+/// whole items: each is one listing, and reading them one after the other
+/// made a read's latency grow with the number of namespaces it hit.
+pub(super) const LOOKUPS_AT_ONCE: usize = 4;
 
 /// An envelope's metadata, located: for a piece of a chunked document, the
 /// item's metadata plus a `page:<n>` (or `page:<first>-<last>`) tag and a
@@ -132,7 +139,8 @@ impl CortexEngine {
 
     /// The whole items of `kind` named by `ids`, each at its namespace,
     /// rebuilt from all their events: a conversation's turns, a chunked
-    /// document's pieces (one lookup per namespace).
+    /// document's pieces (one lookup per namespace, [`LOOKUPS_AT_ONCE`] at
+    /// a time).
     pub(super) async fn assembled(
         &self,
         kind: ItemKind,
@@ -142,14 +150,20 @@ impl CortexEngine {
         for (id, namespace) in ids {
             by_node.entry(namespace).or_default().push(id.clone());
         }
+        let lookups: Vec<(KindScope, Vec<String>)> = by_node
+            .into_iter()
+            .map(|(namespace, ids)| (KindScope::new(namespace.clone(), kind), ids))
+            .collect();
+        let found: Vec<HashMap<String, Vec<Decoded>>> = stream::iter(lookups)
+            .map(|(scope, ids)| async move { self.item_events(&scope, &ids).await })
+            .buffer_unordered(LOOKUPS_AT_ONCE)
+            .try_collect()
+            .await?;
         let mut out = HashMap::new();
-        for (namespace, ids) in by_node {
-            let scope = KindScope::new(namespace.clone(), kind);
-            for (id, events) in self.item_events(&scope, &ids).await? {
-                let envelopes: Vec<Envelope> = events.into_iter().map(|d| d.envelope).collect();
-                if let Some(item) = rebuild_whole(&envelopes) {
-                    out.insert(id, item);
-                }
+        for (id, events) in found.into_iter().flatten() {
+            let envelopes: Vec<Envelope> = events.into_iter().map(|d| d.envelope).collect();
+            if let Some(item) = rebuild_whole(&envelopes) {
+                out.insert(id, item);
             }
         }
         Ok(out)
