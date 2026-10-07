@@ -54,3 +54,18 @@ fn bad_ranges_are_refused_naming_the_field() {
     let error = read(json!({"query": "q", "refers_to": "yesterday"}), None).unwrap_err();
     assert!(error.to_string().contains("refers_to"), "{error}");
 }
+
+#[test]
+fn a_bad_host_zone_is_reported_as_the_zone_not_the_models_dates() {
+    let error = read(
+        json!({"query": "q", "refers_to": {"from": "2026-10-03"}}),
+        Some("IST"),
+    )
+    .unwrap_err();
+    let message = error.to_string();
+    assert!(
+        message.contains("time zone") && message.contains("IST"),
+        "{message}"
+    );
+    assert!(!message.contains("`to`"), "{message}");
+}

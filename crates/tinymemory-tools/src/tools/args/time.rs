@@ -30,9 +30,19 @@ pub(crate) fn time_hint(args: &Args<'_>, key: &str, scope: &ToolScope) -> Result
         return Err(range.field_error("from", "is required"));
     };
     let to = day("to")?.unwrap_or(from);
+    if to < from {
+        return Err(range.field_error("to", "must not be before `from`"));
+    }
+    // The range is fine, so a refusal here is the host's zone, not the
+    // model's dates: say so instead of sending the model after `to`.
     TimeHint::new(from, to, scope.zone.clone())
         .map(Some)
-        .map_err(|_| range.field_error("to", "must not be before `from`"))
+        .map_err(|_| {
+            tinymemory_api::Error::Config(format!(
+                "the host's time zone {:?} is not an IANA zone",
+                scope.zone.as_deref().unwrap_or_default()
+            ))
+        })
 }
 
 #[cfg(test)]

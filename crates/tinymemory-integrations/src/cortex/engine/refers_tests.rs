@@ -177,3 +177,25 @@ async fn a_refusal_recorded_during_the_probe_is_not_overwritten() {
     assert!(!engine.record_probe(true), "the refusal stands");
     assert!(!engine.sends_refers().await);
 }
+
+#[tokio::test]
+async fn concurrent_first_fetches_share_one_probe() {
+    let (endpoint, state) = direct_double().await;
+    let engine = direct_engine(&endpoint);
+    engine.store(on_day("launch plan", 2)).await.unwrap();
+    let (a, b, c) = futures::join!(
+        engine.fetch(fetch(Some(india(3)))),
+        engine.fetch(fetch(Some(india(3)))),
+        engine.fetch(fetch(Some(india(3)))),
+    );
+    a.unwrap();
+    b.unwrap();
+    c.unwrap();
+    let seen = state.seen.lock().unwrap();
+    let probes = seen
+        .requests
+        .iter()
+        .filter(|r| r.starts_with("GET /v1/admin/version"))
+        .count();
+    assert_eq!(probes, 1, "{:?}", seen.requests);
+}

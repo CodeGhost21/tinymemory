@@ -34,9 +34,10 @@ const YES: u8 = 1;
 const NO: u8 = 2;
 
 /// Whether this engine's server takes `refers_during`, shared by clones:
-/// `UNKNOWN` (the default) until known, then `YES` or `NO`.
+/// `UNKNOWN` (the default) until known, then `YES` or `NO`. The probe lock
+/// lets one caller probe while concurrent first fetches wait for its answer.
 #[derive(Debug, Default)]
-pub(crate) struct RefersSupport(AtomicU8);
+pub(crate) struct RefersSupport(AtomicU8, futures::lock::Mutex<()>);
 
 /// The `temporal` block for `hint`.
 pub(super) fn temporal(hint: &TimeHint) -> Value {
@@ -59,6 +60,12 @@ impl CortexEngine {
         }
         if self.log.client.wire() != CortexWire::Direct {
             return true;
+        }
+        let _probing = self.refers.1.lock().await;
+        match self.refers.0.load(Ordering::Relaxed) {
+            YES => return true,
+            NO => return false,
+            _ => {}
         }
         let version = self
             .log

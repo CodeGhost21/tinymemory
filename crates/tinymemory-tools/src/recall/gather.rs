@@ -94,7 +94,11 @@ pub(super) async fn section(
     // A date reorders a fetch section's hits after the read, so read deeper
     // than the section shows: a hit from the right day ranked just past the
     // cut must still be there to lift.
-    let fetch_want = if dated { want * DATED_DEPTH } else { want };
+    let fetch_want = if dated {
+        want.saturating_mul(DATED_DEPTH)
+    } else {
+        want
+    };
     let outcome = match &section.query {
         SectionQuery::Answer {
             question,
@@ -112,7 +116,7 @@ pub(super) async fn section(
                     engine,
                     &section.filter,
                     question,
-                    want,
+                    fetch_want,
                     0,
                     &keep,
                     request.refers_to.clone(),

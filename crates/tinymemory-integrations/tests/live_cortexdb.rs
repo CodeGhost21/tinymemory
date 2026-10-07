@@ -963,3 +963,56 @@ async fn a_forget_anywhere_drops_every_pack_the_server_holds() {
         fresh.status()
     );
 }
+
+/// A model's `refers_to` on `memory_fetch` reaches the live server as
+/// `refers_during` and ranks that local day first: the tool JSON, the host's
+/// zone, the engine's capability gate and the server's boost end to end.
+#[tokio::test]
+async fn a_models_refers_to_ranks_that_day_first_on_the_live_server() {
+    use chrono::{TimeZone, Utc};
+    use tinymemory_tools::MemoryTools;
+
+    for (name, engine) in live_engines() {
+        let workspace = run_id();
+        let engine = Arc::new(engine);
+        // 20:00 UTC is already the next day in India.
+        for (text, day) in [("Toit", 1), ("Truffles", 2), ("home", 5)] {
+            let mut item_meta = meta(&workspace, SourceKind::Folder);
+            item_meta.observed_at = Utc.with_ymd_and_hms(2026, 10, day, 20, 0, 0).single();
+            engine
+                .store(StoreItem::document(
+                    format!("{workspace} dinner at {text}"),
+                    item_meta,
+                ))
+                .await
+                .expect("store");
+        }
+        let filter = MetaFilter {
+            workspace: Some(workspace.clone()),
+            ..MetaFilter::default()
+        };
+        assert_eq!(
+            list_until(&engine, &filter, 3).await.len(),
+            3,
+            "{name}: fixture visible"
+        );
+
+        let tools = MemoryTools::new(engine.clone()).in_zone("Asia/Kolkata");
+        let page = tools
+            .call(
+                "memory_fetch",
+                serde_json::json!({
+                    "query": format!("{workspace} dinner"),
+                    "filter": { "workspace": workspace },
+                    "refers_to": { "from": "2026-10-03", "to": "2026-10-03" },
+                }),
+            )
+            .await
+            .expect("memory_fetch");
+        let first = page["hits"][0]["text"].as_str().unwrap_or_default();
+        assert!(
+            first.contains("Truffles"),
+            "{name}: the hinted day leads: {page}"
+        );
+    }
+}

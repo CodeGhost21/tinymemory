@@ -146,8 +146,10 @@ pub(crate) async fn run(
         .or_else(|| request.refers_to.clone());
     if let Some(hint) = &hint {
         for (section, outcome) in request.sections.iter().zip(&mut gathered) {
-            if let (SectionQuery::Fetch { .. }, gather::Gathered::Hits { hits, .. }) =
-                (&section.query, outcome)
+            // Fetch sections, and answered ones that fell back to fetch;
+            // a latest section keeps its newest-first order.
+            if let (false, gather::Gathered::Hits { hits, .. }) =
+                (matches!(section.query, SectionQuery::Latest), outcome)
             {
                 hint.rank(hits);
             }
