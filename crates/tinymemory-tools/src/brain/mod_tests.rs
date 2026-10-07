@@ -33,7 +33,7 @@ async fn a_document_lands_at_its_source_node_without_an_agent() {
     assert_eq!(
         ingested.job,
         Some(BackgroundJob::BuildBeliefs {
-            request: ConsolidateRequest::new(Reach::exact(Namespace::source("pdf")))
+            request: ConsolidateRequest::new(Reach::subtree(Namespace::source("pdf")))
                 .kinds([ItemKind::Document]),
         })
     );
@@ -140,6 +140,39 @@ async fn search_and_forget_stay_inside_one_source() {
 }
 
 #[tokio::test]
+async fn forgetting_a_source_forgets_its_collections() {
+    let (engine, brain) = brain();
+    brain
+        .ingest(BrainDocument::new(BrainSource::Github, "repo-wide notes"))
+        .await
+        .unwrap();
+    let repo = brain
+        .layout()
+        .brain_collection(&BrainSource::Github, "acme-api")
+        .unwrap();
+    assert_eq!(repo.to_string(), "source:github/project:acme-api");
+    for (namespace, text) in [
+        (repo.clone(), "issue in acme/api"),
+        (Namespace::source("notion"), "a notion page"),
+    ] {
+        let meta = MemoryMeta {
+            namespace,
+            ..MemoryMeta::default()
+        };
+        engine.store(StoreItem::document(text, meta)).await.unwrap();
+    }
+    let hits = brain
+        .search("issue", Some(&BrainSource::Github), 10)
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 1, "a source's search reads its collections");
+
+    let report = brain.forget(&BrainSource::Github).await.unwrap();
+    assert_eq!(report.forgotten, 2, "the source node and its collection");
+    assert_eq!(engine.len(), 1, "another source is untouched");
+}
+
+#[tokio::test]
 async fn an_engine_that_builds_on_its_own_gets_no_build_from_an_ingest() {
     let engine = Arc::new(ReferenceEngine::new().with_consolidation(Consolidation::Automatic));
     let brain = Brain::new(engine.clone(), MemoryLayout::default());
@@ -165,7 +198,7 @@ async fn an_engine_that_builds_on_its_own_gets_no_build_from_an_ingest() {
     assert_eq!(
         refresh,
         BackgroundJob::BuildBeliefs {
-            request: ConsolidateRequest::new(Reach::exact(Namespace::source("pdf")))
+            request: ConsolidateRequest::new(Reach::subtree(Namespace::source("pdf")))
                 .kinds([ItemKind::Document]),
         }
     );

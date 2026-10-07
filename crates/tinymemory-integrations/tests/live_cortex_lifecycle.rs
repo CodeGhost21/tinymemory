@@ -373,3 +373,62 @@ async fn live_an_automatic_engine_queues_no_builds_but_still_builds_on_request()
         .expect("forget");
     assert!(forgotten.forgotten >= 2, "{forgotten:?}");
 }
+
+#[tokio::test]
+async fn live_forgetting_a_source_forgets_its_collections() {
+    let Some(engine) = live_engine() else {
+        eprintln!("TINYMEMORY_LIVE_CORTEXDB_URL unset; skipping");
+        return;
+    };
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after the epoch")
+        .as_nanos();
+    let layout = MemoryLayout::new(
+        format!("project:live-coll-{nanos}")
+            .parse()
+            .expect("a valid root"),
+    )
+    .expect("a valid layout");
+    let brain = Brain::new(engine.clone(), layout.clone());
+    brain
+        .ingest(BrainDocument::new(
+            BrainSource::Github,
+            "The deploy checklist lives in the wiki.",
+        ))
+        .await
+        .expect("ingest at the source");
+    let repo = layout
+        .brain_collection(&BrainSource::Github, "acme-api")
+        .expect("a collection node");
+    for (namespace, text) in [
+        (repo, "Issue 12: the deploy job times out on large images."),
+        (
+            layout.brain(&BrainSource::Files).expect("files"),
+            "The deploy budget is two hours.",
+        ),
+    ] {
+        let meta = MemoryMeta {
+            namespace,
+            ..MemoryMeta::default()
+        };
+        engine
+            .store(StoreItem::document(text, meta))
+            .await
+            .expect("store");
+    }
+
+    let hits = brain
+        .search("deploy", Some(&BrainSource::Github), 10)
+        .await
+        .expect("search");
+    assert_eq!(hits.len(), 2, "the source and its collection: {hits:?}");
+
+    let report = brain.forget(&BrainSource::Github).await.expect("forget");
+    assert_eq!(report.forgotten, 2, "{report:?}");
+    let left = engine
+        .forget(ForgetTarget::Filter(layout.holistic_filter()))
+        .await
+        .expect("cleanup");
+    assert_eq!(left.forgotten, 1, "only the files document was left");
+}

@@ -22,9 +22,10 @@ is behind it, so swapping engines is a one-line change in the host.
 
 ```text
 <root>                          (Namespace::ROOT, or a host node like team:acme)
-├── source:pdf        documents   — brain, no agent id
-├── source:markdown   documents
+├── source:files      documents   — brain, no agent id (one node per connector)
 ├── source:notion     documents
+├── source:github     documents
+│   └── project:acme-api  documents of one collection (MemoryLayout::brain_collection)
 ├── agent:support-01  conversations (one item per turn)
 ├── agent:coder-42    conversations
 └── <root> itself     learnings (shared); built beliefs land in each scope
@@ -32,7 +33,7 @@ is behind it, so swapping engines is a one-line change in the host.
 
 On CortexDB every node becomes a scope family under `app:tinymemory/…` (see
 [cortex-wire.md](cortex-wire.md#scope-layout)). For example,
-`source:pdf/app:documents` and `agent:coder-42/app:conversations`.
+`source:files/app:documents` and `agent:coder-42/app:conversations`.
 
 ## One turn
 

@@ -57,9 +57,13 @@ by default, or a host node such as `team:acme`.
 
 - `source` is a new namespace segment kind (`SegmentKind::Source`). CortexDB
   accepts `source` as a scope type, so a brain source is a real scope:
-  `app:tinymemory/source:pdf/app:documents`.
-- `BrainSource` lists the source types: `pdf`, `markdown`, `notion`,
-  `github`, `web`, or any other id.
+  `app:tinymemory/source:files/app:documents`.
+- `BrainSource` names the connector a document came from: `files` (local
+  files of any format), `web`, `notion`, `github`, or any other id (a
+  connected app's slug, `gmail`). `pdf` and `markdown` name the per-format
+  nodes used before `files`. A large source may be split into
+  `project:<collection>` nodes below it (`MemoryLayout::brain_collection`);
+  forgetting or rebuilding the source covers them.
 - A brain document carries **no agent id**. Its namespace is always its
   source's node, whatever metadata the caller passes.
 - Each turn is stored as its own one-turn conversation item at the agent's

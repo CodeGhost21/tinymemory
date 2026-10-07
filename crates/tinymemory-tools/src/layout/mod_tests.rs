@@ -53,11 +53,37 @@ fn refuses_a_root_with_no_room_below() {
     let deepest_allowed: Namespace = ["agent:a"; 7].join("/").parse().unwrap();
     let layout = MemoryLayout::new(deepest_allowed).unwrap();
     assert_eq!(layout.brain(&BrainSource::Web).unwrap().depth(), 8);
+    assert!(
+        layout
+            .brain_collection(&BrainSource::Github, "acme-api")
+            .is_err(),
+        "no room for a collection below the deepest root"
+    );
+}
+
+#[test]
+fn a_collection_sits_below_its_source() {
+    let layout = MemoryLayout::new("team:acme".parse().unwrap()).unwrap();
+    let repo = layout
+        .brain_collection(&BrainSource::Github, "tinyhumansai/openhuman")
+        .unwrap();
+    assert!(
+        repo.to_string()
+            .starts_with("team:acme/source:github/project:tinyhumansai-openhuman")
+    );
+    assert!(
+        layout
+            .brain_filter(Some(&BrainSource::Github))
+            .reach
+            .unwrap()
+            .admits(&repo)
+    );
 }
 
 #[test]
 fn source_ids_round_trip() {
     for source in [
+        BrainSource::Files,
         BrainSource::Pdf,
         BrainSource::Markdown,
         BrainSource::Notion,

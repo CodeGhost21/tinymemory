@@ -6,16 +6,19 @@
 //!
 //! ```text
 //! root                              core — holistic recall reads it all
-//! ├── source:pdf        documents   core/brain/pdf
-//! ├── source:markdown   documents   core/brain/markdown
+//! ├── source:files      documents   core/brain/files
 //! ├── source:notion     documents   core/brain/notion
+//! ├── source:github     documents   core/brain/github
+//! │   └── project:acme-api  one collection of a large source
 //! ├── agent:support-01  conversations   core/conversations/support-01
 //! ├── agent:coder-42    conversations   core/conversations/coder-42
 //! └── (root itself)     learnings   core/learnings
 //! ```
 //!
 //! - **Brain** — documents, global to every agent: no agent id, one
-//!   `source:<type>` node per [`BrainSource`].
+//!   `source:<id>` node per [`BrainSource`] (the connector or app), and
+//!   optionally `project:<collection>` nodes below it
+//!   ([`MemoryLayout::brain_collection`]).
 //! - **Conversations** — each agent's turns at its own `agent:<id>` node.
 //! - **Learnings** — beliefs and facts. Shared ones live at the root; an
 //!   engine that consolidates writes its beliefs into the scope it built
@@ -37,7 +40,7 @@
 //! use tinymemory_tools::{BrainSource, MemoryLayout};
 //!
 //! let layout = MemoryLayout::default();
-//! assert_eq!(layout.brain(&BrainSource::Pdf)?.to_string(), "source:pdf");
+//! assert_eq!(layout.brain(&BrainSource::Files)?.to_string(), "source:files");
 //! assert_eq!(layout.conversations("support-01")?.to_string(), "agent:support-01");
 //! assert_eq!(layout.learnings(), &Namespace::ROOT);
 //!
@@ -123,6 +126,21 @@ impl MemoryLayout {
     pub fn brain(&self, source: &BrainSource) -> Result<Namespace> {
         self.root
             .child(Segment::sanitized(SegmentKind::Source, source.id()))
+    }
+
+    /// The node one collection of `source` lives at (a repository, a
+    /// workspace): a `project:<collection>` child of the source's node, so a
+    /// large source can be split into scopes that are each fast to search,
+    /// while erasing the source still erases them all. The id is sanitized
+    /// ([`Segment::sanitized`]).
+    ///
+    /// # Errors
+    ///
+    /// The collection node would pass the namespace's depth limit (a root at
+    /// [`MAX_ROOT_DEPTH`]).
+    pub fn brain_collection(&self, source: &BrainSource, collection: &str) -> Result<Namespace> {
+        self.brain(source)?
+            .child(Segment::sanitized(SegmentKind::Project, collection))
     }
 
     /// The node `agent_id`'s conversations live at. The id is sanitized
