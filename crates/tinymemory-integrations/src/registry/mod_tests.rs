@@ -206,3 +206,29 @@ fn a_configured_consolidation_overrides_the_endpoint_default() {
     ));
     assert!(message.contains("cannot consolidate"), "{message}");
 }
+
+#[test]
+fn a_scope_root_is_applied_and_checked() {
+    let with_root = |root: &str, owner: Option<&str>| EngineSettings {
+        scope_root: Some(root.to_string()),
+        scope_owner: owner.map(str::to_string),
+        ..EngineSettings::default()
+    };
+    let key = || EngineCredential::Static("key".to_string());
+    assert!(build_engine("cortexdb", &with_root("user:42", Some("user:42")), key()).is_ok());
+    assert!(
+        build_engine("cortexdb", &with_root("  ", None), key()).is_ok(),
+        "blank is unset"
+    );
+    let message = config_error(build_engine(
+        "cortexdb",
+        &with_root("kb:policies", None),
+        key(),
+    ));
+    assert!(message.contains("kb"), "{message}");
+    config_error(build_engine(
+        "cortexdb",
+        &with_root("user:42", Some("")),
+        key(),
+    ));
+}

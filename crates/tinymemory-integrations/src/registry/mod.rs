@@ -64,8 +64,9 @@ pub fn list_engines() -> Vec<EngineDescriptor> {
 ///
 /// [`Error::Config`] for an unknown id, a missing endpoint or credential, an
 /// endpoint that is not an HTTP(S) URL, a credentialed cleartext
-/// (`http://`) endpoint that is not loopback, or a consolidation the engine
-/// cannot serve ([`CortexEngine::with_consolidation`]).
+/// (`http://`) endpoint that is not loopback, a consolidation the engine
+/// cannot serve ([`CortexEngine::with_consolidation`]), or an invalid scope
+/// root or owner ([`CortexEngine::with_scope_root`]).
 pub fn build_engine(
     id: &str,
     settings: &EngineSettings,
@@ -98,6 +99,13 @@ pub fn build_engine(
         CortexEngine::new(wire, endpoint, credential)?.with_default_headers(&settings.headers)?;
     if let Some(consolidation) = settings.consolidation {
         engine = engine.with_consolidation(consolidation)?;
+    }
+    if let Some(root) = settings
+        .scope_root
+        .as_deref()
+        .filter(|root| !root.trim().is_empty())
+    {
+        engine = engine.with_scope_root(root, settings.scope_owner.as_deref())?;
     }
     Ok(Arc::new(engine))
 }
