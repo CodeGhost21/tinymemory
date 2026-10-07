@@ -190,7 +190,10 @@ impl MemoryEngine for ReferenceEngine {
     async fn fetch(&self, req: FetchRequest) -> Result<FetchPage> {
         self.descriptor.ensure_mode(req.mode)?;
         req.validate()?;
-        let hits = self.ranked(&req.query, req.mode, &req.filter)?;
+        let mut hits = self.ranked(&req.query, req.mode, &req.filter)?;
+        if let Some(hint) = &req.refers_to {
+            hint.rank(&mut hits);
+        }
         let (hits, next_cursor) = page(hits, req.cursor.as_deref(), req.limit)?;
         Ok(FetchPage {
             hits,

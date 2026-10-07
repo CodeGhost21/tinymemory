@@ -19,6 +19,9 @@ publish.workspace = true
 async-trait = "0.1"
 # `MemoryMeta::observed_at`, `Turn::at` and the filter window are UTC instants.
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
+# IANA zones for `TimeHint`: validates a hint's zone before an engine sends it
+# (CortexDB refuses a non-IANA zone) and reads `observed_at` as a local day.
+chrono-tz = "0.10"
 # Every request, response and item crosses a host boundary as JSON.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

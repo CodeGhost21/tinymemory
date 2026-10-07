@@ -170,6 +170,7 @@ async fn answer(
             filter: section.filter.clone(),
             limit: section.limit,
             instructions,
+            refers_to: None,
         })
         .await?;
     if answer.citations.is_empty() || answer.answer.trim().is_empty() {

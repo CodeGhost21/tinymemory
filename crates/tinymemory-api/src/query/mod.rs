@@ -19,6 +19,9 @@ use crate::item::{ItemId, ItemKind, StoreItem};
 use crate::meta::{MemoryMeta, MetaFilter};
 use crate::namespace::Reach;
 
+mod time;
+pub use time::TimeHint;
+
 /// A question for [`crate::MemoryEngine::recall`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecallRequest {
@@ -32,6 +35,10 @@ pub struct RecallRequest {
     /// Extra instructions for how to answer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instructions: Option<String>,
+    /// The days the question is about: memories from them rank first. A
+    /// ranking hint, never a filter (see [`TimeHint`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refers_to: Option<TimeHint>,
 }
 
 impl RecallRequest {
@@ -43,6 +50,7 @@ impl RecallRequest {
             filter: MetaFilter::default(),
             limit,
             instructions: None,
+            refers_to: None,
         }
     }
 
@@ -50,10 +58,12 @@ impl RecallRequest {
     ///
     /// # Errors
     ///
-    /// [`Error::InvalidRequest`] for a blank question or a zero limit.
+    /// [`Error::InvalidRequest`] for a blank question, a zero limit or an
+    /// invalid [`TimeHint`].
     pub fn validate(&self) -> Result<()> {
         non_blank("recall question", &self.question)?;
-        positive("recall limit", self.limit)
+        positive("recall limit", self.limit)?;
+        self.refers_to.as_ref().map_or(Ok(()), TimeHint::validate)
     }
 }
 
@@ -135,6 +145,10 @@ pub struct FetchRequest {
     /// engine that keeps no beliefs apart returns none.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub beliefs: usize,
+    /// The days the query is about: hits from them rank first. A ranking
+    /// hint, never a filter (see [`TimeHint`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refers_to: Option<TimeHint>,
 }
 
 /// Whether `n` is zero (serde's skip test).
@@ -153,6 +167,7 @@ impl FetchRequest {
             limit,
             cursor: None,
             beliefs: 0,
+            refers_to: None,
         }
     }
 
@@ -160,10 +175,12 @@ impl FetchRequest {
     ///
     /// # Errors
     ///
-    /// [`Error::InvalidRequest`] for a blank query or a zero limit.
+    /// [`Error::InvalidRequest`] for a blank query, a zero limit or an invalid
+    /// [`TimeHint`].
     pub fn validate(&self) -> Result<()> {
         non_blank("fetch query", &self.query)?;
-        positive("fetch limit", self.limit)
+        positive("fetch limit", self.limit)?;
+        self.refers_to.as_ref().map_or(Ok(()), TimeHint::validate)
     }
 }
 
