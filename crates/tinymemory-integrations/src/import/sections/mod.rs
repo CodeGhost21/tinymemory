@@ -175,11 +175,29 @@ pub(crate) fn count_of(count: i64) -> u64 {
 }
 
 /// Metadata every imported item starts from: `source.kind = Import`, the
-/// section-scoped legacy id, and the workspace path.
+/// section-scoped legacy id, and the workspace path. An item from a
+/// per-profile store has its legacy id prefixed with the store directory
+/// (`memory-1/`); [`tag_store`] tags it once the section is done with it.
 pub(crate) fn import_meta(ws: &LegacyWorkspace, legacy_id: String) -> MemoryMeta {
+    let legacy_id = if ws.suffix.is_empty() {
+        legacy_id
+    } else {
+        format!("memory{}/{legacy_id}", ws.suffix)
+    };
     MemoryMeta {
         workspace: Some(ws.workspace_id.clone()),
         ..MemoryMeta::from_source(SourceKind::Import, Some(legacy_id))
+    }
+}
+
+/// Tags an item from a per-profile store `store:memory<suffix>`; an item
+/// from the main store is left as it is.
+pub(crate) fn tag_store(ws: &LegacyWorkspace, item: &mut StoreItem) {
+    if !ws.suffix.is_empty() {
+        push_unique(
+            &mut item.meta_mut().tags,
+            format!("store:memory{}", ws.suffix),
+        );
     }
 }
 

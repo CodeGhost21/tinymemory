@@ -16,7 +16,7 @@ use std::iter::FusedIterator;
 
 use crate::import::checkpoint::{Checkpoint, ImportedItem};
 use crate::import::error::Result;
-use crate::import::sections::{ORDER, Scanned};
+use crate::import::sections::{ORDER, Scanned, tag_store};
 use crate::import::workspace::LegacyWorkspace;
 
 /// Keys fetched per query unless [`Items::with_page_size`] says otherwise.
@@ -63,7 +63,8 @@ impl<'w> Items<'w> {
         loop {
             if let Some(scanned) = self.buffer.pop_front() {
                 scanned.mark.clone().apply(&mut self.scan);
-                if let Some(item) = scanned.item {
+                if let Some(mut item) = scanned.item {
+                    tag_store(self.workspace, &mut item);
                     scanned.mark.apply(&mut self.checkpoint);
                     return Some(Ok(ImportedItem {
                         item,

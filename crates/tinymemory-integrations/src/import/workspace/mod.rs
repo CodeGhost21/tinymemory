@@ -41,6 +41,8 @@ pub struct LegacyWorkspace {
     pub(crate) root: PathBuf,
     /// `root` as recorded in every item's `meta.workspace`.
     pub(crate) workspace_id: String,
+    /// The store suffix (`-1` for `memory-1`); empty for the main store.
+    pub(crate) suffix: String,
     /// `memory/memory.db`, read-only, when the workspace has one.
     pub(crate) memory: Option<Connection>,
     /// Which optional columns `memory.db` has (all off without one).
@@ -64,6 +66,25 @@ impl LegacyWorkspace {
     /// - [`Error::Sqlite`] if the database cannot be opened or probed for a
     ///   reason other than not being SQLite.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open_store(path, "")
+    }
+
+    /// Opens one of a workspace's per-profile v1 stores: v1 kept a profile
+    /// with dedicated memory in `memory<suffix>/memory.db` and
+    /// `memory_tree<suffix>/chunks.db` (suffix `-1`, `-2`, …), beside the
+    /// main store. An empty suffix is the main store ([`Self::open`]).
+    ///
+    /// Items from a profile store have legacy ids prefixed with the store
+    /// (`memory-1/memory_docs:<id>`), so they never collide with the main
+    /// store's, and carry the tag `store:memory<suffix>`. The workspace
+    /// files (goals, persona) belong to the main store only.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::open`], with the suffixed paths; [`Error::NotLegacy`] for
+    /// a suffix that is not `-` followed by ASCII letters, digits, `-` or
+    /// `_`.
+    pub fn open_store(path: impl AsRef<Path>, suffix: &str) -> Result<Self> {
         let path = path.as_ref();
         if !path.exists() {
             return Err(Error::NotFound {
@@ -77,9 +98,19 @@ impl LegacyWorkspace {
         if !root.is_dir() {
             return Err(not_legacy(&root, "not a directory"));
         }
-        let db = root.join("memory").join("memory.db");
+        if !suffix.is_empty() && !is_store_suffix(suffix) {
+            return Err(not_legacy(
+                &root,
+                &format!("`{suffix}` is not a store suffix"),
+            ));
+        }
+        let memory_dir = format!("memory{suffix}");
+        let db = root.join(&memory_dir).join("memory.db");
         if db.exists() && !db.is_file() {
-            return Err(not_legacy(&root, "memory/memory.db is not a file"));
+            return Err(not_legacy(
+                &root,
+                &format!("{memory_dir}/memory.db is not a file"),
+            ));
         }
         let (memory, schema) = if db.is_file() {
             let memory = open_read_only(&db)?;
@@ -89,7 +120,7 @@ impl LegacyWorkspace {
                 Err(err) if is_not_a_database(&err) => {
                     return Err(not_legacy(
                         &root,
-                        "memory/memory.db is not a sqlite database",
+                        &format!("{memory_dir}/memory.db is not a sqlite database"),
                     ));
                 }
                 Err(err) => return Err(err.into()),
@@ -98,20 +129,65 @@ impl LegacyWorkspace {
         } else {
             (None, MemorySchema::default())
         };
-        let chunks = ChunkStore::open(&root)?;
+        let chunks = ChunkStore::open(&root.join(format!("memory_tree{suffix}")))?;
         if memory.is_none() && chunks.is_none() {
             return Err(not_legacy(
                 &root,
-                "neither memory/memory.db nor a usable memory_tree/chunks.db is present",
+                &format!(
+                    "neither {memory_dir}/memory.db nor a usable memory_tree{suffix}/chunks.db \
+                     is present"
+                ),
             ));
         }
         Ok(Self {
             workspace_id: root.display().to_string(),
             root,
+            suffix: suffix.to_string(),
             memory,
             schema,
             chunks,
         })
+    }
+
+    /// The suffixes of the per-profile v1 stores beside the main one in the
+    /// workspace at `path` (`-1`, `-2`, …), sorted: every `memory<suffix>` or
+    /// `memory_tree<suffix>` directory with a valid suffix. Each may still
+    /// fail [`Self::open_store`] if it holds no usable store.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Io`] if the directory cannot be listed.
+    pub fn store_suffixes(path: impl AsRef<Path>) -> Result<Vec<String>> {
+        let path = path.as_ref();
+        let entries = std::fs::read_dir(path).map_err(|source| Error::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        let mut suffixes = std::collections::BTreeSet::new();
+        for entry in entries {
+            let entry = entry.map_err(|source| Error::Io {
+                path: path.to_path_buf(),
+                source,
+            })?;
+            if !entry.path().is_dir() {
+                continue;
+            }
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else { continue };
+            let suffix = name
+                .strip_prefix("memory_tree")
+                .or_else(|| name.strip_prefix("memory"));
+            if let Some(suffix) = suffix.filter(|s| is_store_suffix(s)) {
+                suffixes.insert(suffix.to_string());
+            }
+        }
+        Ok(suffixes.into_iter().collect())
+    }
+
+    /// The store suffix: empty for the main store, `-1` for `memory-1`.
+    #[must_use]
+    pub fn store_suffix(&self) -> &str {
+        &self.suffix
     }
 
     /// The canonical workspace root, recorded as `meta.workspace` on every
@@ -190,6 +266,17 @@ pub(crate) const HAS_TEXT_FN: &str = "tm_has_text";
 /// Whether SQLite refused the file as not being a database.
 pub(crate) fn is_not_a_database(err: &rusqlite::Error) -> bool {
     err.sqlite_error_code() == Some(rusqlite::ErrorCode::NotADatabase)
+}
+
+/// Whether `suffix` names a per-profile store: `-` then one or more ASCII
+/// letters, digits, `-` or `_` (never a path separator).
+fn is_store_suffix(suffix: &str) -> bool {
+    suffix.strip_prefix('-').is_some_and(|rest| {
+        !rest.is_empty()
+            && rest
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    })
 }
 
 fn not_legacy(root: &Path, reason: &str) -> Error {
