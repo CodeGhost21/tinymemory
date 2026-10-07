@@ -1,7 +1,8 @@
 //! Resumable import: the per-section cursor a host persists between runs.
 //!
 //! An import walks the legacy store in a fixed section order (documents,
-//! chunks, conversations, learnings, profile, events, lessons) and, within a section, by a
+//! chunks, conversations, learnings, profile, events, lessons, graph,
+//! files) and, within a section, by a
 //! stable key. A [`Checkpoint`] records the key of the last item yielded in
 //! each section; [`crate::import::LegacyWorkspace::items_from`] skips everything at or
 //! before it. Every [`ImportedItem`] carries the checkpoint to persist once
@@ -18,7 +19,7 @@ use crate::import::error::Result;
 ///
 /// `None` means the section has not yielded anything yet. Keys compare as
 /// SQLite `TEXT` (byte order), the same order the importer walks them in,
-/// except `lessons`, an `episodic_log.id` that compares as an integer.
+/// except `lessons` and the graph rowids, which compare as integers.
 ///
 /// Sections added later come after the earlier ones, so a checkpoint
 /// persisted before they existed resumes correctly: they start from their
@@ -52,6 +53,15 @@ pub struct Checkpoint {
     /// Last `episodic_log.id` whose lesson was yielded.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lessons: Option<i64>,
+    /// Last `graph_global` rowid yielded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub graph_global: Option<i64>,
+    /// Last `graph_namespace` rowid yielded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub graph_namespace: Option<i64>,
+    /// Last workspace file yielded (see the files section).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub files: Option<String>,
 }
 
 impl Checkpoint {

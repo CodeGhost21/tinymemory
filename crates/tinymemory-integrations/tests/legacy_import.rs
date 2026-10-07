@@ -320,7 +320,11 @@ fn counted(items: &[ImportedItem]) -> LegacyCounts {
     let mut counts = LegacyCounts::default();
     for imported in items {
         let id = source_id(&imported.item);
-        let slot = if id.starts_with("event_log:") {
+        let slot = if id.starts_with("graph_") {
+            &mut counts.relations
+        } else if id.starts_with("file:") {
+            &mut counts.files
+        } else if id.starts_with("event_log:") {
             &mut counts.events
         } else if id.starts_with("episodic_log:lesson:") {
             &mut counts.lessons
@@ -1579,4 +1583,125 @@ fn blank_events_and_lessons_never_fill_a_page() {
     assert_eq!(ids, ["event_log:e2", "episodic_log:lesson:2"]);
     let counts = ws.counts().unwrap();
     assert_eq!((counts.events, counts.lessons), (1, 1));
+}
+
+/// A store with graph relations and the two workspace files.
+fn with_graph_and_files() -> tempfile::TempDir {
+    let (dir, conn) = workspace(support::MEMORY_DDL);
+    conn.execute_batch(support::GRAPH_DDL).unwrap();
+    conn.execute_batch(
+        "INSERT INTO graph_global VALUES ('Priya', 'works_at', 'Acme', '{}', 1700000000.0);
+         INSERT INTO graph_global VALUES ('  ', 'knows', 'Arjun', '{}', 1700000000.0);
+         INSERT INTO graph_namespace VALUES ('source_gmail', 'Arjun', 'owns', 'launch', '{}', 1700000001.0);
+         INSERT INTO graph_namespace VALUES ('source_gmail', 'Launch', '', 'Nov 14', '{}', 1700000002.0);",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("MEMORY_GOALS.md"),
+        "# Goals\n\n- [g1] Run a marathon\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(dir.path().join("persona")).unwrap();
+    std::fs::write(dir.path().join("persona/directives.md"), "  Be brief.  \n").unwrap();
+    dir
+}
+
+#[test]
+fn maps_graph_relations_to_fact_learnings() {
+    let dir = with_graph_and_files();
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let items = all(&ws);
+    let StoreItem::Learning {
+        text, kind, meta, ..
+    } = find(&items, "graph_global:1")
+    else {
+        panic!("a relation is a learning");
+    };
+    assert_eq!(text, "Priya works_at Acme");
+    assert_eq!(*kind, LearningKind::Fact);
+    assert_eq!(meta.tags, ["graph"]);
+    assert_eq!(meta.observed_at.unwrap().timestamp(), 1_700_000_000);
+
+    let StoreItem::Learning { text, meta, .. } = find(&items, "graph_namespace:1") else {
+        panic!("a relation is a learning");
+    };
+    assert_eq!(text, "Arjun owns launch");
+    assert_eq!(meta.tags, ["graph", "ns:source_gmail"]);
+    let StoreItem::Learning { text, .. } = find(&items, "graph_namespace:2") else {
+        panic!("a relation is a learning");
+    };
+    assert_eq!(text, "Launch Nov 14", "a blank predicate is left out");
+    assert!(
+        items.iter().all(|i| source_id(&i.item) != "graph_global:2"),
+        "a relation without a subject is skipped"
+    );
+}
+
+#[test]
+fn maps_the_goals_and_persona_files_to_learnings() {
+    let dir = with_graph_and_files();
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let items = all(&ws);
+    let StoreItem::Learning {
+        text, kind, meta, ..
+    } = find(&items, "file:MEMORY_GOALS.md")
+    else {
+        panic!("the goals file is a learning");
+    };
+    assert_eq!(text, "# Goals\n\n- [g1] Run a marathon");
+    assert_eq!(*kind, LearningKind::Other);
+    assert_eq!(meta.tags, ["goals"]);
+    assert!(meta.observed_at.is_some());
+    let StoreItem::Learning { text, meta, .. } = find(&items, "file:persona/directives.md") else {
+        panic!("the directives are a learning");
+    };
+    assert_eq!(text, "Be brief.");
+    assert_eq!(meta.tags, ["persona"]);
+    let ids: Vec<String> = items.iter().map(|i| source_id(&i.item)).collect();
+    assert_eq!(
+        &ids[ids.len() - 2..],
+        ["file:MEMORY_GOALS.md", "file:persona/directives.md"]
+    );
+}
+
+#[test]
+fn graph_and_files_are_counted_and_resume_exactly() {
+    let dir = with_graph_and_files();
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let items = all(&ws);
+    let counts = ws.counts().unwrap();
+    assert_eq!(counts, counted(&items));
+    assert_eq!((counts.relations, counts.files), (3, 2));
+    for (index, imported) in items.iter().enumerate() {
+        let rest: Vec<String> = ws
+            .items_from(&imported.checkpoint)
+            .map(|i| source_id(&i.unwrap().item))
+            .collect();
+        let expected: Vec<String> = items[index + 1..]
+            .iter()
+            .map(|i| source_id(&i.item))
+            .collect();
+        assert_eq!(rest, expected, "after {}", source_id(&imported.item));
+    }
+}
+
+#[test]
+fn missing_or_blank_workspace_files_are_skipped() {
+    let (dir, conn) = workspace(support::MEMORY_DDL);
+    drop(conn);
+    std::fs::write(dir.path().join("MEMORY_GOALS.md"), " \n ").unwrap();
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    assert_eq!(ws.items().count(), 0);
+    assert_eq!(ws.counts().unwrap().files, 0);
+}
+
+#[test]
+fn an_unreadable_workspace_file_is_an_io_error() {
+    let (dir, conn) = workspace(support::MEMORY_DDL);
+    drop(conn);
+    std::fs::create_dir_all(dir.path().join("MEMORY_GOALS.md")).unwrap();
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let err = ws.items().find_map(Result::err).expect("an error");
+    assert!(matches!(err, Error::Io { .. }), "{err:?}");
+    assert!(ws.counts().is_err());
 }

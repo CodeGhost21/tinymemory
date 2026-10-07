@@ -26,6 +26,9 @@ fn round_trips_through_json() {
         profile: Some("facet-1".into()),
         events: Some("evt-3".into()),
         lessons: Some(42),
+        graph_global: Some(7),
+        graph_namespace: None,
+        files: Some("goals".into()),
     };
     let json = checkpoint.to_json().expect("encodes");
     assert_eq!(Checkpoint::from_json(&json).expect("decodes"), checkpoint);
