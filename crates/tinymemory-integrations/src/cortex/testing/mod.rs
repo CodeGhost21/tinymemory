@@ -42,6 +42,8 @@ pub(crate) struct Seen {
     pub(crate) answers: Vec<serde_json::Value>,
     /// Every forget body.
     pub(crate) forgets: Vec<serde_json::Value>,
+    /// Erasure requests, in order.
+    pub(crate) erasures: Vec<serde_json::Value>,
     /// Every beliefs build body.
     pub(crate) builds: Vec<serde_json::Value>,
     /// Every write body (`experience` and `experience/bulk`), whole.

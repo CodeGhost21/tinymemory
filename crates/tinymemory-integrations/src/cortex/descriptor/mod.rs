@@ -151,6 +151,7 @@ impl CortexWire {
             (Self::Direct, Route::Scopes) => "v1/scopes/list",
             (Self::Direct, Route::BuildBeliefs) => "v1/beliefs/build",
             (Self::Direct, Route::Beliefs) => "v1/beliefs",
+            (Self::Direct, Route::Erasures) => "v1/erasures",
             (Self::TinyHumans, Route::Experience | Route::Bulk) => "memory/experience",
             (Self::TinyHumans, Route::Events) => "memory/events",
             (Self::TinyHumans, Route::Recall) => "memory/recall",
@@ -162,6 +163,9 @@ impl CortexWire {
             (Self::TinyHumans, Route::BuildBeliefs) => "memory/beliefs/build",
             // Never sent: hosted beliefs are read through recall only.
             (Self::TinyHumans, Route::Beliefs) => "memory/beliefs",
+            // Never sent: the backend proxies no erasure route, so `erase`
+            // refuses on this wire without a request.
+            (Self::TinyHumans, Route::Erasures) => "memory/erasures",
         }
     }
 }
@@ -189,6 +193,8 @@ pub(crate) enum Route {
     BuildBeliefs,
     /// List one scope's beliefs (Direct only).
     Beliefs,
+    /// Erase a whole scope for good (Direct only).
+    Erasures,
 }
 
 #[cfg(test)]

@@ -26,6 +26,7 @@ pub(super) async fn all(ctx: &Ctx<'_>) -> Result<()> {
     empty_forget(ctx).await?;
     forget_by_id(ctx).await?;
     forget_by_filter(ctx).await?;
+    super::erase::erase(ctx).await?;
     recall(ctx).await?;
     super::lifecycle::consolidate(ctx).await
 }

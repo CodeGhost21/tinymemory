@@ -17,9 +17,10 @@ pub use distil::CONSOLIDATED_TAG;
 
 use crate::{
     Citation, ConsolidateReceipt, ConsolidateRequest, ConsolidateStatus, Consolidation,
-    EngineDescriptor, EngineHealth, Error, ExportPage, Exported, FetchMode, FetchPage,
-    FetchRequest, ForgetReport, ForgetTarget, Hit, ItemId, ListPage, ListRequest, MemoryEngine,
-    MetaFilter, RecallAnswer, RecallRequest, Result, StoreItem, StoreReceipt,
+    EngineDescriptor, EngineHealth, EraseReport, EraseRequest, Error, ExportPage, Exported,
+    FetchMode, FetchPage, FetchRequest, ForgetReport, ForgetTarget, Hit, ItemId, ListPage,
+    ListRequest, MemoryEngine, MetaFilter, Reach, RecallAnswer, RecallRequest, Result, StoreItem,
+    StoreReceipt,
 };
 use async_trait::async_trait;
 
@@ -276,6 +277,27 @@ impl MemoryEngine for ReferenceEngine {
             .collect();
         let (items, next_cursor) = page(matching, req.cursor.as_deref(), req.limit)?;
         Ok(ListPage { items, next_cursor })
+    }
+
+    async fn erase(&self, req: EraseRequest) -> Result<EraseReport> {
+        req.validate()?;
+        let reach = Reach {
+            inherit: false,
+            ..req.reach.clone()
+        };
+        let mut erased = std::collections::BTreeSet::new();
+        self.items()?.retain(|item| {
+            let hit = reach.admits(&item.meta().namespace)
+                && (req.kinds.is_empty() || req.kinds.contains(&item.kind()));
+            if hit {
+                erased.insert((item.meta().namespace.to_string(), item.kind()));
+            }
+            !hit
+        });
+        Ok(EraseReport {
+            erased_scopes: erased.len(),
+            receipts: Vec::new(),
+        })
     }
 
     async fn export(&self, req: ListRequest) -> Result<ExportPage> {

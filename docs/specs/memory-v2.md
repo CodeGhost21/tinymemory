@@ -67,6 +67,8 @@ pub trait MemoryEngine: Send + Sync {
     async fn store_many(&self, items: Vec<StoreItem>) -> Result<Vec<StoreReceipt>>;
     // Moving memory; default refuses with Unsupported (see "Export").
     async fn export(&self, req: ListRequest) -> Result<ExportPage>;
+    // Deleting for good; default refuses with Unsupported (see "Erase").
+    async fn erase(&self, req: EraseRequest) -> Result<EraseReport>;
 }
 ```
 
@@ -204,6 +206,29 @@ the engine holds only part of (a chunked document missing a piece) is named in
 `incomplete` rather than dropped, so a caller moving memory knows what it could
 not move. The default refuses with `Unsupported`; the reference and CortexDB
 engines export.
+
+### Erase
+
+`erase(req)` deletes for good every item of `req.kinds` (all when empty) at
+the nodes `req.reach` names (`at`, and below it when `descendants`;
+`inherit` is ignored). It is for deleting a source, a workflow, a workspace or
+an account. Unlike a forget, an erased item stored again is stored anew, never
+a replay.
+
+```rust
+pub struct EraseRequest { pub reach: Reach, pub kinds: Vec<ItemKind>, pub whole_tree: bool }
+pub struct EraseReport { pub erased_scopes: usize, pub receipts: Vec<String> }
+```
+
+- **Interlock:** the root with its descendants and every kind is the whole
+  tree, refused (`InvalidRequest`) unless `whole_tree` is set.
+- **Default:** refuses with `Unsupported`, and a caller that is refused falls
+  back to `forget`.
+- **The reference engine** removes the items.
+- **CortexDB, Direct wire:** sends one `/v1/erasures` (`confirm_all`) per
+  registered kind scope, deepest first, and returns the erasure ids as
+  `receipts`.
+- **CortexDB, hosted wire:** refuses (the backend proxies no erasure route).
 
 ### Bulk store
 
@@ -358,6 +383,9 @@ from any earlier checkpoint only replays.
 - store/list round-trip for each kind;
 - for an engine that exports, every item handed back whole and equal to what
   was stored, under its own id, and a replay when stored again;
+- for an engine that erases, a node and everything below it removed, its
+  sibling kept, an erased item stored anew, and the whole tree refused
+  without its interlock;
 - replay idempotency;
 - `explore` counts agreeing with `list` per kind and per workspace, and each
   bucket narrowing to exactly its count;

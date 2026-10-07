@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Error, Result};
 use crate::item::{ItemId, ItemKind, StoreItem};
 use crate::meta::{MemoryMeta, MetaFilter};
+use crate::namespace::Reach;
 
 /// A question for [`crate::MemoryEngine::recall`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -269,6 +270,61 @@ pub struct ExportPage {
     /// end.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_cursor: Option<String>,
+}
+
+/// What [`crate::MemoryEngine::erase`] removes: every item of `kinds` (all
+/// kinds when empty) at the nodes `reach` names.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EraseRequest {
+    /// The nodes erased: `at`, and everything below it when `descendants`.
+    /// `inherit` is ignored: an erasure never reaches up.
+    pub reach: Reach,
+    /// The kinds erased; empty erases every kind.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub kinds: Vec<ItemKind>,
+    /// Must be set to erase the whole tree (the root with its descendants
+    /// and every kind): an interlock, because nothing erased comes back.
+    #[serde(default)]
+    pub whole_tree: bool,
+}
+
+impl EraseRequest {
+    /// Erases `reach`'s nodes, every kind.
+    #[must_use]
+    pub fn new(reach: Reach) -> Self {
+        Self {
+            reach,
+            kinds: Vec::new(),
+            whole_tree: false,
+        }
+    }
+
+    /// Checks that the request cannot erase the whole tree by accident.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::InvalidRequest`] for the root with its descendants and every
+    /// kind, unless `whole_tree` is set.
+    pub fn validate(&self) -> Result<()> {
+        let everything = self.reach.at.is_root() && self.reach.descendants && self.kinds.is_empty();
+        if everything && !self.whole_tree {
+            return Err(Error::InvalidRequest(
+                "erasing the whole tree needs whole_tree: true".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// What an erasure did.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EraseReport {
+    /// How many of the engine's scopes (kind stores) were erased.
+    pub erased_scopes: usize,
+    /// The engine's receipts for them, when it keeps any (CortexDB's erasure
+    /// ids), for an audit trail.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub receipts: Vec<String>,
 }
 
 /// What [`crate::MemoryEngine::forget`] removes.

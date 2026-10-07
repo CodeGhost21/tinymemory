@@ -30,7 +30,9 @@
 //! 11. `empty_forget` — a forget with no ids or an empty filter is refused and
 //!     removes nothing.
 //! 12. `forget_by_id` and `forget_by_filter` — forgotten items stop listing and
-//!     are counted; others stay.
+//!     are counted; others stay. Engines that erase (`erase`) remove a node
+//!     and everything below it, leave its sibling, store an erased item anew
+//!     rather than replay it, and refuse the whole tree without its interlock.
 //! 13. `recall` — an answer cites items that resolve through `list`.
 //! 14. `consolidate` — a malformed request is refused, and a valid one is
 //!     answered as the descriptor's `consolidation` promises.
@@ -39,6 +41,7 @@
 
 mod bulk;
 mod checks;
+mod erase;
 mod explore;
 mod export;
 mod fixtures;

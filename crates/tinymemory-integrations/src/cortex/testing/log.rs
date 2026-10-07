@@ -35,6 +35,8 @@ pub(crate) struct CortexLog {
     pub(crate) forgotten: Vec<String>,
     /// Beliefs built, oldest first.
     pub(crate) beliefs: Vec<Value>,
+    /// Erasures run.
+    erasures: u64,
 }
 
 /// Whether `event` carries any one of `wanted` (an empty list keeps all).
@@ -200,6 +202,55 @@ impl CortexLog {
         (
             200,
             json!({ "deleted": { "events": deleted }, "requested": ids.len() }),
+        )
+    }
+
+    /// `POST /v1/erasures`, a whole-scope erasure as CortexDB answers it
+    /// (measured on 0.10.5): `confirm_all` and no selector, else 422. The
+    /// scope's own events are deleted and their keys released; a descendant
+    /// scope's events are only redacted (gone from reads) and keep their
+    /// keys, so a re-sent write replays and stores nothing.
+    pub(crate) fn erase(&mut self, body: &Value) -> (u16, Value) {
+        let Some(scope) = body.get("scope").and_then(Value::as_str) else {
+            return (422, json!({ "error_code": "INVALID_BODY" }));
+        };
+        let scope = scope.to_string();
+        let confirm_all = body
+            .get("confirm_all")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if !confirm_all || body.get("selector").is_some() {
+            return (
+                422,
+                json!({ "error_code": "EMPTY_SELECTOR_WITHOUT_CONFIRMATION" }),
+            );
+        }
+        let below = format!("{scope}/");
+        let (gone, kept): (Vec<Value>, Vec<Value>) =
+            std::mem::take(&mut self.events).into_iter().partition(|e| {
+                let at = str_of(e, "/scope");
+                scope.is_empty() || at == scope || at.starts_with(&below)
+            });
+        let deleted: Vec<String> = gone
+            .iter()
+            .filter(|e| scope.is_empty() || str_of(e, "/scope") == scope)
+            .map(|e| str_of(e, "/id").to_string())
+            .collect();
+        self.idempotency
+            .retain(|_, (_, id)| !deleted.iter().any(|gone| gone == id));
+        // Only deleted events count as forgotten; a redacted descendant keeps
+        // its key. Beliefs built from any erased event go with it.
+        self.beliefs.retain(|belief| {
+            !gone
+                .iter()
+                .any(|e| str_of(e, "/id") == str_of(belief, "/source"))
+        });
+        self.forgotten.extend(deleted);
+        self.events = kept;
+        self.erasures += 1;
+        (
+            202,
+            json!({ "erasure_id": format!("erasure_{}", self.erasures), "status": "completed" }),
         )
     }
 

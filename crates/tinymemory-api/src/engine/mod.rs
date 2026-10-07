@@ -9,8 +9,8 @@ use crate::error::{Error, Result};
 use crate::explore::{ExplorePage, ExploreRequest, GetRequest, explore_by_listing, get_by_listing};
 use crate::item::{StoreItem, StoreReceipt};
 use crate::query::{
-    ExportPage, FetchMode, FetchPage, FetchRequest, ForgetReport, ForgetTarget, Hit, ListPage,
-    ListRequest, RecallAnswer, RecallRequest,
+    EraseReport, EraseRequest, ExportPage, FetchMode, FetchPage, FetchRequest, ForgetReport,
+    ForgetTarget, Hit, ListPage, ListRequest, RecallAnswer, RecallRequest,
 };
 use crate::write::WriteOptions;
 
@@ -127,6 +127,27 @@ pub trait MemoryEngine: Send + Sync {
         req.validate()?;
         Err(Error::Unsupported(format!(
             "engine `{}` does not export items",
+            self.descriptor().id
+        )))
+    }
+
+    /// Erases what `req` names, for good: every item of its kinds at its
+    /// nodes is deleted, not hidden, and storing one of them again stores it
+    /// anew. For deleting a source, a workflow, a workspace or an account;
+    /// [`MemoryEngine::forget`] removes items by id or filter.
+    ///
+    /// The default refuses: an engine that can erase overrides it. A caller
+    /// that is refused falls back to [`MemoryEngine::forget`].
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Unsupported`] when the engine (or its credential) cannot
+    /// erase, invalid requests (see [`EraseRequest::validate`]), and the
+    /// engine's own failures.
+    async fn erase(&self, req: EraseRequest) -> Result<EraseReport> {
+        req.validate()?;
+        Err(Error::Unsupported(format!(
+            "engine `{}` does not erase",
             self.descriptor().id
         )))
     }
