@@ -164,3 +164,26 @@ fn a_scope_root_is_checked_when_set() {
         Err(Error::Config(_))
     ));
 }
+
+#[tokio::test]
+async fn a_failed_registration_never_fails_a_write_and_is_tried_again() {
+    let (endpoint, state) = direct_double().await;
+    *state.fail_registration.lock().unwrap() = Some((403, "POLICY_DENIED"));
+    let engine = direct_engine(&endpoint)
+        .with_scope_root("user:42", Some("user:42"))
+        .unwrap();
+    engine.store_many(placed()).await.unwrap();
+    assert_eq!(state.event_count(), 6, "the writes went on");
+    engine.store_many(placed()).await.unwrap();
+    assert_eq!(
+        state.count("POST /v1/scopes"),
+        2,
+        "tried again on the next write"
+    );
+
+    *state.fail_registration.lock().unwrap() = None;
+    engine.store_many(placed()).await.unwrap();
+    engine.store_many(placed()).await.unwrap();
+    assert_eq!(state.count("POST /v1/scopes"), 3, "done once it succeeds");
+    assert_eq!(state.seen.lock().unwrap().registrations.len(), 1);
+}

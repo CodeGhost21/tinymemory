@@ -442,6 +442,9 @@ async fn register_scope(
     let Some(path) = body["path"].as_str().filter(|path| !path.is_empty()) else {
         return fail(&state, 422, "INVALID_BODY");
     };
+    if let Some((code, error_code)) = *state.fail_registration.lock().unwrap() {
+        return fail(&state, code, error_code);
+    }
     let mut seen = state.seen.lock().unwrap();
     if seen.registrations.iter().any(|known| known["path"] == path) {
         return fail(&state, 409, "SCOPE_REGISTRATION_EXISTS");

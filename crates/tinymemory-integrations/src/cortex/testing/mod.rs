@@ -61,6 +61,8 @@ pub(crate) struct Double {
     pub(crate) seen: Mutex<Seen>,
     /// When set, every request fails with this status and code.
     pub(crate) fail_all: Mutex<Option<(u16, &'static str)>>,
+    /// When set, every scope registration fails with this status and code.
+    pub(crate) fail_registration: Mutex<Option<(u16, &'static str)>>,
     /// The only token accepted; `None` accepts any non-empty bearer.
     pub(crate) accept_token: Mutex<Option<String>>,
     /// Claimed `Idempotency-Key`s (hosted).
