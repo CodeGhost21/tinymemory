@@ -211,7 +211,10 @@ impl CortexLog {
     /// scope's events are only redacted (gone from reads) and keep their
     /// keys, so a re-sent write replays and stores nothing.
     pub(crate) fn erase(&mut self, body: &Value) -> (u16, Value) {
-        let scope = str_of(body, "/scope").to_string();
+        let Some(scope) = body.get("scope").and_then(Value::as_str) else {
+            return (422, json!({ "error_code": "INVALID_BODY" }));
+        };
+        let scope = scope.to_string();
         let confirm_all = body
             .get("confirm_all")
             .and_then(Value::as_bool)

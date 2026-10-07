@@ -102,6 +102,29 @@ async fn list_until(engine: &CortexEngine, filter: &MetaFilter, want: usize) -> 
     }
 }
 
+/// Lists `filter` until it holds exactly `want` (in any order) or
+/// [`VISIBILITY`] runs out, and returns the last listing, sorted.
+async fn list_exactly(engine: &CortexEngine, filter: &MetaFilter, want: &[String]) -> Vec<String> {
+    let mut want = want.to_vec();
+    want.sort();
+    let deadline = Instant::now() + VISIBILITY;
+    loop {
+        let mut texts: Vec<String> = engine
+            .list(ListRequest::new(filter.clone(), 50))
+            .await
+            .expect("list")
+            .items
+            .into_iter()
+            .map(|hit| hit.text)
+            .collect();
+        texts.sort();
+        if texts == want || Instant::now() >= deadline {
+            return texts;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
+
 /// Held by each live test for its whole run, so they reach the server one
 /// at a time. Run together, one test's forgets drop the packs another is
 /// about to answer from, and load the server enough that forgetting a long
@@ -269,6 +292,11 @@ async fn an_erased_node_is_gone_and_its_items_store_anew() {
         for item in &items {
             engine.store(item.clone()).await.expect("store");
         }
+        let filter = MetaFilter {
+            workspace: Some(run.clone()),
+            ..MetaFilter::default()
+        };
+        list_until(&engine, &filter, 3).await;
         let report = engine
             .erase(EraseRequest::new(tinymemory_api::Reach::subtree(
                 node.clone(),
@@ -280,11 +308,7 @@ async fn an_erased_node_is_gone_and_its_items_store_anew() {
             report.receipts.iter().all(|r| r.starts_with("erasure_")),
             "{report:?}"
         );
-        let filter = MetaFilter {
-            workspace: Some(run.clone()),
-            ..MetaFilter::default()
-        };
-        let left = list_until(&engine, &filter, 1).await;
+        let left = list_exactly(&engine, &filter, &[format!("{run} kept")]).await;
         assert_eq!(
             left,
             vec![format!("{run} kept")],

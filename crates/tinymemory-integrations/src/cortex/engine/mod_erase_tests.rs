@@ -172,3 +172,10 @@ async fn the_double_drops_beliefs_built_from_erased_events() {
     assert!(state.log.lock().unwrap().beliefs.is_empty());
     assert_eq!(state.log.lock().unwrap().forgotten.len(), 1);
 }
+
+#[test]
+fn the_double_refuses_an_erasure_without_a_scope() {
+    let mut log = crate::cortex::testing::CortexLog::default();
+    let (status, _) = log.erase(&serde_json::json!({ "confirm_all": true }));
+    assert_eq!(status, 422);
+}
