@@ -191,13 +191,16 @@ workspace.
 
 ### Detection
 
-`LegacyWorkspace::open(path)` requires `<path>/memory/memory.db` to be a SQLite
+`LegacyWorkspace::open(path)` accepts a workspace with `<path>/memory/memory.db`
+(the first v1 engine), `<path>/memory_tree/chunks.db` (the later TinyCortex
+engine, which wrote no `memory.db`), or both. A `memory.db` must be a SQLite
 database with the `memory_docs`, `episodic_log` and `user_profile` tables and
 the columns the importer reads. A missing path is `Error::NotFound`; anything
 else that is not a v1 store is `Error::NotLegacy` with the reason. Columns added
-by later v1 migrations are probed and used when present.
-`memory_tree/chunks.db` is optional and skipped silently when absent or
-unusable. Per-profile stores (`memory-<id>/memory.db`) are not read; open each
+by later v1 migrations are probed and used when present. Beside a `memory.db`,
+the chunk store is optional and skipped silently when absent or unusable.
+`LegacyWorkspace::counts()` sizes a store per section with one aggregate query
+each, without importing it. Per-profile stores (`memory-<id>/memory.db`) are not read; open each
 as its own workspace.
 
 ### Mapping v1 to v2

@@ -13,7 +13,7 @@ use tinymemory_api::{
     DocumentBody, LearningKind, Role, SourceKind, StoreItem, ToolCallRef, TurnRange,
 };
 use tinymemory_integrations::import::{
-    Checkpoint, ChunkCursor, EXTERNAL_SYNC_TAG, Error, ImportedItem, LegacyWorkspace,
+    Checkpoint, ChunkCursor, EXTERNAL_SYNC_TAG, Error, ImportedItem, LegacyCounts, LegacyWorkspace,
 };
 
 const T0: f64 = 1_700_000_000.0;
@@ -265,11 +265,105 @@ fn refuses_a_missing_path() {
 }
 
 #[test]
-fn refuses_a_directory_without_a_memory_db() {
+fn refuses_a_directory_without_either_store() {
     let dir = tempfile::tempdir().unwrap();
     let err = LegacyWorkspace::open(dir.path()).unwrap_err();
     assert!(matches!(err, Error::NotLegacy { .. }), "{err:?}");
-    assert!(err.to_string().contains("memory/memory.db is missing"));
+    assert!(
+        err.to_string()
+            .contains("neither memory/memory.db nor a usable memory_tree/chunks.db"),
+        "{err}"
+    );
+}
+
+#[test]
+fn refuses_an_unusable_chunk_store_without_a_memory_db() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("memory_tree")).unwrap();
+    rusqlite::Connection::open(dir.path().join("memory_tree/chunks.db"))
+        .unwrap()
+        .execute_batch("CREATE TABLE other (x TEXT);")
+        .unwrap();
+    let err = LegacyWorkspace::open(dir.path()).unwrap_err();
+    assert!(matches!(err, Error::NotLegacy { .. }), "{err:?}");
+}
+
+#[test]
+fn opens_a_store_with_only_a_chunk_store() {
+    // The later v1 engine wrote memory_tree/chunks.db and no memory.db.
+    let dir = tempfile::tempdir().unwrap();
+    let chunks = chunk_store(dir.path());
+    chunk(&chunks, "k1", "chat", "c1", 0, 3_000, "c: one", "[]", None);
+    chunk(&chunks, "k2", "email", "e1", 0, 1_000, "hello", "[]", None);
+    drop(chunks);
+
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    assert!(!ws.has_memory_db());
+    assert!(ws.has_chunks());
+    let ids: Vec<String> = all(&ws).iter().map(|i| source_id(&i.item)).collect();
+    assert_eq!(ids, ["mem_tree_chunks:chat:c1", "mem_tree_chunks:email:e1"]);
+    let counts = ws.counts().unwrap();
+    assert_eq!(counts.chunks, 2);
+    assert_eq!(counts.total(), 2);
+}
+
+/// What `items()` yields, counted per section by legacy id and kind.
+fn counted(items: &[ImportedItem]) -> LegacyCounts {
+    let mut counts = LegacyCounts::default();
+    for imported in items {
+        let id = source_id(&imported.item);
+        let slot = if id.starts_with("mem_tree_chunks:") {
+            &mut counts.chunks
+        } else if id.starts_with("episodic_log:") {
+            &mut counts.conversations
+        } else if id.starts_with("user_profile:") {
+            &mut counts.profile
+        } else if matches!(imported.item, StoreItem::Learning { .. }) {
+            &mut counts.learnings
+        } else {
+            &mut counts.documents
+        };
+        *slot += 1;
+    }
+    counts
+}
+
+#[test]
+fn counts_match_what_the_import_yields() {
+    let dir = rich();
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let counts = ws.counts().unwrap();
+    assert_eq!(counts, counted(&all(&ws)));
+    assert!(counts.documents > 0 && counts.learnings > 0 && counts.profile > 0);
+    assert!(!counts.is_empty());
+}
+
+#[test]
+fn counts_match_an_early_store_without_optional_columns() {
+    let (dir, conn) = workspace(OLD_MEMORY_DDL);
+    conn.execute_batch(
+        "INSERT INTO memory_docs VALUES ('d1','document_notes','d1','t','body','chat','normal',
+           '[]','{}','core',NULL,1.0,1.0,'');
+         INSERT INTO memory_docs VALUES ('d2','learning_style','d2','t','x','chat','normal',
+           '[]','{}','core',NULL,1.0,1.0,'');
+         INSERT INTO memory_docs VALUES ('d3','event_chat','d3','t','e','chat','normal',
+           '[]','{}','core',NULL,1.0,1.0,'');
+         INSERT INTO user_profile (facet_id, facet_type, key, value, confidence, first_seen_at,
+           last_seen_at) VALUES ('f1','preference','k','v',0.5,1.0,1.0), ('f2','preference','k2',' ',0.5,1.0,1.0);",
+    )
+    .unwrap();
+    drop(conn);
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    assert_eq!(ws.counts().unwrap(), counted(&all(&ws)));
+    assert_eq!(ws.counts().unwrap().total(), 3);
+}
+
+#[test]
+fn an_empty_store_counts_nothing() {
+    let (dir, conn) = workspace(support::MEMORY_DDL);
+    drop(conn);
+    let counts = LegacyWorkspace::open(dir.path()).unwrap().counts().unwrap();
+    assert!(counts.is_empty());
 }
 
 #[test]

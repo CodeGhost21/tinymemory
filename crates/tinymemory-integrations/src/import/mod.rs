@@ -1,8 +1,10 @@
 //! Import a legacy (v1, embedded TinyCortex) workspace into TinyMemory v2.
 //!
 //! [`LegacyWorkspace::open`] detects a v1 store (`<path>/memory/memory.db`
-//! with the `memory_docs`, `episodic_log` and `user_profile` tables) and
-//! refuses anything else with [`Error::NotLegacy`]. [`LegacyWorkspace::items`]
+//! with the `memory_docs`, `episodic_log` and `user_profile` tables, a
+//! `<path>/memory_tree/chunks.db`, or both) and refuses anything else with
+//! [`Error::NotLegacy`]. [`LegacyWorkspace::counts`] sizes it cheaply, and
+//! [`LegacyWorkspace::items`]
 //! then streams every importable record as a [`StoreItem`], read straight off
 //! disk with SQLite opened read-only — the engine that wrote the store is not
 //! linked:
@@ -69,6 +71,7 @@
 
 mod checkpoint;
 mod convert;
+mod counts;
 mod error;
 mod items;
 mod migrate;
@@ -76,6 +79,7 @@ mod sections;
 mod workspace;
 
 pub use checkpoint::{Checkpoint, ChunkCursor, ImportedItem};
+pub use counts::LegacyCounts;
 pub use error::{Error, Result};
 pub use items::{DEFAULT_PAGE_SIZE, Items};
 pub use migrate::{MigrationReport, migrate, migrate_with};

@@ -100,6 +100,32 @@ impl Section {
     }
 }
 
+impl Section {
+    /// How many items this section yields, counted with one aggregate
+    /// query and without reading any chunk body from disk. See
+    /// [`crate::import::LegacyCounts`] for where it may overcount.
+    pub(crate) fn count(self, ws: &LegacyWorkspace) -> Result<u64> {
+        match self {
+            Self::Documents => memory_docs::count(ws, false),
+            Self::Chunks => chunks::count(ws),
+            Self::Conversations => episodic::count(ws),
+            Self::Learnings => memory_docs::count(ws, true),
+            Self::Profile => profile::count(ws),
+        }
+    }
+}
+
+/// A SQL condition true when `column` holds text other than ASCII
+/// whitespace: the importer skips blank rows.
+pub(crate) fn has_text(column: &str) -> String {
+    format!("trim({column}, ' ' || char(9) || char(10) || char(13)) <> ''")
+}
+
+/// A SQLite count as `u64`.
+pub(crate) fn count_of(count: i64) -> u64 {
+    u64::try_from(count).unwrap_or(0)
+}
+
 /// Metadata every imported item starts from: `source.kind = Import`, the
 /// section-scoped legacy id, and the workspace path.
 pub(crate) fn import_meta(ws: &LegacyWorkspace, legacy_id: String) -> MemoryMeta {
