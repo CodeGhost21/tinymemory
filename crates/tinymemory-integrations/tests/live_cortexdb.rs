@@ -224,10 +224,21 @@ async fn a_write_never_claims_a_v3_root_before_its_owner() {
     let item =
         |text: &str| StoreItem::learning(text, LearningKind::Fact, 0.8, MemoryMeta::default());
 
-    engine(None)
+    let first = engine(None)
         .store(item("written before any owner"))
         .await
         .expect("store without an owner");
+    // The write reached the v3 root's learnings: it reads back there.
+    let back = engine(None)
+        .get(tinymemory_api::GetRequest {
+            ids: vec![first.id.clone()],
+            reach: Some(tinymemory_api::Reach::exact(
+                tinymemory_api::Namespace::ROOT,
+            )),
+        })
+        .await
+        .expect("get it back below the root");
+    assert_eq!(back.len(), 1, "the write landed below {root}: {back:?}");
     assert_eq!(
         record().await.status(),
         reqwest::StatusCode::NOT_FOUND,
