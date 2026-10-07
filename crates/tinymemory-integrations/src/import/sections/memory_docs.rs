@@ -25,7 +25,7 @@ use rusqlite::params;
 use serde_json::Value;
 use tinymemory_api::{DocumentBody, LearningKind, StoreItem};
 
-use super::{Mark, Scanned, import_meta, push_unique, sql_limit};
+use super::{Mark, Scanned, count_of, has_text, import_meta, push_unique, sql_limit};
 use crate::import::convert;
 use crate::import::error::Result;
 use crate::import::workspace::LegacyWorkspace;
@@ -116,7 +116,50 @@ pub(super) fn learnings(
         .collect())
 }
 
+/// The rows with text the documents section (`learnings == false`) or the
+/// learnings section yields, classified by namespace as `page` does. Reads
+/// one row per distinct namespace, never a body.
+pub(super) fn count(ws: &LegacyWorkspace, learnings: bool) -> Result<u64> {
+    let Some(memory) = &ws.memory else {
+        return Ok(0);
+    };
+    let logical = if ws.schema.logical_namespace {
+        "logical_namespace"
+    } else {
+        "NULL"
+    };
+    let sql = format!(
+        "SELECT namespace, {logical}, COUNT(*) FROM memory_docs WHERE {} \
+         GROUP BY namespace, {logical}",
+        has_text("content")
+    );
+    let mut stmt = memory.prepare(&sql)?;
+    let groups = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, i64>(2)?,
+        ))
+    })?;
+    let mut total = 0;
+    for group in groups {
+        let (namespace, logical_namespace, rows) = group?;
+        let wanted = match classify(&resolve_logical(&namespace, logical_namespace.as_deref())) {
+            RowClass::Document => !learnings,
+            RowClass::Learning(_) | RowClass::Global => learnings,
+            RowClass::Event => false,
+        };
+        if wanted {
+            total = u64::saturating_add(total, count_of(rows));
+        }
+    }
+    Ok(total)
+}
+
 fn rows(ws: &LegacyWorkspace, after: Option<&str>, limit: usize) -> Result<Vec<DocRow>> {
+    let Some(memory) = &ws.memory else {
+        return Ok(Vec::new());
+    };
     let logical = if ws.schema.logical_namespace {
         "logical_namespace"
     } else {
@@ -130,10 +173,11 @@ fn rows(ws: &LegacyWorkspace, after: Option<&str>, limit: usize) -> Result<Vec<D
     };
     let sql = format!(
         "SELECT document_id, namespace, {logical}, title, content, tags_json, metadata_json, \
-         updated_at, {taint} FROM memory_docs WHERE (?1 IS NULL OR document_id > ?1) \
-         ORDER BY document_id LIMIT ?2"
+         updated_at, {taint} FROM memory_docs WHERE (?1 IS NULL OR document_id > ?1) AND {} \
+         ORDER BY document_id LIMIT ?2",
+        has_text("content")
     );
-    let mut stmt = ws.memory.prepare(&sql)?;
+    let mut stmt = memory.prepare(&sql)?;
     let rows = stmt.query_map(params![after, sql_limit(limit)], |row| {
         Ok(DocRow {
             document_id: row.get(0)?,
@@ -163,9 +207,16 @@ fn mark_taint(row: &DocRow, tags: &mut Vec<String>) {
 }
 
 fn logical_namespace(row: &DocRow) -> String {
-    match &row.logical_namespace {
-        Some(logical) if !logical.trim().is_empty() => logical.clone(),
-        _ => restore_namespace(&row.namespace),
+    resolve_logical(&row.namespace, row.logical_namespace.as_deref())
+}
+
+/// A row's logical namespace: `logical` when set and not blank, else
+/// `namespace` with the sanitiser undone. The one rule both the sections and
+/// [`count`] classify by.
+fn resolve_logical(namespace: &str, logical: Option<&str>) -> String {
+    match logical {
+        Some(logical) if !logical.trim().is_empty() => logical.to_string(),
+        _ => restore_namespace(namespace),
     }
 }
 

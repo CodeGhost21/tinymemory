@@ -67,6 +67,33 @@ pub(super) fn page(
         .collect()
 }
 
+/// Sources with a chunk that has text, resolved by the same reader the
+/// import uses: a chunk's text may live in a file, so this reads the chunk
+/// bodies (but decodes no item).
+pub(super) fn count(ws: &LegacyWorkspace) -> Result<u64> {
+    let Some(store) = &ws.chunks else {
+        return Ok(0);
+    };
+    let mut stmt = store
+        .conn
+        .prepare("SELECT DISTINCT source_kind, source_id FROM mem_tree_chunks")?;
+    let sources = stmt
+        .query_map([], |row| {
+            Ok(ChunkCursor {
+                source_kind: row.get(0)?,
+                source_id: row.get(1)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut total = 0;
+    for source in sources {
+        if !chunks(store, &source)?.is_empty() {
+            total = u64::saturating_add(total, 1);
+        }
+    }
+    Ok(total)
+}
+
 fn source_item(
     ws: &LegacyWorkspace,
     store: &ChunkStore,

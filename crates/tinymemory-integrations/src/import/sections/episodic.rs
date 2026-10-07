@@ -9,7 +9,7 @@
 use rusqlite::params;
 use tinymemory_api::{StoreItem, Turn, TurnRange};
 
-use super::{Mark, Scanned, import_meta, sql_limit};
+use super::{Mark, Scanned, count_of, has_text, import_meta, sql_limit};
 use crate::import::convert;
 use crate::import::error::Result;
 use crate::import::workspace::LegacyWorkspace;
@@ -20,10 +20,14 @@ pub(super) fn page(
     after: Option<&str>,
     limit: usize,
 ) -> Result<Vec<Scanned>> {
-    let mut stmt = ws.memory.prepare(
+    let Some(memory) = &ws.memory else {
+        return Ok(Vec::new());
+    };
+    let mut stmt = memory.prepare(&format!(
         "SELECT DISTINCT session_id FROM episodic_log WHERE (?1 IS NULL OR session_id > ?1) \
-         ORDER BY session_id LIMIT ?2",
-    )?;
+             AND {} ORDER BY session_id LIMIT ?2",
+        has_text("content")
+    ))?;
     let sessions = stmt
         .query_map(params![after, sql_limit(limit)], |row| {
             row.get::<_, String>(0)
@@ -33,14 +37,30 @@ pub(super) fn page(
         .into_iter()
         .map(|session| {
             Ok(Scanned {
-                item: conversation(ws, &session)?,
+                item: conversation(ws, memory, &session)?,
                 mark: Mark::Conversation(session),
             })
         })
         .collect()
 }
 
-fn conversation(ws: &LegacyWorkspace, session: &str) -> Result<Option<StoreItem>> {
+/// Threads with at least one turn that has text.
+pub(super) fn count(ws: &LegacyWorkspace) -> Result<u64> {
+    let Some(memory) = &ws.memory else {
+        return Ok(0);
+    };
+    let sql = format!(
+        "SELECT COUNT(DISTINCT session_id) FROM episodic_log WHERE {}",
+        has_text("content")
+    );
+    Ok(count_of(memory.query_row(&sql, [], |row| row.get(0))?))
+}
+
+fn conversation(
+    ws: &LegacyWorkspace,
+    memory: &rusqlite::Connection,
+    session: &str,
+) -> Result<Option<StoreItem>> {
     let tool_calls = if ws.schema.tool_calls_json {
         "tool_calls_json"
     } else {
@@ -50,7 +70,7 @@ fn conversation(ws: &LegacyWorkspace, session: &str) -> Result<Option<StoreItem>
         "SELECT role, content, timestamp, {tool_calls} FROM episodic_log \
          WHERE session_id = ?1 ORDER BY timestamp, id"
     );
-    let mut stmt = ws.memory.prepare(&sql)?;
+    let mut stmt = memory.prepare(&sql)?;
     let rows = stmt.query_map([session], |row| {
         Ok((
             row.get::<_, Option<String>>(0)?.unwrap_or_default(),

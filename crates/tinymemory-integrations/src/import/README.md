@@ -16,6 +16,8 @@ Architecture overview:
 | Item | Purpose |
 | --- | --- |
 | `LegacyWorkspace::open(path)` | Detects a v1 store or refuses with a typed error. |
+| `LegacyWorkspace::counts()` | `LegacyCounts` per section, exactly what `items()` yields: one aggregate query per `memory.db` section, the chunk store through the chunk reader, no item decoded; `total()`, `is_empty()`. Non-exhaustive. |
+| `LegacyWorkspace::has_memory_db()` / `has_chunks()` | Which of the two v1 databases the workspace has. |
 | `LegacyWorkspace::items()` / `items_from(&Checkpoint)` | Streams `Result<ImportedItem>` from the start or after a checkpoint. |
 | `Items::with_page_size(n)` | Keys fetched per query (default `DEFAULT_PAGE_SIZE`, 256). Does not affect output. |
 | `ImportedItem { item, checkpoint }` | An item and the checkpoint to persist once it is stored. |
@@ -27,18 +29,34 @@ Architecture overview:
 
 ## Detection
 
-`open(path)` requires `<path>/memory/memory.db` to be a SQLite database with
-the `memory_docs`, `episodic_log` and `user_profile` tables and the columns
-the importer reads. A missing path is `NotFound`; anything else that is not a
-v1 store (a file, no `memory.db`, a non-SQLite file, a different schema) is
-`NotLegacy` with the reason. Columns that later v1 migrations added are probed
+A v1 store is either of two databases, and a workspace may hold both. The
+first v1 engine wrote `<path>/memory/memory.db`; the later one (TinyCortex)
+wrote only `<path>/memory_tree/chunks.db`, so a store with just the chunk
+store is a v1 store too.
+
+`open(path)` accepts a workspace with either. When `memory/memory.db` exists
+it must be a SQLite database with the `memory_docs`, `episodic_log` and
+`user_profile` tables and the columns the importer reads. A missing path is
+`NotFound`; anything else that is not a v1 store (a file, neither database, a
+`memory.db` that is not SQLite or has a different schema) is `NotLegacy` with
+the reason. Columns that later v1 migrations added are probed
 with `pragma_table_info` and used when present: `memory_docs.logical_namespace`,
 `memory_docs.taint`,
 `episodic_log.tool_calls_json`, `user_profile.state` / `user_state` / `class`
 / `evidence_refs_json`, and `mem_tree_chunks.content_path`.
 
-`memory_tree/chunks.db` is optional. If it is absent, not SQLite, or has no
-usable `mem_tree_chunks` table, the chunk section is skipped silently.
+Beside a `memory.db`, `memory_tree/chunks.db` is optional: if it is absent,
+not SQLite, or has no usable `mem_tree_chunks` table, the chunk section is
+skipped silently. Without a `memory.db` it is the store, and an unusable one
+is `NotLegacy`. A chunk store that exists but cannot be read (permissions, a
+failing disk) is an error, not skipped: it may hold the user's data, and a
+migration must not report itself complete without it.
+
+`counts()` sizes a store without importing it, so a host can tell whether
+there is anything to import and show progress against a total. Every section
+counts with the very predicate its scan filters by (a SQL function over Rust's
+`str::trim`, and for the chunk store the chunk reader itself, which reads
+bodies from their files), so the counts are exactly what `items()` yields.
 
 Per-profile stores (`memory-<id>/memory.db`) are not read; open each one as its
 own workspace if needed.

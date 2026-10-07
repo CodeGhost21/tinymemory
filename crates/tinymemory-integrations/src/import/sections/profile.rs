@@ -8,7 +8,7 @@
 use rusqlite::params;
 use tinymemory_api::{LearningKind, StoreItem};
 
-use super::{Mark, Scanned, import_meta, push_unique, sql_limit};
+use super::{Mark, Scanned, count_of, has_text, import_meta, push_unique, sql_limit};
 use crate::import::convert;
 use crate::import::error::Result;
 use crate::import::workspace::LegacyWorkspace;
@@ -26,12 +26,41 @@ struct FacetRow {
     evidence: Option<String>,
 }
 
+/// The live facets `page` keeps, with a value that has text.
+pub(super) fn count(ws: &LegacyWorkspace) -> Result<u64> {
+    let Some(memory) = &ws.memory else {
+        return Ok(0);
+    };
+    let sql = format!(
+        "SELECT COUNT(*) FROM user_profile WHERE {}{}",
+        has_text("value"),
+        live_filters(ws)
+    );
+    Ok(count_of(memory.query_row(&sql, [], |row| row.get(0))?))
+}
+
+/// The `AND …` filters that drop retired and forgotten facets, for the
+/// columns this store has.
+fn live_filters(ws: &LegacyWorkspace) -> String {
+    let mut filters = String::new();
+    if ws.schema.profile_state {
+        filters.push_str(" AND state IS NOT 'dropped'");
+    }
+    if ws.schema.profile_user_state {
+        filters.push_str(" AND user_state IS NOT 'forgotten'");
+    }
+    filters
+}
+
 /// The next page of facets after `after`.
 pub(super) fn page(
     ws: &LegacyWorkspace,
     after: Option<&str>,
     limit: usize,
 ) -> Result<Vec<Scanned>> {
+    let Some(memory) = &ws.memory else {
+        return Ok(Vec::new());
+    };
     let schema = ws.schema;
     let class = if schema.profile_class {
         "class"
@@ -43,19 +72,14 @@ pub(super) fn page(
     } else {
         "NULL"
     };
-    let mut filters = String::new();
-    if schema.profile_state {
-        filters.push_str(" AND state IS NOT 'dropped'");
-    }
-    if schema.profile_user_state {
-        filters.push_str(" AND user_state IS NOT 'forgotten'");
-    }
+    // Same rows `count` counts: live facets whose value has text.
+    let filters = format!(" AND {}{}", has_text("value"), live_filters(ws));
     let sql = format!(
         "SELECT facet_id, facet_type, key, value, confidence, last_seen_at, {class}, {evidence} \
          FROM user_profile WHERE (?1 IS NULL OR facet_id > ?1){filters} \
          ORDER BY facet_id LIMIT ?2"
     );
-    let mut stmt = ws.memory.prepare(&sql)?;
+    let mut stmt = memory.prepare(&sql)?;
     let rows = stmt.query_map(params![after, sql_limit(limit)], |row| {
         Ok(FacetRow {
             facet_id: row.get(0)?,
