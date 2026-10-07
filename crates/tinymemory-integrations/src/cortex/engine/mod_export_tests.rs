@@ -118,23 +118,23 @@ async fn every_kind_is_exported_whole_exactly_as_stored() {
 #[tokio::test]
 async fn an_export_pages_by_cursor_and_hands_each_item_back_once() {
     for (engine, _) in both().await {
+        let mut want = Vec::new();
         for n in 0..5 {
-            engine
-                .store(StoreItem::learning(
-                    format!("fact {n}"),
-                    LearningKind::Fact,
-                    0.5,
-                    MemoryMeta::default(),
-                ))
-                .await
-                .unwrap();
+            let item = StoreItem::learning(
+                format!("fact {n}"),
+                LearningKind::Fact,
+                0.5,
+                MemoryMeta::default(),
+            );
+            want.push(item.fingerprint());
+            engine.store(item).await.unwrap();
         }
         let (exported, _) = export_all(&engine, MetaFilter::kinds([ItemKind::Learning]), 2).await;
         assert_eq!(exported.len(), 5, "each item once: {exported:?}");
-        let mut ids: Vec<&str> = exported.iter().map(|e| e.id.as_str()).collect();
+        let mut ids: Vec<String> = exported.iter().map(|e| e.id.as_str().to_string()).collect();
         ids.sort_unstable();
-        ids.dedup();
-        assert_eq!(ids.len(), 5, "five distinct items: {exported:?}");
+        want.sort_unstable();
+        assert_eq!(ids, want, "exactly the stored items");
     }
 }
 
