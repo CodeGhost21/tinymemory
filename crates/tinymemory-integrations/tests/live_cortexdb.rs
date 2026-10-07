@@ -440,6 +440,89 @@ async fn a_logged_turn_sent_twice_is_written_once() {
     }
 }
 
+/// A fetch hit on a conversation carries the whole conversation on the real
+/// server: a one-turn conversation (as a host logs each turn) taken from its
+/// pack event alone, and a longer one assembled from its turns. Each hit's
+/// text matches a whole-item `get` and the item as stored.
+#[tokio::test]
+async fn a_fetch_hit_is_the_whole_conversation_one_turn_or_longer() {
+    let _alone = ONE_AT_A_TIME.lock().await;
+    for (wire, engine) in live_engines() {
+        let workspace = run_id();
+        let said = |turn: usize| format!("Turn {turn}: the Kestrel launch moved ({workspace}).");
+        let conversation = |turns: usize, thread: &str| StoreItem::Conversation {
+            turns: (0..turns)
+                .map(|turn| {
+                    let role = if turn % 2 == 0 {
+                        Role::User
+                    } else {
+                        Role::Assistant
+                    };
+                    Turn::new(role, said(turn))
+                })
+                .collect(),
+            meta: MemoryMeta {
+                thread_id: Some(format!("{workspace}-{thread}")),
+                ..meta(&workspace, SourceKind::Conversation)
+            },
+        };
+        let items = vec![conversation(1, "one"), conversation(3, "three")];
+        let receipts = engine
+            .store_many(items.clone())
+            .await
+            .expect("store the conversations");
+        let filter = MetaFilter {
+            workspace: Some(workspace.clone()),
+            ..MetaFilter::kinds([ItemKind::Conversation])
+        };
+        assert_eq!(list_until(&engine, &filter, 2).await.len(), 2, "{wire}");
+
+        let deadline = Instant::now() + VISIBILITY;
+        let hits = loop {
+            let mut request =
+                FetchRequest::new(format!("Kestrel launch {workspace}"), FetchMode::Hybrid, 10);
+            request.filter = filter.clone();
+            let hits = engine.fetch(request).await.expect("fetch").hits;
+            if hits.len() >= 2 || Instant::now() >= deadline {
+                break hits;
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        };
+        let mut found: Vec<&str> = hits.iter().map(|hit| hit.id.as_str()).collect();
+        let mut stored: Vec<&str> = receipts.iter().map(|receipt| receipt.id.as_str()).collect();
+        found.sort_unstable();
+        stored.sort_unstable();
+        assert_eq!(found, stored, "{wire}: one hit for each conversation");
+        let whole = engine
+            .get(tinymemory_api::GetRequest {
+                ids: hits.iter().map(|hit| hit.id.clone()).collect(),
+                reach: None,
+            })
+            .await
+            .expect("get");
+        for hit in &hits {
+            let item = items
+                .iter()
+                .find(|item| item.fingerprint() == hit.id.as_str())
+                .expect("a stored item");
+            assert_eq!(
+                hit.text,
+                item.render_text(),
+                "{wire}: the whole conversation"
+            );
+            let read = whole.iter().find(|read| read.id == hit.id).expect("read");
+            assert_eq!(hit.text, read.text, "{wire}");
+            assert_eq!(hit.meta, read.meta, "{wire}");
+        }
+        engine
+            .forget(ForgetTarget::Ids(
+                receipts.into_iter().map(|receipt| receipt.id).collect(),
+            ))
+            .await
+            .expect("forget");
+    }
+}
+
 /// What recall's dropped-pack retry (`engine/recall.rs`) is built on, pinned
 /// against the real server: a forget anywhere, even in an unrelated scope,
 /// drops every pack CortexDB holds, so the next `use_pack_id` answer is a

@@ -3,6 +3,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use futures::{StreamExt, TryStreamExt, stream};
+
 use tinymemory_api::explore::in_request_order;
 use tinymemory_api::{
     GetRequest, Hit, ItemId, ItemKind, MemoryMeta, MetaFilter, Namespace, StoreItem,
@@ -59,6 +61,24 @@ fn names_a_prefix(wanted: &str, held: &[String]) -> bool {
     [wanted, wanted.trim_end_matches('/')]
         .iter()
         .any(|value| held.contains(&labels::path_digest(value)))
+}
+
+/// Namespaces whose item events are looked up at once when assembling
+/// whole items: each is one listing, and reading them one after the other
+/// made a read's latency grow with the number of namespaces it hit.
+pub(super) const LOOKUPS_AT_ONCE: usize = 4;
+
+/// The whole conversation `envelope` holds when it is the conversation's
+/// only turn (`turn.count == 1`), as every turn a host logs per item is:
+/// nothing more is stored, so no lookup can add to it. `None` otherwise.
+pub(super) fn one_turn_conversation(envelope: &Envelope) -> Option<StoreItem> {
+    let one_turn = envelope.kind == ItemKind::Conversation
+        && envelope.turn.as_ref().is_some_and(|turn| turn.count == 1);
+    if one_turn {
+        rebuild_whole(std::slice::from_ref(envelope))
+    } else {
+        None
+    }
 }
 
 /// An envelope's metadata, located: for a piece of a chunked document, the
@@ -166,7 +186,8 @@ impl CortexEngine {
 
     /// The whole items of `kind` named by `ids`, each at its namespace,
     /// rebuilt from all their events: a conversation's turns, a chunked
-    /// document's pieces (one lookup per namespace).
+    /// document's pieces (one lookup per namespace, [`LOOKUPS_AT_ONCE`] at
+    /// a time).
     pub(super) async fn assembled(
         &self,
         kind: ItemKind,
@@ -176,14 +197,20 @@ impl CortexEngine {
         for (id, namespace) in ids {
             by_node.entry(namespace).or_default().push(id.clone());
         }
+        let lookups: Vec<(KindScope, Vec<String>)> = by_node
+            .into_iter()
+            .map(|(namespace, ids)| (KindScope::new(namespace.clone(), kind), ids))
+            .collect();
+        let found: Vec<HashMap<String, Vec<Decoded>>> = stream::iter(lookups)
+            .map(|(scope, ids)| async move { self.item_events(&scope, &ids).await })
+            .buffer_unordered(LOOKUPS_AT_ONCE)
+            .try_collect()
+            .await?;
         let mut out = HashMap::new();
-        for (namespace, ids) in by_node {
-            let scope = KindScope::new(namespace.clone(), kind);
-            for (id, events) in self.item_events(&scope, &ids).await? {
-                let envelopes: Vec<Envelope> = events.into_iter().map(|d| d.envelope).collect();
-                if let Some(item) = rebuild_whole(&envelopes) {
-                    out.insert(id, item);
-                }
+        for (id, events) in found.into_iter().flatten() {
+            let envelopes: Vec<Envelope> = events.into_iter().map(|d| d.envelope).collect();
+            if let Some(item) = rebuild_whole(&envelopes) {
+                out.insert(id, item);
             }
         }
         Ok(out)

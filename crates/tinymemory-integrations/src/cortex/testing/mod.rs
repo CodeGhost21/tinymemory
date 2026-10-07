@@ -87,6 +87,13 @@ pub(crate) struct Double {
     /// aim at the reads a write makes after it is sent, not the replay
     /// lookup before it.
     pub(crate) arm_after_write: Mutex<Option<(usize, usize)>>,
+    /// How long each event listing is held before it answers, in ms; zero
+    /// answers at once.
+    pub(crate) listing_delay_ms: AtomicUsize,
+    /// Event listings being answered right now.
+    pub(crate) listings_in_flight: AtomicUsize,
+    /// The most event listings ever answered at once.
+    pub(crate) listings_peak: AtomicUsize,
 }
 
 /// The shared handle the routes and tests hold.
