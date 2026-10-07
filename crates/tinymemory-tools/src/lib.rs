@@ -77,7 +77,9 @@ pub use lifecycle::{
     AgentMemory, Compaction, PostTurn, PostTurnReport, PreTurn, RecallPolicy, SessionStart,
     TurnContext,
 };
-pub use recall::{ContextPack, HolisticRecall, ScopeSection, SectionQuery, holistic_recall};
+pub use recall::{
+    ContextPack, HolisticRecall, ScopeSection, SectionQuery, holistic_recall, holistic_recall_dated,
+};
 pub use tools::{
     MEMORY_EXPLORE, MEMORY_FETCH, MEMORY_FORGET, MEMORY_GET, MEMORY_LIST, MEMORY_RECALL,
     MEMORY_STORE, MemoryTools, TOOL_NAMES, ToolScope, ToolSpec, WRITE_TOOL_NAMES,

@@ -154,6 +154,7 @@ impl CortexWire {
             (Self::Direct, Route::BuildBeliefs) => "v1/beliefs/build",
             (Self::Direct, Route::Beliefs) => "v1/beliefs",
             (Self::Direct, Route::Erasures) => "v1/erasures",
+            (Self::Direct, Route::Version) => "v1/admin/version",
             (Self::TinyHumans, Route::Experience | Route::Bulk) => "memory/experience",
             (Self::TinyHumans, Route::Events) => "memory/events",
             (Self::TinyHumans, Route::Recall) => "memory/recall",
@@ -170,6 +171,9 @@ impl CortexWire {
             (Self::TinyHumans, Route::Erasures) => "memory/erasures",
             // Never sent: the hosted backend keeps its own tenancy.
             (Self::TinyHumans, Route::RegisterScope | Route::ScopeMembers) => "memory/scopes",
+            // Never sent: the hosted wire has no version route, so a date
+            // hint is sent optimistically there (see `engine::refers`).
+            (Self::TinyHumans, Route::Version) => "memory/version",
         }
     }
 }
@@ -204,6 +208,8 @@ pub(crate) enum Route {
     Beliefs,
     /// Erase a whole scope for good (Direct only).
     Erasures,
+    /// Build info and the API capabilities the server accepts (Direct only).
+    Version,
 }
 
 #[cfg(test)]

@@ -38,6 +38,7 @@ use super::CortexEngine;
 use super::beliefs::{beliefs_in, merge};
 use super::cursor::{self, FetchCursor};
 use super::items::{event_hit, hit, keeps, one_turn_conversation};
+use super::refers;
 use crate::cortex::envelope::chunks::MAX_EVENT_TEXT_BYTES;
 use crate::cortex::envelope::{Envelope, decode_event, labels};
 use crate::cortex::error::{Error, Result};
@@ -144,7 +145,12 @@ impl CortexEngine {
             .min(MAX_PACK_EVENTS);
         let scopes = self.scopes_for(&req.filter).await?;
         let wanted_beliefs = if offset == 0 { req.beliefs } else { 0 };
+        let hint = match &req.refers_to {
+            Some(hint) if self.sends_refers().await => Some(refers::temporal(hint)),
+            _ => None,
+        };
         let req = &req;
+        let hint = &hint;
         let packs: Vec<(Vec<Envelope>, Vec<Hit>)> = stream::iter(scopes)
             .map(|scope| async move {
                 let mut body = recall_body(&scope.path, &req.query, events, &req.filter);
@@ -152,7 +158,19 @@ impl CortexEngine {
                     body["include"] = json!(["events", "beliefs"]);
                     body["budgets"]["per_layer_limits"]["beliefs"] = json!(wanted_beliefs);
                 }
-                let pack = self.log.recall(&body).await?;
+                // Another scope of this fetch may have had the hint refused.
+                if let Some(temporal) = hint.as_ref().filter(|_| !self.refers_off()) {
+                    body["temporal"] = temporal.clone();
+                }
+                let pack = match self.log.recall(&body).await {
+                    Err(error @ Error::InvalidRequest(_)) if hint.is_some() => {
+                        body.as_object_mut().map(|body| body.remove("temporal"));
+                        let pack = self.log.recall(&body).await?;
+                        self.refers_refused(&error);
+                        pack
+                    }
+                    pack => pack?,
+                };
                 let beliefs = if wanted_beliefs > 0 {
                     beliefs_in(&self.layout, &pack, "/layers/beliefs")
                 } else {
@@ -168,7 +186,16 @@ impl CortexEngine {
             .into_iter()
             .filter(|belief| Reach::admitted_by(req.filter.reach.as_ref(), &belief.meta.namespace))
             .collect();
-        let merged = interleave(per_scope);
+        let mut merged = interleave(per_scope);
+        if let Some(hint) = &req.refers_to {
+            // The server lifted the hinted days inside each scope's pack; the
+            // rank-by-rank merge would bury them again under other scopes'
+            // undated best, so lift them once more across the merged list.
+            let (on, off): (Vec<Envelope>, Vec<Envelope>) = merged
+                .into_iter()
+                .partition(|e| e.meta.observed_at.is_some_and(|at| hint.covers(at)));
+            merged = on.into_iter().chain(off).collect();
+        }
         let more = merged.len() > end;
         let page: Vec<(usize, Envelope)> = merged
             .into_iter()

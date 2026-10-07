@@ -88,6 +88,13 @@ pub(crate) struct Double {
     pub(crate) rate_limit_forget: AtomicUsize,
     /// Recall answers 500.
     pub(crate) recall_down: AtomicBool,
+    /// `v1/admin/version` does not list `refers_to_v1`.
+    pub(crate) refers_unlisted: AtomicBool,
+    /// `v1/admin/version` answers 500.
+    pub(crate) version_down: AtomicBool,
+    /// A recall carrying `temporal` is refused with 422, as a server that
+    /// does not know the field refuses it.
+    pub(crate) refers_refused: AtomicBool,
     /// Answers refuse their `use_pack_id` as expired (404) this many times,
     /// as CortexDB does once anything is forgotten after the pack was built.
     pub(crate) expire_packs: AtomicUsize,

@@ -112,3 +112,56 @@ fn the_call_future_is_send() {
     let tools = tools();
     assert_send(tools.call(MEMORY_LIST, Value::Null));
 }
+
+#[tokio::test]
+async fn a_model_s_refers_to_ranks_that_day_first_in_the_host_zone() {
+    use chrono::{TimeZone, Utc};
+    use tinymemory_api::{MemoryEngine, MemoryMeta, StoreItem};
+
+    let engine = Arc::new(ReferenceEngine::new());
+    for (text, day) in [
+        ("dinner at Toit", 1),
+        ("dinner at Truffles", 2),
+        ("dinner at home", 5),
+    ] {
+        let meta = MemoryMeta {
+            // 20:00 UTC on the 2nd is already the 3rd in India.
+            observed_at: Utc.with_ymd_and_hms(2026, 10, day, 20, 0, 0).single(),
+            ..MemoryMeta::default()
+        };
+        engine.store(StoreItem::document(text, meta)).await.unwrap();
+    }
+    let tools = MemoryTools::new(engine).in_zone("Asia/Kolkata");
+    let first = |page: Value| {
+        page["hits"][0]["text"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    };
+    let plain = tools
+        .call("memory_fetch", json!({"query": "dinner"}))
+        .await
+        .unwrap();
+    assert_ne!(
+        first(plain),
+        "dinner at Truffles",
+        "fixture: undated order differs"
+    );
+
+    let dated = tools
+        .call(
+            "memory_fetch",
+            json!({"query": "dinner", "refers_to": {"from": "2026-10-03", "to": "2026-10-03"}}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first(dated), "dinner at Truffles");
+}
+
+#[test]
+fn placing_the_tools_keeps_their_zone() {
+    let tools = MemoryTools::new(Arc::new(ReferenceEngine::new()))
+        .in_zone("Asia/Kolkata")
+        .placed_at(Namespace::agent("a"));
+    assert_eq!(tools.scope().zone.as_deref(), Some("Asia/Kolkata"));
+}

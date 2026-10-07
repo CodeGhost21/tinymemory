@@ -13,8 +13,10 @@
 //! optional argument they mean to leave out.
 
 mod filter;
+mod time;
 
 pub(crate) use filter::{facet, fetch_mode, meta_filter};
+pub(crate) use time::time_hint;
 
 use serde_json::{Map, Value};
 use tinymemory_api::{Error, Result};

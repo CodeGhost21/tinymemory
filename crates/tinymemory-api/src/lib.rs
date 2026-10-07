@@ -75,7 +75,7 @@ pub use meta::{MemoryMeta, MetaFilter, SourceKind, SourceRef, ToolCallRef, TurnR
 pub use namespace::{Namespace, Reach, Segment, SegmentKind};
 pub use query::{
     Citation, EraseReport, EraseRequest, ExportPage, Exported, FetchMode, FetchPage, FetchRequest,
-    ForgetReport, ForgetTarget, Hit, ListPage, ListRequest, RecallAnswer, RecallRequest,
+    ForgetReport, ForgetTarget, Hit, ListPage, ListRequest, RecallAnswer, RecallRequest, TimeHint,
 };
 pub use write::{WaitFor, WriteOptions};
 

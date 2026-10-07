@@ -67,9 +67,11 @@ pub(crate) mod render;
 mod types;
 
 use std::collections::HashSet;
+use std::future::Future;
+use std::pin::Pin;
 
-use futures::future::join_all;
-use tinymemory_api::{MemoryEngine, Result};
+use futures::future::{join, join_all};
+use tinymemory_api::{MemoryEngine, Result, TimeHint};
 
 use gather::Settled;
 pub(crate) use render::Frontmatter;
@@ -91,24 +93,75 @@ pub async fn holistic_recall(
     engine: &dyn MemoryEngine,
     request: &HolisticRecall,
 ) -> Result<ContextPack> {
-    run(engine, request, None).await
+    run(engine, request, None, None).await
 }
 
-/// [`holistic_recall`], optionally with `context.md` frontmatter.
+/// [`holistic_recall`] for a question whose date is still being worked out.
+///
+/// The sections are read at once, without waiting for `hint`; fetch sections
+/// read deeper than they show. When the reads are done and `hint` has
+/// resolved to a [`TimeHint`], each fetch section's hits from those days move
+/// ahead of the rest ([`TimeHint::rank`]) before the sections are cut to
+/// their limits and rendered. The pack waits for whichever of the two
+/// finishes last, so `hint` must carry its own deadline: resolve to `None`
+/// when the date is not known in time, and the pack is the undated one.
+///
+/// # Errors
+///
+/// As [`holistic_recall`].
+pub async fn holistic_recall_dated(
+    engine: &dyn MemoryEngine,
+    request: &HolisticRecall,
+    hint: impl Future<Output = Option<TimeHint>> + Send,
+) -> Result<ContextPack> {
+    run(engine, request, None, Some(Box::pin(hint))).await
+}
+
+/// A date that may arrive while the sections are read.
+pub(crate) type LateHint<'a> = Pin<Box<dyn Future<Output = Option<TimeHint>> + Send + 'a>>;
+
+/// [`holistic_recall`], optionally with `context.md` frontmatter and a late
+/// date.
 pub(crate) async fn run(
     engine: &dyn MemoryEngine,
     request: &HolisticRecall,
     frontmatter: Option<Frontmatter<'_>>,
+    late: Option<LateHint<'_>>,
 ) -> Result<ContextPack> {
     request.validate()?;
     let beliefs = gather::belief_budget(request);
-    let mut gathered = join_all(
+    let dated = late.is_some() || request.refers_to.is_some();
+    let reads = join_all(
         request
             .sections
             .iter()
-            .map(|section| gather::section(engine, request, section, beliefs)),
-    )
-    .await;
+            .map(|section| gather::section(engine, request, section, beliefs, dated)),
+    );
+    let (mut gathered, late) = match late {
+        Some(late) => join(reads, late).await,
+        None => (reads.await, None),
+    };
+    let hint = late
+        .filter(|hint| hint.validate().is_ok())
+        .or_else(|| request.refers_to.clone());
+    if let Some(hint) = &hint {
+        for (section, outcome) in request.sections.iter().zip(&mut gathered) {
+            // Sections that ranked by a query (fetch, or an answer that fell
+            // back to fetch); a section that read the newest items, latest
+            // or a fetch with no query at all, keeps its newest-first order.
+            let queried = match &section.query {
+                SectionQuery::Fetch { query } => query
+                    .as_deref()
+                    .or(request.query.as_deref())
+                    .is_some_and(|query| !query.trim().is_empty()),
+                SectionQuery::Answer { .. } => true,
+                SectionQuery::Latest => false,
+            };
+            if let (true, gather::Gathered::Hits { hits, .. }) = (queried, outcome) {
+                hint.rank(hits);
+            }
+        }
+    }
     gather::fold_beliefs(request, &mut gathered);
     let mut sections = Vec::new();
     let mut rendered_from = Vec::new();
@@ -131,10 +184,11 @@ pub(crate) async fn run(
     );
     let engine_id = engine.descriptor().id;
     log::debug!(
-        "[recall] pack engine={engine_id} sections={} skipped={} tokens={}",
+        "[recall] pack engine={engine_id} sections={} skipped={} tokens={} dated={}",
         sections.len(),
         skipped.len(),
-        rendered.tokens
+        rendered.tokens,
+        hint.is_some()
     );
     Ok(ContextPack {
         markdown: rendered.markdown,
@@ -149,3 +203,7 @@ pub(crate) async fn run(
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "mod_dated_tests.rs"]
+mod dated_tests;

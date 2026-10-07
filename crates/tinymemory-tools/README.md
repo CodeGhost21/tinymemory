@@ -26,8 +26,8 @@ written up in [`docs/architecture/tools.md`](../../docs/architecture/tools.md).
 
 | Tool | Kind | Arguments | Result |
 | --- | --- | --- | --- |
-| `memory_recall` | read | `question`, `filter?`, `limit?`, `instructions?` | `{answer, citations: [...]}` |
-| `memory_fetch` | read | `query`, `mode?`, `filter?`, `limit?`, `cursor?` | `{hits: [...], next_cursor?}` |
+| `memory_recall` | read | `question`, `filter?`, `limit?`, `instructions?`, `refers_to?` | `{answer, citations: [...]}` |
+| `memory_fetch` | read | `query`, `mode?`, `filter?`, `limit?`, `cursor?`, `refers_to?` | `{hits: [...], next_cursor?}` |
 | `memory_list` | read | `filter?`, `limit?`, `cursor?` | `{items: [...], next_cursor?}` |
 | `memory_get` | read | `ids` | `{items: [...], missing: [ids]}` |
 | `memory_explore` | read | `facet`, `filter?`, `limit?` | `{facet, buckets: [{value, count}], total, missing, more_buckets, truncated}` |
@@ -52,6 +52,12 @@ Details:
   `tags_any`, `workspace`, `folder`, `file_path`, `repo`, `url`, `thread_id`,
   `agent_id`, `observed_after` and `observed_before` (RFC 3339). It never has
   a namespace or a reach.
+- `refers_to` (`{from, to}`, local `YYYY-MM-DD` dates) is the days the
+  question is about: hits from them rank first and nothing is dropped
+  (`tinymemory_api::TimeHint`), read in the host's zone
+  (`MemoryTools::in_zone`). Unlike `observed_after`/`observed_before`, which
+  filter by when a memory was recorded, it keeps a memory recorded on Monday
+  about Tuesday.
 - A hit renders as `{id, kind, text, score, confidence?, meta}` where `meta`
   is a subset: `source {kind, id?}`, `file_path`, `url`, `thread_id`, `tags`,
   `observed_at`. Scores are rounded to four places. The namespace is never
