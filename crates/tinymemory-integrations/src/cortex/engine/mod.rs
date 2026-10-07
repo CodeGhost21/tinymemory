@@ -21,6 +21,7 @@ mod forget;
 mod items;
 mod list;
 mod recall;
+mod refers;
 mod scopes;
 mod store;
 
@@ -62,6 +63,7 @@ pub struct CortexEngine {
     owner: Option<String>,
     /// Whether the v3 root is registered (shared by clones).
     registered: Arc<AtomicBool>,
+    refers: Arc<refers::RefersSupport>,
 }
 
 impl std::fmt::Debug for CortexEngine {
@@ -98,6 +100,7 @@ impl CortexEngine {
             layout: ScopeLayout::Legacy,
             owner: None,
             registered: Arc::new(AtomicBool::new(false)),
+            refers: Arc::default(),
         })
     }
 

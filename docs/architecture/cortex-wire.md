@@ -168,13 +168,13 @@ Response:
   a pack holding more than that (at least 32 events of the largest size, or
   about 100 at the chunk target) gets excerpts again, which do not decode
   and are logged at warn (`log/notes.rs`).
-- `temporal` is not sent. `temporal.reference_date` only anchors
-  `temporal.natural` (a phrase such as "last 30 days", reduced to a
-  capture-time filter) and already defaults to the request time; the field
-  that ranks by the time a question refers to is `temporal.refers_during`
-  (boost-only, capability `refers_to_v1`). Using it needs the turn's time and
-  IANA zone in the contract and the referred date extracted client-side,
-  which is follow-up work.
+- `temporal` carries only a fetch's `refers_to` (`TimeHint`), as
+  `{"refers_during": {from, to}, "timezone"}`: boost-only (capability
+  `refers_to_v1`), never `natural`/`valid_during`, which filter by capture
+  time. Direct asks `v1/admin/version` once; hosted sends it. A hinted read
+  refused as invalid is retried bare, and a bare success turns hints off for
+  the engine (`engine/refers.rs`). The merged hits are lifted by day again,
+  since the rank-by-rank scope merge would bury the server's boost.
 - Every pack's `warnings[]` is logged (debug), with
   `parent_pack_unranked_sample` and any knapsack eviction
   (`diagnostics.knapsack_evictions`, or a `context_contributors` row with

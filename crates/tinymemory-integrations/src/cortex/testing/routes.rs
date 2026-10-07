@@ -274,6 +274,9 @@ async fn recall(
     if let Some(refused) = refuse_scope(&state, body["scope"].as_str().unwrap_or_default()) {
         return refused;
     }
+    if body.get("temporal").is_some() && state.refers_refused.load(Ordering::SeqCst) {
+        return fail(&state, 422, "INVALID_BODY");
+    }
     if state.recall_down.load(Ordering::SeqCst) {
         return fail(&state, 500, "INTERNAL");
     }
@@ -353,6 +356,22 @@ async fn answer(
             "citations": [],
             "diagnostics": { "answer_model": "reasoning" }
         }),
+    )
+}
+
+async fn version(State(state): State<Shared>, uri: Uri, headers: HeaderMap) -> Reply {
+    if let Some(early) = gate(&state, "GET", &uri, &headers) {
+        return early;
+    }
+    let capabilities = if state.refers_unlisted.load(Ordering::SeqCst) {
+        json!(["temporal_lenient_v1"])
+    } else {
+        json!(["refers_to_v1", "temporal_lenient_v1"])
+    };
+    ok(
+        &state,
+        200,
+        json!({ "version": "v0.10.5", "capabilities": capabilities }),
     )
 }
 
@@ -530,6 +549,7 @@ pub(super) fn direct(state: Shared) -> Router {
         .route("/v1/erasures", post(erase))
         .route("/v1/answer", post(answer))
         .route("/v1/admin/health", get(health))
+        .route("/v1/admin/version", get(version))
         .route("/v1/scopes/list", get(scopes))
         .route("/v1/scopes", post(register_scope).get(scope_record))
         .route("/v1/scopes/members", axum::routing::put(scope_members))
