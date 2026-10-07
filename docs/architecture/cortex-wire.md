@@ -233,7 +233,9 @@ GET {scopes}?prefix=<scope prefix>&limit=1000
 The reader accepts either `{"items": [{"path": "..."}]}` (Direct) or
 `{"scopes": ["..."]}` (hosted), and for each entry either a bare string or an
 object with `path`. A `404` means "no scope listing" and is treated as no
-scopes.
+scopes. There is no cursor (v0.10.5): `limit` defaults to 50 and is clamped to
+1000, and `prefix` matches whole segments. At 1000 paths a read logs a warning
+and an export refuses, since some scopes may be missing.
 
 ### Build beliefs: `v1/beliefs/build` (Direct only)
 

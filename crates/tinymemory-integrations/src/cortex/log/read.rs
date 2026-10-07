@@ -16,8 +16,9 @@ use crate::cortex::transport::{Attempts, urlencode};
 pub(crate) const LABELS_PER_QUERY: usize = 50;
 
 /// Most scopes one scope listing asks for: three kinds for each of several
-/// hundred namespace nodes.
-const SCOPES_LIMIT: usize = 1000;
+/// hundred namespace nodes. It is also the most CortexDB answers: it clamps a
+/// larger `limit` to 1000 and has no cursor (measured on v0.10.5).
+pub(crate) const SCOPES_LIMIT: usize = 1000;
 
 /// One page of a scope listing.
 #[derive(Debug, Clone, PartialEq)]
@@ -130,10 +131,43 @@ impl Log {
     /// `{items: [{path}]}`; the hosted route may answer `{scopes: [path]}`.
     /// An engine without a scope listing (404) holds none worth naming.
     ///
+    /// CortexDB's listing has no cursor and answers at most [`SCOPES_LIMIT`]
+    /// paths; a listing that reaches it may be missing some, which is
+    /// logged. A caller that must see every scope uses [`Self::all_scopes`].
+    ///
     /// # Errors
     ///
     /// Backend failures other than a 404.
     pub(crate) async fn scopes(&self, prefix: &str) -> Result<Vec<String>> {
+        let (paths, truncated) = self.scopes_listing(prefix).await?;
+        if truncated {
+            log::warn!(
+                "[cortex] the scope listing under {prefix:?} reached its limit of {SCOPES_LIMIT}; \
+                 scopes past it are not read"
+            );
+        }
+        Ok(paths)
+    }
+
+    /// As [`Self::scopes`], but refuses a listing that may be missing scopes,
+    /// for a caller that must see all of them (an export that moves memory).
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Engine`] when the listing reaches [`SCOPES_LIMIT`], and
+    /// backend failures other than a 404.
+    pub(crate) async fn all_scopes(&self, prefix: &str) -> Result<Vec<String>> {
+        let (paths, truncated) = self.scopes_listing(prefix).await?;
+        if truncated {
+            return Err(Error::Engine(format!(
+                "more than {SCOPES_LIMIT} scopes under {prefix:?}; the engine cannot list them all"
+            )));
+        }
+        Ok(paths)
+    }
+
+    /// The listing, and whether it reached [`SCOPES_LIMIT`].
+    async fn scopes_listing(&self, prefix: &str) -> Result<(Vec<String>, bool)> {
         let path = format!(
             "{base}?prefix={prefix}&limit={SCOPES_LIMIT}",
             base = self.client.wire().path(Route::Scopes),
@@ -145,7 +179,7 @@ impl Log {
             .await
         {
             Ok(listed) => listed,
-            Err(Error::NotFound(_)) => return Ok(Vec::new()),
+            Err(Error::NotFound(_)) => return Ok((Vec::new(), false)),
             Err(error) => return Err(error),
         };
         let items = listed
@@ -154,14 +188,16 @@ impl Log {
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
-        Ok(items
+        let truncated = items.len() >= SCOPES_LIMIT;
+        let paths = items
             .iter()
             .filter_map(|item| {
                 item.as_str()
                     .or_else(|| item.get("path").and_then(Value::as_str))
                     .map(str::to_owned)
             })
-            .collect())
+            .collect();
+        Ok((paths, truncated))
     }
 
     /// Builds a recall pack, and logs what the pack says about itself

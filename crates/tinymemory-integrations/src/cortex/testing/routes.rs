@@ -358,7 +358,23 @@ async fn scopes(
         return refused;
     }
     let prefix = params.get("prefix").cloned().unwrap_or_default();
-    let scopes = state.log.lock().unwrap().scopes(&prefix);
+    let mut scopes = state.log.lock().unwrap().scopes(&prefix);
+    let padding = state.padding_scopes.load(Ordering::SeqCst);
+    let below = format!("{prefix}/");
+    scopes.extend(
+        (0..padding)
+            .map(|n| format!("app:tinymemory/agent:pad-{n:04}/app:learnings"))
+            .filter(|path| prefix.is_empty() || *path == prefix || path.starts_with(&below)),
+    );
+    scopes.sort();
+    scopes.dedup();
+    // As CortexDB: `limit` defaults to 50, is clamped to 1000, no cursor.
+    let limit = params
+        .get("limit")
+        .and_then(|limit| limit.parse::<usize>().ok())
+        .unwrap_or(50)
+        .min(1000);
+    scopes.truncate(limit);
     if state.hosted {
         ok(&state, 200, json!({ "scopes": scopes }))
     } else {

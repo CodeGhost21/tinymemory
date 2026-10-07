@@ -241,8 +241,12 @@ These were measured against a live CortexDB by the v1 adapter. The doubles in
   fail a write that is already durable. Hosted polling backs off to a 2s
   ceiling and treats 429/5xx while waiting as "not yet".
 - **The listing emits every event twice**, and `limit` counts the copies.
-  Readers dedupe by event id. A full walk refuses past 500 pages, and a cursor
-  that does not advance is an error.
+  Readers dedupe by event id. A walk refuses past 500 pages of one scope, or
+  past 500 pages that held events across the request, and a cursor that does
+  not advance is an error. An empty scope (a registration left after a
+  forget) costs one empty page, which only its own cap counts.
+- **The scope listing has no cursor** and answers at most 1000 paths. A read
+  takes what was listed and logs it; an export refuses.
 - **Unknown query parameters are ignored**, so paging uses exactly `cursor`.
 - **Recall renders text** as `[role] {...}`; the prefix is stripped when
   decoding.
