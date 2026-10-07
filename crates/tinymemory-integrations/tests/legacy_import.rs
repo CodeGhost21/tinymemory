@@ -1725,6 +1725,18 @@ fn an_oversized_workspace_file_is_cut_and_tagged() {
 }
 
 #[test]
+fn an_oversized_file_with_an_invalid_byte_before_the_cut_is_an_io_error() {
+    let (dir, conn) = workspace(support::MEMORY_DDL);
+    drop(conn);
+    let mut body = b"valid text\xffmore".to_vec();
+    body.extend(std::iter::repeat_n(b'a', 300 * 1024));
+    std::fs::write(dir.path().join("MEMORY_GOALS.md"), body).unwrap();
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let err = ws.items().find_map(Result::err).expect("an error");
+    assert!(matches!(err, Error::Io { .. }), "{err:?}");
+}
+
+#[test]
 fn a_workspace_file_that_is_not_text_is_an_io_error() {
     let (dir, conn) = workspace(support::MEMORY_DDL);
     drop(conn);

@@ -6,7 +6,8 @@
 //! compiled from the persona). Each that exists and has text becomes one
 //! [`LearningKind::Other`] learning of its whole text, tagged with the
 //! file's name (`goals`, `persona`), observed at the file's modification
-//! time. A missing file is skipped; one that cannot be read is an error. At
+//! time (none when the file system cannot report one). A missing file is
+//! skipped; one that cannot be read is an error. At
 //! most [`MAX_FILE_BYTES`] of a file are read: a longer one is cut there (at a
 //! character boundary) and also tagged `truncated`.
 
@@ -108,8 +109,9 @@ fn read_bounded(path: &std::path::Path) -> std::io::Result<(String, bool)> {
     }
     let text = match String::from_utf8(bytes) {
         Ok(text) => text,
-        // A cut can split the last character; anything else is not text.
-        Err(error) if !truncated => {
+        // Only the cut may leave an incomplete last character (an error
+        // with no `error_len`); an invalid byte anywhere means not text.
+        Err(error) if !truncated || error.utf8_error().error_len().is_some() => {
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, error));
         }
         Err(error) => {
