@@ -262,7 +262,10 @@ admits and whose kind the filter admits are added to the known nodes. A `404`
 from the scopes route yields no extra scopes. Discovery runs once per call.
 A listing that reaches 1000 paths may be missing some (the route has no
 cursor): a read goes on with what was listed and logs a warning, and an export
-fails rather than silently skip scopes.
+fails with `Error::Engine` ("more than 1000 scopes under <prefix>; the engine
+cannot list them all") and returns no items, rather than silently skip scopes.
+Within the scopes it reads, an export never hands back a partial chunked
+document: one missing a piece is named in `ExportPage::incomplete` instead.
 
 ## Health
 
