@@ -133,13 +133,15 @@ impl LegacyWorkspace {
         self.chunks.is_some()
     }
 
-    /// How many items each section yields, counted without importing: one
-    /// aggregate query per section, no chunk body read. See
-    /// [`LegacyCounts`] for its two edge cases.
+    /// How many items each section yields, exactly, counted without
+    /// importing: one aggregate query per `memory.db` section, and the chunk
+    /// store resolved with the importer's own chunk reader (which reads chunk
+    /// bodies from their files), no item decoded.
     ///
     /// # Errors
     ///
-    /// [`Error::Sqlite`] if a count query fails.
+    /// [`Error::Sqlite`] if a count query fails; [`Error::Io`] if a chunk body
+    /// cannot be read, as `items` would fail on it.
     pub fn counts(&self) -> Result<LegacyCounts> {
         crate::import::counts::count(self)
     }

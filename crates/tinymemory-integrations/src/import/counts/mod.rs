@@ -15,7 +15,11 @@ use crate::import::workspace::LegacyWorkspace;
 
 /// How many items each section of a legacy workspace yields: exactly what
 /// [`crate::import::LegacyWorkspace::items`] yields from the same store.
+///
+/// Non-exhaustive: a later section adds a field without breaking a caller,
+/// which reads fields, or builds one from `default()` and assigns them.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct LegacyCounts {
     /// `memory_docs` documents.
     pub documents: u64,

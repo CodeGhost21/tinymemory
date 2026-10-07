@@ -150,7 +150,7 @@ pub(super) fn count(ws: &LegacyWorkspace, learnings: bool) -> Result<u64> {
             RowClass::Event => false,
         };
         if wanted {
-            total += count_of(rows);
+            total = u64::saturating_add(total, count_of(rows));
         }
     }
     Ok(total)

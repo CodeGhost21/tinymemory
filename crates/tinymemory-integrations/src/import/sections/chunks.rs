@@ -88,7 +88,7 @@ pub(super) fn count(ws: &LegacyWorkspace) -> Result<u64> {
     let mut total = 0;
     for source in sources {
         if !chunks(store, &source)?.is_empty() {
-            total += 1;
+            total = u64::saturating_add(total, 1);
         }
     }
     Ok(total)

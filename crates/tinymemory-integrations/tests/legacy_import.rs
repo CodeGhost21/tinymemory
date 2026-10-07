@@ -1235,11 +1235,9 @@ fn refuses_a_memory_db_that_is_not_a_file_even_beside_a_chunk_store() {
 
 #[test]
 fn a_counts_total_saturates() {
-    let counts = LegacyCounts {
-        documents: u64::MAX,
-        chunks: 1,
-        ..LegacyCounts::default()
-    };
+    let mut counts = LegacyCounts::default();
+    counts.documents = u64::MAX;
+    counts.chunks = 1;
     assert_eq!(counts.total(), u64::MAX);
 }
 

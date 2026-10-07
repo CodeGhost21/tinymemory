@@ -16,7 +16,7 @@ Architecture overview:
 | Item | Purpose |
 | --- | --- |
 | `LegacyWorkspace::open(path)` | Detects a v1 store or refuses with a typed error. |
-| `LegacyWorkspace::counts()` | `LegacyCounts` per section, from one aggregate query each, with no item decoded; `total()`, `is_empty()`. |
+| `LegacyWorkspace::counts()` | `LegacyCounts` per section, exactly what `items()` yields: one aggregate query per `memory.db` section, the chunk store through the chunk reader, no item decoded; `total()`, `is_empty()`. Non-exhaustive. |
 | `LegacyWorkspace::has_memory_db()` / `has_chunks()` | Which of the two v1 databases the workspace has. |
 | `LegacyWorkspace::items()` / `items_from(&Checkpoint)` | Streams `Result<ImportedItem>` from the start or after a checkpoint. |
 | `Items::with_page_size(n)` | Keys fetched per query (default `DEFAULT_PAGE_SIZE`, 256). Does not affect output. |
