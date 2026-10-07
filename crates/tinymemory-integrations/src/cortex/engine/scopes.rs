@@ -152,7 +152,11 @@ impl CortexEngine {
             ..reach.clone()
         };
         let mut found = BTreeSet::new();
-        for path in self.log.all_scopes(&self.layout.node_prefix(&reach.at)).await? {
+        let mut paths = Vec::new();
+        for prefix in self.layout.node_prefixes(&reach.at) {
+            paths.extend(self.log.all_scopes(&prefix).await?);
+        }
+        for path in paths {
             let Some((namespace, kind)) = self.layout.parse(&path) else {
                 continue;
             };
