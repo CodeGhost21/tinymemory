@@ -47,8 +47,12 @@ user:42/app:flows/service:digest/app:documents            a workflow with no wor
 `app` never names a namespace node, so a path reads back to exactly one node
 and kind (`ScopeLayout::parse`). Only the canonical spelling reads back: a
 grouping node out of place, a missing leaf, or another root is somebody
-else's scope and is skipped. The hosted backend's tenant prefix is tolerated,
-as the root is matched wherever it sits in a path.
+else's scope and is skipped. On the direct wire a path must start at the
+root (CortexDB's own API never prefixes one). On the hosted wire, whose
+backend prefixes the tenant, the root is matched at its last occurrence. A
+node that begins with the root's own segments (`user:42/…` below root
+`user:42`) is refused before it is written (`InvalidRequest`), so no written
+path reads back two ways.
 
 A root is `type:id` segments of the types CortexDB's hosted API admits
 (`org dept team app user agent service ws project source`), with ids of
@@ -62,7 +66,10 @@ CortexDB makes the first writer of an unregistered scope its owner. With
 root once, before its first write (`POST v1/scopes` with that owner), so the
 person owns their root rather than whichever key writes first:
 
-- `409 SCOPE_REGISTRATION_EXISTS` counts as done;
+- `409 SCOPE_REGISTRATION_EXISTS` is not taken as ownership: the root's
+  record is read (`GET v1/scopes?path=`) and, when the owner is not among its
+  owners, the members are written back with it added
+  (`PUT v1/scopes/members`);
 - any other failure is logged and does not fail the write, and the next write
   tries again;
 - the hosted backend keeps its own tenancy and is never asked.
@@ -74,8 +81,12 @@ unregistered until a later write registers it with its owner.
 
 ### Reads
 
-Discovery (a subtree reach, or none) lists the whole root, since a node's
-sourced documents sit under `app:brain` and a node's scopes therefore share no
-single prefix. A v3 engine never reads the legacy tree, and a legacy engine
+Discovery (a subtree reach, or none) lists from the reach's own node
+(`ScopeLayout::node_prefixes`): the node's path with `app:flows` before a
+`service:`, and, for a node holding a `source:`, the same with `app:brain`
+before it too, where that node's sourced documents sit. A node without a
+`source:` needs only the first, since a sourced document below it is grouped
+after it. An unscoped read lists the whole root. Erasure finds its scopes
+the same way. A v3 engine never reads the legacy tree, and a legacy engine
 never reads a v3 root. Moving memory from one layout to the other is a
 host's step, not a side effect of switching.

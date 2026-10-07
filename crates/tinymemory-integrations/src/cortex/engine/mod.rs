@@ -128,9 +128,11 @@ impl CortexEngine {
     }
 
     /// Registers the v3 root as owned by its owner, once, before a write.
-    /// Already registered (`409`) counts as done. Any other failure does not
-    /// fail the write, which CortexDB then admits as usual, and the next
-    /// write tries again. That cannot hand the root to another owner:
+    /// Already registered (`409`), the root's record is read and the owner
+    /// added to its members when it is not an owner yet, so a `409` never
+    /// passes for ownership. Any failure does not fail the write, which
+    /// CortexDB then admits as usual, and the next write tries again. That
+    /// cannot hand the root to another owner:
     /// CortexDB auto-registers only the scope a write lands in, and v3
     /// writes only to leaves below the root, never to the root itself, so
     /// the root stays unregistered until this succeeds.
@@ -157,11 +159,65 @@ impl CortexEngine {
             )
             .await
         {
-            Ok(_) | Err(Error::Conflict(_)) => self.registered.store(true, Ordering::Release),
+            Ok(_) => self.registered.store(true, Ordering::Release),
+            Err(Error::Conflict(_)) => match self.claim_root(root, owner).await {
+                Ok(()) => self.registered.store(true, Ordering::Release),
+                Err(error) => {
+                    log::warn!("[cortex] making `{owner}` an owner of `{root}` failed: {error}");
+                }
+            },
             Err(error) => {
-                log::warn!("[cortex] registering the scope root `{root}` failed: {error}")
+                log::warn!("[cortex] registering the scope root `{root}` failed: {error}");
             }
         }
+    }
+
+    /// Makes `owner` an owner of the already registered `root`: reads its
+    /// record, and when `owner` is not among its owners, writes the members
+    /// back with it added (CortexDB's member edit takes the whole list).
+    async fn claim_root(&self, root: &str, owner: &str) -> Result<()> {
+        let path = format!(
+            "{}?path={}",
+            self.wire().path(Route::RegisterScope),
+            urlencode(root)
+        );
+        let record = self
+            .log
+            .client
+            .json(
+                reqwest::Method::GET,
+                &path,
+                None,
+                crate::cortex::transport::Attempts::RetryTransient,
+            )
+            .await?;
+        let mut members: Vec<serde_json::Value> = record
+            .get("members")
+            .and_then(serde_json::Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let owns = members
+            .iter()
+            .any(|member| member["actor"] == owner && member["role"] == "owner");
+        if owns {
+            return Ok(());
+        }
+        members.push(serde_json::json!({ "actor": owner, "role": "owner" }));
+        let path = format!(
+            "{}?path={}",
+            self.wire().path(Route::ScopeMembers),
+            urlencode(root)
+        );
+        self.log
+            .client
+            .json(
+                reqwest::Method::PUT,
+                &path,
+                Some(&serde_json::json!({ "members": members })),
+                crate::cortex::transport::Attempts::Once,
+            )
+            .await
+            .map(|_| ())
     }
 
     /// The same engine, declaring `consolidation` instead of the endpoint's

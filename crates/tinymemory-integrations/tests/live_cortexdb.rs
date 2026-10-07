@@ -148,8 +148,12 @@ async fn the_live_server_upholds_the_contract() {
 #[tokio::test]
 async fn the_live_server_upholds_the_contract_in_layout_v3() {
     let _alone = ONE_AT_A_TIME.lock().await;
-    let root = format!("user:{}", run_id());
+    let mut roots = Vec::new();
     for (wire, engine) in live_engines() {
+        // A fresh root per wire, so the registration checked below is this
+        // run's own on this wire.
+        let root = format!("user:{}", run_id());
+        roots.push((wire, root.clone()));
         eprintln!("layout v3 conformance on {wire} below {root}");
         let engine = engine
             .with_scope_root(&root, Some(&root))
@@ -159,6 +163,9 @@ async fn the_live_server_upholds_the_contract_in_layout_v3() {
             .unwrap_or_else(|error| panic!("the live {wire} engine conforms in v3: {error}"));
     }
     let Ok(url) = std::env::var("TINYMEMORY_LIVE_CORTEXDB_URL") else {
+        return;
+    };
+    let Some((_, root)) = roots.into_iter().find(|(wire, _)| *wire == "cortexdb") else {
         return;
     };
     let key = std::env::var("TINYMEMORY_TEST_CORTEX_KEY").unwrap_or_else(|_| DEFAULT_KEY.into());

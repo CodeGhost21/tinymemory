@@ -453,6 +453,55 @@ async fn register_scope(
     ok(&state, 201, body)
 }
 
+/// CortexDB's `GET v1/scopes?path=`: a registered scope's record, or 404.
+async fn scope_record(
+    State(state): State<Shared>,
+    uri: Uri,
+    headers: HeaderMap,
+    Query(query): Query<BTreeMap<String, String>>,
+) -> Reply {
+    if let Some(early) = gate(&state, "GET", &uri, &headers) {
+        return early;
+    }
+    let path = query.get("path").cloned().unwrap_or_default();
+    let seen = state.seen.lock().unwrap();
+    match seen
+        .registrations
+        .iter()
+        .find(|known| known["path"] == path.as_str())
+    {
+        Some(record) => ok(&state, 200, record.clone()),
+        None => fail(&state, 404, "NOT_FOUND"),
+    }
+}
+
+/// CortexDB's `PUT v1/scopes/members?path=`: replaces a registered scope's
+/// members.
+async fn scope_members(
+    State(state): State<Shared>,
+    uri: Uri,
+    headers: HeaderMap,
+    Query(query): Query<BTreeMap<String, String>>,
+    Json(body): Json<Value>,
+) -> Reply {
+    if let Some(early) = gate(&state, "PUT", &uri, &headers) {
+        return early;
+    }
+    let path = query.get("path").cloned().unwrap_or_default();
+    let mut seen = state.seen.lock().unwrap();
+    match seen
+        .registrations
+        .iter_mut()
+        .find(|known| known["path"] == path.as_str())
+    {
+        Some(record) => {
+            record["members"] = body["members"].clone();
+            ok(&state, 200, record.clone())
+        }
+        None => fail(&state, 404, "NOT_FOUND"),
+    }
+}
+
 async fn beliefs(
     State(state): State<Shared>,
     uri: Uri,
@@ -482,7 +531,8 @@ pub(super) fn direct(state: Shared) -> Router {
         .route("/v1/answer", post(answer))
         .route("/v1/admin/health", get(health))
         .route("/v1/scopes/list", get(scopes))
-        .route("/v1/scopes", post(register_scope))
+        .route("/v1/scopes", post(register_scope).get(scope_record))
+        .route("/v1/scopes/members", axum::routing::put(scope_members))
         .route("/v1/beliefs/build", post(build_beliefs))
         .route("/v1/beliefs", get(beliefs))
         .with_state(state)

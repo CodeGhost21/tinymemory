@@ -33,7 +33,7 @@ use super::CortexEngine;
 use super::scopes::KindScope;
 use crate::cortex::descriptor::CortexWire;
 use crate::cortex::envelope::{Encoded, Envelope};
-use crate::cortex::error::Result;
+use crate::cortex::error::{Error, Result};
 use crate::cortex::log::Written;
 
 impl CortexEngine {
@@ -56,6 +56,16 @@ impl CortexEngine {
         wait: WaitFor,
     ) -> Result<Vec<StoreReceipt>> {
         validate_many(&items)?;
+        if let Some(item) = items
+            .iter()
+            .find(|item| self.layout.repeats_root(&item.meta().namespace))
+        {
+            return Err(Error::InvalidRequest(format!(
+                "namespace `{}` repeats the scope root `{}`; nodes go below the root",
+                item.meta().namespace,
+                self.layout.root()
+            )));
+        }
         self.register_root().await;
         let ids: Vec<String> = items.iter().map(StoreItem::fingerprint).collect();
         // Every event of the batch is laid out and size-checked before any is

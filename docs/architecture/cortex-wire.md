@@ -379,9 +379,10 @@ double enforces).
   ancestor. The nodes are known, so no request is made; a node nothing was
   written to simply lists empty.
 - A **subtree reach, or no reach**, needs the nodes below. They are
-  discovered once per call from the scopes registered under the layout's
-  root (or, legacy, under the reach's own node), and the root's kind scopes
-  are always read. Neither enters a `service:` sandbox below its node.
+  discovered once per call from the scopes registered under the reach's own
+  node (its layout prefixes, [cortex-layout.md](cortex-layout.md); the whole
+  root for no reach), and the root's kind scopes are always read. Neither
+  enters a `service:` sandbox below its node.
 - Reads are always exact: every pack is `view: "granular"` over one scope,
   so one agent's read never reaches a sibling's scope and no read is a
   parent-scope sample.

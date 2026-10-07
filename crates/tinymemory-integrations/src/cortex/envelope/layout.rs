@@ -115,6 +115,27 @@ impl ScopeLayout {
         }
     }
 
+    /// Whether `namespace` begins with the v3 root's own segments
+    /// (`user:42/…` below root `user:42`). Such a node is refused before it
+    /// is written, so every written path reads back to its one namespace
+    /// even behind a tenant prefix spelled like the root.
+    pub(crate) fn repeats_root(&self, namespace: &Namespace) -> bool {
+        let Self::V3 { root, .. } = self else {
+            return false;
+        };
+        let wanted: Vec<&str> = root.split('/').collect();
+        let segments: Vec<String> = namespace
+            .segments()
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        segments.len() >= wanted.len()
+            && segments
+                .iter()
+                .zip(&wanted)
+                .all(|(segment, part)| segment == part)
+    }
+
     /// The scope items of `kind` at `namespace` live in.
     pub(crate) fn path(&self, namespace: &Namespace, kind: ItemKind) -> String {
         let Self::V3 { root, .. } = self else {

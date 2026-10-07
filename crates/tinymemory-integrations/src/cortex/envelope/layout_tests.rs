@@ -221,3 +221,16 @@ fn a_v3_root_uses_only_hosted_scope_types() {
         assert!(ScopeLayout::v3(bad, false).is_err(), "{bad}");
     }
 }
+
+#[test]
+fn a_namespace_repeating_the_root_is_flagged() {
+    assert!(v3().repeats_root(&ns("user:42")));
+    assert!(v3().repeats_root(&ns("user:42/ws:main")));
+    assert!(!v3().repeats_root(&ns("ws:main/user:42")));
+    assert!(!v3().repeats_root(&ns("user:7")));
+    assert!(!v3().repeats_root(&Namespace::ROOT));
+    assert!(!ScopeLayout::default().repeats_root(&ns("user:42")));
+    let deep = ScopeLayout::v3("team:a/user:42", false).unwrap();
+    assert!(deep.repeats_root(&ns("team:a/user:42/ws:main")));
+    assert!(!deep.repeats_root(&ns("team:a")));
+}

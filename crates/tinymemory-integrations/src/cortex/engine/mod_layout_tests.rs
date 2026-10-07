@@ -187,3 +187,67 @@ async fn a_failed_registration_never_fails_a_write_and_is_tried_again() {
     assert_eq!(state.count("POST /v1/scopes"), 3, "done once it succeeds");
     assert_eq!(state.seen.lock().unwrap().registrations.len(), 1);
 }
+
+#[tokio::test]
+async fn a_node_repeating_the_root_is_refused_before_any_write() {
+    let (endpoint, state) = direct_double().await;
+    let engine = direct_engine(&endpoint)
+        .with_scope_root("user:42", None)
+        .unwrap();
+    let mut item = sample_items().remove(2);
+    item.meta_mut().namespace = "user:42/ws:main".parse().unwrap();
+    let error = engine.store(item).await.unwrap_err();
+    assert!(matches!(error, Error::InvalidRequest(_)), "{error:?}");
+    assert_eq!(state.event_count(), 0);
+}
+
+#[tokio::test]
+async fn a_registered_root_gains_its_owner_rather_than_passing_on_409() {
+    let (endpoint, state) = direct_double().await;
+    // Registered before, by the operator alone.
+    state
+        .seen
+        .lock()
+        .unwrap()
+        .registrations
+        .push(serde_json::json!({
+            "path": "user:42",
+            "members": [{ "actor": "user:local", "role": "owner" }],
+        }));
+    let engine = direct_engine(&endpoint)
+        .with_scope_root("user:42", Some("user:42"))
+        .unwrap();
+    engine.store_many(placed()).await.unwrap();
+    engine.store_many(placed()).await.unwrap();
+    let record = state.seen.lock().unwrap().registrations[0].clone();
+    let owners: Vec<&str> = record["members"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|m| m["role"] == "owner")
+        .filter_map(|m| m["actor"].as_str())
+        .collect();
+    assert_eq!(owners, ["user:local", "user:42"], "{record}");
+    assert_eq!(state.count("PUT /v1/scopes/members"), 1);
+    assert_eq!(state.count("POST /v1/scopes"), 1, "done once owned");
+
+    // Already an owner: read, nothing written.
+    let (endpoint, state) = direct_double().await;
+    state
+        .seen
+        .lock()
+        .unwrap()
+        .registrations
+        .push(serde_json::json!({
+            "path": "user:42",
+            "members": [{ "actor": "user:42", "role": "owner" }],
+        }));
+    direct_engine(&endpoint)
+        .with_scope_root("user:42", Some("user:42"))
+        .unwrap()
+        .store_many(placed())
+        .await
+        .unwrap();
+    assert_eq!(state.count("GET /v1/scopes?path"), 1);
+    assert_eq!(state.count("PUT /v1/scopes/members"), 0);
+}
