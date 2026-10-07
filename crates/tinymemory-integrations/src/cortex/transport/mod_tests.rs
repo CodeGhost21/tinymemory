@@ -118,6 +118,11 @@ fn urlencoding_escapes_everything_a_cursor_could_reshape() {
 /// A server answering every request with `status`, counting hits. It has no
 /// `whoami` (like a server before the actor model), which is not counted.
 async fn counting(status: StatusCode) -> (String, Arc<AtomicUsize>) {
+    counting_with(status, "busy").await
+}
+
+/// [`counting`], answering `body`.
+async fn counting_with(status: StatusCode, body: &'static str) -> (String, Arc<AtomicUsize>) {
     let hits = Arc::new(AtomicUsize::new(0));
     let counter = hits.clone();
     let app = Router::new()
@@ -126,7 +131,7 @@ async fn counting(status: StatusCode) -> (String, Arc<AtomicUsize>) {
             let counter = counter.clone();
             async move {
                 counter.fetch_add(1, Ordering::SeqCst);
-                (status, "busy")
+                (status, body)
             }
         }));
     (serve(app).await, hits)
@@ -156,6 +161,21 @@ async fn transient_failures_retry_reads_three_times_and_writes_once() {
         1,
         "a write is sent exactly once"
     );
+}
+
+#[tokio::test]
+async fn a_read_waits_out_a_scope_authorization_change() {
+    let (endpoint, hits) = counting_with(
+        StatusCode::SERVICE_UNAVAILABLE,
+        r#"{"error_code":"AUTHORIZATION_STATE_CHANGED","retriable":true}"#,
+    )
+    .await;
+    let read = client(&endpoint)
+        .json(Method::GET, "v1/events", None, Attempts::RetryTransient)
+        .await;
+    assert!(matches!(read, Err(Error::Unavailable(_))), "{read:?}");
+    assert_eq!(hits.load(Ordering::SeqCst), STATE_CHANGE_ATTEMPTS as usize);
+    const { assert!(STATE_CHANGE_ATTEMPTS > READ_ATTEMPTS) };
 }
 
 #[tokio::test]

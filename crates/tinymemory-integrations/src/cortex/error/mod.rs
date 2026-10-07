@@ -20,7 +20,10 @@
 //! | anything else | [`Error::Engine`] |
 //!
 //! Transport faults (timeout, DNS, TLS, refused connection) are
-//! [`Error::Unavailable`] too.
+//! [`Error::Unavailable`] too. A read retries an `Unavailable` three times,
+//! and six (about 8 seconds) when CortexDB answers `503
+//! AUTHORIZATION_STATE_CHANGED`, which a concurrent scope registration
+//! causes and which settles on its own.
 //!
 //! **Why 402 is `Engine`.** An exhausted credit balance is neither transient
 //! (`Unavailable` would invite a retry loop that cannot succeed until someone
