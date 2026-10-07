@@ -216,8 +216,9 @@ The later v1 engine kept two markdown files beside its stores:
 `persona/directives.md` (how the assistant should behave). Each that exists
 and has text becomes one `Learning { kind: Other, confidence: 0.5 }` of its
 whole trimmed text, tagged `goals` or `persona`, observed at the file's
-modification time. A missing file is skipped; one that cannot be read is
-`Error::Io`.
+modification time. A missing file is skipped; one that cannot be read, or is
+not UTF-8, is `Error::Io`. At most 256 KiB of a file is read: a longer one is
+cut there, at a character boundary, and also tagged `truncated`.
 
 ## Ordering and resumption
 

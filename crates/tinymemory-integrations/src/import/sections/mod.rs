@@ -138,7 +138,7 @@ impl Section {
             Self::GraphNamespace => {
                 graph::page(ws, graph::Table::Namespace, scan.graph_namespace, limit)
             }
-            Self::Files => files::page(ws, scan.files.as_deref()),
+            Self::Files => files::page(ws, scan.files.as_deref(), limit),
         }
     }
 }

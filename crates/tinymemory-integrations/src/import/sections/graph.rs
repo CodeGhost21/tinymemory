@@ -65,8 +65,10 @@ pub(super) fn page(
     };
     let sql = format!(
         "SELECT rowid, subject, predicate, object, updated_at, {namespace} FROM {} \
-         WHERE (?1 IS NULL OR rowid > ?1) ORDER BY rowid LIMIT ?2",
-        table.name()
+         WHERE (?1 IS NULL OR rowid > ?1) AND {} AND {} ORDER BY rowid LIMIT ?2",
+        table.name(),
+        has_text("subject"),
+        has_text("object")
     );
     let mut stmt = memory.prepare(&sql)?;
     let rows = stmt.query_map(params![after, sql_limit(limit)], |row| {

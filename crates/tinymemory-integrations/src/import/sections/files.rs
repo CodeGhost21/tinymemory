@@ -6,7 +6,9 @@
 //! compiled from the persona). Each that exists and has text becomes one
 //! [`LearningKind::Other`] learning of its whole text, tagged with the
 //! file's name (`goals`, `persona`), observed at the file's modification
-//! time. A missing file is skipped; one that cannot be read is an error.
+//! time. A missing file is skipped; one that cannot be read is an error. At
+//! most [`MAX_FILE_BYTES`] of a file are read: a longer one is cut there (at a
+//! character boundary) and also tagged `truncated`.
 
 use std::io::ErrorKind;
 
@@ -23,8 +25,17 @@ const FILES: [(&str, &str); 2] = [
     ("persona", "persona/directives.md"),
 ];
 
-/// The files after `after` (by name), as one page: there are only two.
-pub(super) fn page(ws: &LegacyWorkspace, after: Option<&str>) -> Result<Vec<Scanned>> {
+/// Most bytes of a file read: far above a real goals document (about 2,000
+/// characters) or a persona's directives, and a bound on what an oversized
+/// or substituted file can make the importer load.
+pub(crate) const MAX_FILE_BYTES: u64 = 256 * 1024;
+
+/// At most `limit` of the files after `after` (by name).
+pub(super) fn page(
+    ws: &LegacyWorkspace,
+    after: Option<&str>,
+    limit: usize,
+) -> Result<Vec<Scanned>> {
     let start = after.map_or(0, |after| {
         FILES
             .iter()
@@ -33,6 +44,7 @@ pub(super) fn page(ws: &LegacyWorkspace, after: Option<&str>) -> Result<Vec<Scan
     });
     FILES[start..]
         .iter()
+        .take(limit)
         .map(|(name, relative)| {
             Ok(Scanned {
                 item: file(ws, name, relative)?,
@@ -55,8 +67,8 @@ pub(super) fn count(ws: &LegacyWorkspace) -> Result<u64> {
 
 fn file(ws: &LegacyWorkspace, name: &str, relative: &str) -> Result<Option<StoreItem>> {
     let path = ws.root.join(relative);
-    let text = match std::fs::read_to_string(&path) {
-        Ok(text) => text,
+    let (text, truncated) = match read_bounded(&path) {
+        Ok(read) => read,
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
         Err(source) => return Err(Error::Io { path, source }),
     };
@@ -65,6 +77,9 @@ fn file(ws: &LegacyWorkspace, name: &str, relative: &str) -> Result<Option<Store
     }
     let mut meta = import_meta(ws, format!("file:{relative}"));
     meta.tags = vec![name.to_string()];
+    if truncated {
+        meta.tags.push("truncated".to_string());
+    }
     meta.observed_at = std::fs::metadata(&path)
         .and_then(|metadata| metadata.modified())
         .ok()
@@ -77,4 +92,32 @@ fn file(ws: &LegacyWorkspace, name: &str, relative: &str) -> Result<Option<Store
         evidence: None,
         meta,
     }))
+}
+
+/// Reads at most [`MAX_FILE_BYTES`] of `path` as text, cut back to the last
+/// whole character, and whether anything was left unread.
+fn read_bounded(path: &std::path::Path) -> std::io::Result<(String, bool)> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)?
+        .take(MAX_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    let truncated = bytes.len() as u64 > MAX_FILE_BYTES;
+    if truncated {
+        bytes.truncate(usize::try_from(MAX_FILE_BYTES).unwrap_or(usize::MAX));
+    }
+    let text = match String::from_utf8(bytes) {
+        Ok(text) => text,
+        // A cut can split the last character; anything else is not text.
+        Err(error) if !truncated => {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, error));
+        }
+        Err(error) => {
+            let valid = error.utf8_error().valid_up_to();
+            let mut bytes = error.into_bytes();
+            bytes.truncate(valid);
+            String::from_utf8(bytes).unwrap_or_default()
+        }
+    };
+    Ok((text, truncated))
 }

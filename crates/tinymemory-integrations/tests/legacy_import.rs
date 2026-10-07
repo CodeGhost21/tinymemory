@@ -1705,3 +1705,44 @@ fn an_unreadable_workspace_file_is_an_io_error() {
     assert!(matches!(err, Error::Io { .. }), "{err:?}");
     assert!(ws.counts().is_err());
 }
+
+#[test]
+fn an_oversized_workspace_file_is_cut_and_tagged() {
+    let (dir, conn) = workspace(support::MEMORY_DDL);
+    drop(conn);
+    // 300 KiB of a two-byte character, so the cut lands mid-character.
+    let body = format!("x{}", "é".repeat(150 * 1024));
+    std::fs::write(dir.path().join("MEMORY_GOALS.md"), body).unwrap();
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let items = all(&ws);
+    let StoreItem::Learning { text, meta, .. } = find(&items, "file:MEMORY_GOALS.md") else {
+        panic!("the goals file is a learning");
+    };
+    // "x" then two-byte characters: the cap splits one, which is dropped.
+    assert_eq!(text.len(), 256 * 1024 - 1);
+    assert!(text.ends_with('é'));
+    assert_eq!(meta.tags, ["goals", "truncated"]);
+}
+
+#[test]
+fn a_workspace_file_that_is_not_text_is_an_io_error() {
+    let (dir, conn) = workspace(support::MEMORY_DDL);
+    drop(conn);
+    std::fs::write(dir.path().join("MEMORY_GOALS.md"), [0x66, 0xff, 0x66]).unwrap();
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let err = ws.items().find_map(Result::err).expect("an error");
+    assert!(matches!(err, Error::Io { .. }), "{err:?}");
+}
+
+#[test]
+fn files_and_graph_pages_honour_the_page_size() {
+    let dir = with_graph_and_files();
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let paged: Vec<String> = ws
+        .items()
+        .with_page_size(1)
+        .map(|i| source_id(&i.unwrap().item))
+        .collect();
+    let whole: Vec<String> = all(&ws).iter().map(|i| source_id(&i.item)).collect();
+    assert_eq!(paged, whole);
+}
