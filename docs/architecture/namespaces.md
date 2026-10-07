@@ -144,9 +144,11 @@ an engine reads them as one subtree below `at`.
 
 Two different notions of "everything":
 
-- `MetaFilter::reach == None` reads **every namespace**.
-- `Reach::default()` reads **only the root**. Reading everything with a reach
-  takes `Reach::subtree(Namespace::ROOT)`.
+- `MetaFilter::reach == None` reads like `Reach::subtree(Namespace::ROOT)`:
+  **every namespace except a `service:` sandbox**.
+- `Reach::default()` reads **only the root**. Reading a service sandbox takes
+  a reach at (or inside) its node; only `ForgetTarget::Ids` reaches every
+  namespace.
 
 ### Worked example
 
@@ -172,6 +174,10 @@ Items exist at R, T, W, H and E. What each reach sees:
 | `of(root)` / `default()` | R |
 | `subtree(root)` | R, T, W, H, E |
 | no reach (`None`) | R, T, W, H, E |
+
+With a service node `S` at `team:acme/agent:writer/service:digest`, every
+row that reads descendants still leaves `S` out (`subtree(root)` and no reach
+included); only `exact(S)`, `subtree(S)` or `of(S)` read it.
 
 ### A company above its tenants
 
