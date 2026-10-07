@@ -32,7 +32,7 @@ use std::collections::HashSet;
 use futures::future::join;
 use tinymemory_api::{
     BeliefsRequest, FetchMode, FetchRequest, Hit, ItemId, ItemKind, ListRequest, MemoryEngine,
-    MetaFilter, Namespace, Reach, RecallRequest,
+    MetaFilter, Namespace, Reach, RecallRequest, TimeHint,
 };
 
 use super::render::{Body, Line, Section, shorten, single_line};
@@ -41,6 +41,10 @@ use super::types::{HolisticRecall, ScopeSection, SectionHits, SectionQuery, Skip
 /// Longest a single bullet may be, in characters, before it is shortened: one
 /// long document must not crowd out a section.
 const MAX_LINE_CHARS: usize = 600;
+
+/// How many times deeper a fetch section reads when a date will reorder its
+/// hits (see `section`).
+pub(super) const DATED_DEPTH: usize = 3;
 
 /// Page size of a [`SectionQuery::Latest`] listing.
 const LATEST_PAGE: usize = 100;
@@ -83,9 +87,14 @@ pub(super) async fn section(
     request: &HolisticRecall,
     section: &ScopeSection,
     beliefs: usize,
+    dated: bool,
 ) -> Gathered {
     let keep = |hit: &Hit| !request.excludes(hit);
     let want = wanted(request, section);
+    // A date reorders a fetch section's hits after the read, so read deeper
+    // than the section shows: a hit from the right day ranked just past the
+    // cut must still be there to lift.
+    let fetch_want = if dated { want * DATED_DEPTH } else { want };
     let outcome = match &section.query {
         SectionQuery::Answer {
             question,
@@ -99,7 +108,7 @@ pub(super) async fn section(
                     "[recall] answer failed, fetching instead heading={:?} error={error}",
                     section.heading
                 );
-                fetch(engine, &section.filter, question, want, 0, &keep).await
+                fetch(engine, &section.filter, question, want, 0, &keep, None).await
             }
             Err(error) => Err(error),
         },
@@ -109,7 +118,19 @@ pub(super) async fn section(
                 .or(request.query.as_deref())
                 .filter(|query| !query.trim().is_empty())
             {
-                Some(query) => fetch(engine, &section.filter, query, want, beliefs, &keep).await,
+                Some(query) => {
+                    let hint = request.refers_to.clone();
+                    fetch(
+                        engine,
+                        &section.filter,
+                        query,
+                        fetch_want,
+                        beliefs,
+                        &keep,
+                        hint,
+                    )
+                    .await
+                }
                 None => with_listed_beliefs(engine, section, want, &keep).await,
             }
         }
@@ -330,6 +351,7 @@ async fn fetch(
     limit: usize,
     beliefs: usize,
     keep: &(dyn Fn(&Hit) -> bool + Sync),
+    refers_to: Option<TimeHint>,
 ) -> tinymemory_api::Result<(Vec<Hit>, Vec<Hit>)> {
     let Some(mode) = preferred_mode(engine) else {
         return Ok((latest(engine, filter, limit, keep).await?, Vec::new()));
@@ -346,6 +368,7 @@ async fn fetch(
         request.filter = filter.clone();
         request.beliefs = if page_no == 0 { beliefs } else { 0 };
         request.cursor = cursor.take();
+        request.refers_to = refers_to.clone();
         let page = engine.fetch(request).await?;
         if page_no == 0 {
             first_beliefs = page.beliefs;

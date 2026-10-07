@@ -72,19 +72,22 @@
 
 mod types;
 
+use std::future::Future;
 use std::sync::Arc;
 
 use futures::future::join;
 use tinymemory_api::{
     ConsolidateRequest, Error, ItemKind, MemoryEngine, MemoryMeta, MetaFilter, Namespace, Reach,
-    Result, Role, SourceKind, SourceRef, StoreItem, StoreReceipt, Turn, TurnRange, WriteOptions,
+    Result, Role, SourceKind, SourceRef, StoreItem, StoreReceipt, TimeHint, Turn, TurnRange,
+    WriteOptions,
 };
 
 use crate::background::{BackgroundJob, BackgroundRunner, JobReport, builds_on_its_own};
 use crate::brain::Brain;
 use crate::layout::{CoreScope, MemoryLayout};
 use crate::recall::{
-    ContextPack, HolisticRecall, ScopeSection, SectionQuery, ThreadWindow, holistic_recall,
+    ContextPack, HolisticRecall, LateHint, ScopeSection, SectionQuery, ThreadWindow,
+    holistic_recall,
 };
 use crate::tools::MemoryTools;
 
@@ -349,7 +352,7 @@ impl AgentMemory {
     /// [`Error::InvalidRequest`] for a blank thread id or text. Engine
     /// failures never fail the call.
     pub async fn pre_turn(&self, turn: PreTurn) -> Result<TurnContext> {
-        self.pre_turn_with(turn, false).await
+        self.pre_turn_with(turn, false, None).await
     }
 
     /// [`AgentMemory::pre_turn`] for a session that resumes this thread after
@@ -363,10 +366,35 @@ impl AgentMemory {
     ///
     /// As [`AgentMemory::pre_turn`].
     pub async fn pre_turn_resumed(&self, turn: PreTurn) -> Result<TurnContext> {
-        self.pre_turn_with(turn, true).await
+        self.pre_turn_with(turn, true, None).await
     }
 
-    async fn pre_turn_with(&self, turn: PreTurn, resumed: bool) -> Result<TurnContext> {
+    /// [`AgentMemory::pre_turn`] (or, `resumed`,
+    /// [`AgentMemory::pre_turn_resumed`]) for a turn whose date is still being
+    /// worked out: the pack's fetch sections put hits from the days `hint`
+    /// resolves to first, when it resolves before the reads finish waiting
+    /// for it (see [`crate::recall::holistic_recall_dated`]). `hint` must
+    /// carry the host's own deadline; it is never waited for past it.
+    ///
+    /// # Errors
+    ///
+    /// As [`AgentMemory::pre_turn`].
+    pub async fn pre_turn_dated(
+        &self,
+        turn: PreTurn,
+        resumed: bool,
+        hint: impl Future<Output = Option<TimeHint>> + Send,
+    ) -> Result<TurnContext> {
+        self.pre_turn_with(turn, resumed, Some(Box::pin(hint)))
+            .await
+    }
+
+    async fn pre_turn_with(
+        &self,
+        turn: PreTurn,
+        resumed: bool,
+        hint: Option<LateHint<'_>>,
+    ) -> Result<TurnContext> {
         let thread_id = non_blank(&turn.thread_id, "thread id")?;
         let text = non_blank(&turn.user_text, "user text")?;
         let item = self.turn_item(
@@ -392,7 +420,7 @@ impl AgentMemory {
         request.exclude_thread = Some(window);
         let (logged, pack) = join(
             self.engine.store_with(item, WriteOptions::accepted()),
-            holistic_recall(self.engine.as_ref(), &request),
+            crate::recall::run(self.engine.as_ref(), &request, None, hint),
         )
         .await;
         let pack = pack?;

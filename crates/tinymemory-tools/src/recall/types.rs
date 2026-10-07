@@ -1,7 +1,7 @@
 //! The request and result types of a holistic recall.
 
 use serde::{Deserialize, Serialize};
-use tinymemory_api::{Error, Hit, ItemId, MetaFilter, Result};
+use tinymemory_api::{Error, Hit, ItemId, MetaFilter, Result, TimeHint};
 
 /// Default token budget of a context pack.
 pub const DEFAULT_PACK_BUDGET_TOKENS: usize = 1_200;
@@ -168,6 +168,12 @@ pub struct HolisticRecall {
     /// Conversation turns never included because the prompt holds them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exclude_thread: Option<ThreadWindow>,
+    /// The days the query is about, when known before the read: fetch
+    /// sections rank their hits from those days first (see
+    /// [`tinymemory_api::TimeHint`]). A date that arrives later goes to
+    /// [`crate::recall::holistic_recall_dated`] instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refers_to: Option<TimeHint>,
 }
 
 impl HolisticRecall {
@@ -181,6 +187,7 @@ impl HolisticRecall {
             title: DEFAULT_PACK_TITLE.to_string(),
             exclude_ids: Vec::new(),
             exclude_thread: None,
+            refers_to: None,
         }
     }
 
@@ -201,7 +208,8 @@ impl HolisticRecall {
                 "a recall block needs a title".to_string(),
             ));
         }
-        self.sections.iter().try_for_each(ScopeSection::validate)
+        self.sections.iter().try_for_each(ScopeSection::validate)?;
+        self.refers_to.as_ref().map_or(Ok(()), TimeHint::validate)
     }
 
     /// Whether `hit` is left out by [`HolisticRecall::exclude_ids`] or
