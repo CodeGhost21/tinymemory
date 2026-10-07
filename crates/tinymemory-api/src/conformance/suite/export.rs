@@ -19,6 +19,17 @@ pub(super) async fn export(ctx: &Ctx<'_>) -> Result<()> {
     let Some(exported) = export_all(ctx, CHECK, &ctx.run.filter()).await? else {
         return Ok(());
     };
+    // The run's filter admits exactly these items at this point of the
+    // suite (round_trip stored the same three), so anything more is an
+    // item the filter should not have admitted, or one handed back twice.
+    ensure(CHECK, exported.len() == items.len(), || {
+        format!(
+            "exported {} items for a filter admitting {}: {:?}",
+            exported.len(),
+            items.len(),
+            exported.iter().map(|e| e.id.as_str()).collect::<Vec<_>>()
+        )
+    })?;
     for item in &items {
         let id = item.fingerprint();
         let found: Vec<&Exported> = exported.iter().filter(|e| e.id.as_str() == id).collect();

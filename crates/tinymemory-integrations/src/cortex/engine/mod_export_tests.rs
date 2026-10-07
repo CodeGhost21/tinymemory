@@ -75,17 +75,22 @@ async fn export_all(
     limit: usize,
 ) -> (Vec<tinymemory_api::Exported>, Vec<ItemId>) {
     let (mut items, mut incomplete, mut cursor) = (Vec::new(), Vec::new(), None);
-    loop {
+    let mut seen = std::collections::HashSet::new();
+    for _ in 0..100 {
         let mut request = ListRequest::new(filter.clone(), limit);
         request.cursor = cursor;
         let page = engine.export(request).await.unwrap();
         items.extend(page.items);
         incomplete.extend(page.incomplete);
         match page.next_cursor {
-            Some(next) => cursor = Some(next),
+            Some(next) => {
+                assert!(seen.insert(next.clone()), "the cursor {next} repeated");
+                cursor = Some(next);
+            }
             None => return (items, incomplete),
         }
     }
+    panic!("the export did not end within 100 pages");
 }
 
 #[tokio::test]
@@ -125,10 +130,11 @@ async fn an_export_pages_by_cursor_and_hands_each_item_back_once() {
                 .unwrap();
         }
         let (exported, _) = export_all(&engine, MetaFilter::kinds([ItemKind::Learning]), 2).await;
+        assert_eq!(exported.len(), 5, "each item once: {exported:?}");
         let mut ids: Vec<&str> = exported.iter().map(|e| e.id.as_str()).collect();
         ids.sort_unstable();
         ids.dedup();
-        assert_eq!(ids.len(), 5, "{exported:?}");
+        assert_eq!(ids.len(), 5, "five distinct items: {exported:?}");
     }
 }
 
