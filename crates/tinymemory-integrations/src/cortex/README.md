@@ -189,7 +189,9 @@ as prefixes, so they cannot be labelled and are filtered only client-side.
   named in `incomplete`, where List leaves it out. An item is found by its
   first event (turn 0, piece 0), so one whose first piece is gone is not seen
   at all; a caller moving memory confirms what remains by walking the scopes
-  again after its cleanup.
+  again after its cleanup. It fails as List does (a bad cursor, a page the
+  engine does not answer, a walk past its cap), never with a partial page, so
+  a caller retries from its last cursor.
 - **Fetch (hybrid).** One recall per scope read with
   `budgets.per_layer_limits.events`. Events are decoded to items and the full
   filter is applied. Each item is kept once, at its best rank, and scopes are

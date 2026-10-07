@@ -67,6 +67,12 @@ impl CortexEngine {
 
     /// The same walk as [`Self::list_page`], handing each item back whole;
     /// an item that cannot be assembled whole is named, not left out.
+    ///
+    /// # Errors
+    ///
+    /// The listing's: an invalid request or cursor, a scope or event page the
+    /// engine fails to answer, and a walk past its page cap. Nothing is
+    /// returned partially on an error; the caller retries from its cursor.
     pub(super) async fn export_page(&self, req: ListRequest) -> Result<ExportPage> {
         let (items, next_cursor) = self.items_page(req).await?;
         let mut page = ExportPage {

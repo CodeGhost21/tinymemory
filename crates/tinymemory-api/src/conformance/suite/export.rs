@@ -10,6 +10,12 @@ use crate::{Error as ApiError, Exported, ListRequest, MetaFilter};
 use super::{Ctx, MAX_PAGES, ensure};
 use crate::conformance::error::{Error, Result};
 
+/// Runs the export check (see the module docs).
+///
+/// # Errors
+///
+/// [`Error::Check`] when the engine exports wrongly, and [`Error::Engine`]
+/// when a call it must serve fails.
 pub(super) async fn export(ctx: &Ctx<'_>) -> Result<()> {
     const CHECK: &str = "export";
     let items = ctx.run.round_trip_items();

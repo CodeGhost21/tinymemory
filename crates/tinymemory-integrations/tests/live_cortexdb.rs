@@ -165,6 +165,20 @@ async fn every_kind_is_exported_whole_across_pages() {
                 meta: meta(&workspace, SourceKind::File),
             },
         ];
+        let chapters: Vec<String> = (1..=12)
+            .map(|page| {
+                format!(
+                    "# Chapter {page}\n\n{}",
+                    "Export policy text. ".repeat(1500)
+                )
+            })
+            .collect();
+        stored.push(StoreItem::Document {
+            title: Some("Handbook".into()),
+            body: tinymemory_api::DocumentBody::Text(chapters.join("\u{c}")),
+            mime: Some("application/pdf".into()),
+            meta: meta(&workspace, SourceKind::File),
+        });
         for n in 0..3 {
             stored.push(StoreItem::Learning {
                 text: format!("export fact {n}"),
@@ -181,6 +195,9 @@ async fn every_kind_is_exported_whole_across_pages() {
             workspace: Some(workspace.clone()),
             ..MetaFilter::default()
         };
+        // Each store returned once listable; this only guards a server that
+        // lags behind its own listing.
+        list_until(&engine, &filter, stored.len()).await;
         let (mut exported, mut cursor) = (Vec::new(), None);
         for _ in 0..20 {
             let mut request = ListRequest::new(filter.clone(), 2);
