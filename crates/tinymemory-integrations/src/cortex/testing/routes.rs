@@ -298,6 +298,23 @@ async fn forget(
     relay(&state, result)
 }
 
+async fn erase(
+    State(state): State<Shared>,
+    uri: Uri,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Reply {
+    if let Some(early) = gate(&state, "POST", &uri, &headers) {
+        return early;
+    }
+    if let Some(refused) = refuse_scope(&state, body["scope"].as_str().unwrap_or_default()) {
+        return refused;
+    }
+    state.seen.lock().unwrap().erasures.push(body.clone());
+    let result = state.log.lock().unwrap().erase(&body);
+    relay(&state, result)
+}
+
 async fn answer(
     State(state): State<Shared>,
     uri: Uri,
@@ -433,6 +450,7 @@ pub(super) fn direct(state: Shared) -> Router {
         .route("/v1/events", get(events))
         .route("/v1/recall", post(recall))
         .route("/v1/forget", post(forget))
+        .route("/v1/erasures", post(erase))
         .route("/v1/answer", post(answer))
         .route("/v1/admin/health", get(health))
         .route("/v1/scopes/list", get(scopes))

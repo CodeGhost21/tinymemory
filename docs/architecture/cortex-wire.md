@@ -237,6 +237,24 @@ scopes. There is no cursor (v0.10.5): `limit` defaults to 50 and is clamped to
 1000, and `prefix` matches whole segments. At 1000 paths a read logs a warning
 and an export refuses, since some scopes may be missing.
 
+### Erase: `v1/erasures` (Direct only)
+
+```json
+{ "scope": "app:tinymemory/agent:assistant/app:learnings", "confirm_all": true, "audit_note": "tinymemory: erase" }
+```
+
+The only request this crate sends with `confirm_all`, and it never carries a
+selector. CortexDB runs the erasure before it answers `202` with
+`erasure_id`, `status: "completed"`, `receipt_url` and `verify_url`. It needs
+the `forget.gdpr` capability and owner membership of the scope: a static
+operator key has both, and a `service:`/`agent:` token is refused with `403
+POLICY_DENIED`. The scope's events are deleted and their write keys released.
+Scopes below it are only redacted and keep their keys for 24 hours, so a
+re-sent write there replays and stores nothing. A whole-scope erasure of six
+240 KB events took about 8 s on v0.10.5; small scopes take well under a
+second. Every erasure drops every recall pack the server holds, as a forget
+does.
+
 ### Build beliefs: `v1/beliefs/build` (Direct only)
 
 `consolidate` resolves its reach and kinds to the kind scopes that CortexDB
@@ -441,41 +459,8 @@ written is absent). A learning with no `learning_kind` reads back as `Other`.
 
 ## Lookup labels and digests
 
-Each event carries up to eight `context.labels`, each `tm:<tag>:` followed by
-the first 16 lowercase hex digits (64 bits) of the SHA-256 of the value:
-
-| Label | Value hashed | On |
-| --- | --- | --- |
-| `tm:i:` | the item id | every event |
-| `tm:t:` | `meta.thread_id` | when set |
-| `tm:s:` | `meta.source.id` | when set |
-| `tm:r:` | `meta.repo` | when set |
-| `tm:w:` | `meta.workspace` (kept even when the envelope drops it) | when set |
-| `tm:a:` | `meta.agent_id` | when set |
-| `tm:l:` | `meta.language` | when set |
-| `tm:k:` | the source kind (`meta.source.kind`) | every event |
-
-A label holds a **digest**, not the value, because the engine splits a label
-filter on commas and bounds a label's length, and a path or source id may be
-long or hold a comma.
-
-Reads use labels two ways:
-
-- **Item lookup.** Replay detection, `get`, conversation assembly and forget
-  by id ask the listing for `tm:i:<digest(id)>` labels. Because a label is a
-  digest, every hit is re-checked against the envelope's real `id`.
-- **Narrowing.** A read whose filter has a labelled field sends **one** label
-  filter to narrow server-side: the first set field of thread, source id, repo,
-  workspace, agent, language (in that order, most selective first), else the
-  filter's source kinds (several `tm:k:` labels, which the engine reads as
-  any-of). Only labels of one field may be sent together, since the engine
-  keeps events carrying *any* of the labels.
-
-The label only ever narrows. Every reader **always** re-applies the full
-`MetaFilter` to the decoded envelope, so a digest collision costs a wasted row
-and never a wrong answer. `folder` and `file_path` match as prefixes, which a
-label cannot, so they are filtered client-side only. No local path is sent:
-see [cortex-local-paths.md](cortex-local-paths.md).
+The labels every event carries for server-side narrowing, and the digests
+behind them, are in [cortex-labels.md](cortex-labels.md).
 
 ## CortexDB behaviours the engine is shaped around
 

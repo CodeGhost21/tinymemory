@@ -83,6 +83,16 @@ enum Listing {
     Complete,
 }
 
+/// The scope-listing prefix that covers `node` and everything below it.
+fn node_prefix(node: &Namespace) -> String {
+    if node.is_root() {
+        return ROOT_SCOPE.to_string();
+    }
+    let mut path = scope_path(node, ItemKind::Document);
+    path.truncate(path.rfind('/').unwrap_or(path.len()));
+    path
+}
+
 /// Whether reading `reach` needs the engine's list of nodes.
 fn needs_discovery(reach: Option<&Reach>) -> bool {
     reach.is_none_or(|reach| reach.descendants)
@@ -137,6 +147,30 @@ impl CortexEngine {
         Ok(found.into_iter().collect())
     }
 
+    /// The scopes of `kinds` the engine has registered at the nodes `reach`
+    /// admits (`inherit` ignored), refusing when it cannot list them all:
+    /// for an erasure, which must name every scope it removes.
+    pub(super) async fn held_all(
+        &self,
+        reach: &Reach,
+        kinds: &[ItemKind],
+    ) -> Result<Vec<KindScope>> {
+        let reach = Reach {
+            inherit: false,
+            ..reach.clone()
+        };
+        let mut found = BTreeSet::new();
+        for path in self.log.all_scopes(&node_prefix(&reach.at)).await? {
+            let Some((namespace, kind)) = parse_scope(&path) else {
+                continue;
+            };
+            if reach.admits(&namespace) && kinds.contains(&kind) {
+                found.insert(KindScope::new(namespace, kind));
+            }
+        }
+        Ok(found.into_iter().collect())
+    }
+
     /// Every scope of `kinds` the engine holds, in reach.
     async fn discovered(
         &self,
@@ -150,14 +184,7 @@ impl CortexEngine {
                 .into_iter()
                 .collect(),
         };
-        let prefix = match reach {
-            Some(reach) if !reach.at.is_root() => {
-                let mut path = scope_path(&reach.at, ItemKind::Document);
-                path.truncate(path.rfind('/').unwrap_or(path.len()));
-                path
-            }
-            _ => ROOT_SCOPE.to_string(),
-        };
+        let prefix = node_prefix(reach.map_or(&Namespace::ROOT, |reach| &reach.at));
         let paths = match listing {
             Listing::Lenient => self.log.scopes(&prefix).await?,
             Listing::Complete => self.log.all_scopes(&prefix).await?,

@@ -35,6 +35,7 @@
 //! requests a minute, has no bulk, `?wait=indexed` or health route, and
 //! takes an `Idempotency-Key` claim on every write (see `write`).
 
+mod erase;
 mod forget;
 mod notes;
 mod read;

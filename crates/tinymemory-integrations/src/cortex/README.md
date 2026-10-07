@@ -21,7 +21,9 @@ This README is the short in-tree summary. The full reference is under
 - [`cortex.md`](../../../../docs/architecture/cortex.md): surface, credentials,
   transport, failure mapping, endpoint security, the registry and `MemoryConfig`;
 - [`cortex-wire.md`](../../../../docs/architecture/cortex-wire.md): every endpoint
-  and its shapes, scope layout, the envelope (v3 and v2), lookup labels;
+  and its shapes, scope layout, the envelope (v3 and v2);
+- [`cortex-labels.md`](../../../../docs/architecture/cortex-labels.md): the
+  lookup labels and their digests;
 - [`cortex-flows.md`](../../../../docs/architecture/cortex-flows.md): step-by-step
   store, list, fetch, recall, forget, get, discovery;
 - [`testing.md`](../../../../docs/architecture/testing.md): the doubles, the
@@ -220,6 +222,14 @@ as prefixes, so they cannot be labelled and are filtered only client-side.
   matches the full filter. Either way the matched events are then removed with
   `selector.memory_ids`, in batches of 100. An empty selector is never sent,
   and neither is `confirm_all`. `forgotten` counts items.
+- **Erase.** Direct only; hosted refuses with `Unsupported`, because the
+  backend proxies no erasure route. Lists the registered kind scopes in reach
+  with the complete scope listing, then sends `v1/erasures` with
+  `confirm_all` (never a selector) once per scope, deepest first, and
+  returns the erasure ids as receipts. CortexDB deletes an erased scope's
+  events and releases their write keys, but only redacts the scopes below it,
+  which keep theirs. Kind scopes are leaves, so this never happens; the order
+  guards a layout where it could.
 - **Health.** Direct probes `GET v1/admin/health`. Hosted lists
   `memory/scopes?prefix=tmh:probe&limit=1`. `Unavailable` maps to `Degraded`
   and any other failure to `Down`. The reason keeps the message head and
