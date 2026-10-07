@@ -114,22 +114,24 @@ impl CortexEngine {
         let mut pending = Vec::new();
         let mut seen = HashSet::new();
         let mut next = None;
+        // The cap guards against a cursor that never ends, for the whole
+        // request. Every scope gets one page on top of it: an empty scope (a
+        // registration left after a forget) costs a page of its own, so a
+        // bare cap would refuse a store with many of them while every cursor
+        // was ending. The scope listing bounds how many there are.
+        let budget = MAX_PAGES + scopes.len();
+        let mut pages = 0;
         'scopes: for (index, scope) in scopes.iter().enumerate().skip(start) {
             let kind = scope.kind;
-            // Per scope: the cap guards against a cursor that never ends, and
-            // an empty scope (a registration left after a forget) costs a page
-            // of its own, so a page count across scopes would refuse a store
-            // with many of them while every cursor was ending.
-            let mut pages = 0;
             if index > start || at.scope.as_deref() != Some(scope.path.as_str()) {
                 at = ListCursor::at(&scope.path);
             }
             loop {
                 pages += 1;
-                if pages > MAX_PAGES {
+                if pages > budget {
                     return Err(Error::Engine(format!(
-                        "listing read {MAX_PAGES} pages of {} without filling a page of results; \
-                         refusing to walk further",
+                        "listing read {budget} pages (stopped in {}) without filling a page of \
+                         results; refusing to walk further",
                         scope.path
                     )));
                 }
