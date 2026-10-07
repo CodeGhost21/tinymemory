@@ -74,8 +74,8 @@ pub use item::{DocumentBody, ItemId, ItemKind, LearningKind, Role, StoreItem, St
 pub use meta::{MemoryMeta, MetaFilter, SourceKind, SourceRef, ToolCallRef, TurnRange};
 pub use namespace::{Namespace, Reach, Segment, SegmentKind};
 pub use query::{
-    Citation, FetchMode, FetchPage, FetchRequest, ForgetReport, ForgetTarget, Hit, ListPage,
-    ListRequest, RecallAnswer, RecallRequest,
+    Citation, ExportPage, Exported, FetchMode, FetchPage, FetchRequest, ForgetReport, ForgetTarget,
+    Hit, ListPage, ListRequest, RecallAnswer, RecallRequest,
 };
 pub use write::{WaitFor, WriteOptions};
 

@@ -38,6 +38,40 @@ async fn pages_follow_the_cursor_to_the_end() {
 }
 
 #[tokio::test]
+async fn export_hands_each_item_back_whole_once_by_cursor() {
+    let engine = ReferenceEngine::new();
+    let mut stored = Vec::new();
+    for i in 0..5 {
+        let item = StoreItem::learning(
+            format!("fact {i}"),
+            LearningKind::Preference,
+            0.5,
+            MemoryMeta::default(),
+        );
+        engine.store(item.clone()).await.unwrap();
+        stored.push(item);
+    }
+    let (mut exported, mut cursor) = (Vec::new(), None);
+    for _ in 0..10 {
+        let mut request = ListRequest::new(MetaFilter::default(), 2);
+        request.cursor = cursor;
+        let page = engine.export(request).await.unwrap();
+        assert!(page.incomplete.is_empty());
+        exported.extend(page.items);
+        cursor = page.next_cursor;
+        if cursor.is_none() {
+            break;
+        }
+    }
+    assert!(cursor.is_none(), "the cursor ends");
+    assert_eq!(exported.len(), stored.len(), "each item once");
+    for (exported, stored) in exported.iter().zip(&stored) {
+        assert_eq!(&exported.item, stored, "whole, in storage order");
+        assert_eq!(exported.id.as_str(), stored.fingerprint());
+    }
+}
+
+#[tokio::test]
 async fn recall_on_an_empty_engine_has_no_citations() {
     let engine = ReferenceEngine::default();
     assert!(engine.is_empty());

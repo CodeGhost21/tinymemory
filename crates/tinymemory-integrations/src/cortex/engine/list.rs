@@ -24,7 +24,9 @@
 use std::collections::{HashMap, HashSet};
 
 use serde_json::Value;
-use tinymemory_api::{Hit, ItemKind, ListPage, ListRequest, Namespace};
+use tinymemory_api::{
+    ExportPage, Exported, ItemId, ItemKind, ListPage, ListRequest, Namespace, StoreItem,
+};
 
 use super::CortexEngine;
 use super::cursor::{self, ListCursor};
@@ -37,20 +39,64 @@ use crate::cortex::log::{MAX_PAGES, PAGE_SIZE};
 /// The cursor tag of a listing.
 const TAG: char = 'l';
 
-/// A hit, or an item whose events (a conversation's turns, a chunked
-/// document's pieces) are assembled before the page returns.
+/// An item rebuilt from its one event, or one whose events (a
+/// conversation's turns, a chunked document's pieces) are assembled before
+/// the page returns.
 enum Pending {
-    Ready(Box<Hit>),
+    Ready(String, Box<StoreItem>),
     Assembled(ItemKind, String, Namespace),
 }
 
+/// A page of items in listing order, each with its id; `None` for an item
+/// whose events could not be assembled whole.
+type ItemsPage = (Vec<(String, Option<StoreItem>)>, Option<String>);
+
 impl CortexEngine {
-    /// See the module docs.
+    /// See the module docs. An item that cannot be assembled whole is left
+    /// out.
     pub(super) async fn list_page(&self, req: ListRequest) -> Result<ListPage> {
+        let (items, next_cursor) = self.items_page(req).await?;
+        Ok(ListPage {
+            items: items
+                .into_iter()
+                .filter_map(|(id, item)| item.map(|item| hit(&id, &item, 0.0)))
+                .collect(),
+            next_cursor,
+        })
+    }
+
+    /// The same walk as [`Self::list_page`], handing each item back whole;
+    /// an item that cannot be assembled whole is named, not left out.
+    ///
+    /// # Errors
+    ///
+    /// The listing's: an invalid request or cursor, a scope or event page the
+    /// engine fails to answer, and a walk past its page cap. Nothing is
+    /// returned partially on an error; the caller retries from its cursor.
+    pub(super) async fn export_page(&self, req: ListRequest) -> Result<ExportPage> {
+        let (items, next_cursor) = self.items_page(req).await?;
+        let mut page = ExportPage {
+            next_cursor,
+            ..ExportPage::default()
+        };
+        for (id, item) in items {
+            match item {
+                Some(item) => page.items.push(Exported {
+                    id: ItemId::new(id),
+                    item,
+                }),
+                None => page.incomplete.push(ItemId::new(id)),
+            }
+        }
+        Ok(page)
+    }
+
+    /// One page of the walk the module docs describe.
+    async fn items_page(&self, req: ListRequest) -> Result<ItemsPage> {
         req.validate()?;
         let scopes = self.scopes_for(&req.filter).await?;
         if scopes.is_empty() {
-            return Ok(ListPage::default());
+            return Ok((Vec::new(), None));
         }
         let mut at = match &req.cursor {
             Some(raw) => cursor::decode::<ListCursor>(TAG, raw)?,
@@ -120,10 +166,7 @@ impl CortexEngine {
                 }
             }
         }
-        Ok(ListPage {
-            items: self.resolve(pending).await?,
-            next_cursor: next,
-        })
+        Ok((self.resolve(pending).await?, next))
     }
 
     /// Whether one raw event starts an item this listing returns.
@@ -149,14 +192,13 @@ impl CortexEngine {
                 envelope.meta.namespace,
             ));
         }
-        let id = envelope.id.clone();
         let item = rebuild(std::slice::from_ref::<Envelope>(&envelope))?;
-        Some(Pending::Ready(Box::new(hit(&id, &item, 0.0))))
+        Some(Pending::Ready(envelope.id, Box::new(item)))
     }
 
     /// Assembles the page's conversations and chunked documents (one lookup
-    /// per kind) and returns the hits in listing order.
-    async fn resolve(&self, pending: Vec<Pending>) -> Result<Vec<Hit>> {
+    /// per kind) and returns the items in listing order.
+    async fn resolve(&self, pending: Vec<Pending>) -> Result<Vec<(String, Option<StoreItem>)>> {
         let mut assembled = HashMap::new();
         for kind in [ItemKind::Conversation, ItemKind::Document] {
             let ids: Vec<(String, Namespace)> = pending
@@ -174,9 +216,12 @@ impl CortexEngine {
         }
         Ok(pending
             .into_iter()
-            .filter_map(|p| match p {
-                Pending::Ready(hit) => Some(*hit),
-                Pending::Assembled(_, id, _) => assembled.get(&id).map(|item| hit(&id, item, 0.0)),
+            .map(|p| match p {
+                Pending::Ready(id, item) => (id, Some(*item)),
+                Pending::Assembled(_, id, _) => {
+                    let item = assembled.remove(&id);
+                    (id, item)
+                }
             })
             .collect())
     }

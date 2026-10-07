@@ -121,6 +121,119 @@ async fn the_live_server_upholds_the_contract() {
 }
 
 #[tokio::test]
+async fn every_kind_is_exported_whole_across_pages() {
+    let _alone = ONE_AT_A_TIME.lock().await;
+    for (wire, engine) in live_engines() {
+        eprintln!("export on {wire}");
+        let workspace = run_id();
+        let at = tinymemory_api::chrono::TimeZone::with_ymd_and_hms(
+            &tinymemory_api::chrono::Utc,
+            2026,
+            5,
+            6,
+            7,
+            8,
+            9,
+        )
+        .single()
+        .expect("a valid time");
+        let mut stored = vec![
+            StoreItem::Conversation {
+                turns: vec![
+                    Turn {
+                        role: Role::User,
+                        text: "when is the review".into(),
+                        at: Some(at),
+                        tool_calls: Vec::new(),
+                    },
+                    Turn {
+                        role: Role::Assistant,
+                        text: "Thursday at ten".into(),
+                        at: Some(at),
+                        tool_calls: vec![ToolCallRef {
+                            name: "calendar".into(),
+                            id: Some("call-1".into()),
+                        }],
+                    },
+                ],
+                meta: meta(&workspace, SourceKind::Conversation),
+            },
+            StoreItem::Document {
+                title: Some("Plan".into()),
+                body: tinymemory_api::DocumentBody::Text("The plan has three steps.".into()),
+                mime: Some("text/markdown".into()),
+                meta: meta(&workspace, SourceKind::File),
+            },
+        ];
+        let chapters: Vec<String> = (1..=12)
+            .map(|page| {
+                format!(
+                    "# Chapter {page}\n\n{}",
+                    "Export policy text. ".repeat(1500)
+                )
+            })
+            .collect();
+        stored.push(StoreItem::Document {
+            title: Some("Handbook".into()),
+            body: tinymemory_api::DocumentBody::Text(chapters.join("\u{c}")),
+            mime: Some("application/pdf".into()),
+            meta: meta(&workspace, SourceKind::File),
+        });
+        for n in 0..3 {
+            stored.push(StoreItem::Learning {
+                text: format!("export fact {n}"),
+                kind: LearningKind::Preference,
+                confidence: 0.75,
+                evidence: Some("said so".into()),
+                meta: meta(&workspace, SourceKind::Agent),
+            });
+        }
+        for item in &stored {
+            engine.store(item.clone()).await.expect("store");
+        }
+        let filter = MetaFilter {
+            workspace: Some(workspace.clone()),
+            ..MetaFilter::default()
+        };
+        // Each store returned once listable; this only guards a server that
+        // lags behind its own listing.
+        let visible = list_until(&engine, &filter, stored.len()).await;
+        assert_eq!(visible.len(), stored.len(), "every stored item lists");
+        let (mut exported, mut cursor) = (Vec::new(), None);
+        for _ in 0..20 {
+            let mut request = ListRequest::new(filter.clone(), 2);
+            request.cursor = cursor;
+            let page = engine.export(request).await.expect("export");
+            assert!(page.incomplete.is_empty(), "{:?}", page.incomplete);
+            exported.extend(page.items);
+            cursor = page.next_cursor;
+            if cursor.is_none() {
+                break;
+            }
+        }
+        assert!(cursor.is_none(), "the export ended");
+        let mut want: Vec<String> = stored.iter().map(StoreItem::fingerprint).collect();
+        let mut got: Vec<String> = exported.iter().map(|e| e.id.as_str().to_string()).collect();
+        want.sort();
+        got.sort();
+        assert_eq!(got, want, "exactly the stored items, each once");
+        for item in &stored {
+            let found = exported
+                .iter()
+                .find(|e| e.id.as_str() == item.fingerprint())
+                .expect("exported");
+            assert_eq!(&found.item, item, "whole, exactly as stored");
+            let again = engine.store(found.item.clone()).await.expect("store");
+            assert!(again.replayed, "storing it where it was is a replay");
+        }
+        engine
+            .forget(ForgetTarget::Filter(filter))
+            .await
+            .expect("cleanup");
+    }
+}
+
+#[tokio::test]
 async fn documents_conversations_and_learnings_round_trip_into_context() {
     let _alone = ONE_AT_A_TIME.lock().await;
     for (wire, engine) in live_engines() {

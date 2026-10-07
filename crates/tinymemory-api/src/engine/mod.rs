@@ -9,8 +9,8 @@ use crate::error::{Error, Result};
 use crate::explore::{ExplorePage, ExploreRequest, GetRequest, explore_by_listing, get_by_listing};
 use crate::item::{StoreItem, StoreReceipt};
 use crate::query::{
-    FetchMode, FetchPage, FetchRequest, ForgetReport, ForgetTarget, Hit, ListPage, ListRequest,
-    RecallAnswer, RecallRequest,
+    ExportPage, FetchMode, FetchPage, FetchRequest, ForgetReport, ForgetTarget, Hit, ListPage,
+    ListRequest, RecallAnswer, RecallRequest,
 };
 use crate::write::WriteOptions;
 
@@ -104,6 +104,32 @@ pub trait MemoryEngine: Send + Sync {
     ///
     /// Invalid requests, and the engine's own failures.
     async fn list(&self, req: ListRequest) -> Result<ListPage>;
+
+    /// Pages through stored items like [`MemoryEngine::list`], handing each
+    /// back whole as the [`StoreItem`] it was stored as, for moving memory:
+    /// to another engine, or to another node (a new namespace is a new item,
+    /// see [`StoreItem::fingerprint`]). A listing's [`Hit`] cannot do that:
+    /// its text is the rendered form, which drops a document's mime, a
+    /// conversation's turn times and tool calls, and a learning's kind and
+    /// evidence.
+    ///
+    /// Items the engine holds only part of are named in
+    /// [`ExportPage::incomplete`] instead of being dropped.
+    ///
+    /// The default refuses: an engine that can hand items back whole
+    /// overrides it.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Unsupported`] when the engine cannot export, invalid
+    /// requests, and the engine's own failures.
+    async fn export(&self, req: ListRequest) -> Result<ExportPage> {
+        req.validate()?;
+        Err(Error::Unsupported(format!(
+            "engine `{}` does not export items",
+            self.descriptor().id
+        )))
+    }
 
     /// Groups the items a filter admits by one [`crate::Facet`] and counts
     /// each value, for explorers (see [`crate::explore`]).
