@@ -969,6 +969,7 @@ async fn a_forget_anywhere_drops_every_pack_the_server_holds() {
 /// zone, the engine's capability gate and the server's boost end to end.
 #[tokio::test]
 async fn a_models_refers_to_ranks_that_day_first_on_the_live_server() {
+    let _alone = ONE_AT_A_TIME.lock().await;
     use chrono::{TimeZone, Utc};
     use tinymemory_tools::MemoryTools;
 

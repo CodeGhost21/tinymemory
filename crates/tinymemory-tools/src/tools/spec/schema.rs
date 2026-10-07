@@ -340,8 +340,16 @@ fn refers_to() -> Value {
                         observed_before: those drop every memory recorded on another day, this \
                         only ranks the matching days first.",
         "properties": {
-            "from": { "type": "string", "description": "First local date, YYYY-MM-DD." },
-            "to": { "type": "string", "description": "Last local date, YYYY-MM-DD, inclusive." },
+            "from": {
+                "type": "string",
+                "format": "date",
+                "description": "First local date, YYYY-MM-DD.",
+            },
+            "to": {
+                "type": "string",
+                "format": "date",
+                "description": "Last local date, YYYY-MM-DD, inclusive.",
+            },
         },
         "required": ["from", "to"],
     })

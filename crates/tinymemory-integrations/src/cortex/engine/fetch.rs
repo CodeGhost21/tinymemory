@@ -158,7 +158,8 @@ impl CortexEngine {
                     body["include"] = json!(["events", "beliefs"]);
                     body["budgets"]["per_layer_limits"]["beliefs"] = json!(wanted_beliefs);
                 }
-                if let Some(temporal) = hint {
+                // Another scope of this fetch may have had the hint refused.
+                if let Some(temporal) = hint.as_ref().filter(|_| !self.refers_off()) {
                     body["temporal"] = temporal.clone();
                 }
                 let pack = match self.log.recall(&body).await {

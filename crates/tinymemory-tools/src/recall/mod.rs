@@ -146,11 +146,18 @@ pub(crate) async fn run(
         .or_else(|| request.refers_to.clone());
     if let Some(hint) = &hint {
         for (section, outcome) in request.sections.iter().zip(&mut gathered) {
-            // Fetch sections, and answered ones that fell back to fetch;
-            // a latest section keeps its newest-first order.
-            if let (false, gather::Gathered::Hits { hits, .. }) =
-                (matches!(section.query, SectionQuery::Latest), outcome)
-            {
+            // Sections that ranked by a query (fetch, or an answer that fell
+            // back to fetch); a section that read the newest items, latest
+            // or a fetch with no query at all, keeps its newest-first order.
+            let queried = match &section.query {
+                SectionQuery::Fetch { query } => query
+                    .as_deref()
+                    .or(request.query.as_deref())
+                    .is_some_and(|query| !query.trim().is_empty()),
+                SectionQuery::Answer { .. } => true,
+                SectionQuery::Latest => false,
+            };
+            if let (true, gather::Gathered::Hits { hits, .. }) = (queried, outcome) {
                 hint.rank(hits);
             }
         }

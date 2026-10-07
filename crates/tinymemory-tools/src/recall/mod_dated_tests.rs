@@ -187,3 +187,21 @@ async fn an_answered_section_and_its_fetch_fallback_carry_the_date() {
     assert_eq!(*engine.recalls.lock().unwrap(), [Some(day(3))]);
     assert_eq!(*engine.fetches.lock().unwrap(), [Some(day(3))]);
 }
+
+#[tokio::test]
+async fn a_fetch_section_with_no_query_keeps_its_newest_first_order() {
+    let engine = seeded().await;
+    let latest = HolisticRecall::new(
+        None,
+        vec![ScopeSection::fetch(
+            "Docs",
+            MetaFilter::kinds([ItemKind::Document]),
+            3,
+        )],
+    );
+    let plain = holistic_recall(&engine, &latest).await.unwrap();
+    let dated = holistic_recall_dated(&engine, &latest, async { Some(day(3)) })
+        .await
+        .unwrap();
+    assert_eq!(shown(&dated), shown(&plain), "newest first, not date first");
+}

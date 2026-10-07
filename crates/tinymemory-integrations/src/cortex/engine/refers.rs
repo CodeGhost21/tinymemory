@@ -102,6 +102,11 @@ impl CortexEngine {
         self.refers.0.load(Ordering::Relaxed) == YES
     }
 
+    /// Whether the server is known to refuse date hints.
+    pub(super) fn refers_off(&self) -> bool {
+        self.refers.0.load(Ordering::Relaxed) == NO
+    }
+
     /// Records that the server refused a date hint with `error`.
     pub(super) fn refers_refused(&self, error: &Error) {
         if self.refers.0.swap(NO, Ordering::Relaxed) != NO {

@@ -108,10 +108,12 @@
           "properties": {
             "from": {
               "description": "First local date, YYYY-MM-DD.",
+              "format": "date",
               "type": "string"
             },
             "to": {
               "description": "Last local date, YYYY-MM-DD, inclusive.",
+              "format": "date",
               "type": "string"
             }
           },
@@ -247,10 +249,12 @@
           "properties": {
             "from": {
               "description": "First local date, YYYY-MM-DD.",
+              "format": "date",
               "type": "string"
             },
             "to": {
               "description": "Last local date, YYYY-MM-DD, inclusive.",
+              "format": "date",
               "type": "string"
             }
           },
