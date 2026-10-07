@@ -34,8 +34,12 @@ pub(crate) const MAX_SEGMENT_ID: usize = 128;
 pub(crate) const ROOT_LABEL: &str = "root";
 
 /// What a namespace segment names.
+///
+/// Non-exhaustive: a host matching on it needs a wildcard arm, so a kind can
+/// be added without breaking it again.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum SegmentKind {
     /// An agent (or a sub-agent, nested under its parent).
     Agent,
@@ -50,11 +54,14 @@ pub enum SegmentKind {
     /// A source of knowledge (`source:pdf`, `source:notion`): where a shared
     /// document came from, so a brain can hold each source type apart.
     Source,
+    /// A service: one automation, such as a workflow (`service:newsletter`),
+    /// whose memory is its own.
+    Service,
 }
 
 impl SegmentKind {
     /// The stable wire prefix (`agent`, `team`, `user`, `ws`, `project`,
-    /// `source`).
+    /// `source`, `service`).
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
@@ -64,6 +71,7 @@ impl SegmentKind {
             Self::Workspace => "ws",
             Self::Project => "project",
             Self::Source => "source",
+            Self::Service => "service",
         }
     }
 
@@ -75,6 +83,7 @@ impl SegmentKind {
             "ws" => Ok(Self::Workspace),
             "project" => Ok(Self::Project),
             "source" => Ok(Self::Source),
+            "service" => Ok(Self::Service),
             _ => Err(Error::InvalidRequest(format!(
                 "`{value}` is not a namespace segment kind"
             ))),

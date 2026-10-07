@@ -505,6 +505,42 @@ async fn a_long_document_round_trips_in_pieces() {
     }
 }
 
+/// A `service:` namespace node on the real server: CortexDB admits the
+/// `service` scope type (no `422 UNREGISTERED_SCOPE_TYPE`), and the item
+/// reads back at its node and is forgotten there.
+#[tokio::test]
+async fn a_service_node_round_trips() {
+    let _alone = ONE_AT_A_TIME.lock().await;
+    for (wire, engine) in live_engines() {
+        let node: tinymemory_api::Namespace = format!("ws:{}/service:newsletter", run_id())
+            .parse()
+            .expect("a valid service node");
+        let receipt = engine
+            .store(StoreItem::learning(
+                "Newsletter item 5531 was already sent",
+                LearningKind::Fact,
+                0.8,
+                MemoryMeta {
+                    namespace: node.clone(),
+                    ..MemoryMeta::default()
+                },
+            ))
+            .await
+            .unwrap_or_else(|error| panic!("{wire} stores at a service node: {error}"));
+        let filter = MetaFilter {
+            reach: Some(tinymemory_api::Reach::exact(node)),
+            ..MetaFilter::default()
+        };
+        let listed = list_until(&engine, &filter, 1).await;
+        assert_eq!(listed, ["Newsletter item 5531 was already sent"], "{wire}");
+        let report = engine
+            .forget(ForgetTarget::Ids(vec![receipt.id]))
+            .await
+            .expect("forget");
+        assert_eq!(report.forgotten, 1, "{wire}");
+    }
+}
+
 /// A turn logged on the hot path (one single-turn conversation, accepted
 /// only) skips the lookup, so a retry is caught by CortexDB itself: the
 /// same body is the same idempotency key, answered as a replay of the

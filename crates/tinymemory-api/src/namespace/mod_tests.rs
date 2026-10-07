@@ -14,13 +14,32 @@ fn parses_and_prints_paths() {
     assert_eq!(writer.segments()[0].kind(), SegmentKind::Team);
     assert_eq!(writer.segments()[1].id(), "writer");
     assert_eq!(ns("ws:shared").to_string(), "ws:shared");
-    for kind in ["agent", "team", "user", "ws", "project", "source"] {
+    for kind in [
+        "agent", "team", "user", "ws", "project", "source", "service",
+    ] {
         let segment = ns(&format!("{kind}:x")).segments()[0].clone();
         assert_eq!(segment.kind().as_str(), kind);
     }
     assert!(ns("").is_root());
     assert!(ns(ROOT_LABEL).is_root());
     assert_eq!(Namespace::ROOT.to_string(), ROOT_LABEL);
+}
+
+#[test]
+fn a_service_node_prints_parses_and_serializes() {
+    let flow = ns("ws:main/service:newsletter");
+    assert_eq!(flow.segments()[1].kind(), SegmentKind::Service);
+    assert_eq!(flow.segments()[1].id(), "newsletter");
+    assert_eq!(flow.to_string(), "ws:main/service:newsletter");
+    let json = serde_json::to_string(&flow).unwrap();
+    assert_eq!(json, r#""ws:main/service:newsletter""#);
+    assert_eq!(serde_json::from_str::<Namespace>(&json).unwrap(), flow);
+    assert_eq!(
+        serde_json::to_string(&SegmentKind::Service).unwrap(),
+        r#""service""#
+    );
+    let sanitized = Segment::sanitized(SegmentKind::Service, "flow 7");
+    assert!(sanitized.to_string().starts_with("service:flow-7-"));
 }
 
 #[test]
