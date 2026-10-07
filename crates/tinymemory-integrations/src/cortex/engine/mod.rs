@@ -130,9 +130,10 @@ impl CortexEngine {
     /// Registers the v3 root as owned by its owner, once, before a write.
     /// Already registered (`409`) counts as done. Any other failure does not
     /// fail the write, which CortexDB then admits as usual, and the next
-    /// write tries again.
-    // ponytail: a root CortexDB auto-registered before an owner was set
-    // keeps its first owner; add a member edit when a host needs that fixed.
+    /// write tries again. That cannot hand the root to another owner:
+    /// CortexDB auto-registers only the scope a write lands in, and v3
+    /// writes only to leaves below the root, never to the root itself, so
+    /// the root stays unregistered until this succeeds.
     async fn register_root(&self) {
         let (ScopeLayout::V3 { root }, Some(owner)) = (&self.layout, &self.owner) else {
             return;
