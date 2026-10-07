@@ -65,6 +65,8 @@ pub trait MemoryEngine: Send + Sync {
     async fn get(&self, req: GetRequest) -> Result<Vec<Hit>>;
     // Bulk ingestion; default stores one at a time (see "Bulk store").
     async fn store_many(&self, items: Vec<StoreItem>) -> Result<Vec<StoreReceipt>>;
+    // Moving memory; default refuses with Unsupported (see "Export").
+    async fn export(&self, req: ListRequest) -> Result<ExportPage>;
 }
 ```
 
@@ -182,6 +184,26 @@ pub struct GetRequest { pub ids: Vec<ItemId> /* 1..=200 */, pub reach: Option<Re
   items and sets `truncated` when it stops early, so counts are then a lower
   bound. `get_by_listing` pages until every id is found. An engine overrides
   either when it can do better: CortexDB looks ids up by their labels.
+
+### Export
+
+`export(req)` pages like `list` (same `ListRequest`, filter and cursor) but
+hands each item back whole as the `StoreItem` it was stored as, under its id:
+
+```rust
+pub struct Exported { pub id: ItemId, pub item: StoreItem }
+pub struct ExportPage { pub items: Vec<Exported>, pub incomplete: Vec<ItemId>, pub next_cursor: Option<String> }
+```
+
+It exists for moving memory: to another engine, or to another node, where the
+namespace changes and so does the fingerprint. A listing's `Hit` cannot be
+stored again faithfully: its text is the rendered form, which drops a
+document's mime, a conversation's turn times and tool calls, and a learning's
+kind and evidence. Storing an exported item where it was is a replay. An item
+the engine holds only part of (a chunked document missing a piece) is named in
+`incomplete` rather than dropped, so a caller moving memory knows what it could
+not move. The default refuses with `Unsupported`; the reference and CortexDB
+engines export.
 
 ### Bulk store
 
@@ -334,6 +356,8 @@ from any earlier checkpoint only replays.
 
 `tinymemory_api::conformance::run(engine)` (feature `conformance`) covers:
 - store/list round-trip for each kind;
+- for an engine that exports, every item handed back whole and equal to what
+  was stored, under its own id, and a replay when stored again;
 - replay idempotency;
 - `explore` counts agreeing with `list` per kind and per workspace, and each
   bucket narrowing to exactly its count;

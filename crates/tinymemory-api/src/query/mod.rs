@@ -15,7 +15,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
-use crate::item::{ItemId, ItemKind};
+use crate::item::{ItemId, ItemKind, StoreItem};
 use crate::meta::{MemoryMeta, MetaFilter};
 
 /// A question for [`crate::MemoryEngine::recall`].
@@ -239,6 +239,32 @@ impl ListRequest {
 pub struct ListPage {
     /// The items.
     pub items: Vec<Hit>,
+    /// Pass back as [`ListRequest::cursor`] for the next page; `None` at the
+    /// end.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+}
+
+/// One stored item exactly as it was stored, for moving it elsewhere (another
+/// engine, or another node of the same one).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Exported {
+    /// The id the engine holds it under.
+    pub id: ItemId,
+    /// The item, whole: storing it again where it was is a replay.
+    pub item: StoreItem,
+}
+
+/// One page of an export (see [`crate::MemoryEngine::export`]).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ExportPage {
+    /// The items, whole.
+    pub items: Vec<Exported>,
+    /// Items the engine holds only part of (a chunked document missing a
+    /// piece), so cannot hand back whole. Named rather than dropped, so a
+    /// caller moving memory knows what it could not move.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub incomplete: Vec<ItemId>,
     /// Pass back as [`ListRequest::cursor`] for the next page; `None` at the
     /// end.
     #[serde(default, skip_serializing_if = "Option::is_none")]

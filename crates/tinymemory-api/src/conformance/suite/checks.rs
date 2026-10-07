@@ -14,6 +14,7 @@ use crate::conformance::error::Result;
 pub(super) async fn all(ctx: &Ctx<'_>) -> Result<()> {
     health(ctx).await?;
     round_trip(ctx).await?;
+    super::export::export(ctx).await?;
     replay(ctx).await?;
     super::explore::explore(ctx).await?;
     super::explore::get(ctx).await?;

@@ -7,6 +7,8 @@
 //! 1. `health` — the engine reports itself serving.
 //! 2. `round_trip` — one item of each kind stores and lists back with the same
 //!    kind, metadata and rendered text, and paging terminates.
+//!    Engines that export (`export`) hand every item back whole and equal to
+//!    what was stored, under its own id; storing it again is a replay.
 //! 3. `replay` — storing an identical item again is a replay with the same id.
 //! 4. `explore` — per-kind and per-workspace counts agree with `list`, buckets
 //!    are largest first, and each bucket narrows to exactly its count.
@@ -38,6 +40,7 @@
 mod bulk;
 mod checks;
 mod explore;
+mod export;
 mod fixtures;
 mod lifecycle;
 mod namespaces;

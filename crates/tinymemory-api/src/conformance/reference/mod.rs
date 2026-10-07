@@ -17,9 +17,9 @@ pub use distil::CONSOLIDATED_TAG;
 
 use crate::{
     Citation, ConsolidateReceipt, ConsolidateRequest, ConsolidateStatus, Consolidation,
-    EngineDescriptor, EngineHealth, Error, FetchMode, FetchPage, FetchRequest, ForgetReport,
-    ForgetTarget, Hit, ItemId, ListPage, ListRequest, MemoryEngine, MetaFilter, RecallAnswer,
-    RecallRequest, Result, StoreItem, StoreReceipt,
+    EngineDescriptor, EngineHealth, Error, ExportPage, Exported, FetchMode, FetchPage,
+    FetchRequest, ForgetReport, ForgetTarget, Hit, ItemId, ListPage, ListRequest, MemoryEngine,
+    MetaFilter, RecallAnswer, RecallRequest, Result, StoreItem, StoreReceipt,
 };
 use async_trait::async_trait;
 
@@ -276,6 +276,25 @@ impl MemoryEngine for ReferenceEngine {
             .collect();
         let (items, next_cursor) = page(matching, req.cursor.as_deref(), req.limit)?;
         Ok(ListPage { items, next_cursor })
+    }
+
+    async fn export(&self, req: ListRequest) -> Result<ExportPage> {
+        req.validate()?;
+        let matching: Vec<Exported> = self
+            .items()?
+            .iter()
+            .filter(|item| req.filter.matches(item.kind(), item.meta()))
+            .map(|item| Exported {
+                id: ItemId(item.fingerprint()),
+                item: item.clone(),
+            })
+            .collect();
+        let (items, next_cursor) = page(matching, req.cursor.as_deref(), req.limit)?;
+        Ok(ExportPage {
+            items,
+            incomplete: Vec::new(),
+            next_cursor,
+        })
     }
 }
 

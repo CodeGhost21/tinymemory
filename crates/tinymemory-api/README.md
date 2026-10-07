@@ -11,7 +11,7 @@ and `context.md` compiler live in [`tinymemory-tools`](../tinymemory-tools).
 
 | Item | Purpose |
 | --- | --- |
-| `MemoryEngine` | The object-safe async trait: `recall`, `fetch`, `store`, `store_many`, `forget`, `list`, `explore`, `get`, plus `descriptor` and `health` |
+| `MemoryEngine` | The object-safe async trait: `recall`, `fetch`, `store`, `store_many`, `forget`, `list`, `export`, `explore`, `get`, plus `descriptor` and `health` |
 | `EngineDescriptor`, `EngineHealth` | What an engine is and offers (including its `fetch_modes`), and whether it can serve |
 | `StoreItem` | A `Document`, `Conversation` or `Learning`, each with a `MemoryMeta`; `validate` and `fingerprint` |
 | `MemoryMeta`, `MetaFilter` | Typed metadata on every item, and the query that selects by it |
@@ -22,7 +22,8 @@ and `context.md` compiler live in [`tinymemory-tools`](../tinymemory-tools).
 
 `store_many`, `explore` and `get` have default implementations (one `store` at
 a time; paging through `list`), so a minimal engine implements seven methods
-and overrides the defaults only when it can do better.
+and overrides the defaults only when it can do better. `export` (items back
+whole, for moving memory) defaults to `Unsupported`.
 
 ## Example
 
