@@ -30,7 +30,9 @@ use std::collections::{HashMap, HashSet};
 
 use futures::{StreamExt, TryStreamExt, stream};
 use serde_json::{Value, json};
-use tinymemory_api::{FetchPage, FetchRequest, Hit, ItemKind, MetaFilter, Namespace, StoreItem};
+use tinymemory_api::{
+    FetchPage, FetchRequest, Hit, ItemKind, MetaFilter, Namespace, Reach, StoreItem,
+};
 
 use super::CortexEngine;
 use super::beliefs::{beliefs_in, merge};
@@ -164,12 +166,7 @@ impl CortexEngine {
         let (per_scope, beliefs): (Vec<Vec<Envelope>>, Vec<Vec<Hit>>) = packs.into_iter().unzip();
         let beliefs: Vec<Hit> = merge(beliefs, wanted_beliefs)
             .into_iter()
-            .filter(|belief| {
-                req.filter
-                    .reach
-                    .as_ref()
-                    .is_none_or(|reach| reach.admits(&belief.meta.namespace))
-            })
+            .filter(|belief| Reach::admitted_by(req.filter.reach.as_ref(), &belief.meta.namespace))
             .collect();
         let merged = interleave(per_scope);
         let more = merged.len() > end;

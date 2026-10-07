@@ -259,7 +259,8 @@ pub struct ExplorePage {
 pub struct GetRequest {
     /// The ids; `1..=`[`MAX_GET_IDS`].
     pub ids: Vec<ItemId>,
-    /// Only items in this reach are returned; `None` reads every namespace.
+    /// Only items in this reach are returned; `None` reads every namespace
+    /// except a service sandbox ([`Reach::admitted_by`]).
     /// An id outside the reach is left out as if it named nothing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reach: Option<Reach>,

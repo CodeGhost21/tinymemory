@@ -119,9 +119,17 @@ pub struct Reach { pub at: Namespace, pub inherit: bool, pub descendants: bool }
 | `descendants` | `false` | Also read everything below `at` |
 
 `Reach::admits(ns)` is true when `ns == at`, or `inherit` and `ns` is an
-ancestor of `at`, or `descendants` and `ns` lies below `at`. **A sibling is
-never admitted**: one agent's memory is invisible to another unless written to
-a node both inherit.
+ancestor of `at`, or `descendants` and `ns` lies below `at` with no `service:`
+segment between them. **A sibling is never admitted**: one agent's memory is
+invisible to another unless written to a node both inherit.
+
+**A service node is a sandbox.** A read of everything below a node never
+enters a `service:` node below it, so a workflow's memory stays out of chat
+packs, brain reads, holistic recall and "search everything". Only a reach at
+the service node, or inside it, reads it. No reach at all (`MetaFilter::reach`
+or `GetRequest::reach` left `None`) reads as `Reach::subtree(Namespace::ROOT)`
+(`Reach::admitted_by`), so it skips sandboxes too. Ids are the exception:
+`ForgetTarget::Ids` forgets an item wherever it lives.
 
 | Constructor | `inherit` | `descendants` | Sees |
 | --- | --- | --- | --- |

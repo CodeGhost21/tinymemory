@@ -244,3 +244,18 @@ fn reach_admits_own_node_and_ancestors_never_a_sibling() {
     );
     assert!(!reach("team:t").is_empty(), "a reach constrains a forget");
 }
+
+#[test]
+fn no_reach_never_matches_a_service_sandbox() {
+    let in_flow = MemoryMeta {
+        namespace: "ws:main/service:newsletter".parse().unwrap(),
+        ..MemoryMeta::default()
+    };
+    assert!(!MetaFilter::default().matches(ItemKind::Learning, &in_flow));
+    assert!(MetaFilter::default().matches(ItemKind::Learning, &meta()));
+    let at_flow = MetaFilter {
+        reach: Some(crate::Reach::exact(in_flow.namespace.clone())),
+        ..MetaFilter::default()
+    };
+    assert!(at_flow.matches(ItemKind::Learning, &in_flow));
+}

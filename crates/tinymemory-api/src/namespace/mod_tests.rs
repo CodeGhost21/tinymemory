@@ -116,6 +116,41 @@ fn reach_never_crosses_to_a_sibling() {
 }
 
 #[test]
+fn a_subtree_read_never_enters_a_service_below_it() {
+    let flow = ns("ws:main/service:newsletter");
+    let inside = ns("ws:main/service:newsletter/agent:writer");
+    let chat = ns("ws:main/agent:assistant");
+    let top_level_flow = ns("service:digest");
+
+    for above in [
+        Reach::subtree(Namespace::ROOT),
+        Reach::subtree(ns("ws:main")),
+    ] {
+        assert!(above.admits(&chat));
+        assert!(!above.admits(&flow), "{above:?} entered the sandbox");
+        assert!(!above.admits(&inside), "{above:?} entered the sandbox");
+    }
+    assert!(!Reach::subtree(Namespace::ROOT).admits(&top_level_flow));
+
+    // A reach at the service, or inside it, reads it as usual.
+    assert!(Reach::exact(flow.clone()).admits(&flow));
+    assert!(Reach::subtree(flow.clone()).admits(&inside));
+    assert!(Reach::of(inside.clone()).admits(&flow));
+    // A service nested in a service is a sandbox of its own.
+    assert!(!Reach::subtree(flow.clone()).admits(&ns("ws:main/service:newsletter/service:sub")));
+}
+
+#[test]
+fn no_reach_reads_as_the_root_subtree() {
+    let flow = ns("ws:main/service:newsletter");
+    let chat = ns("ws:main/agent:assistant");
+    assert!(Reach::admitted_by(None, &Namespace::ROOT));
+    assert!(Reach::admitted_by(None, &chat));
+    assert!(!Reach::admitted_by(None, &flow));
+    assert!(Reach::admitted_by(Some(&Reach::exact(flow.clone())), &flow));
+}
+
+#[test]
 fn serializes_as_strings() {
     let reach = Reach::of(ns("team:acme/agent:writer"));
     let json = serde_json::to_value(&reach).unwrap();

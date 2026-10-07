@@ -1,5 +1,6 @@
 //! The namespace check: every read honours a [`Reach`], so one agent never
-//! sees a sibling's memory while both see what the root shares.
+//! sees a sibling's memory while both see what the root shares, and no read
+//! of everything below a node enters a service sandbox below it.
 
 use std::collections::BTreeSet;
 
@@ -16,12 +17,13 @@ const CHECK: &str = "namespaces";
 /// The tag isolating this check's items from the rest of the run.
 const TAG: &str = "namespaces";
 
-/// The nodes the check writes to: the root, two sibling agents and one
-/// sub-agent below the first.
+/// The nodes the check writes to: the root, two sibling agents, one
+/// sub-agent below the first, and a service sandbox below the first.
 struct Nodes {
     a: Namespace,
     b: Namespace,
     scout: Namespace,
+    job: Namespace,
 }
 
 impl Nodes {
@@ -37,6 +39,7 @@ impl Nodes {
             a: parse(format!("agent:{marker}-a"))?,
             b: parse(format!("agent:{marker}-b"))?,
             scout: parse(format!("agent:{marker}-a/agent:scout"))?,
+            job: parse(format!("agent:{marker}-a/service:job"))?,
         })
     }
 }
@@ -60,11 +63,12 @@ pub(super) async fn namespaces(ctx: &Ctx<'_>) -> Result<()> {
         item("same", &nodes.a),
         item("same", &nodes.b),
         item("scout", &nodes.scout),
+        item("job", &nodes.job),
     ];
     let receipts = ctx
         .call(CHECK, ctx.engine.store_many(items.to_vec()))
         .await?;
-    let [root, a, b, scout] = [0, 1, 2, 3].map(|i| receipts[i].id.clone());
+    let [root, a, b, scout, job] = [0, 1, 2, 3, 4].map(|i| receipts[i].id.clone());
     ensure(CHECK, a != b, || {
         "the same text in two namespaces stored as one item".to_string()
     })?;
@@ -75,7 +79,13 @@ pub(super) async fn namespaces(ctx: &Ctx<'_>) -> Result<()> {
         (Reach::of(nodes.scout.clone()), vec![&root, &a, &scout]),
         (Reach::of(Namespace::ROOT), vec![&root]),
         (Reach::exact(nodes.a.clone()), vec![&a]),
+        // The service below `a` is a sandbox: a subtree read of `a` (or of
+        // the root, below) never enters it; a reach at it reads it.
         (Reach::subtree(nodes.a.clone()), vec![&a, &scout]),
+        (Reach::subtree(Namespace::ROOT), vec![&root, &a, &b, &scout]),
+        (Reach::exact(nodes.job.clone()), vec![&job]),
+        (Reach::subtree(nodes.job.clone()), vec![&job]),
+        (Reach::of(nodes.job.clone()), vec![&root, &a, &job]),
     ];
     for (reach, wanted) in &cases {
         let got = ids_in(ctx, reach).await?;
@@ -84,6 +94,11 @@ pub(super) async fn namespaces(ctx: &Ctx<'_>) -> Result<()> {
             format!("reach {reach:?} listed {got:?}, expected {wanted:?}")
         })?;
     }
+
+    let unscoped = ctx.list_all(CHECK, &tagged(ctx)).await?;
+    ensure(CHECK, unscoped.iter().all(|hit| hit.id != job), || {
+        "a read with no reach entered a service sandbox".to_string()
+    })?;
 
     let all = vec![root.clone(), a.clone(), b.clone(), scout.clone()];
     let hits = ctx
@@ -146,6 +161,24 @@ pub(super) async fn namespaces(ctx: &Ctx<'_>) -> Result<()> {
     let wanted: BTreeSet<ItemId> = [root, a, scout].into_iter().collect();
     ensure(CHECK, left == wanted, || {
         format!("after forgetting agent b, {left:?} remain")
+    })?;
+
+    // An id names one item wherever it lives, sandbox included.
+    let report = ctx
+        .call(
+            CHECK,
+            ctx.engine.forget(ForgetTarget::Ids(vec![job.clone()])),
+        )
+        .await?;
+    ensure(CHECK, report.forgotten == 1, || {
+        format!(
+            "forgetting the service item by id removed {} items",
+            report.forgotten
+        )
+    })?;
+    let left = ids_in(ctx, &Reach::exact(nodes.job.clone())).await?;
+    ensure(CHECK, left.is_empty(), || {
+        format!("after forgetting it by id, the service node still holds {left:?}")
     })
 }
 
