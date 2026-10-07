@@ -36,8 +36,11 @@ The envelope carries what the dropped values would be matched by, so a
   and a prefix that stops inside a folder name does not.
 
 A path filter also matches what the envelope kept, so filtering by a file's
-name (what reads give back) works. Digests are the 64-bit `labels::digest`;
-a collision could admit an extra row, as for the lookup labels.
+name (what reads give back) works. A lookup label's 64-bit digest only
+narrows and is always re-checked; these digests are the check, so they keep
+160 bits (`labels::path_digest`), as many as an item id, and a match is the
+match. `folder` and `file_path` are still never lookup labels: no read
+narrows by them server-side, so every event of the scopes read is checked.
 
 ## What reads give back
 

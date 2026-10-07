@@ -32,7 +32,7 @@ pub(super) fn keeps(filter: &MetaFilter, kind: ItemKind, envelope: &Envelope) ->
     let paths = &envelope.paths;
     let mut rest = filter.clone();
     if let (Some(wanted), Some(held)) = (&filter.workspace, &paths.workspace) {
-        if labels::digest(wanted) != *held {
+        if labels::path_digest(wanted) != *held {
             return false;
         }
         rest.workspace = None;
@@ -58,7 +58,7 @@ pub(super) fn keeps(filter: &MetaFilter, kind: ItemKind, envelope: &Envelope) ->
 fn names_a_prefix(wanted: &str, held: &[String]) -> bool {
     [wanted, wanted.trim_end_matches('/')]
         .iter()
-        .any(|value| held.contains(&labels::digest(value)))
+        .any(|value| held.contains(&labels::path_digest(value)))
 }
 
 /// An envelope's metadata, located: for a piece of a chunked document, the

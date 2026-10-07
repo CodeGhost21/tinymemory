@@ -213,7 +213,8 @@ pub(crate) struct ChunkInfo {
 const SECTION_RESERVE: usize = chunks::MAX_SECTION_CHARS * 6 + 32;
 
 /// Digests of the local paths an envelope leaves out ([`wire_meta`]), each
-/// a [`labels::digest`], so a filter on the full value still matches.
+/// a [`labels::path_digest`], so a filter on the full value still matches.
+/// A path digest is as strong as an item id, so a match is the match.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct PathDigests {
     /// The absolute `workspace`.
@@ -235,7 +236,7 @@ impl PathDigests {
                 .workspace
                 .as_deref()
                 .filter(|workspace| is_absolute(workspace))
-                .map(labels::digest),
+                .map(labels::path_digest),
             file_path: prefixes(meta.file_path.as_deref()),
             folder: prefixes(meta.folder.as_deref()),
         }
@@ -251,9 +252,9 @@ fn prefixes(path: Option<&str>) -> Vec<String> {
     };
     let mut out: Vec<String> = path
         .match_indices('/')
-        .map(|(at, _)| labels::digest(&path[..at]))
+        .map(|(at, _)| labels::path_digest(&path[..at]))
         .collect();
-    out.push(labels::digest(path));
+    out.push(labels::path_digest(path));
     out.dedup();
     out
 }
