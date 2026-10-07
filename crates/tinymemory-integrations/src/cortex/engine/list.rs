@@ -128,7 +128,7 @@ impl CortexEngine {
             }
             loop {
                 pages += 1;
-                if pages > MAX_PAGES || filled_pages > MAX_PAGES {
+                if pages > MAX_PAGES || filled_pages >= MAX_PAGES {
                     return Err(Error::Engine(format!(
                         "listing read {MAX_PAGES} pages (stopped in {}) without filling a page \
                          of results; refusing to walk further",
