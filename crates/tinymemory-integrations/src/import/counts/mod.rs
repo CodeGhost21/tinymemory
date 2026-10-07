@@ -32,6 +32,10 @@ pub struct LegacyCounts {
     pub learnings: u64,
     /// Live `user_profile` facets.
     pub profile: u64,
+    /// `event_log` events.
+    pub events: u64,
+    /// `episodic_log` turns with a lesson.
+    pub lessons: u64,
 }
 
 impl LegacyCounts {
@@ -45,6 +49,8 @@ impl LegacyCounts {
             self.conversations,
             self.learnings,
             self.profile,
+            self.events,
+            self.lessons,
         ]
         .into_iter()
         .fold(0, u64::saturating_add)
@@ -68,6 +74,8 @@ pub(crate) fn count(ws: &LegacyWorkspace) -> Result<LegacyCounts> {
             Section::Conversations => counts.conversations = n,
             Section::Learnings => counts.learnings = n,
             Section::Profile => counts.profile = n,
+            Section::Events => counts.events = n,
+            Section::Lessons => counts.lessons = n,
         }
     }
     Ok(counts)

@@ -1,4 +1,4 @@
-//! The five import sections and how each pages through its legacy table.
+//! The import sections and how each pages through its legacy table.
 //!
 //! A section scans its table in pages ordered by a stable key and returns one
 //! [`Scanned`] per row (or per group of rows): the key, as a [`Mark`] that
@@ -9,6 +9,7 @@
 
 mod chunks;
 mod episodic;
+mod events;
 mod memory_docs;
 mod profile;
 
@@ -33,15 +34,24 @@ pub(crate) enum Section {
     Learnings,
     /// `user_profile` facets.
     Profile,
+    /// `event_log` events.
+    Events,
+    /// `episodic_log` lessons.
+    Lessons,
 }
 
 /// The fixed section order.
-pub(crate) const ORDER: [Section; 5] = [
+///
+/// New sections are appended, never inserted: a checkpoint persisted before
+/// a section existed then still resumes exactly.
+pub(crate) const ORDER: [Section; 7] = [
     Section::Documents,
     Section::Chunks,
     Section::Conversations,
     Section::Learnings,
     Section::Profile,
+    Section::Events,
+    Section::Lessons,
 ];
 
 /// A scanned key, naming the checkpoint field it advances.
@@ -57,6 +67,10 @@ pub(crate) enum Mark {
     Learning(String),
     /// A `user_profile.facet_id`.
     Profile(String),
+    /// An `event_log.event_id`.
+    Event(String),
+    /// An `episodic_log.id` with a lesson.
+    Lesson(i64),
 }
 
 impl Mark {
@@ -68,6 +82,8 @@ impl Mark {
             Self::Conversation(id) => checkpoint.conversations = Some(id),
             Self::Learning(id) => checkpoint.learnings = Some(id),
             Self::Profile(id) => checkpoint.profile = Some(id),
+            Self::Event(id) => checkpoint.events = Some(id),
+            Self::Lesson(id) => checkpoint.lessons = Some(id),
         }
     }
 }
@@ -96,6 +112,8 @@ impl Section {
             Self::Conversations => episodic::page(ws, scan.conversations.as_deref(), limit),
             Self::Learnings => memory_docs::learnings(ws, scan.learnings.as_deref(), limit),
             Self::Profile => profile::page(ws, scan.profile.as_deref(), limit),
+            Self::Events => events::page(ws, scan.events.as_deref(), limit),
+            Self::Lessons => episodic::lessons(ws, scan.lessons, limit),
         }
     }
 }
@@ -111,6 +129,8 @@ impl Section {
             Self::Conversations => episodic::count(ws),
             Self::Learnings => memory_docs::count(ws, true),
             Self::Profile => profile::count(ws),
+            Self::Events => events::count(ws),
+            Self::Lessons => episodic::count_lessons(ws),
         }
     }
 }

@@ -42,6 +42,18 @@ const REQUIRED_COLUMNS: [(&str, &[&str]); 3] = [
     ),
 ];
 
+/// Columns `event_log` must have for the events section to run: every v1
+/// release that wrote the table wrote all of them.
+const EVENT_COLUMNS: [&str; 7] = [
+    "event_id",
+    "session_id",
+    "event_type",
+    "content",
+    "subject",
+    "confidence",
+    "created_at",
+];
+
 /// Columns `mem_tree_chunks` must have for the chunk section to run.
 const CHUNK_COLUMNS: [&str; 7] = [
     "id",
@@ -70,6 +82,10 @@ pub(crate) struct MemorySchema {
     pub(crate) profile_class: bool,
     /// `user_profile.evidence_refs_json`.
     pub(crate) profile_evidence: bool,
+    /// `episodic_log.lesson`.
+    pub(crate) lesson: bool,
+    /// An `event_log` table with every column in [`EVENT_COLUMNS`].
+    pub(crate) event_log: bool,
 }
 
 impl MemorySchema {
@@ -89,6 +105,10 @@ impl MemorySchema {
         let docs = columns(conn, "memory_docs")?;
         let episodic = columns(conn, "episodic_log")?;
         let profile = columns(conn, "user_profile")?;
+        let event_log = tables.contains("event_log") && {
+            let present = columns(conn, "event_log")?;
+            EVENT_COLUMNS.iter().all(|c| present.contains(*c))
+        };
         Ok(Ok(Self {
             logical_namespace: docs.contains("logical_namespace"),
             taint: docs.contains("taint"),
@@ -97,6 +117,8 @@ impl MemorySchema {
             profile_user_state: profile.contains("user_state"),
             profile_class: profile.contains("class"),
             profile_evidence: profile.contains("evidence_refs_json"),
+            lesson: episodic.contains("lesson"),
+            event_log,
         }))
     }
 }

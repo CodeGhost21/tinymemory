@@ -24,6 +24,8 @@ fn round_trips_through_json() {
         conversations: Some("thread-2".into()),
         learnings: None,
         profile: Some("facet-1".into()),
+        events: Some("evt-3".into()),
+        lessons: Some(42),
     };
     let json = checkpoint.to_json().expect("encodes");
     assert_eq!(Checkpoint::from_json(&json).expect("decodes"), checkpoint);

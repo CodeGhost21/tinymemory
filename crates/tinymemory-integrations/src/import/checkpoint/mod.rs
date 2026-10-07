@@ -1,7 +1,7 @@
 //! Resumable import: the per-section cursor a host persists between runs.
 //!
 //! An import walks the legacy store in a fixed section order (documents,
-//! chunks, conversations, learnings, profile) and, within a section, by a
+//! chunks, conversations, learnings, profile, events, lessons) and, within a section, by a
 //! stable key. A [`Checkpoint`] records the key of the last item yielded in
 //! each section; [`crate::import::LegacyWorkspace::items_from`] skips everything at or
 //! before it. Every [`ImportedItem`] carries the checkpoint to persist once
@@ -17,9 +17,19 @@ use crate::import::error::Result;
 /// The last yielded key in each section of a legacy import.
 ///
 /// `None` means the section has not yielded anything yet. Keys compare as
-/// SQLite `TEXT` (byte order), the same order the importer walks them in.
+/// SQLite `TEXT` (byte order), the same order the importer walks them in,
+/// except `lessons`, an `episodic_log.id` that compares as an integer.
+///
+/// Sections added later come after the earlier ones, so a checkpoint
+/// persisted before they existed resumes correctly: they start from their
+/// beginning once the earlier sections are done.
+///
+/// Non-exhaustive, since every new section adds a field: a host persists it
+/// with [`Checkpoint::to_json`] or builds one from `default()` and assigns
+/// fields, and neither breaks when a field is added.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct Checkpoint {
     /// Last `memory_docs.document_id` yielded as a document.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -36,6 +46,12 @@ pub struct Checkpoint {
     /// Last `user_profile.facet_id` yielded.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile: Option<String>,
+    /// Last `event_log.event_id` yielded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub events: Option<String>,
+    /// Last `episodic_log.id` whose lesson was yielded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lessons: Option<i64>,
 }
 
 impl Checkpoint {

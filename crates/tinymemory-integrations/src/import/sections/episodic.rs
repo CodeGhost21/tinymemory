@@ -1,13 +1,17 @@
-//! `episodic_log`: one conversation per thread.
+//! `episodic_log`: one conversation per thread, and one learning per lesson.
 //!
 //! Threads are walked by `session_id`; each thread's turns are read in
 //! `(timestamp, id)` order. Blank turns are dropped (a v2 conversation turn
-//! must have text), and a thread with no remaining turns is skipped. The
-//! `lesson` and `cost_microdollars` columns are not imported: lessons were
-//! distilled into the learning rows the learnings section imports.
+//! must have text), and a thread with no remaining turns is skipped.
+//!
+//! The v1 archivist stored a `lesson` on an assistant turn: what the agent
+//! took away from it. The lessons section walks the turns with one, by `id`,
+//! and makes each a [`LearningKind::Other`] learning tagged `lesson`, in the
+//! turn's thread. A store from before the column existed has none.
+//! `cost_microdollars` is not imported.
 
 use rusqlite::params;
-use tinymemory_api::{StoreItem, Turn, TurnRange};
+use tinymemory_api::{LearningKind, StoreItem, Turn, TurnRange};
 
 use super::{Mark, Scanned, count_of, has_text, import_meta, sql_limit};
 use crate::import::convert;
@@ -106,4 +110,62 @@ fn conversation(
     });
     meta.observed_at = turns.iter().rev().find_map(|turn| turn.at);
     Ok(Some(StoreItem::Conversation { turns, meta }))
+}
+
+/// The next page of turns with a lesson after the turn `after`.
+pub(super) fn lessons(
+    ws: &LegacyWorkspace,
+    after: Option<i64>,
+    limit: usize,
+) -> Result<Vec<Scanned>> {
+    let Some(memory) = ws.memory.as_ref().filter(|_| ws.schema.lesson) else {
+        return Ok(Vec::new());
+    };
+    // Same rows `count_lessons` counts: turns whose lesson has text.
+    let mut stmt = memory.prepare(&format!(
+        "SELECT id, session_id, timestamp, lesson FROM episodic_log \
+         WHERE (?1 IS NULL OR id > ?1) AND {} ORDER BY id LIMIT ?2",
+        has_text("lesson")
+    ))?;
+    let rows = stmt.query_map(params![after, sql_limit(limit)], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, Option<f64>>(2)?,
+            row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+        ))
+    })?;
+    rows.map(|row| {
+        let (id, session, timestamp, lesson) = row?;
+        let item = (!lesson.trim().is_empty()).then(|| {
+            let mut meta = import_meta(ws, format!("episodic_log:lesson:{id}"));
+            meta.tags = vec!["lesson".to_string()];
+            meta.thread_id = session.filter(|session| !session.trim().is_empty());
+            meta.observed_at = timestamp.and_then(convert::from_unix_seconds);
+            StoreItem::Learning {
+                text: lesson,
+                kind: LearningKind::Other,
+                confidence: convert::DEFAULT_CONFIDENCE,
+                evidence: None,
+                meta,
+            }
+        });
+        Ok(Scanned {
+            item,
+            mark: Mark::Lesson(id),
+        })
+    })
+    .collect()
+}
+
+/// Turns with a lesson that has text.
+pub(super) fn count_lessons(ws: &LegacyWorkspace) -> Result<u64> {
+    let Some(memory) = ws.memory.as_ref().filter(|_| ws.schema.lesson) else {
+        return Ok(0);
+    };
+    let sql = format!(
+        "SELECT COUNT(*) FROM episodic_log WHERE {}",
+        has_text("lesson")
+    );
+    Ok(count_of(memory.query_row(&sql, [], |row| row.get(0))?))
 }

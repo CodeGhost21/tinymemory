@@ -73,6 +73,8 @@ Every item gets `meta.source = { kind: Import, id: <legacy id> }` and
 | conversations | `episodic_log` grouped by `session_id` | `session_id` / `episodic_log:<id>` | `Conversation` |
 | learnings | `memory_docs` in `learning:*` and `global` | `document_id` / `memory_docs:<id>` | `Learning` |
 | profile | live `user_profile` facets | `facet_id` / `user_profile:<id>` | `Learning(Preference)` |
+| events | `event_log` rows | `event_id` / `event_log:<id>` | `Learning` |
+| lessons | `episodic_log` turns with a `lesson` | `id` / `episodic_log:lesson:<id>` | `Learning(Other)` |
 
 ### `memory_docs` namespaces
 
@@ -138,7 +140,8 @@ unknown role came from a host channel, whose speaker is a person). `at` =
 call, or `{"tool_calls": [...]}`, naming the tool as `name`, `tool`,
 `tool_name` or `function.name`), dropped when unparseable. `thread_id` =
 `session_id`, `turns` = `0..=n-1`, `observed_at` = the last turn's time.
-`lesson` and `cost_microdollars` are not imported.
+`lesson` is imported by the lessons section (below); `cost_microdollars` is
+not imported.
 
 ### Learnings
 
@@ -173,10 +176,31 @@ columns exist) or a blank value are skipped. The rest become
 column (clamped), `evidence` = `evidence_refs_json`, `observed_at` =
 `last_seen_at`, `tags` = `[facet_type, class]` (class when set).
 
+### Events
+
+v1 extracted typed atomic events from closed conversation segments into
+`event_log`. Each event with text becomes a learning: `text` = `content`,
+`confidence` from the column (clamped), `observed_at` = `created_at`,
+`thread_id` = `session_id` (none when blank), `tags` = `event:<type>` and
+`subject:<subject>` when set. The kind follows the type: `fact` and
+`decision` → `Fact`, `preference` → `Preference`, `commitment`, `question`,
+`foresight` and unknown → `Other`. A store without the table, or with one
+missing any of `event_id`, `session_id`, `event_type`, `content`, `subject`,
+`confidence`, `created_at`, has no events section.
+
+### Lessons
+
+The v1 archivist stored a `lesson` on an assistant turn. Each turn whose
+lesson has text becomes `Learning { kind: Other, confidence: 0.5 }` with the
+lesson as its text, tagged `lesson`, in the turn's thread, observed at the
+turn's time. A store from before the column has none.
+
 ## Ordering and resumption
 
 Sections run in the fixed order above; within a section keys ascend in SQLite
-`TEXT` order. Each `ImportedItem` carries the checkpoint covering it and
+`TEXT` order (lessons by integer turn id). Sections added later are appended to
+the order, never inserted, so a checkpoint persisted by an older release
+resumes into them. Each `ImportedItem` carries the checkpoint covering it and
 everything before it. `items_from(&checkpoint)` yields exactly what `items()`
 yields after that item, provided the legacy store did not change in between
 (the cursor is a key, so a row inserted later below an already-passed key is

@@ -241,6 +241,14 @@ fn rich() -> tempfile::TempDir {
     dir
 }
 
+/// The checkpoint after document `id` (`Checkpoint` is non-exhaustive, so a
+/// caller assigns its fields).
+fn after_document(id: &str) -> Checkpoint {
+    let mut checkpoint = Checkpoint::default();
+    checkpoint.documents = Some(id.to_string());
+    checkpoint
+}
+
 fn all(ws: &LegacyWorkspace) -> Vec<ImportedItem> {
     ws.items().collect::<Result<_, _>>().expect("import")
 }
@@ -312,7 +320,11 @@ fn counted(items: &[ImportedItem]) -> LegacyCounts {
     let mut counts = LegacyCounts::default();
     for imported in items {
         let id = source_id(&imported.item);
-        let slot = if id.starts_with("mem_tree_chunks:") {
+        let slot = if id.starts_with("event_log:") {
+            &mut counts.events
+        } else if id.starts_with("episodic_log:lesson:") {
+            &mut counts.lessons
+        } else if id.starts_with("mem_tree_chunks:") {
             &mut counts.chunks
         } else if id.starts_with("episodic_log:") {
             &mut counts.conversations
@@ -952,6 +964,7 @@ fn a_row_sqlite_cannot_decode_is_a_sqlite_error() {
 // --- migrate: a v1 workspace into an engine, in resumable batches ---
 
 mod migration {
+    use super::after_document;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use tinymemory_api::conformance::ReferenceEngine;
@@ -1048,10 +1061,7 @@ mod migration {
                 stored: COUNT,
                 replayed: 0,
                 batches: 3,
-                checkpoint: Checkpoint {
-                    documents: Some("d249".into()),
-                    ..Checkpoint::default()
-                },
+                checkpoint: after_document("d249"),
             }
         );
         assert_eq!(engine.len(), COUNT);
@@ -1138,10 +1148,7 @@ mod migration {
             fail_on: 1,
             calls: AtomicUsize::new(0),
         };
-        let start = Checkpoint {
-            documents: Some("d009".into()),
-            ..Checkpoint::default()
-        };
+        let start = after_document("d009");
         let error = migrate(&engine, legacy, Some(start.clone()))
             .await
             .unwrap_err();
@@ -1364,4 +1371,212 @@ fn blank_rows_never_fill_a_page() {
         .collect();
     assert_eq!(paged, ["memory_docs:z", "episodic_log:z", "user_profile:z"]);
     assert_eq!(ws.counts().unwrap().total(), 3);
+}
+
+/// A store with extracted events and turn lessons, beside a profile facet.
+fn with_events() -> tempfile::TempDir {
+    let (dir, conn) = workspace(support::MEMORY_DDL);
+    conn.execute_batch(support::EVENTS_DDL).unwrap();
+    conn.execute_batch(
+        "INSERT INTO event_log (event_id, segment_id, session_id, event_type, content, subject,
+           confidence, created_at) VALUES
+           ('e2', 'seg', 't-1', 'decision', 'Ship v2 on Friday.', 'release', 0.9, 1700000000.0),
+           ('e1', 'seg', 't-1', 'preference', 'Prefers short answers.', NULL, 1.4, 1700000001.0),
+           ('e3', 'seg', 't-2', 'commitment', '   ', NULL, 0.5, 1700000002.0),
+           ('e4', 'seg', '', 'foresight', 'Will travel in May.', '  ', 0.3, 1700000003.0);",
+    )
+    .unwrap();
+    turn(&conn, "t-1", 100.0, "user", "hello", None);
+    turn(&conn, "t-1", 101.0, "assistant", "hi", None);
+    conn.execute_batch(
+        "UPDATE episodic_log SET lesson = 'Greet back briefly.' WHERE content = 'hi';
+         INSERT INTO episodic_log (session_id, timestamp, role, content, lesson)
+           VALUES ('t-2', 102.0, 'assistant', 'ok', '  ');",
+    )
+    .unwrap();
+    facet(
+        &conn,
+        "f1",
+        "preference",
+        "tone",
+        "terse",
+        0.9,
+        T0,
+        "active",
+        "auto",
+        None,
+    );
+    dir
+}
+
+#[test]
+fn maps_extracted_events_to_learnings() {
+    let dir = with_events();
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let items = all(&ws);
+    let StoreItem::Learning {
+        text,
+        kind,
+        confidence,
+        meta,
+        ..
+    } = find(&items, "event_log:e2")
+    else {
+        panic!("an event is a learning");
+    };
+    assert_eq!(text, "Ship v2 on Friday.");
+    assert_eq!(*kind, LearningKind::Fact);
+    assert!((confidence - 0.9).abs() < 1e-6);
+    assert_eq!(meta.tags, ["event:decision", "subject:release"]);
+    assert_eq!(meta.thread_id.as_deref(), Some("t-1"));
+    assert_eq!(meta.observed_at.unwrap().timestamp(), 1_700_000_000);
+
+    let StoreItem::Learning {
+        kind, confidence, ..
+    } = find(&items, "event_log:e1")
+    else {
+        panic!("an event is a learning");
+    };
+    assert_eq!(*kind, LearningKind::Preference);
+    assert!((confidence - 1.0).abs() < 1e-6, "clamped");
+
+    let StoreItem::Learning { kind, meta, .. } = find(&items, "event_log:e4") else {
+        panic!("an event is a learning");
+    };
+    assert_eq!(*kind, LearningKind::Other);
+    assert_eq!(meta.tags, ["event:foresight"]);
+    assert_eq!(meta.thread_id, None);
+
+    assert!(
+        items.iter().all(|i| source_id(&i.item) != "event_log:e3"),
+        "blank skipped"
+    );
+}
+
+#[test]
+fn maps_turn_lessons_to_learnings_in_their_thread() {
+    let dir = with_events();
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let items = all(&ws);
+    let lessons: Vec<&ImportedItem> = items
+        .iter()
+        .filter(|i| source_id(&i.item).starts_with("episodic_log:lesson:"))
+        .collect();
+    assert_eq!(lessons.len(), 1, "the blank lesson is skipped");
+    let StoreItem::Learning {
+        text, kind, meta, ..
+    } = &lessons[0].item
+    else {
+        panic!("a lesson is a learning");
+    };
+    assert_eq!(text, "Greet back briefly.");
+    assert_eq!(*kind, LearningKind::Other);
+    assert_eq!(meta.tags, ["lesson"]);
+    assert_eq!(meta.thread_id.as_deref(), Some("t-1"));
+    assert_eq!(meta.observed_at.unwrap().timestamp(), 101);
+}
+
+#[test]
+fn events_and_lessons_come_last_and_are_counted() {
+    let dir = with_events();
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let items = all(&ws);
+    let ids: Vec<String> = items.iter().map(|i| source_id(&i.item)).collect();
+    let tail: Vec<&str> = ids[ids.len() - 4..].iter().map(String::as_str).collect();
+    assert_eq!(
+        tail,
+        [
+            "event_log:e1",
+            "event_log:e2",
+            "event_log:e4",
+            "episodic_log:lesson:2"
+        ]
+    );
+    let counts = ws.counts().unwrap();
+    assert_eq!(counts, counted(&items));
+    assert_eq!((counts.events, counts.lessons), (3, 1));
+}
+
+#[test]
+fn a_checkpoint_from_before_events_resumes_into_them() {
+    let dir = with_events();
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    // What a host persisted after a complete import by a release without
+    // the events and lessons sections.
+    let old = Checkpoint::from_json(r#"{"conversations":"t-2","profile":"f1"}"#).unwrap();
+    let rest: Vec<String> = ws
+        .items_from(&old)
+        .map(|i| source_id(&i.unwrap().item))
+        .collect();
+    assert_eq!(
+        rest,
+        [
+            "event_log:e1",
+            "event_log:e2",
+            "event_log:e4",
+            "episodic_log:lesson:2"
+        ]
+    );
+}
+
+#[test]
+fn resuming_mid_lessons_yields_exactly_the_rest() {
+    let dir = with_events();
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let items = all(&ws);
+    for (index, imported) in items.iter().enumerate() {
+        let rest: Vec<String> = ws
+            .items_from(&imported.checkpoint)
+            .map(|i| source_id(&i.unwrap().item))
+            .collect();
+        let expected: Vec<String> = items[index + 1..]
+            .iter()
+            .map(|i| source_id(&i.item))
+            .collect();
+        assert_eq!(rest, expected, "after {}", source_id(&imported.item));
+    }
+}
+
+#[test]
+fn a_partial_event_table_is_skipped() {
+    let (dir, conn) = workspace(support::MEMORY_DDL);
+    conn.execute_batch(
+        "CREATE TABLE event_log (event_id TEXT PRIMARY KEY, content TEXT NOT NULL);
+         INSERT INTO event_log VALUES ('e1', 'something');",
+    )
+    .unwrap();
+    drop(conn);
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    assert_eq!(ws.items().count(), 0);
+    assert_eq!(ws.counts().unwrap().events, 0);
+}
+
+#[test]
+fn blank_events_and_lessons_never_fill_a_page() {
+    let (dir, conn) = workspace(support::MEMORY_DDL);
+    conn.execute_batch(support::EVENTS_DDL).unwrap();
+    conn.execute_batch(
+        "INSERT INTO event_log (event_id, segment_id, session_id, event_type, content,
+           confidence, created_at) VALUES
+           ('e1', 's', 't', 'fact', ' ', 0.5, 1.0), ('e2', 's', 't', 'fact', 'kept', 0.5, 1.0);",
+    )
+    .unwrap();
+    turn(&conn, "t", 1.0, "assistant", "a", None);
+    turn(&conn, "t", 2.0, "assistant", "b", None);
+    conn.execute_batch(
+        "UPDATE episodic_log SET lesson = char(160) WHERE content = 'a';
+         UPDATE episodic_log SET lesson = 'kept lesson' WHERE content = 'b';",
+    )
+    .unwrap();
+    drop(conn);
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let ids: Vec<String> = ws
+        .items()
+        .with_page_size(1)
+        .map(|i| source_id(&i.unwrap().item))
+        .filter(|id| !id.starts_with("episodic_log:t"))
+        .collect();
+    assert_eq!(ids, ["event_log:e2", "episodic_log:lesson:2"]);
+    let counts = ws.counts().unwrap();
+    assert_eq!((counts.events, counts.lessons), (1, 1));
 }
