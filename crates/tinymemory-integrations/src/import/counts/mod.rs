@@ -36,6 +36,10 @@ pub struct LegacyCounts {
     pub events: u64,
     /// `episodic_log` turns with a lesson.
     pub lessons: u64,
+    /// Relations in `graph_global` and `graph_namespace`.
+    pub relations: u64,
+    /// Workspace files (the goals document, persona directives).
+    pub files: u64,
 }
 
 impl LegacyCounts {
@@ -51,6 +55,8 @@ impl LegacyCounts {
             self.profile,
             self.events,
             self.lessons,
+            self.relations,
+            self.files,
         ]
         .into_iter()
         .fold(0, u64::saturating_add)
@@ -76,6 +82,8 @@ pub(crate) fn count(ws: &LegacyWorkspace) -> Result<LegacyCounts> {
             Section::Profile => counts.profile = n,
             Section::Events => counts.events = n,
             Section::Lessons => counts.lessons = n,
+            Section::GraphGlobal | Section::GraphNamespace => counts.relations += n,
+            Section::Files => counts.files = n,
         }
     }
     Ok(counts)

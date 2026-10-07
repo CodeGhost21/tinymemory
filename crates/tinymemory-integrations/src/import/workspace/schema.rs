@@ -54,6 +54,9 @@ const EVENT_COLUMNS: [&str; 7] = [
     "created_at",
 ];
 
+/// Columns both v1 graph tables have.
+const GRAPH_COLUMNS: [&str; 4] = ["subject", "predicate", "object", "updated_at"];
+
 /// Columns `mem_tree_chunks` must have for the chunk section to run.
 const CHUNK_COLUMNS: [&str; 7] = [
     "id",
@@ -86,6 +89,11 @@ pub(crate) struct MemorySchema {
     pub(crate) lesson: bool,
     /// An `event_log` table with every column in [`EVENT_COLUMNS`].
     pub(crate) event_log: bool,
+    /// A `graph_global` table with every column in [`GRAPH_COLUMNS`].
+    pub(crate) graph_global: bool,
+    /// A `graph_namespace` table with `namespace` and every column in
+    /// [`GRAPH_COLUMNS`].
+    pub(crate) graph_namespace: bool,
 }
 
 impl MemorySchema {
@@ -109,6 +117,14 @@ impl MemorySchema {
             let present = columns(conn, "event_log")?;
             EVENT_COLUMNS.iter().all(|c| present.contains(*c))
         };
+        let graph_global = tables.contains("graph_global") && {
+            let present = columns(conn, "graph_global")?;
+            GRAPH_COLUMNS.iter().all(|c| present.contains(*c))
+        };
+        let graph_namespace = tables.contains("graph_namespace") && {
+            let present = columns(conn, "graph_namespace")?;
+            present.contains("namespace") && GRAPH_COLUMNS.iter().all(|c| present.contains(*c))
+        };
         Ok(Ok(Self {
             logical_namespace: docs.contains("logical_namespace"),
             taint: docs.contains("taint"),
@@ -119,6 +135,8 @@ impl MemorySchema {
             profile_evidence: profile.contains("evidence_refs_json"),
             lesson: episodic.contains("lesson"),
             event_log,
+            graph_global,
+            graph_namespace,
         }))
     }
 }

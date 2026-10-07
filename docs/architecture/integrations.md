@@ -218,6 +218,8 @@ Every item gets `meta.source = { kind: Import, id: <legacy id> }` and
 | profile | live `user_profile` facets | `user_profile:<id>` | `Learning(Preference)` |
 | events | `event_log` (extracted facts, decisions, commitments, …) | `event_log:<id>` | `Learning` |
 | lessons | `episodic_log` turns with a `lesson` | `episodic_log:lesson:<id>` | `Learning(Other)` tagged `lesson` |
+| graph | `graph_global` and `graph_namespace` relations | `graph_global:<rowid>`, `graph_namespace:<rowid>` | `Learning(Fact)` "subject predicate object" |
+| files | `MEMORY_GOALS.md`, `persona/directives.md` | `file:<path>` | `Learning(Other)` tagged `goals` / `persona` |
 
 Notable decisions: `event` namespaces and the `kv_*` tables are not imported
 (bookkeeping, not recall material); unknown conversation roles become `User`;
@@ -230,7 +232,7 @@ full rules are in
 ### Checkpoint and resumption
 
 Sections run in a fixed order and, within one, keys ascend in SQLite `TEXT`
-order (lessons by integer turn id). New sections are appended to the order, so
+order (lessons and graph rows by integer id). New sections are appended to the order, so
 a checkpoint persisted before one existed resumes into it. A `Checkpoint` records the last yielded key per section; every
 `ImportedItem { item, checkpoint }` carries the checkpoint covering it and
 everything before. `LegacyWorkspace::items_from(&checkpoint)` yields exactly

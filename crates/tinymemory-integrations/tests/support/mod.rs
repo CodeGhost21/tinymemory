@@ -32,6 +32,15 @@ CREATE TABLE event_log (event_id TEXT PRIMARY KEY, segment_id TEXT NOT NULL, ses
   timestamp_ref TEXT, confidence REAL NOT NULL, embedding BLOB, source_turn_ids TEXT, created_at REAL NOT NULL);
 ";
 
+/// The v1 graph tables, as the engine created them.
+pub(crate) const GRAPH_DDL: &str = "
+CREATE TABLE graph_global (subject TEXT NOT NULL, predicate TEXT NOT NULL, object TEXT NOT NULL,
+  attrs_json TEXT NOT NULL, updated_at REAL NOT NULL, PRIMARY KEY(subject, predicate, object));
+CREATE TABLE graph_namespace (namespace TEXT NOT NULL, subject TEXT NOT NULL, predicate TEXT NOT NULL,
+  object TEXT NOT NULL, attrs_json TEXT NOT NULL, updated_at REAL NOT NULL,
+  PRIMARY KEY(namespace, subject, predicate, object));
+";
+
 /// An early v1 `memory.db`: no `taint`/`logical_namespace`, no
 /// `tool_calls_json`, and no profile columns from `state` on.
 pub(crate) const OLD_MEMORY_DDL: &str = "

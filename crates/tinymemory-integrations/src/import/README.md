@@ -75,6 +75,8 @@ Every item gets `meta.source = { kind: Import, id: <legacy id> }` and
 | profile | live `user_profile` facets | `facet_id` / `user_profile:<id>` | `Learning(Preference)` |
 | events | `event_log` rows | `event_id` / `event_log:<id>` | `Learning` |
 | lessons | `episodic_log` turns with a `lesson` | `id` / `episodic_log:lesson:<id>` | `Learning(Other)` |
+| graph | `graph_global`, then `graph_namespace` relations | `rowid` / `graph_global:<rowid>`, `graph_namespace:<rowid>` | `Learning(Fact)` |
+| files | `MEMORY_GOALS.md`, `persona/directives.md` | name / `file:<path>` | `Learning(Other)` |
 
 ### `memory_docs` namespaces
 
@@ -195,10 +197,33 @@ lesson has text becomes `Learning { kind: Other, confidence: 0.5 }` with the
 lesson as its text, tagged `lesson`, in the turn's thread, observed at the
 turn's time. A store from before the column has none.
 
+### Graph
+
+v1 kept the entity relations it extracted as subject–predicate–object
+triples, workspace-wide (`graph_global`) and per namespace (`graph_namespace`).
+Each relation whose subject and object have text becomes
+`Learning { kind: Fact, confidence: 0.5 }` with the text
+`"<subject> <predicate> <object>"` (a blank predicate left out), tagged
+`graph` and, for a namespaced one, `ns:<namespace>`, observed at `updated_at`.
+Rows are walked by `rowid`, which is stable because the store is no longer
+written. `attrs_json` (evidence counts) is not imported. A table that is
+missing, or lacks `subject`, `predicate`, `object` or `updated_at`, is skipped.
+
+### Files
+
+The later v1 engine kept two markdown files beside its stores:
+`MEMORY_GOALS.md` (long-term goals, at most about 2,000 characters) and
+`persona/directives.md` (how the assistant should behave). Each that exists
+and has text becomes one `Learning { kind: Other, confidence: 0.5 }` of its
+whole trimmed text, tagged `goals` or `persona`, observed at the file's
+modification time (none when the file system cannot report one). A missing file is skipped; one that cannot be read, or is
+not UTF-8, is `Error::Io`. At most 256 KiB of a file is read: a longer one is
+cut there, at a character boundary, and also tagged `truncated`.
+
 ## Ordering and resumption
 
 Sections run in the fixed order above; within a section keys ascend in SQLite
-`TEXT` order (lessons by integer turn id). Sections added later are appended to
+`TEXT` order (lessons and graph rows by integer id). Sections added later are appended to
 the order, never inserted, so a checkpoint persisted by an older release
 resumes into them. Each `ImportedItem` carries the checkpoint covering it and
 everything before it. `items_from(&checkpoint)` yields exactly what `items()`

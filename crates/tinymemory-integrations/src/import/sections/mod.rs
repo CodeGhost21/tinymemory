@@ -10,6 +10,8 @@
 mod chunks;
 mod episodic;
 mod events;
+mod files;
+mod graph;
 mod memory_docs;
 mod profile;
 
@@ -38,13 +40,19 @@ pub(crate) enum Section {
     Events,
     /// `episodic_log` lessons.
     Lessons,
+    /// `graph_global` relations.
+    GraphGlobal,
+    /// `graph_namespace` relations.
+    GraphNamespace,
+    /// Workspace files: the goals document and persona directives.
+    Files,
 }
 
 /// The fixed section order.
 ///
 /// New sections are appended, never inserted: a checkpoint persisted before
 /// a section existed then still resumes exactly.
-pub(crate) const ORDER: [Section; 7] = [
+pub(crate) const ORDER: [Section; 10] = [
     Section::Documents,
     Section::Chunks,
     Section::Conversations,
@@ -52,6 +60,9 @@ pub(crate) const ORDER: [Section; 7] = [
     Section::Profile,
     Section::Events,
     Section::Lessons,
+    Section::GraphGlobal,
+    Section::GraphNamespace,
+    Section::Files,
 ];
 
 /// A scanned key, naming the checkpoint field it advances.
@@ -71,6 +82,12 @@ pub(crate) enum Mark {
     Event(String),
     /// An `episodic_log.id` with a lesson.
     Lesson(i64),
+    /// A `graph_global` rowid.
+    GraphGlobal(i64),
+    /// A `graph_namespace` rowid.
+    GraphNamespace(i64),
+    /// A workspace file's name.
+    File(String),
 }
 
 impl Mark {
@@ -84,6 +101,9 @@ impl Mark {
             Self::Profile(id) => checkpoint.profile = Some(id),
             Self::Event(id) => checkpoint.events = Some(id),
             Self::Lesson(id) => checkpoint.lessons = Some(id),
+            Self::GraphGlobal(id) => checkpoint.graph_global = Some(id),
+            Self::GraphNamespace(id) => checkpoint.graph_namespace = Some(id),
+            Self::File(name) => checkpoint.files = Some(name),
         }
     }
 }
@@ -114,6 +134,11 @@ impl Section {
             Self::Profile => profile::page(ws, scan.profile.as_deref(), limit),
             Self::Events => events::page(ws, scan.events.as_deref(), limit),
             Self::Lessons => episodic::lessons(ws, scan.lessons, limit),
+            Self::GraphGlobal => graph::page(ws, graph::Table::Global, scan.graph_global, limit),
+            Self::GraphNamespace => {
+                graph::page(ws, graph::Table::Namespace, scan.graph_namespace, limit)
+            }
+            Self::Files => files::page(ws, scan.files.as_deref(), limit),
         }
     }
 }
@@ -131,6 +156,9 @@ impl Section {
             Self::Profile => profile::count(ws),
             Self::Events => events::count(ws),
             Self::Lessons => episodic::count_lessons(ws),
+            Self::GraphGlobal => graph::count(ws, graph::Table::Global),
+            Self::GraphNamespace => graph::count(ws, graph::Table::Namespace),
+            Self::Files => files::count(ws),
         }
     }
 }
