@@ -1,6 +1,6 @@
 [
   {
-    "description": "Answer a question from long-term memory. Returns a synthesised answer and the memories it cites. Use this first when you need to know what is remembered about something.",
+    "description": "Answer a question from long-term memory. Returns a synthesised answer and the memories it cites. Use this first when you need to know what is remembered about something. When the question is about a particular time, set `refers_to`.",
     "name": "memory_recall",
     "parameters": {
       "additionalProperties": false,
@@ -101,6 +101,25 @@
         "question": {
           "description": "The question to answer, in natural language.",
           "type": "string"
+        },
+        "refers_to": {
+          "additionalProperties": false,
+          "description": "The local calendar dates the question is about, resolved against the Current Date & Time line. Set it whenever the question mentions or implies a time, in any language: \"yesterday\", \"last Saturday\", \"in March\", \"kal\", \"pichle hafte\", \"el viernes\". A single day has from == to. If a word can mean the past or the future (Hindi \"kal\"), cover both days. Prefer this over filter.observed_after/observed_before: those drop every memory recorded on another day, this only ranks the matching days first.",
+          "properties": {
+            "from": {
+              "description": "First local date, YYYY-MM-DD.",
+              "type": "string"
+            },
+            "to": {
+              "description": "Last local date, YYYY-MM-DD, inclusive.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "from",
+            "to"
+          ],
+          "type": "object"
         }
       },
       "required": [
@@ -110,7 +129,7 @@
     }
   },
   {
-    "description": "Search long-term memory and return the raw matching memories, best first. Use it when you need the stored text itself rather than an answer. Pass `cursor` from a previous result to get the next page.",
+    "description": "Search long-term memory and return the raw matching memories, best first. Use it when you need the stored text itself rather than an answer. Pass `cursor` from a previous result to get the next page. When the query is about a particular time, set `refers_to`.",
     "name": "memory_fetch",
     "parameters": {
       "additionalProperties": false,
@@ -221,6 +240,25 @@
         "query": {
           "description": "What to search for.",
           "type": "string"
+        },
+        "refers_to": {
+          "additionalProperties": false,
+          "description": "The local calendar dates the question is about, resolved against the Current Date & Time line. Set it whenever the question mentions or implies a time, in any language: \"yesterday\", \"last Saturday\", \"in March\", \"kal\", \"pichle hafte\", \"el viernes\". A single day has from == to. If a word can mean the past or the future (Hindi \"kal\"), cover both days. Prefer this over filter.observed_after/observed_before: those drop every memory recorded on another day, this only ranks the matching days first.",
+          "properties": {
+            "from": {
+              "description": "First local date, YYYY-MM-DD.",
+              "type": "string"
+            },
+            "to": {
+              "description": "Last local date, YYYY-MM-DD, inclusive.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "from",
+            "to"
+          ],
+          "type": "object"
         }
       },
       "required": [

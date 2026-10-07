@@ -14,7 +14,7 @@ use tinymemory_api::{
 };
 
 use super::ToolScope;
-use super::args::{Args, facet, fetch_mode, meta_filter};
+use super::args::{Args, facet, fetch_mode, meta_filter, time_hint};
 use super::render;
 use super::spec::schema::{DEFAULT_LIMIT, MAX_IDS, MAX_LIMIT, default_mode};
 use super::spec::{MEMORY_EXPLORE, MEMORY_FETCH, MEMORY_GET, MEMORY_LIST, MEMORY_RECALL};
@@ -32,7 +32,7 @@ pub(crate) async fn recall(
     let args = Args::parse(
         MEMORY_RECALL,
         value,
-        &["question", "filter", "limit", "instructions"],
+        &["question", "filter", "limit", "instructions", "refers_to"],
     )?;
     let mut filter = meta_filter(&args, "filter")?;
     scope.confine(&mut filter);
@@ -41,7 +41,7 @@ pub(crate) async fn recall(
         filter,
         limit: args.count("limit", DEFAULT_LIMIT, MAX_LIMIT)?,
         instructions: args.string("instructions")?,
-        refers_to: None,
+        refers_to: time_hint(&args, "refers_to", scope)?,
     };
     Ok(render::recall(&engine.recall(request).await?))
 }
@@ -68,7 +68,7 @@ pub(crate) async fn fetch(
     let args = Args::parse(
         MEMORY_FETCH,
         value,
-        &["query", "mode", "filter", "limit", "cursor"],
+        &["query", "mode", "filter", "limit", "cursor", "refers_to"],
     )?;
     let mut filter = meta_filter(&args, "filter")?;
     scope.confine(&mut filter);
@@ -79,7 +79,7 @@ pub(crate) async fn fetch(
         limit: args.count("limit", DEFAULT_LIMIT, MAX_LIMIT)?,
         cursor: args.string("cursor")?,
         beliefs: 0,
-        refers_to: None,
+        refers_to: time_hint(&args, "refers_to", scope)?,
     };
     Ok(render::fetch(&engine.fetch(request).await?))
 }

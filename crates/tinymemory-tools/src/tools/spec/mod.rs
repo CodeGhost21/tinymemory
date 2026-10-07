@@ -67,7 +67,8 @@ pub(crate) fn specs(fetch_modes: &[FetchMode], writes: bool) -> Vec<ToolSpec> {
         name: MEMORY_RECALL,
         description: "Answer a question from long-term memory. Returns a synthesised answer \
                       and the memories it cites. Use this first when you need to know what \
-                      is remembered about something.",
+                      is remembered about something. When the question is about a particular \
+                      time, set `refers_to`.",
         parameters: schema::recall(),
     }];
     if !fetch_modes.is_empty() {
@@ -75,7 +76,8 @@ pub(crate) fn specs(fetch_modes: &[FetchMode], writes: bool) -> Vec<ToolSpec> {
             name: MEMORY_FETCH,
             description: "Search long-term memory and return the raw matching memories, best \
                           first. Use it when you need the stored text itself rather than an \
-                          answer. Pass `cursor` from a previous result to get the next page.",
+                          answer. Pass `cursor` from a previous result to get the next page. \
+                          When the query is about a particular time, set `refers_to`.",
             parameters: schema::fetch(fetch_modes),
         });
     }

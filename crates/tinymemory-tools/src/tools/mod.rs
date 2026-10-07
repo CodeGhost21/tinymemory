@@ -58,6 +58,9 @@ pub struct ToolScope {
     pub reach: Option<Reach>,
     /// Whether `memory_store` and `memory_forget` are offered.
     pub writes: bool,
+    /// The user's IANA time zone (`Asia/Kolkata`): the zone a model's
+    /// `refers_to` dates are read in. `None` reads them in UTC.
+    pub zone: Option<String>,
 }
 
 impl Default for ToolScope {
@@ -68,6 +71,7 @@ impl Default for ToolScope {
             place: Namespace::ROOT,
             reach: None,
             writes: true,
+            zone: None,
         }
     }
 }
@@ -81,6 +85,7 @@ impl ToolScope {
             reach: Some(Reach::of(place.clone())),
             place,
             writes: true,
+            zone: None,
         }
     }
 
@@ -158,10 +163,20 @@ impl MemoryTools {
     #[must_use]
     pub fn placed_at(mut self, place: Namespace) -> Self {
         let writes = self.scope.writes;
+        let zone = self.scope.zone.take();
         self.scope = ToolScope {
             writes,
+            zone,
             ..ToolScope::at(place)
         };
+        self
+    }
+
+    /// Reads the dates a model passes as `refers_to` in `zone`, the user's
+    /// IANA time zone.
+    #[must_use]
+    pub fn in_zone(mut self, zone: impl Into<String>) -> Self {
+        self.scope.zone = Some(zone.into());
         self
     }
 
