@@ -40,3 +40,57 @@ fn only_down_is_not_serving() {
         serde_json::json!({ "state": "down", "reason": "gone" })
     );
 }
+
+/// An engine implementing only the required methods, so every default is
+/// the trait's own.
+struct Bare(EngineDescriptor);
+
+#[async_trait]
+impl MemoryEngine for Bare {
+    fn descriptor(&self) -> &EngineDescriptor {
+        &self.0
+    }
+
+    async fn health(&self) -> EngineHealth {
+        EngineHealth::Ok
+    }
+
+    async fn recall(&self, _: RecallRequest) -> Result<RecallAnswer> {
+        Err(Error::Unsupported("recall".into()))
+    }
+
+    async fn fetch(&self, _: FetchRequest) -> Result<FetchPage> {
+        Ok(FetchPage::default())
+    }
+
+    async fn store(&self, item: StoreItem) -> Result<StoreReceipt> {
+        Ok(StoreReceipt {
+            id: crate::ItemId(item.fingerprint()),
+            replayed: false,
+        })
+    }
+
+    async fn forget(&self, _: ForgetTarget) -> Result<ForgetReport> {
+        Ok(ForgetReport::default())
+    }
+
+    async fn list(&self, _: ListRequest) -> Result<ListPage> {
+        Ok(ListPage::default())
+    }
+}
+
+#[tokio::test]
+async fn an_engine_that_does_not_export_refuses_as_unsupported() {
+    let engine = Bare(descriptor(vec![FetchMode::Hybrid]));
+    let refused = engine
+        .export(ListRequest::new(crate::MetaFilter::default(), 10))
+        .await;
+    assert!(matches!(refused, Err(Error::Unsupported(_))), "{refused:?}");
+    let invalid = engine
+        .export(ListRequest::new(crate::MetaFilter::default(), 0))
+        .await;
+    assert!(
+        matches!(invalid, Err(Error::InvalidRequest(_))),
+        "a malformed request is refused before Unsupported: {invalid:?}"
+    );
+}

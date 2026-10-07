@@ -197,7 +197,8 @@ async fn every_kind_is_exported_whole_across_pages() {
         };
         // Each store returned once listable; this only guards a server that
         // lags behind its own listing.
-        list_until(&engine, &filter, stored.len()).await;
+        let visible = list_until(&engine, &filter, stored.len()).await;
+        assert_eq!(visible.len(), stored.len(), "every stored item lists");
         let (mut exported, mut cursor) = (Vec::new(), None);
         for _ in 0..20 {
             let mut request = ListRequest::new(filter.clone(), 2);
