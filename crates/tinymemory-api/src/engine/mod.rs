@@ -116,6 +116,11 @@ pub trait MemoryEngine: Send + Sync {
     /// Items the engine holds only part of are named in
     /// [`ExportPage::incomplete`] instead of being dropped.
     ///
+    /// Like every filtered read, an export with no reach, or a subtree
+    /// reach, does not enter a `service:` sandbox below its node
+    /// ([`crate::Reach::admits`]): a host exporting everything also exports
+    /// each service node with a reach at it.
+    ///
     /// The default refuses: an engine that can hand items back whole
     /// overrides it.
     ///
