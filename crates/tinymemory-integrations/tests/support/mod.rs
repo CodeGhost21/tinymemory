@@ -25,6 +25,13 @@ CREATE TABLE user_profile (facet_id TEXT PRIMARY KEY, facet_type TEXT NOT NULL, 
   class TEXT, cue_families_json TEXT, UNIQUE(facet_type, key));
 ";
 
+/// The v1 `event_log` table, as the engine created it.
+pub(crate) const EVENTS_DDL: &str = "
+CREATE TABLE event_log (event_id TEXT PRIMARY KEY, segment_id TEXT NOT NULL, session_id TEXT NOT NULL,
+  namespace TEXT NOT NULL DEFAULT 'global', event_type TEXT NOT NULL, content TEXT NOT NULL, subject TEXT,
+  timestamp_ref TEXT, confidence REAL NOT NULL, embedding BLOB, source_turn_ids TEXT, created_at REAL NOT NULL);
+";
+
 /// An early v1 `memory.db`: no `taint`/`logical_namespace`, no
 /// `tool_calls_json`, and no profile columns from `state` on.
 pub(crate) const OLD_MEMORY_DDL: &str = "

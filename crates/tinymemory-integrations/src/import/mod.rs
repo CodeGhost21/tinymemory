@@ -16,10 +16,13 @@
 //! | `episodic_log` threads | `Conversation` |
 //! | `memory_docs` rows in `learning:*` and `global` | `Learning` |
 //! | `user_profile` facets | `Learning(Preference)` |
+//! | `event_log` events | `Learning` |
+//! | `episodic_log` turn lessons | `Learning(Other)` |
 //!
 //! Every item's `meta.source` is `SourceKind::Import` with a section-scoped
 //! legacy id (`memory_docs:<document_id>`, `episodic_log:<session_id>`,
-//! `user_profile:<facet_id>`, `mem_tree_chunks:<kind>:<id>`), and
+//! `user_profile:<facet_id>`, `mem_tree_chunks:<kind>:<id>`, `event_log:<event_id>`,
+//! `episodic_log:lesson:<id>`), and
 //! `meta.workspace` is the workspace path. A `memory_docs` row v1 marked as
 //! synced from an external service also carries [`EXTERNAL_SYNC_TAG`]. The
 //! module's `README.md` details every mapping decision.
