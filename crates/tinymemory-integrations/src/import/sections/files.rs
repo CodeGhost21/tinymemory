@@ -10,6 +10,7 @@
 //! skipped; one that cannot be read is an error. At
 //! most [`MAX_FILE_BYTES`] of a file are read: a longer one is cut there (at a
 //! character boundary) and also tagged `truncated`.
+//! The files belong to the workspace, so only its main store yields them.
 
 use std::io::ErrorKind;
 
@@ -37,6 +38,9 @@ pub(super) fn page(
     after: Option<&str>,
     limit: usize,
 ) -> Result<Vec<Scanned>> {
+    if !ws.suffix.is_empty() {
+        return Ok(Vec::new());
+    }
     let start = after.map_or(0, |after| {
         FILES
             .iter()
@@ -57,6 +61,9 @@ pub(super) fn page(
 
 /// The files that exist and have text.
 pub(super) fn count(ws: &LegacyWorkspace) -> Result<u64> {
+    if !ws.suffix.is_empty() {
+        return Ok(0);
+    }
     let mut total = 0;
     for (name, relative) in FILES {
         if file(ws, name, relative)?.is_some() {

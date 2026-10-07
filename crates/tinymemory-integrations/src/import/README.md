@@ -16,6 +16,7 @@ Architecture overview:
 | Item | Purpose |
 | --- | --- |
 | `LegacyWorkspace::open(path)` | Detects a v1 store or refuses with a typed error. |
+| `LegacyWorkspace::store_suffixes(path)` / `open_store(path, suffix)` / `store_suffix()` | Lists and opens the per-profile stores (`memory-1`, `memory_tree-1`, …). |
 | `LegacyWorkspace::counts()` | `LegacyCounts` per section, exactly what `items()` yields: one aggregate query per `memory.db` section, the chunk store through the chunk reader, no item decoded; `total()`, `is_empty()`. Non-exhaustive. |
 | `LegacyWorkspace::has_memory_db()` / `has_chunks()` | Which of the two v1 databases the workspace has. |
 | `LegacyWorkspace::items()` / `items_from(&Checkpoint)` | Streams `Result<ImportedItem>` from the start or after a checkpoint. |
@@ -58,8 +59,18 @@ counts with the very predicate its scan filters by (a SQL function over Rust's
 `str::trim`, and for the chunk store the chunk reader itself, which reads
 bodies from their files), so the counts are exactly what `items()` yields.
 
-Per-profile stores (`memory-<id>/memory.db`) are not read; open each one as its
-own workspace if needed.
+### Per-profile stores
+
+v1 kept a profile with dedicated memory in a suffixed pair beside the main
+store: `memory<suffix>/memory.db` and `memory_tree<suffix>/chunks.db`, the
+suffix being `-1`, `-2`, …. `LegacyWorkspace::store_suffixes(path)` lists
+them (every `memory-*` or `memory_tree-*` directory with a valid suffix), and
+`LegacyWorkspace::open_store(path, suffix)` opens one with the same rules as
+`open` (which is `open_store(path, "")`). Its items carry legacy ids
+prefixed with the store directory (`memory-1/memory_docs:<id>`), so they never
+collide with the main store's, and the tag `store:memory-1`. The workspace
+files belong to the main store only. A host imports the main store and each
+profile store with a checkpoint of its own.
 
 ## Mapping
 

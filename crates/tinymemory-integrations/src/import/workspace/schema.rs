@@ -153,10 +153,9 @@ pub(crate) struct ChunkStore {
 }
 
 impl ChunkStore {
-    /// Opens the chunk store under `root`, or `None` when it is absent or
-    /// unusable.
-    pub(crate) fn open(root: &Path) -> Result<Option<Self>> {
-        let tree = root.join("memory_tree");
+    /// Opens the chunk store in the `tree` directory (`memory_tree`, or a
+    /// profile's `memory_tree-1`), or `None` when it is absent or unusable.
+    pub(crate) fn open(tree: &Path) -> Result<Option<Self>> {
         let db = tree.join("chunks.db");
         if !db.is_file() {
             return Ok(None);

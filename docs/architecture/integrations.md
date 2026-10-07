@@ -201,8 +201,10 @@ by later v1 migrations are probed and used when present. Beside a `memory.db`,
 the chunk store is optional and skipped when absent, not SQLite, or without a
 usable `mem_tree_chunks`; one that exists but cannot be read is an error.
 `LegacyWorkspace::counts()` sizes a store per section without importing it,
-exactly as `items()` would yield it. Per-profile stores (`memory-<id>/memory.db`) are not read; open each
-as its own workspace.
+exactly as `items()` would yield it. Per-profile stores (the suffixed pairs `memory-1/memory.db` and
+`memory_tree-1/chunks.db`) are listed by `LegacyWorkspace::store_suffixes` and
+opened with `LegacyWorkspace::open_store`; their items carry legacy ids
+prefixed with the store directory and the tag `store:memory-1`.
 
 ### Mapping v1 to v2
 

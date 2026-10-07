@@ -1758,3 +1758,134 @@ fn files_and_graph_pages_honour_the_page_size() {
     let whole: Vec<String> = all(&ws).iter().map(|i| source_id(&i.item)).collect();
     assert_eq!(paged, whole);
 }
+
+/// A workspace with a main store and a profile's suffixed store.
+fn with_profile_store() -> tempfile::TempDir {
+    let (dir, conn) = workspace(support::MEMORY_DDL);
+    doc(
+        &conn,
+        "d1",
+        "document_notes",
+        None,
+        "Main",
+        "main body",
+        "[]",
+        "{}",
+        T0,
+    );
+    drop(conn);
+    std::fs::create_dir_all(dir.path().join("memory-1")).unwrap();
+    let profile = rusqlite::Connection::open(dir.path().join("memory-1/memory.db")).unwrap();
+    profile.execute_batch(support::MEMORY_DDL).unwrap();
+    doc(
+        &profile,
+        "d1",
+        "document_notes",
+        None,
+        "Coder",
+        "coder body",
+        "[\"x\"]",
+        "{}",
+        T0,
+    );
+    facet(
+        &profile,
+        "f1",
+        "preference",
+        "lang",
+        "rust",
+        0.8,
+        T0,
+        "active",
+        "auto",
+        None,
+    );
+    drop(profile);
+    std::fs::create_dir_all(dir.path().join("memory_tree-1/content")).unwrap();
+    std::fs::write(dir.path().join("memory_tree-1/content/c.md"), "full chat").unwrap();
+    let chunks = rusqlite::Connection::open(dir.path().join("memory_tree-1/chunks.db")).unwrap();
+    chunks.execute_batch(support::CHUNKS_DDL).unwrap();
+    chunk(
+        &chunks,
+        "k1",
+        "chat",
+        "c1",
+        0,
+        1_000,
+        "preview",
+        "[]",
+        Some("c.md"),
+    );
+    drop(chunks);
+    // Profile-only stores, and look-alikes that are not stores.
+    std::fs::create_dir_all(dir.path().join("memory_tree-2")).unwrap();
+    std::fs::create_dir_all(dir.path().join("memory_old")).unwrap();
+    std::fs::write(dir.path().join("memory-3"), "a file").unwrap();
+    std::fs::write(dir.path().join("MEMORY_GOALS.md"), "Run a marathon").unwrap();
+    dir
+}
+
+#[test]
+fn lists_the_profile_store_suffixes() {
+    let dir = with_profile_store();
+    assert_eq!(
+        LegacyWorkspace::store_suffixes(dir.path()).unwrap(),
+        ["-1", "-2"]
+    );
+}
+
+#[test]
+fn a_profile_store_yields_its_items_under_prefixed_ids_and_a_store_tag() {
+    let dir = with_profile_store();
+    let ws = LegacyWorkspace::open_store(dir.path(), "-1").unwrap();
+    assert_eq!(ws.store_suffix(), "-1");
+    let items = all(&ws);
+    let ids: Vec<String> = items.iter().map(|i| source_id(&i.item)).collect();
+    assert_eq!(
+        ids,
+        [
+            "memory-1/memory_docs:d1",
+            "memory-1/mem_tree_chunks:chat:c1",
+            "memory-1/user_profile:f1"
+        ],
+        "no workspace files from a profile store"
+    );
+    let StoreItem::Document { meta, .. } = find(&items, "memory-1/memory_docs:d1") else {
+        panic!("a document");
+    };
+    assert_eq!(meta.tags, ["x", "ns:document:notes", "store:memory-1"]);
+    let StoreItem::Conversation { turns, meta } = find(&items, "memory-1/mem_tree_chunks:chat:c1")
+    else {
+        panic!("a conversation");
+    };
+    assert_eq!(
+        turns[0].text, "full chat",
+        "bodies resolve in the profile's tree"
+    );
+    assert!(meta.tags.contains(&"store:memory-1".to_string()));
+    let counts = ws.counts().unwrap();
+    assert_eq!(counts.total(), 3);
+    assert_eq!(counts.files, 0);
+}
+
+#[test]
+fn the_main_store_is_unchanged_by_profile_stores() {
+    let dir = with_profile_store();
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    assert_eq!(ws.store_suffix(), "");
+    let ids: Vec<String> = all(&ws).iter().map(|i| source_id(&i.item)).collect();
+    assert_eq!(ids, ["memory_docs:d1", "file:MEMORY_GOALS.md"]);
+    let main = find(&all(&ws), "memory_docs:d1").meta().tags.clone();
+    assert!(main.iter().all(|t| !t.starts_with("store:")), "{main:?}");
+}
+
+#[test]
+fn an_empty_profile_tree_or_a_bad_suffix_is_not_a_store() {
+    let dir = with_profile_store();
+    let err = LegacyWorkspace::open_store(dir.path(), "-2").unwrap_err();
+    assert!(matches!(err, Error::NotLegacy { .. }), "{err:?}");
+    for bad in ["../x", "-", "1", "-a/b"] {
+        let err = LegacyWorkspace::open_store(dir.path(), bad).unwrap_err();
+        assert!(matches!(err, Error::NotLegacy { .. }), "{bad}: {err:?}");
+    }
+}
