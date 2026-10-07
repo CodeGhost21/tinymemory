@@ -206,7 +206,11 @@ impl MemoryLayout {
     }
 
     /// Conversations: one agent's (and its sub-agents'), or every agent's.
-    /// Pooled, one agent's are the pooled node's turns carrying its id.
+    ///
+    /// Pooled, one agent's are the pooled node's turns carrying exactly its
+    /// id: the pool is flat, so a sub-agent, logging under its own id, is
+    /// not in its parent's history; every agent's turns, sub-agents'
+    /// included, are in the whole node (`None`).
     #[must_use]
     pub fn conversations_filter(&self, agent_id: Option<&str>) -> MetaFilter {
         if let Some(pooled) = &self.pooled {

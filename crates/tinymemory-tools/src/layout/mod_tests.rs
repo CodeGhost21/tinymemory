@@ -204,3 +204,20 @@ fn pooled_conversations_need_a_node_that_fits() {
             .is_err()
     );
 }
+
+#[test]
+fn a_pooled_sub_agent_is_in_the_team_not_its_parents_history() {
+    let chats: Namespace = "ws:main".parse().unwrap();
+    let layout = MemoryLayout::default()
+        .with_pooled_conversations(&chats)
+        .unwrap();
+    let scout_turn = tinymemory_api::MemoryMeta {
+        namespace: layout.conversations("coder-scout").unwrap(),
+        agent_id: Some("coder-scout".to_string()),
+        ..tinymemory_api::MemoryMeta::default()
+    };
+    let history = layout.conversations_filter(Some("coder"));
+    assert!(!history.matches(ItemKind::Conversation, &scout_turn));
+    let team = layout.conversations_filter(None);
+    assert!(team.matches(ItemKind::Conversation, &scout_turn));
+}

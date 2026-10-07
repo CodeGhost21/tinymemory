@@ -40,7 +40,10 @@ keeps every agent's turns at one node (`<root>/ws:main`) instead of a node
 per agent. Each turn carries its `agent_id`, so **History** is that node
 filtered to the agent's id, and **Team** is the whole node (a host that
 pools usually sets `RecallPolicy::team_limit` to `0`). Brain and learnings
-stay where they were.
+stay where they were. The pool is flat: a sub-agent logs under its own id,
+so unlike a node per agent, where a sub-agent's node sits below its
+parent's, its turns are not in the parent's **History**, only in the whole
+node.
 
 ## One turn
 
