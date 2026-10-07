@@ -182,6 +182,10 @@ as prefixes, so they cannot be labelled and are filtered only client-side.
   duplicate copies across page boundaries. A conversation is emitted once, on
   the page holding its turn 0, with its text assembled from all its turns.
   Scores are `0`.
+- **Export.** The same walk and cursor as List. Each item is handed back as the
+  `StoreItem` its events rebuild (not the rendered text), under its id. A
+  chunked document missing a piece is named in `incomplete`, where List leaves
+  it out.
 - **Fetch (hybrid).** One recall per scope read with
   `budgets.per_layer_limits.events`. Events are decoded to items and the full
   filter is applied. Each item is kept once, at its best rank, and scopes are

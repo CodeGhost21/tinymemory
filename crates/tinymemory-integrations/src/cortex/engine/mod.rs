@@ -28,9 +28,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tinymemory_api::{
     BeliefsRequest, ConsolidateReceipt, ConsolidateRequest, Consolidation, EngineDescriptor,
-    EngineHealth, FetchPage, FetchRequest, ForgetReport, ForgetTarget, GetRequest, Hit, ListPage,
-    ListRequest, MemoryEngine, RecallAnswer, RecallRequest, StoreItem, StoreReceipt, WaitFor,
-    WriteOptions,
+    EngineHealth, ExportPage, FetchPage, FetchRequest, ForgetReport, ForgetTarget, GetRequest, Hit,
+    ListPage, ListRequest, MemoryEngine, RecallAnswer, RecallRequest, StoreItem, StoreReceipt,
+    WaitFor, WriteOptions,
 };
 
 use crate::cortex::credential::{BearerSource, CortexCredential};
@@ -237,6 +237,10 @@ impl MemoryEngine for CortexEngine {
         self.list_page(req).await
     }
 
+    async fn export(&self, req: ListRequest) -> Result<ExportPage> {
+        self.export_page(req).await
+    }
+
     /// By the items' id labels, one lookup per kind, rather than a scan.
     async fn get(&self, req: GetRequest) -> Result<Vec<Hit>> {
         self.get_items(req).await
@@ -266,6 +270,10 @@ mod list_tests;
 #[cfg(test)]
 #[path = "mod_chunk_tests.rs"]
 mod chunk_tests;
+
+#[cfg(test)]
+#[path = "mod_export_tests.rs"]
+mod export_tests;
 
 #[cfg(test)]
 #[path = "mod_direct_tests.rs"]
