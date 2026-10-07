@@ -19,8 +19,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tinymemory_api::{
-    Consolidation, ForgetTarget, LearningKind, MemoryEngine, MemoryMeta, MetaFilter, Namespace,
-    Reach, StoreItem,
+    Consolidation, ForgetTarget, LearningKind, ListRequest, MemoryEngine, MemoryMeta, MetaFilter,
+    Namespace, Reach, StoreItem,
 };
 use tinymemory_integrations::brain::brain_document;
 use tinymemory_integrations::cortex::{CortexCredential, CortexEngine};
@@ -60,6 +60,26 @@ async fn search_until(
             return hits;
         }
         tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
+
+/// Lists `filter` until it holds `want` items or [`VISIBILITY`] runs out.
+/// An accepted write (a logged turn) is listed only once the server has
+/// applied it, tens to hundreds of milliseconds later, and a forget acts on
+/// what is listed.
+async fn list_until(engine: &dyn MemoryEngine, filter: &MetaFilter, want: usize) -> usize {
+    let deadline = Instant::now() + VISIBILITY;
+    loop {
+        let held = engine
+            .list(ListRequest::new(filter.clone(), 50))
+            .await
+            .expect("list")
+            .items
+            .len();
+        if held >= want || Instant::now() >= deadline {
+            return held;
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
     }
 }
 
@@ -393,6 +413,10 @@ async fn live_an_automatic_engine_queues_no_builds_but_still_builds_on_request()
         history.outcome
     );
 
+    // The turn was logged accepted, not applied: wait until it is listed
+    // beside the document, or the forget cannot see it.
+    let held = list_until(engine.as_ref(), &layout.holistic_filter(), 2).await;
+    assert!(held >= 2, "the document and the turn are listed: {held}");
     let forgotten = engine
         .forget(ForgetTarget::Filter(layout.holistic_filter()))
         .await
