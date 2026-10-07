@@ -183,9 +183,13 @@ as prefixes, so they cannot be labelled and are filtered only client-side.
   the page holding its turn 0, with its text assembled from all its turns.
   Scores are `0`.
 - **Export.** The same walk and cursor as List. Each item is handed back as the
-  `StoreItem` its events rebuild (not the rendered text), under its id. A
-  chunked document missing a piece is named in `incomplete`, where List leaves
-  it out.
+  `StoreItem` its events rebuild (not the rendered text), under its id. Every
+  chunked document is assembled from all its pieces and checked whole
+  (`rebuild_whole`), never rebuilt from one: one missing a later piece is
+  named in `incomplete`, where List leaves it out. An item is found by its
+  first event (turn 0, piece 0), so one whose first piece is gone is not seen
+  at all; a caller moving memory confirms what remains by walking the scopes
+  again after its cleanup.
 - **Fetch (hybrid).** One recall per scope read with
   `budgets.per_layer_limits.events`. Events are decoded to items and the full
   filter is applied. Each item is kept once, at its best rank, and scopes are
