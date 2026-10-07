@@ -52,6 +52,7 @@ fn direct_statuses_map_onto_the_contract() {
         (413, "invalid request"),
         (422, "invalid request"),
         (409, "conflict"),
+        (408, "unavailable"),
         (429, "unavailable"),
         (500, "unavailable"),
         (502, "unavailable"),
@@ -168,4 +169,22 @@ fn a_long_backend_message_is_cut() {
     let error = direct_status_error("h", "v1/x", StatusCode::BAD_REQUEST, &"x".repeat(5000));
     assert!(error.to_string().len() < 600);
     assert!(error.to_string().ends_with('…'));
+}
+
+#[test]
+fn a_write_the_indexer_has_not_reached_is_transient() {
+    // CortexDB 0.10.4's answer to `v1/experience?wait=indexed` when the
+    // indexer lags: the event is durable, and a resend replays.
+    let body = r#"{"error_code":"WAIT_TIMEOUT","message":"wait=indexed timed out after 30s: the indexer has not reached this event yet. The event is captured and durable and processing continues; poll status_url."}"#;
+    let error = direct_status_error(
+        "db.example",
+        "v1/experience",
+        StatusCode::REQUEST_TIMEOUT,
+        body,
+    );
+    assert!(matches!(error, Error::Unavailable(_)), "{error:?}");
+    assert!(error.is_transient());
+
+    let hosted = hosted_status_error("h", "memory/experience", StatusCode::REQUEST_TIMEOUT, body);
+    assert!(matches!(hosted, Error::Unavailable(_)), "{hosted:?}");
 }

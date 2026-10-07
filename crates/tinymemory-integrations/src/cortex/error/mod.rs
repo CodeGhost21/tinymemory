@@ -16,7 +16,7 @@
 //! | 404 | [`Error::NotFound`] |
 //! | 400, 413, 422 | [`Error::InvalidRequest`] |
 //! | 409 | [`Error::Conflict`] |
-//! | 429, 500, 502, 503, 504 | [`Error::Unavailable`] (retried on reads) |
+//! | 408, 429, 500, 502, 503, 504 | [`Error::Unavailable`] (retried on reads) |
 //! | anything else | [`Error::Engine`] |
 //!
 //! Transport faults (timeout, DNS, TLS, refused connection) are
