@@ -94,6 +94,10 @@ pub(crate) struct Double {
     pub(crate) listings_in_flight: AtomicUsize,
     /// The most event listings ever answered at once.
     pub(crate) listings_peak: AtomicUsize,
+    /// Registered scopes holding nothing, listed beside the log's own
+    /// (`app:tinymemory/agent:pad-NNNN/app:learnings`), so a test can make a
+    /// scope listing reach CortexDB's clamp.
+    pub(crate) padding_scopes: AtomicUsize,
 }
 
 /// The shared handle the routes and tests hold.

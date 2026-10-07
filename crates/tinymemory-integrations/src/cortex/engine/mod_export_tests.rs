@@ -164,3 +164,15 @@ async fn a_chunked_document_missing_a_piece_is_named_not_dropped() {
     assert!(exported.is_empty(), "never a truncated body: {exported:?}");
     assert_eq!(incomplete, vec![ItemId::new(item.fingerprint())]);
 }
+
+#[tokio::test]
+async fn an_export_below_the_clamp_reads_every_scope() {
+    for (engine, state) in both().await {
+        engine.store(items().remove(2)).await.unwrap();
+        state
+            .padding_scopes
+            .store(998, std::sync::atomic::Ordering::SeqCst);
+        let (exported, _) = export_all(&engine, MetaFilter::default(), 10).await;
+        assert_eq!(exported.len(), 1, "{exported:?}");
+    }
+}

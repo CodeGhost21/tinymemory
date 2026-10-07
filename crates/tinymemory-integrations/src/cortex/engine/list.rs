@@ -106,10 +106,14 @@ impl CortexEngine {
         let narrowing = labels::narrowing(&req.filter);
         let mut pending = Vec::new();
         let mut seen = HashSet::new();
-        let mut pages = 0;
         let mut next = None;
         'scopes: for (index, scope) in scopes.iter().enumerate().skip(start) {
             let kind = scope.kind;
+            // Per scope: the cap guards against a cursor that never ends, and
+            // an empty scope (a registration left after a forget) costs a page
+            // of its own, so a page count across scopes would refuse a store
+            // with many of them while every cursor was ending.
+            let mut pages = 0;
             if index > start || at.scope.as_deref() != Some(scope.path.as_str()) {
                 at = ListCursor::at(&scope.path);
             }
@@ -117,8 +121,9 @@ impl CortexEngine {
                 pages += 1;
                 if pages > MAX_PAGES {
                     return Err(Error::Engine(format!(
-                        "listing read {MAX_PAGES} pages without filling a page of results; \
-                         refusing to walk further"
+                        "listing read {MAX_PAGES} pages of {} without filling a page of results; \
+                         refusing to walk further",
+                        scope.path
                     )));
                 }
                 let page = self
