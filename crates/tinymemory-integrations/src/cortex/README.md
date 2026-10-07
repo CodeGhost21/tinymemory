@@ -249,7 +249,7 @@ These were measured against a live CortexDB by the v1 adapter. The doubles in
 - Success bodies are capped at 64 MiB and error bodies at 64 KiB.
 - Status mapping: 401/403 → `Unauthorized`, 404 → `NotFound`,
   400/413/422 → `InvalidRequest`, 409 → `Conflict`,
-  429/500/502/503/504 → `Unavailable`, anything else → `Engine`. Transport
+  408/429/500/502/503/504 → `Unavailable`, anything else → `Engine`. Transport
   faults (timeout, DNS, TLS, connect) are `Unavailable`.
 - Hosted failures carry the backend's `errorCode` as a `[CODE] ` message
   prefix. **402 is `Engine` with `[USER_INSUFFICIENT_CREDITS]`**: it is not

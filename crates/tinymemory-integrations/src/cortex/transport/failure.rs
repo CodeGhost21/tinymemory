@@ -124,7 +124,11 @@ fn by_status(status: StatusCode, head: String, detail: &str) -> Error {
         404 => Error::NotFound(message),
         400 | 413 | 422 => Error::InvalidRequest(message),
         409 => Error::Conflict(message),
-        429 | 500 | 502 | 503 | 504 => Error::Unavailable(message),
+        // 408: a `wait=indexed` write the indexer has not reached within the
+        // server's wait (`WAIT_TIMEOUT`). The event is captured and durable,
+        // and a resend with the same idempotency key replays, so it is
+        // transient, not an engine fault.
+        408 | 429 | 500 | 502 | 503 | 504 => Error::Unavailable(message),
         _ => Error::Engine(message),
     }
 }
