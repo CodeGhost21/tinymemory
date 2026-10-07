@@ -81,6 +81,18 @@ fn v3_gives_every_kind_a_leaf_below_the_root() {
 }
 
 #[test]
+fn a_tenant_prefix_spelled_like_the_root_is_not_the_namespace() {
+    assert_eq!(
+        v3().parse("user:42/user:42/app:learnings"),
+        Some((Namespace::ROOT, ItemKind::Learning))
+    );
+    assert_eq!(
+        v3().parse("user:42/user:42/ws:main/app:conversations"),
+        Some((ns("ws:main"), ItemKind::Conversation))
+    );
+}
+
+#[test]
 fn v3_reads_back_only_its_own_canonical_scopes() {
     let layout = v3();
     for other in [

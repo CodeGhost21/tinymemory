@@ -152,7 +152,10 @@ impl ScopeLayout {
 
     /// The namespace and kind of a scope path of this layout, wherever it is
     /// rooted (the hosted backend prefixes the caller's tenant); `None` for
-    /// any other scope, including one of the other layout.
+    /// any other scope, including one of the other layout. The root is
+    /// matched at its last occurrence, so a tenant prefix spelled like the
+    /// root (`user:42/user:42/app:learnings`) reads as the root's own
+    /// learnings: the layout never nests a root's segments in a namespace.
     pub(crate) fn parse(&self, path: &str) -> Option<(Namespace, ItemKind)> {
         let Self::V3 { root } = self else {
             return parse_scope(path);
@@ -161,7 +164,7 @@ impl ScopeLayout {
         let wanted: Vec<&str> = root.split('/').collect();
         let start = parts
             .windows(wanted.len())
-            .position(|window| window == wanted.as_slice())?;
+            .rposition(|window| window == wanted.as_slice())?;
         let rest = &parts[start + wanted.len()..];
         let (kind, nodes) = match rest.split_last()? {
             (&LEARNINGS, nodes) => (ItemKind::Learning, nodes),

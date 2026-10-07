@@ -65,9 +65,12 @@ person owns their root rather than whichever key writes first:
 - `409 SCOPE_REGISTRATION_EXISTS` counts as done;
 - any other failure is logged and does not fail the write, and the next write
   tries again;
-- the hosted backend keeps its own tenancy and is never asked;
-- a root CortexDB auto-registered before an owner was set keeps its first
-  owner.
+- the hosted backend keeps its own tenancy and is never asked.
+
+No write can claim the root first: CortexDB auto-registers only the scope a
+write lands in (measured on v0.10.4), and v3 never writes to the root itself,
+only to the leaves below it. So a failed registration leaves the root
+unregistered until a later write registers it with its owner.
 
 ### Reads
 
