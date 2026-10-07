@@ -48,6 +48,10 @@ const LATEST_PAGE: usize = 100;
 /// Most listing pages read before ranking; a ceiling, not a target.
 const LATEST_MAX_PAGES: usize = 50;
 
+/// Most ranked pages a fetch section reads to replace hits its exclusions
+/// dropped.
+const FETCH_MAX_PAGES: usize = 5;
+
 /// What one section read.
 pub(super) enum Gathered {
     /// An answer and its citations.
@@ -329,11 +333,32 @@ async fn fetch(
     let Some(mode) = preferred_mode(engine) else {
         return Ok((latest(engine, filter, limit, keep).await?, Vec::new()));
     };
-    let mut request = FetchRequest::new(query, mode, limit);
-    request.filter = filter.clone();
-    request.beliefs = beliefs;
-    let page = engine.fetch(request).await?;
-    Ok((page.hits, page.beliefs))
+    // Exclusions (the prompt's thread window, shown ids) are dropped page by
+    // page. Only when a page lost hits to them and too few remain is the next
+    // page read, so the common case is still one request (each page is a
+    // round trip on a hosted engine), and the walk is capped.
+    let mut hits: Vec<Hit> = Vec::new();
+    let mut first_beliefs = Vec::new();
+    let mut cursor: Option<String> = None;
+    for page_no in 0..FETCH_MAX_PAGES {
+        let mut request = FetchRequest::new(query, mode, limit);
+        request.filter = filter.clone();
+        request.beliefs = if page_no == 0 { beliefs } else { 0 };
+        request.cursor = cursor.take();
+        let page = engine.fetch(request).await?;
+        if page_no == 0 {
+            first_beliefs = page.beliefs;
+        }
+        let fetched = page.hits.len();
+        let before = hits.len();
+        hits.extend(page.hits.into_iter().filter(|hit| keep(hit)));
+        let lost_some = hits.len() - before < fetched;
+        match page.next_cursor {
+            Some(next) if hits.len() < limit && lost_some => cursor = Some(next),
+            _ => break,
+        }
+    }
+    Ok((hits, first_beliefs))
 }
 
 /// The newest hits, then the most confident, then the latest turn; ties

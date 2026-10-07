@@ -615,3 +615,57 @@ async fn a_belief_the_filter_rules_out_is_left_out() {
     .unwrap();
     assert!(!pack.markdown.contains("pnpm"), "{}", pack.markdown);
 }
+
+#[tokio::test]
+async fn a_ranked_section_reads_past_a_page_the_thread_window_empties() {
+    // Eight turns of one thread all match the query, and the prompt still
+    // holds turns 2..7, which rank first. The section wants 1 hit, so its
+    // first page (limit plus window allowance = 2) is entirely in-window, as
+    // are the next two. The section must read on (within its page cap) and
+    // find turn 0 or 1, not come back empty.
+    let engine = ReferenceEngine::new();
+    for turn in 0..8u32 {
+        let meta = MemoryMeta {
+            thread_id: Some("tw".into()),
+            turns: Some(TurnRange {
+                first: turn,
+                last: turn,
+            }),
+            ..MemoryMeta::default()
+        };
+        engine
+            .store(StoreItem::Conversation {
+                turns: vec![Turn::new(
+                    Role::User,
+                    if turn >= 2 {
+                        // In-window turns rank first: the query terms, repeated.
+                        format!("turn {turn}: Porto refund, Porto refund, Porto refund")
+                    } else {
+                        format!("turn {turn} asks about the Porto refund")
+                    },
+                )],
+                meta,
+            })
+            .await
+            .unwrap();
+    }
+    let mut request = HolisticRecall::new(
+        Some("Porto refund".into()),
+        vec![ScopeSection::fetch(
+            "History",
+            MetaFilter::kinds([ItemKind::Conversation]),
+            1,
+        )],
+    );
+    request.exclude_thread = Some(ThreadWindow {
+        thread_id: "tw".into(),
+        from_turn: 2,
+    });
+    let pack = holistic_recall(&engine, &request).await.unwrap();
+    assert!(!pack.is_empty(), "skipped: {:?}", pack.skipped);
+    assert!(
+        pack.markdown.contains("turn 0 ") || pack.markdown.contains("turn 1 "),
+        "{}",
+        pack.markdown
+    );
+}
