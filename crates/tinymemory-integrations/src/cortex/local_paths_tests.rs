@@ -291,3 +291,64 @@ async fn a_file_read_from_disk_sends_only_its_name() {
         assert!(sent.contains("file:pricing-v3.md"), "{wire}");
     }
 }
+
+/// For every path filter on a full path, the engine (matching digests)
+/// keeps exactly what `MetaFilter` keeps against the full metadata, Windows
+/// paths included. (A filter on the file's name alone also matches, by
+/// design: it is what reads give back.)
+#[tokio::test]
+async fn path_filters_agree_with_the_contract_on_the_full_paths() {
+    let stored = [
+        ("/Users/priya/notes/a.md", "/Users/priya/notes"),
+        (r"C:\Users\priya\notes\b.md", r"C:\Users\priya\notes"),
+    ];
+    let filters = [
+        "/Users/priya/notes/a.md",
+        "/Users/priya/notes",
+        "/Users/priya/notes/",
+        "/Users/priya/no",
+        "/Users",
+        "/",
+        r"C:\Users\priya\notes\b.md",
+        r"C:\Users\priya\notes",
+        r"C:\Users",
+    ];
+    for (engine, _state) in both().await {
+        let wire = format!("{:?}", engine.wire());
+        let items: Vec<StoreItem> = stored
+            .iter()
+            .map(|(file, folder)| {
+                let mut meta = MemoryMeta::from_source(SourceKind::File, None);
+                meta.file_path = Some((*file).into());
+                meta.folder = Some((*folder).into());
+                StoreItem::document(format!("Notes in {file}."), meta)
+            })
+            .collect();
+        engine.store_many(items.clone()).await.unwrap();
+        for value in filters {
+            for field in ["file_path", "folder"] {
+                let filter = match field {
+                    "file_path" => MetaFilter {
+                        file_path: Some(value.into()),
+                        ..MetaFilter::default()
+                    },
+                    _ => MetaFilter {
+                        folder: Some(value.into()),
+                        ..MetaFilter::default()
+                    },
+                };
+                let wanted = items
+                    .iter()
+                    .filter(|item| filter.matches(item.kind(), item.meta()))
+                    .count();
+                let held = engine
+                    .list(ListRequest::new(filter, 10))
+                    .await
+                    .unwrap()
+                    .items
+                    .len();
+                assert_eq!(held, wanted, "{wire}: {field} = {value}");
+            }
+        }
+    }
+}

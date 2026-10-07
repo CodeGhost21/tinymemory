@@ -35,6 +35,11 @@ The envelope carries what the dropped values would be matched by, so a
   name and still match, so an exact file or a folder prefix matches by digest,
   and a prefix that stops inside a folder name does not.
 
+  Only `/` ends a folder here, as in `MetaFilter` itself (`path_prefix` in
+  `tinymemory-api`), on every engine: a Windows path matches a filter on the
+  whole path, and a filter on a folder above it matches on no engine. The
+  `\` split above is only for keeping the file's name.
+
 A path filter also matches what the envelope kept, so filtering by a file's
 name (what reads give back) works. A lookup label's 64-bit digest only
 narrows and is always re-checked; these digests are the check, so they keep

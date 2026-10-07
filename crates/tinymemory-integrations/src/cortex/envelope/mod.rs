@@ -245,7 +245,8 @@ impl PathDigests {
 
 /// The digest of `path` and of each prefix of it that ends before a `/`:
 /// every value a `MetaFilter` path filter can name and still match `path`
-/// (an exact path, or a folder above it at a `/`).
+/// (an exact path, or a folder above it at a `/`). Only `/` ends a folder,
+/// as in `MetaFilter`'s own path matching, so a `\` never does.
 fn prefixes(path: Option<&str>) -> Vec<String> {
     let Some(path) = path else {
         return Vec::new();
