@@ -136,8 +136,8 @@ impl MemoryLayout {
     ///
     /// # Errors
     ///
-    /// The collection node would pass the namespace's depth limit (a root at
-    /// [`MAX_ROOT_DEPTH`]).
+    /// The collection node would pass the namespace's depth limit (a root
+    /// at the deepest depth [`MemoryLayout::new`] allows).
     pub fn brain_collection(&self, source: &BrainSource, collection: &str) -> Result<Namespace> {
         self.brain(source)?
             .child(Segment::sanitized(SegmentKind::Project, collection))
