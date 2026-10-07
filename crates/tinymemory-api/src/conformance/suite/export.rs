@@ -74,7 +74,7 @@ pub(super) async fn export(ctx: &Ctx<'_>) -> Result<()> {
 
 /// Every item `filter` admits, exported two at a time so paging is
 /// exercised; `None` when the engine does not export.
-async fn export_all(
+pub(super) async fn export_all(
     ctx: &Ctx<'_>,
     check: &'static str,
     filter: &MetaFilter,

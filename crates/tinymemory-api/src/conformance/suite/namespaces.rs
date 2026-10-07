@@ -99,6 +99,25 @@ pub(super) async fn namespaces(ctx: &Ctx<'_>) -> Result<()> {
     ensure(CHECK, unscoped.iter().all(|hit| hit.id != job), || {
         "a read with no reach entered a service sandbox".to_string()
     })?;
+    // An export reads like every filtered read: not into the sandbox from
+    // above (no reach, or a subtree of an ancestor), but at its node.
+    for (reach, wanted) in [
+        (None, false),
+        (Some(Reach::subtree(nodes.a.clone())), false),
+        (Some(Reach::exact(nodes.job.clone())), true),
+    ] {
+        let filter = MetaFilter {
+            reach: reach.clone(),
+            ..tagged(ctx)
+        };
+        let Some(exported) = super::export::export_all(ctx, CHECK, &filter).await? else {
+            break;
+        };
+        let has_job = exported.iter().any(|e| e.id == job);
+        ensure(CHECK, has_job == wanted, || {
+            format!("an export with reach {reach:?} returned the service item: {has_job}")
+        })?;
+    }
 
     let all = vec![root.clone(), a.clone(), b.clone(), scout.clone()];
     let hits = ctx
@@ -128,6 +147,13 @@ pub(super) async fn namespaces(ctx: &Ctx<'_>) -> Result<()> {
                 format!("a {mode:?} fetch in agent a's reach found {found:?}")
             },
         )?;
+        let mut unscoped =
+            FetchRequest::new(format!("{} job shared fact", ctx.run.marker), mode, 20);
+        unscoped.filter = tagged(ctx);
+        let page = ctx.call(CHECK, ctx.engine.fetch(unscoped)).await?;
+        ensure(CHECK, page.hits.iter().all(|hit| hit.id != job), || {
+            format!("a {mode:?} fetch with no reach entered the service sandbox")
+        })?;
     }
 
     let mut req = ExploreRequest::new(Facet::Namespace, 10);

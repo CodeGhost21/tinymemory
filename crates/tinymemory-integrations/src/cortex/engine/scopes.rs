@@ -177,12 +177,18 @@ impl CortexEngine {
 
     /// Every scope the engine holds, of every kind, service sandboxes
     /// included: where an id, which names one item wherever it lives, is
-    /// looked up.
+    /// looked up. The listing must be complete (`log::read::all_scopes`), so
+    /// an id is never reported missing because its scope was cut off.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::cortex::Error::Engine`] when the scope listing reaches its
+    /// limit, and the backend failures of the listing itself.
     pub(super) async fn every_scope(&self) -> Result<Vec<KindScope>> {
         let mut found: BTreeSet<KindScope> = known(&Reach::exact(Namespace::ROOT), &ItemKind::ALL)
             .into_iter()
             .collect();
-        for path in self.log.scopes(ROOT_SCOPE).await? {
+        for path in self.log.all_scopes(ROOT_SCOPE).await? {
             if let Some((namespace, kind)) = parse_scope(&path) {
                 found.insert(KindScope::new(namespace, kind));
             }

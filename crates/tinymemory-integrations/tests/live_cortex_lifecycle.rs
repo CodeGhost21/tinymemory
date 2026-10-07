@@ -285,15 +285,31 @@ async fn live_a_workflow_sandbox_stays_out_of_a_chat_pack() {
 
     // A read of everything below the root never enters the sandbox, so the
     // workflow's memory is forgotten at its own node.
-    for at in [Reach::subtree(flow), Reach::subtree(root)] {
-        engine
-            .forget(ForgetTarget::Filter(MetaFilter {
-                reach: Some(at),
-                ..MetaFilter::default()
-            }))
-            .await
-            .expect("forget");
-    }
+    let at_flow = MetaFilter {
+        reach: Some(Reach::exact(flow.clone())),
+        ..MetaFilter::default()
+    };
+    let forgotten = engine
+        .forget(ForgetTarget::Filter(MetaFilter {
+            reach: Some(Reach::subtree(flow)),
+            ..MetaFilter::default()
+        }))
+        .await
+        .expect("forget the workflow's node");
+    assert_eq!(forgotten.forgotten, 2, "{forgotten:?}");
+    let left = engine
+        .list(tinymemory_api::ListRequest::new(at_flow, 10))
+        .await
+        .expect("list the workflow's node again")
+        .items;
+    assert!(left.is_empty(), "the workflow's node still lists {left:?}");
+    engine
+        .forget(ForgetTarget::Filter(MetaFilter {
+            reach: Some(Reach::subtree(root)),
+            ..MetaFilter::default()
+        }))
+        .await
+        .expect("forget");
 }
 
 #[tokio::test]
