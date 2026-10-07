@@ -19,6 +19,7 @@ use crate::import::workspace::LegacyWorkspace;
 /// Non-exhaustive: a later section adds a field without breaking a caller,
 /// which reads fields, or builds one from `default()` and assigns them.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 #[non_exhaustive]
 pub struct LegacyCounts {
     /// `memory_docs` documents.

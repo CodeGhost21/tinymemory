@@ -48,7 +48,9 @@ with `pragma_table_info` and used when present: `memory_docs.logical_namespace`,
 Beside a `memory.db`, `memory_tree/chunks.db` is optional: if it is absent,
 not SQLite, or has no usable `mem_tree_chunks` table, the chunk section is
 skipped silently. Without a `memory.db` it is the store, and an unusable one
-is `NotLegacy`.
+is `NotLegacy`. A chunk store that exists but cannot be read (permissions, a
+failing disk) is an error, not skipped: it may hold the user's data, and a
+migration must not report itself complete without it.
 
 `counts()` sizes a store without importing it, so a host can tell whether
 there is anything to import and show progress against a total. Every section

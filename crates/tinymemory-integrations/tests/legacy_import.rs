@@ -1234,6 +1234,13 @@ fn refuses_a_memory_db_that_is_not_a_file_even_beside_a_chunk_store() {
 }
 
 #[test]
+fn counts_from_an_older_release_decode_with_missing_sections_zero() {
+    let counts: LegacyCounts = serde_json::from_str(r#"{"documents":2}"#).unwrap();
+    assert_eq!(counts.documents, 2);
+    assert_eq!(counts.total(), 2);
+}
+
+#[test]
 fn a_counts_total_saturates() {
     let mut counts = LegacyCounts::default();
     counts.documents = u64::MAX;
