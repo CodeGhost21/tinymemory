@@ -119,9 +119,17 @@ pub struct Reach { pub at: Namespace, pub inherit: bool, pub descendants: bool }
 | `descendants` | `false` | Also read everything below `at` |
 
 `Reach::admits(ns)` is true when `ns == at`, or `inherit` and `ns` is an
-ancestor of `at`, or `descendants` and `ns` lies below `at`. **A sibling is
-never admitted**: one agent's memory is invisible to another unless written to
-a node both inherit.
+ancestor of `at`, or `descendants` and `ns` lies below `at` with no `service:`
+segment between them. **A sibling is never admitted**: one agent's memory is
+invisible to another unless written to a node both inherit.
+
+**A service node is a sandbox.** A read of everything below a node never
+enters a `service:` node below it, so a workflow's memory stays out of chat
+packs, brain reads, holistic recall and "search everything". Only a reach at
+the service node, or inside it, reads it. No reach at all (`MetaFilter::reach`
+or `GetRequest::reach` left `None`) reads as `Reach::subtree(Namespace::ROOT)`
+(`Reach::admitted_by`), so it skips sandboxes too. Ids are the exception:
+`ForgetTarget::Ids` forgets an item wherever it lives.
 
 | Constructor | `inherit` | `descendants` | Sees |
 | --- | --- | --- | --- |
@@ -136,9 +144,11 @@ an engine reads them as one subtree below `at`.
 
 Two different notions of "everything":
 
-- `MetaFilter::reach == None` reads **every namespace**.
-- `Reach::default()` reads **only the root**. Reading everything with a reach
-  takes `Reach::subtree(Namespace::ROOT)`.
+- `MetaFilter::reach == None` reads like `Reach::subtree(Namespace::ROOT)`:
+  **every namespace except a `service:` sandbox**.
+- `Reach::default()` reads **only the root**. Reading a service sandbox takes
+  a reach at (or inside) its node; only `ForgetTarget::Ids` reaches every
+  namespace.
 
 ### Worked example
 
@@ -164,6 +174,10 @@ Items exist at R, T, W, H and E. What each reach sees:
 | `of(root)` / `default()` | R |
 | `subtree(root)` | R, T, W, H, E |
 | no reach (`None`) | R, T, W, H, E |
+
+With a service node `S` at `team:acme/agent:writer/service:digest`, every
+row that reads descendants still leaves `S` out (`subtree(root)` and no reach
+included); only `exact(S)`, `subtree(S)` or `of(S)` read it.
 
 ### A company above its tenants
 

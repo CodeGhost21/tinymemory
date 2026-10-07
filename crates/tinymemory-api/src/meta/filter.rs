@@ -18,11 +18,12 @@ use crate::namespace::{Namespace, Reach};
 /// empty list does not constrain. The window is `observed_after <= observed_at
 /// < observed_before`, and an item with no `observed_at` never matches a
 /// window. `reach` admits only items whose namespace is in reach; unset, it
-/// admits every namespace.
+/// admits every namespace except a service sandbox ([`Reach::admitted_by`]).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MetaFilter {
-    /// The namespaces read; `None` reads every namespace.
+    /// The namespaces read; `None` reads every namespace except a service
+    /// sandbox, as [`Reach::subtree`] of the root does.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reach: Option<Reach>,
     /// Exact workspace.
@@ -103,9 +104,7 @@ impl MetaFilter {
     /// Whether the filter's reach admits `namespace` (ignoring every other
     /// field).
     fn admits_namespace(&self, namespace: &Namespace) -> bool {
-        self.reach
-            .as_ref()
-            .is_none_or(|reach| reach.admits(namespace))
+        Reach::admitted_by(self.reach.as_ref(), namespace)
     }
 
     /// Whether an item of `kind` carrying `meta` matches every set field.

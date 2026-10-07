@@ -12,7 +12,10 @@
 //! that node's ancestors (`inherit`, on by default, so an agent sees the
 //! memory its team and the root share), and whether it reads the node's
 //! descendants. Siblings are never in reach: one agent's memory is invisible
-//! to another unless it was written to a node both inherit.
+//! to another unless it was written to a node both inherit. A service node
+//! (`service:<id>`, one automation such as a workflow) is a sandbox: a read
+//! of everything below a node never enters a service below it, so only a
+//! reach at or inside the service sees its memory.
 //!
 //! The namespace is part of an item's identity, so the same text learned by
 //! two agents is two items.
@@ -55,7 +58,8 @@ pub enum SegmentKind {
     /// document came from, so a brain can hold each source type apart.
     Source,
     /// A service: one automation, such as a workflow (`service:newsletter`),
-    /// whose memory is its own.
+    /// whose memory is its own. It is a sandbox: a reach reading descendants
+    /// never enters a service node below its own node ([`Reach::admits`]).
     Service,
 }
 
@@ -310,9 +314,11 @@ impl<'de> Deserialize<'de> for Namespace {
 /// How far a reader reaches through the namespace tree.
 ///
 /// A reader at `at` sees `at` itself, every ancestor of it when `inherit`
-/// (the default), and everything below it when `descendants`. It never sees a
-/// sibling: an agent reading with `Reach::of(agent)` sees its own memory and
-/// what the root (and any team above it) shares, not another agent's.
+/// (the default), and everything below it when `descendants`, except what
+/// lies in a service node below `at`. It never sees a sibling: an agent
+/// reading with `Reach::of(agent)` sees its own memory and what the root (and
+/// any team above it) shares, not another agent's. No reach at all reads as
+/// [`Reach::subtree`] of the root ([`Reach::admitted_by`]).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Reach {
     /// The node read from.
@@ -368,11 +374,31 @@ impl Reach {
     }
 
     /// Whether an item at `namespace` is in reach.
+    ///
+    /// A descendant is admitted only when no segment between `at` and it is
+    /// a [`SegmentKind::Service`]: a service's memory is a sandbox that a
+    /// read of everything below an ancestor never enters. A reach at the
+    /// service node, or inside it, reads it as usual.
     #[must_use]
     pub fn admits(&self, namespace: &Namespace) -> bool {
         namespace == &self.at
             || (self.inherit && self.at.is_within(namespace))
-            || (self.descendants && namespace.is_within(&self.at))
+            || (self.descendants
+                && namespace.is_within(&self.at)
+                && !namespace.0[self.at.depth()..]
+                    .iter()
+                    .any(|segment| segment.kind == SegmentKind::Service))
+    }
+
+    /// Whether an item at `namespace` is in `reach`, where no reach reads as
+    /// [`Reach::subtree`] of the root: every namespace except a service
+    /// sandbox.
+    #[must_use]
+    pub fn admitted_by(reach: Option<&Self>, namespace: &Namespace) -> bool {
+        match reach {
+            Some(reach) => reach.admits(namespace),
+            None => Self::subtree(Namespace::ROOT).admits(namespace),
+        }
     }
 
     /// The nodes read exactly, root first: `at` and, when `inherit`, its

@@ -1,8 +1,9 @@
 //! Forget: find the items' events, then remove them by `memory_ids`.
 //!
 //! - **By id**: every scope the engine holds (the root's and each
-//!   namespace node's, see `scopes`) is searched for the ids' labels (one
-//!   listing per batch of ids), and every event of a found item is removed.
+//!   namespace node's, service sandboxes included, see `scopes`) is searched
+//!   for the ids' labels (one listing per batch of ids), and every event of a
+//!   found item is removed.
 //!   Ids are not confined to a reach; a confined caller reads them with
 //!   `get` first.
 //! - **By filter**: the filter must not be empty. Every scope it reads (its
@@ -36,7 +37,7 @@ impl CortexEngine {
                     .collect::<HashSet<_>>()
                     .into_iter()
                     .collect();
-                for scope in self.scopes_for(&MetaFilter::default()).await? {
+                for scope in self.every_scope().await? {
                     let grouped = self.item_events(&scope, &ids).await?;
                     let mut events = Vec::new();
                     for (id, decoded) in grouped {

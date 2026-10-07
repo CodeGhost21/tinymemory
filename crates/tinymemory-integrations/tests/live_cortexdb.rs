@@ -631,6 +631,12 @@ async fn a_service_node_round_trips() {
             .await
             .expect("forget");
         assert_eq!(report.forgotten, 1, "{wire}");
+        let left = engine
+            .list(ListRequest::new(filter, 50))
+            .await
+            .expect("list the service node again")
+            .items;
+        assert!(left.is_empty(), "{wire} still lists {left:?}");
     }
 }
 

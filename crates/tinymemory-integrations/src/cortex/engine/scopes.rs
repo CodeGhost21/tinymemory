@@ -12,7 +12,9 @@
 //! - **A subtree reach, or no reach at all,** needs the nodes below, which
 //!   only the engine knows: they are discovered once per call from the
 //!   registered scopes under the TinyMemory root. The root's own kind scopes
-//!   are always read.
+//!   are always read. Neither enters a service sandbox below its node
+//!   ([`Reach::admitted_by`]); only [`CortexEngine::every_scope`], which looks
+//!   ids up wherever they live, does.
 //!
 //! Reads are always exact: every pack names one scope with
 //! `view: "granular"`. Server-side traversal is never relied on (CortexDB's
@@ -193,8 +195,28 @@ impl CortexEngine {
             let Some((namespace, kind)) = parse_scope(&path) else {
                 continue;
             };
-            let in_reach = reach.is_none_or(|reach| reach.admits(&namespace));
-            if in_reach && kinds.contains(&kind) {
+            if Reach::admitted_by(reach, &namespace) && kinds.contains(&kind) {
+                found.insert(KindScope::new(namespace, kind));
+            }
+        }
+        Ok(found.into_iter().collect())
+    }
+
+    /// Every scope the engine holds, of every kind, service sandboxes
+    /// included: where an id, which names one item wherever it lives, is
+    /// looked up. The listing must be complete (`log::read::all_scopes`), so
+    /// an id is never reported missing because its scope was cut off.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::cortex::Error::Engine`] when the scope listing reaches its
+    /// limit, and the backend failures of the listing itself.
+    pub(super) async fn every_scope(&self) -> Result<Vec<KindScope>> {
+        let mut found: BTreeSet<KindScope> = known(&Reach::exact(Namespace::ROOT), &ItemKind::ALL)
+            .into_iter()
+            .collect();
+        for path in self.log.all_scopes(ROOT_SCOPE).await? {
+            if let Some((namespace, kind)) = parse_scope(&path) {
                 found.insert(KindScope::new(namespace, kind));
             }
         }
