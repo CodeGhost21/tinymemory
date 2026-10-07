@@ -179,6 +179,20 @@ async fn a_read_waits_out_a_scope_authorization_change() {
 }
 
 #[tokio::test]
+async fn only_the_error_code_itself_earns_the_longer_wait() {
+    let (endpoint, hits) = counting_with(
+        StatusCode::SERVICE_UNAVAILABLE,
+        r#"{"error_code":"OTHER","details":"AUTHORIZATION_STATE_CHANGED is not applicable"}"#,
+    )
+    .await;
+    let read = client(&endpoint)
+        .json(Method::GET, "v1/events", None, Attempts::RetryTransient)
+        .await;
+    assert!(matches!(read, Err(Error::Unavailable(_))), "{read:?}");
+    assert_eq!(hits.load(Ordering::SeqCst), READ_ATTEMPTS as usize);
+}
+
+#[tokio::test]
 async fn a_settled_refusal_is_not_retried() {
     let (endpoint, hits) = counting(StatusCode::UNAUTHORIZED).await;
     let error = client(&endpoint)

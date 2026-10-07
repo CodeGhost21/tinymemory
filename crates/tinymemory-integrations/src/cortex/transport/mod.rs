@@ -44,10 +44,6 @@ const READ_ATTEMPTS: u32 = 3;
 /// waits, so it is waited out for about 8 seconds.
 const STATE_CHANGE_ATTEMPTS: u32 = 6;
 
-/// The error code CortexDB answers a read with while a scope's
-/// authorization changes under it.
-const STATE_CHANGED: &str = "AUTHORIZATION_STATE_CHANGED";
-
 /// First read-retry gap; it doubles per attempt.
 const READ_BACKOFF: Duration = Duration::from_millis(250);
 
@@ -399,9 +395,14 @@ pub(crate) fn credential_header(token: &str) -> Result<HeaderValue> {
     Ok(header)
 }
 
-/// How many attempts a read that failed with `message` gets.
+/// How many attempts a read that failed with `message` gets: the error's
+/// code leads the message as `[CODE] ` (`failure`), matched exactly.
 fn read_attempts(message: &str) -> u32 {
-    if message.contains(STATE_CHANGED) {
+    let code = message
+        .strip_prefix('[')
+        .and_then(|rest| rest.split_once(']'))
+        .map(|(code, _)| code);
+    if code == Some(failure::STATE_CHANGED) {
         STATE_CHANGE_ATTEMPTS
     } else {
         READ_ATTEMPTS
