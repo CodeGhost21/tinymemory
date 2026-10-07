@@ -235,8 +235,12 @@ impl MemoryEngine for Faulty {
         }
         let mut hits = self.inner.get(req).await?;
         if matches!(self.fault, Fault::GetUnordered) {
+            // Its own order (by id), but never the order asked: ids are
+            // content hashes over a fresh nonce, so a sort alone matches the
+            // asked order for some runs, and the check would miss the fault.
+            let asked: Vec<ItemId> = hits.iter().map(|hit| hit.id.clone()).collect();
             hits.sort_by(|a, b| a.id.cmp(&b.id));
-            if hits.windows(2).all(|pair| pair[0].id <= pair[1].id) {
+            if hits.iter().map(|hit| &hit.id).eq(asked.iter()) {
                 hits.reverse();
             }
         }
