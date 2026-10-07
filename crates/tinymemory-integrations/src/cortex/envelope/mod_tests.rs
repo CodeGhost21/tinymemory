@@ -5,7 +5,9 @@ use tinymemory_api::{SourceKind, Turn};
 
 fn meta() -> MemoryMeta {
     let mut meta = MemoryMeta::from_source(SourceKind::Folder, Some("notes".into()));
-    meta.file_path = Some("/notes/a.md".into());
+    // A file's name round-trips; its folders never leave the machine (see
+    // `local_paths_tests.rs`).
+    meta.file_path = Some("a.md".into());
     meta
 }
 
@@ -394,7 +396,7 @@ fn an_event_is_written_as_its_own_text_with_the_envelope_in_labels() {
         .collect();
     assert_eq!(labels[0], labels::item(&item.fingerprint()), "lookup first");
     assert!(labels.contains(&"kind:document"), "{labels:?}");
-    assert!(labels.contains(&"file:/docs/handbook.pdf"), "{labels:?}");
+    assert!(labels.contains(&"file:handbook.pdf"), "{labels:?}");
     assert!(labels.iter().any(|label| label.starts_with("tm:e:00:")));
     assert!(labels.len() <= 64);
     assert!(labels.iter().all(|label| label.len() <= 256), "{labels:?}");
@@ -402,7 +404,9 @@ fn an_event_is_written_as_its_own_text_with_the_envelope_in_labels() {
 
     let decoded = decode_event(&stored(&request)).unwrap();
     assert_eq!(decoded.envelope, envelope);
-    assert_eq!(rebuild(&[decoded.envelope]).unwrap(), item);
+    let mut read_back = item.clone();
+    read_back.meta_mut().file_path = Some("handbook.pdf".into());
+    assert_eq!(rebuild(&[decoded.envelope]).unwrap(), read_back);
 }
 
 #[test]

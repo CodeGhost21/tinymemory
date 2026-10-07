@@ -30,6 +30,15 @@ pub(crate) fn digest(value: &str) -> String {
     out
 }
 
+/// Prefix of the workspace label.
+const WORKSPACE_PREFIX: &str = "tm:w:";
+
+/// The workspace label for a workspace whose [`digest`] is `digest`: an
+/// envelope keeps only the digest, so the label is built from it.
+pub(crate) fn workspace(digest: &str) -> String {
+    format!("{WORKSPACE_PREFIX}{digest}")
+}
+
 /// The label every event of item `id` carries.
 pub(crate) fn item(id: &str) -> String {
     format!("tm:i:{}", digest(id))
@@ -63,7 +72,7 @@ const META_FIELDS: [MetaField; 6] = [
         wanted: |f| f.repo.as_deref(),
     },
     MetaField {
-        prefix: "tm:w:",
+        prefix: WORKSPACE_PREFIX,
         held: |m| m.workspace.as_deref(),
         wanted: |f| f.workspace.as_deref(),
     },

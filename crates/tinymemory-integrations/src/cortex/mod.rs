@@ -74,6 +74,10 @@ mod conformance_tests;
 #[path = "lifecycle_tests.rs"]
 mod lifecycle_tests;
 
+#[cfg(test)]
+#[path = "local_paths_tests.rs"]
+mod local_paths_tests;
+
 pub use credential::{BearerSource, CortexCredential, StaticBearer};
 pub use descriptor::{
     CORTEX_API_ENDPOINT, CORTEXDB_ENGINE_ID, CortexWire, TINYHUMANS_API_ENDPOINT,

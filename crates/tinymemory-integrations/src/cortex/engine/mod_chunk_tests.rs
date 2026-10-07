@@ -118,7 +118,11 @@ async fn a_hit_on_a_piece_is_that_piece_with_its_page_and_section() {
     assert_eq!(hit.id.as_str(), item.fingerprint(), "the item's own id");
     assert!(hit.text.len() < body(&item).len(), "a piece, not the whole");
     assert!(body(&item).contains(hit.text.split("\n\n").nth(1).unwrap_or_default()));
-    assert_eq!(hit.meta.file_path.as_deref(), Some("/docs/handbook.pdf"));
+    assert_eq!(
+        hit.meta.file_path.as_deref(),
+        Some("handbook.pdf"),
+        "the file's name, never its folders"
+    );
     assert!(
         hit.meta.tags.iter().any(|tag| tag.starts_with("page:")),
         "{:?}",

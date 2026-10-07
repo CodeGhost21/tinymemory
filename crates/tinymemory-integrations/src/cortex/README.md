@@ -136,8 +136,12 @@ envelope with `text` left empty, because the text is the event's
   "turn": { "index": 0, "count": 3, "role": "user", "at": "...", "tool_calls": [] } }
 ```
 
-Kind-specific fields appear only when set. Readable labels (`kind:`, `file:`,
-`page:`, `section:`) sit beside the parts. An event with empty text, or whose
+Kind-specific fields appear only when set. `meta` never holds a local path:
+`file_path` is the file's name, `folder` and an absolute `workspace` are left
+out, and digests stand in for filters (`"ws"`, `"fp"`, `"fd"`; see
+[cortex-local-paths.md](../../../../docs/architecture/cortex-local-paths.md)).
+Readable labels (`kind:`, `file:<name>`, `page:`, `section:`) sit beside the
+parts. An event with empty text, or whose
 labels would pass 64, is written as v2 (the whole envelope as JSON text, as
 every event was before), and both layouts read. An event that is neither is
 someone else's and is ignored. An item that opts out of derivation
