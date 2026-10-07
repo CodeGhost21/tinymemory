@@ -10,7 +10,8 @@
 //! ingested into its source scope, turns logged without waiting for
 //! indexing, and pre-turn packs that carry the brain, the agent's history
 //! and the team's turns once CortexDB has indexed them. Belief builds are
-//! requested through `v1/beliefs/build`.
+//! requested through `v1/beliefs/build`. A workflow's `service:` node stays
+//! out of every chat pack read above it.
 
 // The helpers outside `#[test]` fns fail the test by panicking, like the tests.
 #![allow(clippy::expect_used)]
@@ -177,6 +178,122 @@ async fn live_an_agent_loop_runs_against_cortexdb() {
         .await
         .expect("forget");
     assert!(forgotten.forgotten >= 4, "{forgotten:?}");
+}
+
+/// A workflow's memory, kept the way a host keeps it: a keyed learning and a
+/// run digest at the workflow's own `service:` node below the layout root.
+fn flow_item(flow: &Namespace, text: &str, document: bool) -> StoreItem {
+    let meta = MemoryMeta {
+        namespace: flow.clone(),
+        tags: vec!["flows".to_string(), "flow:newsletter".to_string()],
+        derive: Some(false),
+        ..MemoryMeta::default()
+    };
+    if document {
+        StoreItem::document(text, meta)
+    } else {
+        StoreItem::learning(text, LearningKind::Fact, 0.8, meta)
+    }
+}
+
+#[tokio::test]
+async fn live_a_workflow_sandbox_stays_out_of_a_chat_pack() {
+    let Some(engine) = live_engine() else {
+        eprintln!("TINYMEMORY_LIVE_CORTEXDB_URL unset; skipping");
+        return;
+    };
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after the epoch")
+        .as_nanos();
+    let root: Namespace = format!("project:sandbox-{nanos}")
+        .parse()
+        .expect("a valid root");
+    let layout = MemoryLayout::new(root.clone()).expect("a valid layout");
+    let flow: Namespace = format!("{root}/service:newsletter")
+        .parse()
+        .expect("a valid flow node");
+
+    // The workflow's memory first, so it is indexed no later than the chat
+    // learning the pack is waited on below.
+    let keyed = "Newsletter already sent item 5531 about the product launch";
+    let digest = "Flow run digest: the newsletter run r-77 sent the product launch summary";
+    engine
+        .store_many(vec![
+            flow_item(&flow, keyed, false),
+            flow_item(&flow, digest, true),
+        ])
+        .await
+        .expect("store the workflow's memory");
+    let shared = "The product launch moved to 14 November";
+    engine
+        .store(StoreItem::learning(
+            shared,
+            LearningKind::Fact,
+            0.9,
+            MemoryMeta {
+                namespace: root.clone(),
+                ..MemoryMeta::default()
+            },
+        ))
+        .await
+        .expect("store the chat learning");
+
+    // Control: the workflow reads its own memory at its node.
+    let deadline = Instant::now() + VISIBILITY;
+    let own = loop {
+        let page = engine
+            .list(tinymemory_api::ListRequest::new(
+                MetaFilter {
+                    reach: Some(Reach::exact(flow.clone())),
+                    ..MetaFilter::default()
+                },
+                10,
+            ))
+            .await
+            .expect("list the workflow's node");
+        if page.items.len() == 2 || Instant::now() >= deadline {
+            break page.items;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    };
+    assert_eq!(own.len(), 2, "the workflow lost its own memory: {own:?}");
+
+    // A chat turn in the same tree, once its own learning is ranked.
+    let chat = AgentMemory::new(engine.clone(), layout.clone(), "assistant").expect("agent");
+    chat.post_turn(PostTurn::new("t-1", 0, "When is the product launch?"))
+        .await
+        .expect("post_turn");
+    let pack = recall_until(&chat, "what about the product launch", &[shared]).await;
+    assert!(pack.markdown.contains(shared), "{}", pack.markdown);
+    let leaks: Vec<String> = pack
+        .sections
+        .iter()
+        .flat_map(|section| {
+            section
+                .hits
+                .iter()
+                .filter(|hit| hit.meta.namespace == flow)
+                .map(move |hit| format!("[{}] {}", section.heading, hit.text))
+        })
+        .collect();
+    assert!(
+        leaks.is_empty() && !pack.markdown.contains("5531"),
+        "workflow memory reached the chat pack: {leaks:#?}\n{}",
+        pack.markdown
+    );
+
+    // A read of everything below the root never enters the sandbox, so the
+    // workflow's memory is forgotten at its own node.
+    for at in [Reach::subtree(flow), Reach::subtree(root)] {
+        engine
+            .forget(ForgetTarget::Filter(MetaFilter {
+                reach: Some(at),
+                ..MetaFilter::default()
+            }))
+            .await
+            .expect("forget");
+    }
 }
 
 #[tokio::test]
