@@ -463,3 +463,96 @@ fn the_double_refuses_an_erasure_without_a_scope() {
     let (status, _) = log.erase(&serde_json::json!({ "confirm_all": true }));
     assert_eq!(status, 422);
 }
+
+#[tokio::test]
+async fn a_direct_erasure_that_stays_running_times_out_as_unavailable() {
+    let (endpoint, state) = direct_double().await;
+    let engine = direct_engine(&endpoint);
+    let at = node("agent:assistant");
+    engine.store(learning("a fact", &at)).await.unwrap();
+    // Running for far longer than the test's erasure deadline.
+    state.erasure_running_for.store(100_000, Ordering::SeqCst);
+
+    let started = std::time::Instant::now();
+    let refused = engine.erase(EraseRequest::new(Reach::exact(at))).await;
+    assert!(
+        matches!(&refused, Err(tinymemory_api::Error::Unavailable(m)) if m.contains("pending")),
+        "{refused:?}"
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "the deadline bounds the whole poll loop"
+    );
+    assert!(state.count("GET /v1/erasures/erasure_1") >= 1);
+}
+
+#[tokio::test]
+async fn a_polled_erasure_without_a_status_is_not_completed() {
+    let (endpoint, state) = direct_double().await;
+    let engine = direct_engine(&endpoint);
+    let at = node("agent:assistant");
+    engine.store(learning("a fact", &at)).await.unwrap();
+    state.erasure_running_for.store(1, Ordering::SeqCst);
+    state.erasure_poll_omits_status.store(true, Ordering::SeqCst);
+
+    let refused = engine.erase(EraseRequest::new(Reach::exact(at))).await;
+    assert!(
+        matches!(&refused, Err(tinymemory_api::Error::Engine(m)) if m.contains("status")),
+        "{refused:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_direct_erasure_that_keeps_a_non_terminal_status_is_not_done() {
+    let (endpoint, state) = direct_double().await;
+    let engine = direct_engine(&endpoint);
+    let at = node("agent:assistant");
+    engine.store(learning("a fact", &at)).await.unwrap();
+    // Settles as `cancelled`: neither pending nor completed.
+    state.erasure_running_for.store(1, Ordering::SeqCst);
+    *state.erasure_ends.lock().unwrap() = Some("cancelled");
+
+    let refused = engine.erase(EraseRequest::new(Reach::exact(at))).await;
+    assert!(
+        matches!(&refused, Err(tinymemory_api::Error::Engine(m)) if m.contains("cancelled")),
+        "{refused:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_hosted_erasure_reports_the_scopes_the_backend_erased() {
+    let (endpoint, state) = hosted_double().await;
+    let engine = hosted_engine(&endpoint);
+    let at = node("agent:assistant");
+    engine.store(learning("a fact", &at)).await.unwrap();
+    // The scope emptied between the listing and the erasure.
+    *state.scoped_erase_answer.lock().unwrap() =
+        Some(serde_json::json!({ "erased": true, "scopes": 0, "erasure_ids": [] }));
+
+    let report = engine
+        .erase(EraseRequest::new(Reach::exact(at)))
+        .await
+        .unwrap();
+    assert_eq!(report.erased_scopes, 0, "{report:?}");
+    assert!(report.receipts.is_empty());
+}
+
+#[tokio::test]
+async fn a_malformed_hosted_erasure_answer_is_an_error() {
+    for answer in [
+        serde_json::json!({ "erased": true, "scopes": 1, "erasure_ids": [123] }),
+        serde_json::json!({ "erased": true, "scopes": 1, "erasure_ids": "x" }),
+        serde_json::json!({ "erased": true, "erasure_ids": [] }),
+    ] {
+        let (endpoint, state) = hosted_double().await;
+        let engine = hosted_engine(&endpoint);
+        let at = node("agent:assistant");
+        engine.store(learning("a fact", &at)).await.unwrap();
+        *state.scoped_erase_answer.lock().unwrap() = Some(answer.clone());
+        let refused = engine.erase(EraseRequest::new(Reach::exact(at))).await;
+        assert!(
+            matches!(refused, Err(tinymemory_api::Error::Engine(_))),
+            "{answer}: {refused:?}"
+        );
+    }
+}

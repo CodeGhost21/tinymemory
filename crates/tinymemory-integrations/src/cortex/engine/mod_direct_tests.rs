@@ -299,3 +299,18 @@ async fn reads_wait_out_a_scope_authorization_change() {
         "six attempts, then it gives up"
     );
 }
+
+#[test]
+fn the_double_refuses_a_cascade_that_is_not_a_known_string() {
+    let mut log = crate::cortex::testing::log_for_tests();
+    for cascade in [
+        serde_json::json!(null),
+        serde_json::json!(123),
+        serde_json::json!("nope"),
+    ] {
+        let (code, answer) = log.forget(&serde_json::json!({
+            "scope": "app:x", "confirm_all": true, "cascade": cascade
+        }));
+        assert_eq!(code, 400, "{cascade}: {answer}");
+    }
+}

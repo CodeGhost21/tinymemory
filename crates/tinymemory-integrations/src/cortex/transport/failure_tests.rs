@@ -251,3 +251,23 @@ fn a_write_the_indexer_has_not_reached_is_transient() {
     let hosted = hosted_status_error("h", "memory/experience", StatusCode::REQUEST_TIMEOUT, body);
     assert!(matches!(hosted, Error::Unavailable(_)), "{hosted:?}");
 }
+
+#[test]
+fn an_unusable_error_code_falls_back_to_the_other_key() {
+    for body in [
+        r#"{"errorCode":null,"error_code":"INVALID_BODY"}"#,
+        r#"{"errorCode":7,"error_code":"INVALID_BODY"}"#,
+        r#"{"errorCode":"-- ","error_code":"INVALID_BODY"}"#,
+    ] {
+        let error = hosted_status_error("h", "memory/x", StatusCode::BAD_REQUEST, body);
+        assert_eq!(error_code(&error), Some("INVALID_BODY"), "{body}");
+    }
+    // The primary key still wins when it is usable.
+    let error = hosted_status_error(
+        "h",
+        "memory/x",
+        StatusCode::BAD_REQUEST,
+        r#"{"errorCode":"FIRST","error_code":"SECOND"}"#,
+    );
+    assert_eq!(error_code(&error), Some("FIRST"));
+}
