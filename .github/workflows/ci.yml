@@ -143,7 +143,7 @@ jobs:
             features: --no-default-features --features documents-office
           - name: sources network implication
             package: tinymemory-integrations
-            features: --no-default-features --features sources-network
+            features: --no-default-features --features sources
           - name: safety
             package: tinymemory-integrations
             features: --no-default-features --features safety
