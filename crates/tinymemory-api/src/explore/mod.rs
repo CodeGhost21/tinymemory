@@ -326,14 +326,17 @@ pub async fn explore_by_listing<E: MemoryEngine + ?Sized>(
             Some(next) => cursor = Some(next),
         }
     };
-    Ok(page_of(
+    Ok(explore_page_of(
         req.facet, counts, req.limit, total, missing, truncated,
     ))
 }
 
 /// Builds an [`ExplorePage`] from per-value counts: largest first, ties by
-/// value, cut to `limit`.
-fn page_of(
+/// value, cut to `limit`. Shared by [`explore_by_listing`] and engines that
+/// override [`crate::MemoryEngine::explore`] with their own tally, so every
+/// engine orders and cuts buckets the same way.
+#[must_use]
+pub fn explore_page_of(
     facet: Facet,
     counts: BTreeMap<String, u64>,
     limit: usize,
