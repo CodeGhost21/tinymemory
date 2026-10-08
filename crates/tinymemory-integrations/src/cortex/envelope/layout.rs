@@ -190,6 +190,20 @@ impl ScopeLayout {
         }
     }
 
+    /// Whether `path` is below the retired root (a twin of a scope below the
+    /// root), as opposed to the root itself.
+    pub(crate) fn is_retired(&self, path: &str) -> bool {
+        let Self::V3 {
+            retired: Some(retired),
+            prefixed,
+            ..
+        } = self
+        else {
+            return false;
+        };
+        parse_below(retired, *prefixed, path).is_some()
+    }
+
     /// The scope items of `kind` at `namespace` live in: where they are
     /// written.
     pub(crate) fn path(&self, namespace: &Namespace, kind: ItemKind) -> String {
@@ -355,7 +369,10 @@ fn node_prefixes_below(root: &str, namespace: &Namespace) -> Vec<String> {
 fn parse_below(root: &str, prefixed: bool, path: &str) -> Option<(Namespace, ItemKind)> {
     let parts: Vec<&str> = path.split('/').collect();
     let start = if root.is_empty() {
-        0
+        // Hosted, the backend may answer a tenant-root path behind the
+        // tenant's own `org:<id>`. `org` is never a namespace segment, so a
+        // leading `org:` segment is that prefix.
+        usize::from(prefixed && parts.first().is_some_and(|part| part.starts_with("org:")))
     } else {
         let wanted: Vec<&str> = root.split('/').collect();
         let start = if prefixed {
@@ -387,7 +404,7 @@ fn parse_below(root: &str, prefixed: bool, path: &str) -> Option<(Namespace, Ite
     // place is somebody else's scope.
     let canonical = render(root, &namespace, kind);
     let own = if root.is_empty() {
-        path.to_string()
+        parts[start..].join("/")
     } else {
         parts[start - root.split('/').count()..].join("/")
     };

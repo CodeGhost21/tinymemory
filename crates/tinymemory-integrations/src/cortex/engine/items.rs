@@ -207,15 +207,22 @@ impl CortexEngine {
                     .map(move |scope| (scope, ids.clone()))
             })
             .collect();
-        let found: Vec<HashMap<String, Vec<Decoded>>> = stream::iter(lookups)
-            .map(|(scope, ids)| async move { self.item_events(&scope, &ids).await })
+        let mut found: Vec<(usize, HashMap<String, Vec<Decoded>>)> = stream::iter(lookups)
+            .enumerate()
+            .map(|(order, (scope, ids))| async move {
+                Ok::<_, Error>((order, self.item_events(&scope, &ids).await?))
+            })
             .buffer_unordered(LOOKUPS_AT_ONCE)
             .try_collect()
             .await?;
         // An item held below both the root and a retired root is rebuilt from
-        // the events of one of them, never from both at once.
+        // the events of one of them, never from both at once: the root's
+        // (lookups are in read order, root first), whichever lookup answered
+        // first; the retired root's only when the root's copy cannot be
+        // rebuilt.
+        found.sort_by_key(|(order, _)| *order);
         let mut out = HashMap::new();
-        for (id, events) in found.into_iter().flatten() {
+        for (id, events) in found.into_iter().flat_map(|(_, found)| found) {
             if out.contains_key(&id) {
                 continue;
             }
