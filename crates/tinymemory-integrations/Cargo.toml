@@ -18,7 +18,7 @@ tinymemory-api = { path = "../tinymemory-api" }
 # `MemoryEngine`, `BearerSource`, `DocumentConverter` and `SourceReader` are
 # object-safe async traits.
 async-trait = { version = "0.1", optional = true }
-# Every wire body, envelope, cursor, Composio payload and checkpoint is JSON.
+# Every wire body, envelope, cursor and checkpoint is JSON.
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 # The typed errors of `documents`, `sources` and `import`.
@@ -122,7 +122,7 @@ documents-office = ["documents", "dep:pdf-extract", "dep:calamine", "dep:quick-x
 # placed under the source type their format implies.
 brain = ["documents", "dep:tinymemory-tools"]
 # `sources`: readers that turn folders, files and conversations into
-# `StoreItem`s, and the Composio payload normalisers. Links no HTTP stack.
+# `StoreItem`s. Links no HTTP stack.
 sources = ["documents", "dep:schemars", "dep:regex", "dep:walkdir", "dep:chrono", "dep:log", "dep:tracing"]
 # The readers that fetch over the network — GitHub, RSS, web pages — and
 # `sources::fetch::fetch_url`, all behind the shared SSRF guard.

@@ -23,14 +23,9 @@
 //! on a timer. A `None` from [`reader_for`] therefore means "route this through
 //! the host's sync runner", which keeps the host in charge of the network.
 //!
-//! `composio` is represented by a placeholder reader
-//! ([`composio::ComposioReader`]): its data arrives through the credentialed
-//! provider pipeline, and [`crate::sources::composio`] turns those payloads into items.
-//!
 //! A host servicing an *explicit user request* (not a timer) that wants one
 //! reader for any kind uses `reader_for_request`.
 
-pub mod composio;
 pub mod conversation;
 pub mod file;
 pub mod folder;
@@ -138,8 +133,7 @@ pub fn reader_for(kind: &SourceKind) -> Option<Box<dyn SourceReader>> {
         SourceKind::Folder => Some(Box::new(folder::FolderReader)),
         SourceKind::File => Some(Box::new(file::FileReader)),
         SourceKind::Conversation => Some(Box::new(conversation::ConversationReader)),
-        SourceKind::Composio
-        | SourceKind::GithubRepo
+        SourceKind::GithubRepo
         | SourceKind::RssFeed
         | SourceKind::WebPage => None,
     }
@@ -156,7 +150,6 @@ pub fn reader_for(kind: &SourceKind) -> Option<Box<dyn SourceReader>> {
 #[must_use]
 pub fn reader_for_request(kind: &SourceKind) -> Box<dyn SourceReader> {
     match kind {
-        SourceKind::Composio => Box::new(composio::ComposioReader),
         SourceKind::Conversation => Box::new(conversation::ConversationReader),
         SourceKind::Folder => Box::new(folder::FolderReader),
         SourceKind::File => Box::new(file::FileReader),
