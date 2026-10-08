@@ -234,3 +234,95 @@ fn a_namespace_repeating_the_root_is_flagged() {
     assert!(deep.repeats_root(&ns("team:a/user:42/ws:main")));
     assert!(!deep.repeats_root(&ns("team:a")));
 }
+
+/// The direct wire's `org:` root, still reading the retired `user:` root.
+fn transitional() -> ScopeLayout {
+    ScopeLayout::v3("org:42", false)
+        .unwrap()
+        .with_retired_root("user:42")
+        .unwrap()
+}
+
+#[test]
+fn the_tenant_layout_names_no_root() {
+    let layout = ScopeLayout::tenant();
+    let cases = [
+        (Namespace::ROOT, ItemKind::Learning, "app:learnings"),
+        (
+            ns("ws:main"),
+            ItemKind::Conversation,
+            "ws:main/app:conversations",
+        ),
+        (ns("source:gmail"), ItemKind::Document, "app:brain/source:gmail"),
+        (
+            ns("ws:main/service:nl"),
+            ItemKind::Learning,
+            "ws:main/app:flows/service:nl/app:learnings",
+        ),
+    ];
+    for (namespace, kind, path) in cases {
+        assert_eq!(layout.path(&namespace, kind), path);
+        assert!(!path.contains("user:"), "{path}");
+        assert_eq!(layout.parse(path), Some((namespace, kind)), "{path}");
+    }
+    assert_eq!(layout.root(), "");
+    assert_eq!(layout.node_prefixes(&Namespace::ROOT), [""]);
+    assert_eq!(layout.node_prefixes(&ns("ws:main")), ["ws:main"]);
+    // The legacy tree under the same tenant is somebody else's.
+    assert_eq!(layout.parse("app:tinymemory/app:learnings"), None);
+    assert!(!layout.repeats_root(&ns("ws:main")));
+}
+
+#[test]
+fn a_retired_root_doubles_every_read_but_not_the_write() {
+    let layout = transitional();
+    let chat = ns("ws:main");
+    assert_eq!(
+        layout.path(&chat, ItemKind::Conversation),
+        "org:42/ws:main/app:conversations"
+    );
+    assert_eq!(
+        layout.paths(&chat, ItemKind::Conversation),
+        [
+            "org:42/ws:main/app:conversations",
+            "user:42/ws:main/app:conversations"
+        ]
+    );
+    assert_eq!(layout.roots(), ["org:42", "user:42"]);
+    assert_eq!(
+        layout.node_prefixes(&chat),
+        ["org:42/ws:main", "user:42/ws:main"]
+    );
+    for path in [
+        "org:42/ws:main/app:conversations",
+        "user:42/ws:main/app:conversations",
+    ] {
+        assert_eq!(
+            layout.parse(path),
+            Some((chat.clone(), ItemKind::Conversation)),
+            "{path}"
+        );
+    }
+    assert!(layout.repeats_root(&ns("user:42/ws:main")));
+
+    // Hosted: the retired root wins over reading `user:42` as a node.
+    let hosted = ScopeLayout::tenant().with_retired_root("user:42").unwrap();
+    assert_eq!(
+        hosted.parse("user:42/ws:main/app:conversations"),
+        Some((chat.clone(), ItemKind::Conversation))
+    );
+    assert_eq!(
+        hosted.paths(&chat, ItemKind::Learning),
+        ["ws:main/app:learnings", "user:42/ws:main/app:learnings"]
+    );
+    assert_eq!(hosted.node_prefixes(&Namespace::ROOT), ["", "user:42"]);
+}
+
+#[test]
+fn a_retired_root_is_checked() {
+    assert!(ScopeLayout::default().with_retired_root("user:42").is_err());
+    assert!(v3().with_retired_root("user:42").is_err(), "the root itself");
+    assert!(v3().with_retired_root("kb:x").is_err());
+    assert!(v3().with_retired_root("").is_err());
+    assert_eq!(ScopeLayout::tenant().retired(), None);
+}
