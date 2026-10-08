@@ -259,8 +259,10 @@ These were measured against a live CortexDB by the v1 adapter. The doubles in
   fail a write that is already durable. Hosted polling backs off to a 2s
   ceiling and treats 429/5xx while waiting as "not yet"; a timeout counts
   the polls that answered without the event and those that failed.
-- **A 429's `Retry-After` is honoured.** Every request of the client waits
-  until the latest one has passed (capped at 10s), on either wire.
+- **A 429's numeric `Retry-After` is honoured** (else a numeric
+  `RateLimit-Reset`; an HTTP-date `Retry-After` is not). Every request of the
+  client waits until the latest one has passed (capped at 10s), on either
+  wire.
 - **`store_many_with(Accepted)`** skips the visibility waits for a batch: a
   bulk import that reads nothing back until it ends.
 - **The listing emits every event twice**, and `limit` counts the copies.

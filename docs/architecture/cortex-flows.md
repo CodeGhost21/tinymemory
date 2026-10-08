@@ -98,9 +98,11 @@ a listing that never showed the event is told apart from one that could not
 be read.
 
 **Rate limits.** A `429` whose `Retry-After` (else `RateLimit-Reset`) gives a
-wait in seconds holds every later request of that client back until it has
-passed, at most 10s (`transport/pause.rs`): retrying sooner only spends the
-next attempt on another `429`.
+wait in whole seconds holds every later request of that client back until it
+has passed, at most 10s (`transport/pause.rs`): retrying sooner only spends the
+next attempt on another `429`. An HTTP-date `Retry-After` is not honoured. A
+request already waiting re-reads the pause when it wakes, so a later, longer
+one holds it too.
 
 ### Hosted writes and outcome-unknown recovery
 
