@@ -481,6 +481,12 @@ async fn erasure(
         return early;
     }
     let status = erasure_status(&state);
+    if let Some(forced) = state.erasure_poll_status.lock().unwrap().clone() {
+        return (
+            StatusCode::OK,
+            Json(json!({ "erasure_id": id, "status": forced })),
+        );
+    }
     if state.erasure_poll_omits_status.load(Ordering::SeqCst) {
         return (StatusCode::OK, Json(json!({ "erasure_id": id })));
     }

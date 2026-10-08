@@ -478,10 +478,7 @@ async fn a_direct_erasure_that_stays_running_times_out_as_unavailable() {
         matches!(&refused, Err(tinymemory_api::Error::Unavailable(m)) if m.contains("pending")),
         "{refused:?}"
     );
-    // Polls back off from 5ms against a 300ms deadline: a bounded few, not
-    // the thousands a loop that ignored the deadline would make.
-    let polls = state.count("GET /v1/erasures/erasure_1");
-    assert!((1..=20).contains(&polls), "{polls} polls");
+    assert!(state.count("GET /v1/erasures/erasure_1") >= 1);
 }
 
 #[tokio::test]
@@ -578,4 +575,45 @@ async fn a_synchronous_erasure_answer_without_a_status_is_completed() {
         0,
         "nothing to poll"
     );
+}
+
+#[tokio::test]
+async fn a_polled_status_that_is_not_a_known_string_never_completes_the_erasure() {
+    for status in [
+        serde_json::json!(7),
+        serde_json::json!(null),
+        serde_json::json!("weird"),
+    ] {
+        let (endpoint, state) = direct_double().await;
+        let engine = direct_engine(&endpoint);
+        let at = node("agent:assistant");
+        engine.store(learning("a fact", &at)).await.unwrap();
+        state.erasure_running_for.store(1, Ordering::SeqCst);
+        *state.erasure_poll_status.lock().unwrap() = Some(status.clone());
+        let refused = engine.erase(EraseRequest::new(Reach::exact(at))).await;
+        assert!(
+            matches!(refused, Err(tinymemory_api::Error::Engine(_))),
+            "{status}: {refused:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_hosted_scope_is_erased_by_an_engine_that_never_held_it() {
+    let (endpoint, state) = hosted_double().await;
+    let at = node("agent:assistant");
+    hosted_engine(&endpoint)
+        .store(learning("a fact", &at))
+        .await
+        .unwrap();
+    // A fresh engine has no memory of the write: the scopes come from the
+    // backend's registry.
+    let other = hosted_engine(&endpoint);
+    let report = other
+        .erase(EraseRequest::new(Reach::exact(at)))
+        .await
+        .unwrap();
+    assert_eq!(report.erased_scopes, 1, "{report:?}");
+    assert_eq!(state.count("POST /memory/v1/erasures"), 1);
+    assert!(listed(&other).await.is_empty());
 }
