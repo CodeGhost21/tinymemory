@@ -36,7 +36,7 @@ pub(crate) struct CortexLog {
     /// Beliefs built, oldest first.
     pub(crate) beliefs: Vec<Value>,
     /// Erasures run.
-    erasures: u64,
+    pub(crate) erasures: u64,
 }
 
 /// Whether `event` carries any one of `wanted` (an empty list keeps all).
@@ -216,9 +216,15 @@ impl CortexLog {
     /// The backend's `DELETE /memory`: every event of the tenant, every
     /// scope; how many scopes held anything.
     pub(crate) fn erase_everything(&mut self) -> usize {
-        let scopes = self.scopes("").len();
-        let _ = self.erase(&json!({ "scope": "", "confirm_all": true }));
-        scopes
+        // Deepest first, one whole-scope erasure each, as CortexDB erases:
+        // an erasure of a scope only redacts what is below it, so a parent
+        // first would leave its descendants' write keys held.
+        let mut scopes = self.scopes("");
+        scopes.reverse();
+        for scope in &scopes {
+            let _ = self.erase(&json!({ "scope": scope, "confirm_all": true }));
+        }
+        scopes.len()
     }
 
     /// `POST /v1/erasures`, a whole-scope erasure as CortexDB answers it
@@ -249,7 +255,7 @@ impl CortexLog {
             });
         let deleted: Vec<String> = gone
             .iter()
-            .filter(|e| scope.is_empty() || str_of(e, "/scope") == scope)
+            .filter(|e| str_of(e, "/scope") == scope)
             .map(|e| str_of(e, "/id").to_string())
             .collect();
         self.idempotency

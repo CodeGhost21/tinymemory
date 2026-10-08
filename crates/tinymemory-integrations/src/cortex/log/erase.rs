@@ -72,7 +72,16 @@ impl Log {
                 "the memory erasure answered without `erased: true`".to_string(),
             ));
         }
-        let scopes = answer.get("scopes").and_then(Value::as_u64).unwrap_or(0);
+        // A count the backend did not send (or sent as anything but a
+        // non-negative integer) is a malformed answer, not zero scopes.
+        let scopes = answer
+            .get("scopes")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| {
+                Error::Engine(
+                    "the memory erasure answered without a numeric `scopes` count".to_string(),
+                )
+            })?;
         Ok(usize::try_from(scopes).unwrap_or(usize::MAX))
     }
 }

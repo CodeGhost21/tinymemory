@@ -194,7 +194,7 @@ with fast test timing (5ms polls and backoff, a 2s visibility budget);
 
 Both doubles serve the same in-memory `CortexLog`, which is deliberately
 **unaccommodating**, because a tidy double proves nothing. It reproduces every
-behaviour in [the wire page](cortex-wire.md#cortexdb-behaviours-the-engine-is-shaped-around):
+behaviour in [the wire page](cortex-wire-envelope.md#cortexdb-behaviours-the-engine-is-shaped-around):
 
 - append-only, a body `idempotency_key` remembered (same key, same body is a
   replay; same key, different body is `409 IDEMPOTENCY_CONFLICT`); forget by

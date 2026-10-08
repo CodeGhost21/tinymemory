@@ -64,8 +64,10 @@ fn fail(state: &Shared, code: u16, error_code: &str) -> Reply {
 ///
 /// Direct relays it as is. Hosted relays it the way the backend's
 /// `memoryUpstreamError` does: the backend has its own vocabulary, so most
-/// engine codes are lost and every other 4xx, a 409 included, is a `400`
-/// (`CONFLICT` keeps its code, everything else is `BAD_REQUEST`).
+/// engine codes are lost and every other 4xx is a `400` (`BAD_REQUEST`).
+/// A 409 keeps its status and its `CONFLICT` code since
+/// tinyhumansai/backend#1409; an older backend answered it as a `400`
+/// (`legacy_conflict_400`).
 fn upstream_fail(state: &Shared, code: u16, error_code: &str) -> Reply {
     if !state.hosted {
         return fail(state, code, error_code);
@@ -75,7 +77,8 @@ fn upstream_fail(state: &Shared, code: u16, error_code: &str) -> Reply {
         503 => (503, "UPSTREAM_UNAVAILABLE"),
         401 | 403 => (502, "UPSTREAM_UNAVAILABLE"),
         404 => (404, "NOT_FOUND"),
-        409 => (400, "CONFLICT"),
+        409 if state.legacy_conflict_400.load(Ordering::SeqCst) => (400, "CONFLICT"),
+        409 => (409, "CONFLICT"),
         413 => (413, "PAYLOAD_TOO_LARGE"),
         400..=499 => (400, "BAD_REQUEST"),
         _ => (502, "UPSTREAM_UNAVAILABLE"),
@@ -375,15 +378,17 @@ async fn erase(
 
 /// The backend's `DELETE /memory`: erases the caller's entire memory.
 async fn erase_all(State(state): State<Shared>, uri: Uri, headers: HeaderMap) -> Reply {
+    // The gate (auth, an outage) answers before the route is looked up, as
+    // the real backend's middleware does.
+    if let Some(early) = gate(&state, "DELETE", &uri, &headers) {
+        return early;
+    }
     if state.erase_all_missing.load(Ordering::SeqCst) {
         // An older backend: Express's unmatched-route 404, no envelope.
         return (
             StatusCode::NOT_FOUND,
             Json(json!({ "message": "Not Found" })),
         );
-    }
-    if let Some(early) = gate(&state, "DELETE", &uri, &headers) {
-        return early;
     }
     state
         .seen
@@ -392,7 +397,13 @@ async fn erase_all(State(state): State<Shared>, uri: Uri, headers: HeaderMap) ->
         .erasures
         .push(json!({ "all": true }));
     let scopes = state.log.lock().unwrap().erase_everything();
-    ok(&state, 200, json!({ "erased": true, "scopes": scopes }))
+    let data = state
+        .erase_all_answer
+        .lock()
+        .unwrap()
+        .clone()
+        .unwrap_or_else(|| json!({ "erased": true, "scopes": scopes }));
+    ok(&state, 200, data)
 }
 
 async fn answer(

@@ -127,6 +127,12 @@ pub(crate) struct Double {
     /// The hosted double has no `DELETE /memory` route (an older backend):
     /// it answers the router's bare 404.
     pub(crate) erase_all_missing: AtomicBool,
+    /// The hosted double relays a refused, already-claimed key as an older
+    /// backend did (`400` + `CONFLICT`); unset it answers `409` as
+    /// tinyhumansai/backend#1409 does.
+    pub(crate) legacy_conflict_400: AtomicBool,
+    /// Replaces the `data` of the `DELETE /memory` answer (a malformed one).
+    pub(crate) erase_all_answer: Mutex<Option<serde_json::Value>>,
 }
 
 /// The shared handle the routes and tests hold.
