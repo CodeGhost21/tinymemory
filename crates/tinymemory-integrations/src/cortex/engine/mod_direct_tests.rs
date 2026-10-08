@@ -302,7 +302,7 @@ async fn reads_wait_out_a_scope_authorization_change() {
 
 #[test]
 fn the_double_refuses_a_cascade_that_is_not_a_known_string() {
-    let mut log = crate::cortex::testing::log_for_tests();
+    let mut log = crate::cortex::testing::CortexLog::default();
     for cascade in [
         serde_json::json!(null),
         serde_json::json!(123),

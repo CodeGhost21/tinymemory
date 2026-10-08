@@ -493,7 +493,9 @@ async fn a_polled_erasure_without_a_status_is_not_completed() {
     let at = node("agent:assistant");
     engine.store(learning("a fact", &at)).await.unwrap();
     state.erasure_running_for.store(1, Ordering::SeqCst);
-    state.erasure_poll_omits_status.store(true, Ordering::SeqCst);
+    state
+        .erasure_poll_omits_status
+        .store(true, Ordering::SeqCst);
 
     let refused = engine.erase(EraseRequest::new(Reach::exact(at))).await;
     assert!(

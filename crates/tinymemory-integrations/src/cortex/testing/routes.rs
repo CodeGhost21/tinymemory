@@ -419,7 +419,11 @@ async fn hosted_erase(
         );
     }
     // A scope that is not a string is a malformed request, not the root.
-    let Some(scope) = body.get("scope").and_then(Value::as_str).map(str::to_string) else {
+    let Some(scope) = body
+        .get("scope")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+    else {
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({ "error_code": "INVALID_SCOPE" })),
