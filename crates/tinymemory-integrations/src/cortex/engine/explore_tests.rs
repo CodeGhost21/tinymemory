@@ -89,6 +89,16 @@ async fn never_assembles_an_item() {
             .cloned()
             .collect();
         assert!(lookups.is_empty(), "item lookups: {lookups:?}");
+
+        // The listing walk this replaces does assemble them.
+        let before = state.requests().len();
+        explore_by_listing(&engine, ExploreRequest::new(Facet::Kind, 50))
+            .await
+            .unwrap();
+        assert!(
+            state.requests()[before..].iter().any(|r| is_item_lookup(r)),
+            "the listing walk made no item lookup; the check above proves nothing"
+        );
     }
 }
 
