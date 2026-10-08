@@ -91,7 +91,7 @@ pub struct MemoryMeta {
     pub tags: Vec<String>,
     pub observed_at: Option<DateTime<Utc>>,
 }
-pub enum SourceKind { Folder, File, Link, Github, Rss, Composio, Conversation, Agent, Import }
+pub enum SourceKind { Folder, File, Conversation, Agent, Import }
 ```
 
 `MetaFilter` has the same optional fields (each an exact match, `folder` and

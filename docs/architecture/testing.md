@@ -78,7 +78,7 @@ works on its own, not only in the union:
 | | `--no-default-features --features cortex` |
 | | `--no-default-features --features documents` |
 | | `--no-default-features --features documents-office` |
-| | `--no-default-features --features sources-network` (proves it implies `sources`) |
+| | `--no-default-features --features sources` |
 | | `--no-default-features --features safety` |
 | | `--no-default-features --features legacy-import` |
 | | `--no-default-features --features full` |
@@ -255,7 +255,7 @@ idempotency pairs, and every recall, answer and forget body for assertions.
 | --- | --- | --- |
 | `feature_surface.rs` | `full` | the modules compose: scrub an item, store it in the reference engine, run the conformance suite, compile a context |
 | `documents_office.rs` | `documents-office` | `OfficeConverter` prepends to the default `ConverterChain` and supports PDF, DOCX, XLSX, PPTX |
-| `reader_dispatch.rs` | `sources` (`sources-network` for one test) | local readers are constructed for timers, network readers only for requests |
+| `reader_dispatch.rs` | `sources` | every kind has a local reader |
 | `legacy_import.rs` | `legacy-import` | importing v1 workspaces, every mapping, ordering and resumption |
 | `live_cortexdb.rs`, `office_live.rs` | `cortex` (+ `documents-office`) | a real CortexDB; skipped unless configured |
 
