@@ -89,10 +89,15 @@ app:tinymemory/team:acme/agent:writer/app:learnings                     a team m
 
 That is the legacy layout, the default. With a scope root
 (`EngineSettings::scope_root`, `CortexEngine::with_scope_root`), such as one
-person's `user:<id>`, every item is laid out below that root instead, each
-kind under a leaf of its own (`user:42/ws:main/app:conversations`,
-`user:42/app:brain/source:gmail`), and a direct engine registers the root
-with its owner before the first write. See
+person's `org:<id>`, every item is laid out below that root instead, each
+kind under a leaf of its own (`org:42/ws:main/app:conversations`,
+`org:42/app:brain/source:gmail`), and a direct engine registers the root
+with its owner (the actor `user:<id>`) before the first write. On the
+hosted wire the root is the tenant's own (`EngineSettings::tenant_root`):
+the engine sends `ws:main/app:conversations` and the backend stores it at
+`org:<id>/ws:main/app:conversations`. A retired root
+(`EngineSettings::retired_scope_root`, the earlier `user:<id>`) is still
+read and forgotten, never written, until its memory has moved. See
 [cortex-layout.md](../../../../docs/architecture/cortex-layout.md).
 
 The hosted backend also re-roots every scope under the caller's tenant.
