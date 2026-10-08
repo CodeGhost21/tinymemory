@@ -295,7 +295,7 @@ async fn events(
         return fail(&state, 400, "VALIDATION_ERROR");
     }
     if take_one(&state.rate_limit_events) {
-        return fail(&state, 429, "RATE_LIMITED");
+        return rate_limited(&state);
     }
     if take_one(&state.state_change_events) {
         return fail(&state, 503, "AUTHORIZATION_STATE_CHANGED");
