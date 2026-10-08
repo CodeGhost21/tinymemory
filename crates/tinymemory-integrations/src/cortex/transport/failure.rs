@@ -177,7 +177,9 @@ pub(crate) fn hosted_status_error(
     let parsed: Option<Value> = serde_json::from_str(body).ok();
     let code = parsed
         .as_ref()
-        .and_then(|v| v.get("errorCode"))
+        // The backend's own `errorCode`, or memory-api's `error_code` on a
+        // route the backend passes through unwrapped (`memory/v1/*`).
+        .and_then(|v| v.get("errorCode").or_else(|| v.get("error_code")))
         .and_then(Value::as_str)
         .map(clean_code)
         .filter(|c| !c.is_empty())

@@ -9,24 +9,19 @@
 //! first, so a layout that ever put a scope below another would not strand
 //! redacted events behind held keys.
 //!
-//! Only the Direct wire erases: the TinyHumans backend proxies no erasure
-//! route, so the hosted engine refuses with `Unsupported` and sends nothing.
+//! Both wires erase: Direct at CortexDB's `v1/erasures`, hosted at the
+//! TinyHumans backend's `memory/v1/erasures` passthrough, which memory-api
+//! pins under the tenant's root (see `log::erase`).
 
 use tinymemory_api::{EraseReport, EraseRequest, ItemKind};
 
 use super::CortexEngine;
-use crate::cortex::descriptor::CortexWire;
-use crate::cortex::error::{Error, Result};
+use crate::cortex::error::Result;
 
 impl CortexEngine {
     /// See the module docs.
     pub(super) async fn erase_scopes(&self, req: EraseRequest) -> Result<EraseReport> {
         req.validate()?;
-        if self.log.client.wire() == CortexWire::TinyHumans {
-            return Err(Error::Unsupported(
-                "the TinyHumans backend has no erasure route".to_string(),
-            ));
-        }
         let kinds: Vec<ItemKind> = if req.kinds.is_empty() {
             ItemKind::ALL.to_vec()
         } else {

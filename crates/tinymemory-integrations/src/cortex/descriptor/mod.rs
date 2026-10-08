@@ -122,7 +122,8 @@ pub enum CortexWire {
     /// and a bulk append route.
     Direct,
     /// CortexDB behind the TinyHumans backend's `/memory/*` routes:
-    /// `{success,data}` envelopes, typed `errorCode` failures, a strict answer
+    /// `{success,data}` envelopes (except the `/memory/v1/*` passthrough,
+    /// which answers in CortexDB's dialect), typed `errorCode` failures, a strict answer
     /// schema, `Idempotency-Key` claims on writes, and no bulk, wait or health
     /// route.
     TinyHumans,
@@ -166,9 +167,9 @@ impl CortexWire {
             (Self::TinyHumans, Route::BuildBeliefs) => "memory/beliefs/build",
             // Never sent: hosted beliefs are read through recall only.
             (Self::TinyHumans, Route::Beliefs) => "memory/beliefs",
-            // Never sent: the backend proxies no erasure route, so `erase`
-            // refuses on this wire without a request.
-            (Self::TinyHumans, Route::Erasures) => "memory/erasures",
+            // The backend's CortexDB-dialect passthrough (no envelope);
+            // memory-api pins the scope under the tenant's root.
+            (Self::TinyHumans, Route::Erasures) => "memory/v1/erasures",
             // Never sent: the hosted backend keeps its own tenancy.
             (Self::TinyHumans, Route::RegisterScope | Route::ScopeMembers) => "memory/scopes",
             // Never sent: the hosted wire has no version route, so a date
@@ -206,7 +207,8 @@ pub(crate) enum Route {
     BuildBeliefs,
     /// List one scope's beliefs (Direct only).
     Beliefs,
-    /// Erase a whole scope for good (Direct only).
+    /// Erase a whole scope for good, and (GET `<path>/{id}`) poll the
+    /// erasure until it settles.
     Erasures,
     /// Build info and the API capabilities the server accepts (Direct only).
     Version,
