@@ -17,7 +17,6 @@ fn timer_dispatch_constructs_only_readers_that_never_need_network() {
     }
 
     for kind in [
-        SourceKind::Composio,
         SourceKind::GithubRepo,
         SourceKind::RssFeed,
         SourceKind::WebPage,

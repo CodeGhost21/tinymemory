@@ -156,26 +156,27 @@ pub enum SourceKind {
     Github,
     /// An RSS or Atom feed.
     Rss,
-    /// A Composio toolkit payload (Gmail, Slack, Notion, ...).
-    Composio,
     /// A host conversation.
     Conversation,
     /// Written by an agent directly; the default.
     #[default]
     Agent,
     /// Imported from a legacy store.
+    ///
+    /// The retired `composio` kind decodes to this variant, so items stored
+    /// under it stay readable.
+    #[serde(alias = "composio")]
     Import,
 }
 
 impl SourceKind {
     /// Every kind, in declaration order.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 8] = [
         Self::Folder,
         Self::File,
         Self::Link,
         Self::Github,
         Self::Rss,
-        Self::Composio,
         Self::Conversation,
         Self::Agent,
         Self::Import,
@@ -190,7 +191,6 @@ impl SourceKind {
             Self::Link => "link",
             Self::Github => "github",
             Self::Rss => "rss",
-            Self::Composio => "composio",
             Self::Conversation => "conversation",
             Self::Agent => "agent",
             Self::Import => "import",

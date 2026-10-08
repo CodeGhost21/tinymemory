@@ -31,9 +31,6 @@ pub(crate) fn default_true() -> bool {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceKind {
-    /// A Composio OAuth connector (Gmail, Slack, Notion, …). Network-backed;
-    /// the live fetch is owned by the host, not this module.
-    Composio,
     /// Local agent conversation transcripts stored in the workspace.
     Conversation,
     /// A local folder of files matched by an optional glob.
@@ -50,8 +47,7 @@ pub enum SourceKind {
 
 impl SourceKind {
     /// Every kind, in declaration order.
-    pub const ALL: [Self; 7] = [
-        Self::Composio,
+    pub const ALL: [Self; 6] = [
         Self::Conversation,
         Self::Folder,
         Self::File,
@@ -64,7 +60,6 @@ impl SourceKind {
     #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
-            SourceKind::Composio => "composio",
             SourceKind::Conversation => "conversation",
             SourceKind::Folder => "folder",
             SourceKind::File => "file",
@@ -81,7 +76,6 @@ impl SourceKind {
     pub fn api_kind(&self) -> tinymemory_api::SourceKind {
         use tinymemory_api::SourceKind as Api;
         match self {
-            SourceKind::Composio => Api::Composio,
             SourceKind::Conversation => Api::Conversation,
             SourceKind::Folder => Api::Folder,
             SourceKind::File => Api::File,
@@ -108,14 +102,6 @@ pub struct MemorySourceEntry {
     /// Whether this source participates in sync. Defaults to `true`.
     #[serde(default = "default_true")]
     pub enabled: bool,
-
-    // ── Composio ──
-    /// Composio toolkit slug (e.g. `gmail`). Required for `composio`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub toolkit: Option<String>,
-    /// Composio connection id. Required for `composio`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub connection_id: Option<String>,
 
     // ── Folder / File ──
     /// Filesystem path of the folder or file to read. Required for `folder`
@@ -180,8 +166,6 @@ impl MemorySourceEntry {
             kind,
             label: label.into(),
             enabled: true,
-            toolkit: None,
-            connection_id: None,
             path: None,
             glob: None,
             url: None,
@@ -201,8 +185,7 @@ impl MemorySourceEntry {
     /// Validate the fields this entry's [`SourceKind`] requires.
     ///
     /// `id` and `label` are required for every kind, and `id` must not contain
-    /// `:` or control characters. Composio needs `toolkit` and
-    /// `connection_id`; folders and files need `path`; GitHub repositories, RSS
+    /// `:` or control characters. Folders and files need `path`; GitHub repositories, RSS
     /// feeds and web pages need `url`. An empty string counts as missing.
     ///
     /// # Errors
@@ -221,10 +204,6 @@ impl MemorySourceEntry {
             return Err(Error::Invalid("label is required".to_string()));
         }
         match self.kind {
-            SourceKind::Composio => {
-                require_field(&self.toolkit, "toolkit")?;
-                require_field(&self.connection_id, "connection_id")
-            }
             SourceKind::Conversation => Ok(()),
             SourceKind::Folder | SourceKind::File => require_field(&self.path, "path"),
             SourceKind::GithubRepo | SourceKind::RssFeed | SourceKind::WebPage => {

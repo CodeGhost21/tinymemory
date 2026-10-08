@@ -11,8 +11,6 @@ fn folder_source(path: &str) -> MemorySourceEntry {
         kind: SourceKind::Folder,
         label: "Test folder".into(),
         enabled: true,
-        toolkit: None,
-        connection_id: None,
         path: Some(path.into()),
         glob: None,
         url: None,

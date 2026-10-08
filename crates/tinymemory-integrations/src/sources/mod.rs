@@ -1,5 +1,5 @@
 //! Source readers for TinyMemory: turn a folder, a file, a web page, a GitHub
-//! repository, an RSS feed, a Composio toolkit payload or a local conversation
+//! repository, an RSS feed or a local conversation
 //! into [`StoreItem`](tinymemory_api::StoreItem)s.
 //!
 //! - **Configuration** — what a source *is* ([`MemorySourceEntry`], keyed by
@@ -13,8 +13,6 @@
 //! - **Items** — [`items`] maps reader output to `StoreItem`s with
 //!   [`MemoryMeta`](tinymemory_api::MemoryMeta) filled per kind; every text
 //!   body is converted to markdown through [`crate::documents`].
-//! - **Composio** — [`composio`] normalises toolkit payloads (Gmail, Slack,
-//!   GitHub, Linear, Notion, ClickUp) and maps them to items.
 //!
 //! Scheduling, credentials and egress budgets stay with the host: this module
 //! reads when asked.
@@ -63,7 +61,6 @@
 //!   `readers::reader_for_request` and the SSRF guard. Without it, a host that
 //!   only reads local sources links no HTTP stack.
 
-pub mod composio;
 pub mod error;
 #[cfg(feature = "sources-network")]
 pub mod fetch;

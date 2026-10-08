@@ -43,3 +43,14 @@ fn source_kind_wire_strings_match_serde() {
         assert_eq!(json, serde_json::json!(kind.as_str()));
     }
 }
+
+#[test]
+fn the_retired_composio_source_kind_decodes_as_import() {
+    let kind: SourceKind =
+        serde_json::from_value(serde_json::json!("composio")).expect("legacy kind decodes");
+    assert_eq!(kind, SourceKind::Import);
+    assert_eq!(
+        serde_json::to_value(SourceKind::Import).expect("serialise"),
+        serde_json::json!("import")
+    );
+}

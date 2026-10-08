@@ -11,7 +11,6 @@
 //! | github | document | `repo` (`owner/name`), `commit` (commit items), `url` (issues and PRs), `observed_at` |
 //! | link | document | `url` |
 //! | rss | document | `url` (the entry's link), `observed_at` (published) |
-//! | composio | document | `tags = [toolkit]` (payloads: see [`crate::sources::composio`]) |
 //! | conversation | conversation | `workspace`, `thread_id`, `turns`, `observed_at` (last turn) |
 //!
 //! Every document body is markdown, converted through `crate::documents`:
@@ -38,23 +37,16 @@ use crate::sources::readers::local_file::LocalFile;
 use crate::sources::types::{ContentType, MemorySourceEntry, SourceContent, SourceKind};
 
 /// Metadata naming `entry` as the source: `source.kind` is the entry's kind
-/// mapped onto the contract, `source.id` its id. A Composio entry also gets
-/// its toolkit as a tag.
+/// mapped onto the contract, `source.id` its id.
 #[must_use]
 pub fn base_meta(entry: &MemorySourceEntry) -> MemoryMeta {
-    let mut meta = MemoryMeta {
+    MemoryMeta {
         source: SourceRef {
             kind: entry.kind.api_kind(),
             id: Some(entry.id.clone()),
         },
         ..MemoryMeta::default()
-    };
-    if entry.kind == SourceKind::Composio
-        && let Some(toolkit) = entry.toolkit.as_deref().filter(|t| !t.is_empty())
-    {
-        meta.tags = vec![toolkit.to_string()];
     }
-    meta
 }
 
 /// Convert a local file and wrap it as a document.
@@ -197,7 +189,6 @@ pub fn content_item(
             meta.language = language_for_path(&content.id).map(str::to_string);
         }
         SourceKind::Conversation => meta.thread_id = Some(content.id.clone()),
-        SourceKind::Composio => {}
     }
 
     Ok(StoreItem::Document {

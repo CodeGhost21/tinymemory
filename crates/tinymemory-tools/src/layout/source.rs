@@ -60,10 +60,9 @@ impl BrainSource {
     pub fn source_kind(&self) -> SourceKind {
         match self {
             Self::Files | Self::Pdf | Self::Markdown => SourceKind::File,
-            Self::Notion => SourceKind::Composio,
             Self::Github => SourceKind::Github,
             Self::Web => SourceKind::Link,
-            Self::Other(_) => SourceKind::Import,
+            Self::Notion | Self::Other(_) => SourceKind::Import,
         }
     }
 }

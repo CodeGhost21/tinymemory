@@ -5,7 +5,6 @@ use super::*;
 #[test]
 fn source_kind_round_trips_via_serde() {
     for kind in [
-        SourceKind::Composio,
         SourceKind::Conversation,
         SourceKind::Folder,
         SourceKind::File,
@@ -21,33 +20,12 @@ fn source_kind_round_trips_via_serde() {
 
 #[test]
 fn source_kind_as_str_matches_wire_strings() {
-    assert_eq!(SourceKind::Composio.as_str(), "composio");
     assert_eq!(SourceKind::Conversation.as_str(), "conversation");
     assert_eq!(SourceKind::Folder.as_str(), "folder");
     assert_eq!(SourceKind::GithubRepo.as_str(), "github_repo");
     assert_eq!(SourceKind::File.as_str(), "file");
     assert_eq!(SourceKind::RssFeed.as_str(), "rss_feed");
     assert_eq!(SourceKind::WebPage.as_str(), "web_page");
-}
-
-#[test]
-fn validate_composio_requires_toolkit_and_connection_id() {
-    let entry = MemorySourceEntry {
-        id: "src_1".into(),
-        kind: SourceKind::Composio,
-        label: "Gmail".into(),
-        enabled: true,
-        toolkit: Some("gmail".into()),
-        connection_id: None,
-        ..default_entry()
-    };
-    assert!(entry.validate().is_err());
-
-    let valid = MemorySourceEntry {
-        connection_id: Some("cmp_123".into()),
-        ..entry
-    };
-    assert!(valid.validate().is_ok());
 }
 
 #[test]
@@ -89,8 +67,10 @@ fn validate_file_requires_path() {
 
 #[test]
 fn the_removed_twitter_query_kind_no_longer_decodes() {
-    let decoded = serde_json::from_str::<SourceKind>("\"twitter_query\"");
-    assert!(decoded.is_err());
+    for removed in ["twitter_query", "composio"] {
+        let decoded = serde_json::from_str::<SourceKind>(&format!("\"{removed}\""));
+        assert!(decoded.is_err(), "{removed} must not decode");
+    }
 }
 
 #[test]
@@ -100,7 +80,6 @@ fn every_config_kind_maps_onto_a_contract_source_kind() {
     assert_eq!(
         mapped,
         vec![
-            Api::Composio,
             Api::Conversation,
             Api::Folder,
             Api::File,
@@ -245,8 +224,6 @@ pub(super) fn default_entry() -> MemorySourceEntry {
         kind: SourceKind::Folder,
         label: String::new(),
         enabled: true,
-        toolkit: None,
-        connection_id: None,
         path: None,
         glob: None,
         url: None,
@@ -277,8 +254,6 @@ fn source_entry_wire_format_is_pinned() {
         kind: SourceKind::GithubRepo,
         label: "Pinned".into(),
         enabled: false,
-        toolkit: Some("gmail".into()),
-        connection_id: Some("conn-1".into()),
         path: Some("/notes".into()),
         glob: Some("**/*.md".into()),
         url: Some("https://github.com/tinyhumansai/tinymemory".into()),
@@ -301,8 +276,6 @@ fn source_entry_wire_format_is_pinned() {
             "kind": "github_repo",
             "label": "Pinned",
             "enabled": false,
-            "toolkit": "gmail",
-            "connection_id": "conn-1",
             "path": "/notes",
             "glob": "**/*.md",
             "url": "https://github.com/tinyhumansai/tinymemory",
