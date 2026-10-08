@@ -26,6 +26,8 @@ fn ids_without_a_phone_number_are_left_alone() {
         "channel:slack_U02ABC123_C03DEF456",
         "t-1",
         "a1b2c3d4e5",
+        "channel:email_jane1234567@example.com_inbox",
+        "commit 9f31234567ab",
         "",
     ] {
         assert!(!holds_phone_number(id), "{id}");

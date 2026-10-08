@@ -561,10 +561,10 @@ fn sent(meta: MemoryMeta) -> (Envelope, Vec<String>, String) {
 #[test]
 fn readable_labels_name_the_agent_and_an_app_thread_only() {
     let app = "thread-0b6e1d8a-3f2c-4c1e-9a7b-5d2e8f1a6c3b";
-    let mut meta = meta();
-    meta.agent_id = Some("orchestrator".into());
-    meta.thread_id = Some(app.into());
-    let (_, labels, _) = sent(meta);
+    let mut held = meta();
+    held.agent_id = Some("orchestrator".into());
+    held.thread_id = Some(app.into());
+    let (_, labels, _) = sent(held);
     assert!(
         labels.contains(&"agent:orchestrator".to_string()),
         "{labels:?}"
@@ -577,9 +577,9 @@ fn readable_labels_name_the_agent_and_an_app_thread_only() {
         "worker-7f9c2d1e-8a4b-4c3d-9e2f-1a0b5c6d7e8f",
         "THREAD-0B6E1D8A-3F2C-4C1E-9A7B-5D2E8F1A6C3B",
     ] {
-        let mut meta = meta();
-        meta.thread_id = Some(channel.into());
-        let (_, labels, _) = sent(meta);
+        let mut held = meta();
+        held.thread_id = Some(channel.into());
+        let (_, labels, _) = sent(held);
         assert!(
             !labels.iter().any(|label| label.starts_with("thread:")),
             "{channel}: {labels:?}"
@@ -642,4 +642,26 @@ fn an_email_or_app_thread_id_is_sent_as_it_is() {
         assert_eq!(envelope.meta.thread_id.as_deref(), Some(id));
         assert_eq!(envelope.meta.source.id.as_deref(), Some(id));
     }
+}
+
+#[test]
+fn a_phone_number_as_the_agent_id_is_sent_only_as_its_digest() {
+    let mut held = meta();
+    held.agent_id = Some("+15551234567".into());
+    let (envelope, labels, text) = sent(held);
+    let redacted = tinymemory_api::redacted_id("+15551234567");
+    assert_eq!(envelope.meta.agent_id.as_deref(), Some(redacted.as_str()));
+    assert!(
+        labels
+            .iter()
+            .chain([&text])
+            .all(|sent| !sent.contains("5551234567")),
+        "{labels:?}"
+    );
+    assert!(!labels.iter().any(|label| label.starts_with("agent:")));
+    let wanted = MetaFilter {
+        agent_id: Some("+15551234567".into()),
+        ..MetaFilter::default()
+    };
+    assert!(wanted.matches(ItemKind::Document, &envelope.meta));
 }

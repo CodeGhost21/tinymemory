@@ -121,7 +121,7 @@ impl MetaFilter {
             && exact(self.url.as_deref(), meta.url.as_deref())
             && same(self.thread_id.as_deref(), meta.thread_id.as_deref())
             && self.turns.is_none_or(|turns| meta.turns == Some(turns))
-            && exact(self.agent_id.as_deref(), meta.agent_id.as_deref())
+            && same(self.agent_id.as_deref(), meta.agent_id.as_deref())
             && exact(
                 self.tool_call.as_deref(),
                 meta.tool_call.as_ref().map(|call| call.name.as_str()),

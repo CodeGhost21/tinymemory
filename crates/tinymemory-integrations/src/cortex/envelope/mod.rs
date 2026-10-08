@@ -522,10 +522,9 @@ impl Envelope {
     /// when longer than [`MAX_LABEL_BYTES`].
     fn readable_labels(&self) -> Vec<String> {
         let mut out = vec![format!("kind:{}", self.kind.as_str())];
-        let agent =
-            self.meta.agent_id.as_deref().filter(|agent| {
-                !agent.trim().is_empty() && !tinymemory_api::holds_phone_number(agent)
-            });
+        let agent = self.meta.agent_id.as_deref().filter(|agent| {
+            !agent.trim().is_empty() && !agent.starts_with(tinymemory_api::REDACTED_PREFIX)
+        });
         if let Some(agent) = agent {
             out.push(format!("agent:{agent}"));
         }
@@ -619,12 +618,13 @@ fn wire_meta(meta: &MemoryMeta) -> MemoryMeta {
             .clone()
             .filter(|workspace| !is_absolute(workspace)),
         thread_id: meta.thread_id.as_deref().map(stored_id),
+        agent_id: meta.agent_id.as_deref().map(stored_id),
         source,
         ..meta.clone()
     }
 }
 
-/// How a thread or source id is stored: unchanged, or as its
+/// How a thread, source or agent id is stored: unchanged, or as its
 /// [`tinymemory_api::redacted_id`] when it holds a phone number, so no
 /// phone number is sent. Filters and reads compare with
 /// [`tinymemory_api::same_id`], so either form is still found by the id.

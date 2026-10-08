@@ -20,27 +20,36 @@ const PHONE_DIGITS: usize = 7;
 /// (`8-4-4-4-12` hex digits, which are ids, not numbers), a run of at least
 /// seven digits, the digits optionally separated by spaces, dashes, dots or
 /// parentheses and led by `+` (`+1 (555) 123-4567`, `15551234567`,
-/// `555.123.4567`). An id already redacted holds none, so storing one read
-/// back redacts nothing twice.
+/// `555.123.4567`), that no letter touches: digits glued to a letter on
+/// either side are part of a word or a hex id (`jane1234567@example.com`,
+/// `9f31234567ab`), not a number. An id already redacted holds none, so
+/// storing one read back redacts nothing twice.
 #[must_use]
 pub fn holds_phone_number(value: &str) -> bool {
     if value.starts_with(REDACTED_PREFIX) {
         return false;
     }
-    let mut digits = 0;
+    let (mut digits, mut glued, mut prev) = (0, false, b'_');
     for byte in strip_uuids(value.as_bytes()) {
         match byte {
             b'0'..=b'9' => {
-                digits += 1;
-                if digits >= PHONE_DIGITS {
-                    return true;
+                if digits == 0 {
+                    glued = prev.is_ascii_alphabetic();
                 }
+                digits += 1;
             }
             b' ' | b'-' | b'.' | b'(' | b')' | b'+' => {}
-            _ => digits = 0,
+            _ => {
+                let glued_after = byte.is_ascii_alphabetic() && prev.is_ascii_digit();
+                if digits >= PHONE_DIGITS && !glued && !glued_after {
+                    return true;
+                }
+                digits = 0;
+            }
         }
+        prev = byte;
     }
-    false
+    digits >= PHONE_DIGITS && !glued
 }
 
 /// The stable form `value` is stored in when it holds a phone number:

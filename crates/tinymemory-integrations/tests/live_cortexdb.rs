@@ -72,7 +72,17 @@ fn run_id() -> String {
         .duration_since(UNIX_EPOCH)
         .expect("clock after the epoch")
         .as_nanos();
-    format!("live-{nanos}")
+    // Letters only (hex with its digits spelled `g`..`p`): an id holding a
+    // run of seven digits is stored redacted, as a phone number, and would
+    // not read back exactly as stored.
+    let letters: String = format!("{nanos:x}")
+        .chars()
+        .map(|c| match c.to_digit(10) {
+            Some(digit) => char::from(b'g' + u8::try_from(digit).unwrap_or(0)),
+            None => c,
+        })
+        .collect();
+    format!("live-{letters}")
 }
 
 fn meta(workspace: &str, source: SourceKind) -> MemoryMeta {
@@ -802,6 +812,55 @@ async fn a_logged_turn_sent_twice_is_written_once() {
             .await
             .expect("forget");
         assert_eq!(report.forgotten, 1);
+    }
+}
+
+/// A channel thread keyed by a phone number on the real server: the number
+/// is never stored, and a filter by the thread as the host names it still
+/// lists the conversation.
+#[tokio::test]
+async fn a_phone_number_thread_is_stored_redacted_and_still_found() {
+    let _alone = ONE_AT_A_TIME.lock().await;
+    for (wire, engine) in live_engines() {
+        let thread = format!("channel:whatsapp_+15551234567_{}", run_id());
+        let turn = StoreItem::Conversation {
+            turns: vec![Turn::new(Role::User, "Ship the Aurora build on Friday.")],
+            meta: MemoryMeta {
+                thread_id: Some(thread.clone()),
+                source: SourceRef {
+                    kind: SourceKind::Conversation,
+                    id: Some(thread.clone()),
+                },
+                ..MemoryMeta::default()
+            },
+        };
+        let receipt = engine.store(turn).await.expect("store");
+        let filter = MetaFilter {
+            thread_id: Some(thread.clone()),
+            ..MetaFilter::default()
+        };
+        assert_eq!(list_until(&engine, &filter, 1).await.len(), 1, "{wire}");
+        let page = engine
+            .list(ListRequest::new(filter, 50))
+            .await
+            .expect("list");
+        let redacted = tinymemory_api::redacted_id(&thread);
+        for hit in &page.items {
+            assert_eq!(
+                hit.meta.thread_id.as_deref(),
+                Some(redacted.as_str()),
+                "{wire}"
+            );
+            assert_eq!(
+                hit.meta.source.id.as_deref(),
+                Some(redacted.as_str()),
+                "{wire}"
+            );
+        }
+        engine
+            .forget(ForgetTarget::Ids(vec![receipt.id]))
+            .await
+            .expect("forget");
     }
 }
 
