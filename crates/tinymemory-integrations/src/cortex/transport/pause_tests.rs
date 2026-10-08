@@ -63,3 +63,22 @@ async fn requests_wait_until_the_latest_rate_limit_lifts() {
         "once lifted, no wait"
     );
 }
+
+#[tokio::test]
+async fn a_pause_extended_while_waiting_holds_the_waiter_too() {
+    let pause = RatePause::default();
+    let started = Instant::now();
+    pause.note(&headers(&[("retry-after", "1")]));
+    let extender = pause.clone();
+    let extend = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        extender.note(&headers(&[("retry-after", "2")]));
+    });
+    pause.wait().await;
+    extend.await.unwrap();
+    let waited = started.elapsed();
+    assert!(
+        waited >= Duration::from_millis(2250),
+        "the waiter saw the extension made while it slept: {waited:?}"
+    );
+}

@@ -26,11 +26,16 @@ pub(crate) const MAX_PAUSE: Duration = Duration::from_secs(10);
 pub(crate) struct RatePause(Arc<Mutex<Option<Instant>>>);
 
 impl RatePause {
-    /// Sleeps until the last rate limit has lifted, if it has not.
+    /// Sleeps until the latest rate limit has lifted, if it has not. The
+    /// pause is read again after each sleep: a `429` another request got
+    /// meanwhile may have extended it.
     pub(crate) async fn wait(&self) {
-        let until = *self.0.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(until) = until.filter(|until| *until > Instant::now()) {
-            tokio::time::sleep_until(until).await;
+        loop {
+            let until = *self.0.lock().unwrap_or_else(PoisonError::into_inner);
+            match until.filter(|until| *until > Instant::now()) {
+                Some(until) => tokio::time::sleep_until(until).await,
+                None => return,
+            }
         }
     }
 
