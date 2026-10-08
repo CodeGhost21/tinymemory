@@ -36,12 +36,9 @@ tinymemory-tools = { path = "../tinymemory-tools", optional = true }
 # CortexDB speaks HTTP/JSON. `stream` is for `bytes_stream()`: response bodies
 # are read against a byte cap rather than buffered whole, because the endpoint
 # is operator-supplied and a broken or hostile one must not exhaust the host.
-# The network source readers share the same client stack.
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"], optional = true }
-# Timers for read-retry backoff and visibility polling (cortex); process
-# spawning and DNS lookups for the GitHub reader and the SSRF resolver
-# (sources-network). reqwest already requires a tokio runtime, so this adds no
-# new runtime assumption.
+# Timers for read-retry backoff and visibility polling (cortex). reqwest
+# already requires a tokio runtime, so this adds no new runtime assumption.
 tokio = { version = "1", default-features = false, features = ["time"], optional = true }
 # `StreamExt` to read a capped body chunk by chunk.
 futures = { version = "0.3", optional = true }
@@ -122,18 +119,15 @@ documents-office = ["documents", "dep:pdf-extract", "dep:calamine", "dep:quick-x
 # placed under the source type their format implies.
 brain = ["documents", "dep:tinymemory-tools"]
 # `sources`: readers that turn folders, files and conversations into
-# `StoreItem`s, and the Composio payload normalisers. Links no HTTP stack.
+# `StoreItem`s. Links no HTTP stack.
 sources = ["documents", "dep:schemars", "dep:regex", "dep:walkdir", "dep:chrono", "dep:log", "dep:tracing"]
-# The readers that fetch over the network — GitHub, RSS, web pages — and
-# `sources::fetch::fetch_url`, all behind the shared SSRF guard.
-sources-network = ["sources", "dep:reqwest", "dep:futures", "dep:tokio", "tokio/process", "tokio/io-util", "tokio/net"]
 # `safety`: secret and PII scrubbing for a `StoreItem` before it is stored.
 safety = ["dep:regex", "dep:serde_json", "dep:log"]
 # `import`: reads a legacy v1 (embedded TinyCortex) workspace and migrates it
 # into any engine, resumably.
 legacy-import = ["dep:rusqlite", "dep:serde", "dep:serde_json", "dep:thiserror"]
 # Every integration.
-full = ["cortex", "documents-office", "brain", "sources-network", "safety", "legacy-import"]
+full = ["cortex", "documents-office", "brain", "sources", "safety", "legacy-import"]
 
 [[example]]
 name = "basic"
