@@ -9,8 +9,12 @@
 //! first, so a layout that ever put a scope below another would not strand
 //! redacted events behind held keys.
 //!
-//! Only the Direct wire erases: the TinyHumans backend proxies no erasure
-//! route, so the hosted engine refuses with `Unsupported` and sends nothing.
+//! On the TinyHumans wire only the whole tree erases (`whole_tree`: the
+//! root, its descendants, every kind), in one `DELETE memory` that erases the
+//! caller's entire hosted memory, every scope under its tenant (including any
+//! another layout or client wrote there). The backend proxies no per-scope
+//! erasure, so a narrower request refuses with `Unsupported` and sends
+//! nothing.
 
 use tinymemory_api::{EraseReport, EraseRequest, ItemKind};
 
@@ -23,9 +27,17 @@ impl CortexEngine {
     pub(super) async fn erase_scopes(&self, req: EraseRequest) -> Result<EraseReport> {
         req.validate()?;
         if self.log.client.wire() == CortexWire::TinyHumans {
-            return Err(Error::Unsupported(
-                "the TinyHumans backend has no erasure route".to_string(),
-            ));
+            if !is_whole_tree(&req) {
+                return Err(Error::Unsupported(
+                    "the TinyHumans backend erases only the whole memory (whole_tree)".to_string(),
+                ));
+            }
+            let erased_scopes = self.log.erase_all().await?;
+            log::debug!("[cortex] erased the whole hosted memory ({erased_scopes} scopes)");
+            return Ok(EraseReport {
+                erased_scopes,
+                receipts: Vec::new(),
+            });
         }
         let kinds: Vec<ItemKind> = if req.kinds.is_empty() {
             ItemKind::ALL.to_vec()
@@ -43,4 +55,10 @@ impl CortexEngine {
         }
         Ok(report)
     }
+}
+
+/// Whether `req` erases everything: the root, its descendants, every kind.
+/// [`EraseRequest::validate`] has already refused it without `whole_tree`.
+fn is_whole_tree(req: &EraseRequest) -> bool {
+    req.whole_tree && req.reach.at.is_root() && req.reach.descendants && req.kinds.is_empty()
 }

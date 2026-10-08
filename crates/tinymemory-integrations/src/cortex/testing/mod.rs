@@ -4,9 +4,12 @@
 //! Both serve the same [`CortexLog`]. The hosted double additionally wraps
 //! bodies in `{success,data}`, reports failures with `errorCode`, refuses a
 //! scope outside the memory API's grammar, takes an `Idempotency-Key` claim
-//! per write (any replay of a claimed key is a 409, never forwarded),
-//! refuses a repeated `labels=` parameter, and enforces the strict answer
-//! schema. Knobs make either fail the ways the real stacks fail.
+//! per write (any replay of a claimed key is refused, never forwarded),
+//! refuses a repeated `labels=` parameter, enforces the strict answer
+//! schema, relays engine failures through the backend's own vocabulary (a
+//! claimed key's 409 arrives as `400` with `errorCode: CONFLICT`), answers its
+//! rate limit outside the envelope, and erases the whole memory on
+//! `DELETE /memory`. Knobs make either fail the ways the real stacks fail.
 
 mod log;
 mod routes;
@@ -121,6 +124,9 @@ pub(crate) struct Double {
     /// (`app:tinymemory/agent:pad-NNNN/app:learnings`), so a test can make a
     /// scope listing reach CortexDB's clamp.
     pub(crate) padding_scopes: AtomicUsize,
+    /// The hosted double has no `DELETE /memory` route (an older backend):
+    /// it answers the router's bare 404.
+    pub(crate) erase_all_missing: AtomicBool,
 }
 
 /// The shared handle the routes and tests hold.

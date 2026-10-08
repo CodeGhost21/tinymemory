@@ -224,6 +224,15 @@ selector needs `confirm_all`, and `confirm_all` beside a selector is refused).
 The engine never sends an empty selector and never sends `confirm_all`; a
 scope with nothing to remove sends no request at all.
 
+What it removes (measured on 0.10.4 with real enrichment): the named raw
+events **and** every derived record citing them (facts, beliefs, episodes,
+understanding), so a forgotten item is not recallable through any layer;
+records derived from other events stay. `layers: []` does the same; a
+`layers` list that does not name `events` deletes nothing. A forget blanks
+rows rather than producing an erasure manifest: GDPR-grade deletion of a
+whole scope is `v1/erasures` (below), and of a whole hosted memory
+`DELETE memory`.
+
 ### Scopes: `v1/scopes/list` and `memory/scopes`
 
 ```text
@@ -254,6 +263,18 @@ re-sent write there replays and stores nothing. A whole-scope erasure of six
 240 KB events took about 8 s on v0.10.5; small scopes take well under a
 second. Every erasure drops every recall pack the server holds, as a forget
 does.
+
+### Erase everything: `DELETE memory` (TinyHumans only)
+
+The backend proxies no per-scope erasure, so the hosted engine erases only
+the whole tree (`EraseRequest` with `whole_tree`, the root with its
+descendants, every kind), in one `DELETE memory` with no body. It erases the
+caller's **entire** hosted memory, every scope under their tenant, whichever
+layout or client wrote it, and answers
+`{"success": true, "data": {"erased": true, "scopes": <n>}}`;
+`EraseReport.erased_scopes` is `n` and there are no receipts. It is sent once.
+A narrower erase refuses with `Unsupported` before any request, and a backend
+without the route (404) is reported as `Unsupported` too.
 
 ### Build beliefs: `v1/beliefs/build` (Direct only)
 

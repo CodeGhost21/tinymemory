@@ -1,6 +1,7 @@
 //! Erase on the Direct wire: deepest scope first, so every event is deleted
-//! and every write key released; kinds narrow it; the hosted wire refuses
-//! without a request.
+//! and every write key released; kinds narrow it. The hosted wire erases
+//! only the whole tree, in one `DELETE /memory`, and refuses anything
+//! narrower without a request.
 
 use tinymemory_api::{
     EraseRequest, ItemKind, LearningKind, ListRequest, MemoryMeta, MetaFilter, Namespace, Reach,
@@ -134,6 +135,94 @@ async fn the_hosted_wire_refuses_to_erase_without_a_request() {
         "{refused:?}"
     );
     assert!(state.seen.lock().unwrap().requests.is_empty());
+}
+
+fn whole_tree() -> EraseRequest {
+    let mut whole = EraseRequest::new(Reach::subtree(Namespace::ROOT));
+    whole.whole_tree = true;
+    whole
+}
+
+#[tokio::test]
+async fn the_hosted_wire_erases_the_whole_memory_in_one_request() {
+    let (endpoint, state) = hosted_double().await;
+    let engine = hosted_engine(&endpoint);
+    engine
+        .store(learning("a fact", &node("agent:a")))
+        .await
+        .unwrap();
+    engine
+        .store(learning("another fact", &node("agent:b")))
+        .await
+        .unwrap();
+    assert_eq!(listed(&engine).await.len(), 2);
+    let before = state.requests().len();
+
+    let report = engine.erase(whole_tree()).await.unwrap();
+
+    assert_eq!(report.erased_scopes, 2, "{report:?}");
+    assert!(report.receipts.is_empty());
+    assert_eq!(state.requests()[before..], ["DELETE /memory".to_string()]);
+    assert_eq!(state.event_count(), 0);
+    assert!(listed(&engine).await.is_empty());
+}
+
+#[tokio::test]
+async fn the_hosted_wire_refuses_a_narrower_erase_without_a_request() {
+    let (endpoint, state) = hosted_double().await;
+    let engine = hosted_engine(&endpoint);
+    let mut learnings = whole_tree();
+    learnings.kinds = vec![ItemKind::Learning];
+    let mut exact = EraseRequest::new(Reach::exact(Namespace::ROOT));
+    exact.whole_tree = true;
+    for req in [learnings, exact] {
+        let refused = engine.erase(req).await;
+        assert!(
+            matches!(refused, Err(tinymemory_api::Error::Unsupported(_))),
+            "{refused:?}"
+        );
+    }
+    let missing_interlock = engine
+        .erase(EraseRequest::new(Reach::subtree(Namespace::ROOT)))
+        .await;
+    assert!(
+        matches!(
+            missing_interlock,
+            Err(tinymemory_api::Error::InvalidRequest(_))
+        ),
+        "{missing_interlock:?}"
+    );
+    assert!(state.seen.lock().unwrap().requests.is_empty());
+}
+
+#[tokio::test]
+async fn a_backend_without_the_erase_route_is_unsupported() {
+    let (endpoint, state) = hosted_double().await;
+    state
+        .erase_all_missing
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let engine = hosted_engine(&endpoint);
+    let refused = engine.erase(whole_tree()).await;
+    assert!(
+        matches!(refused, Err(tinymemory_api::Error::Unsupported(_))),
+        "{refused:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_hosted_erase_without_its_confirmation_is_an_engine_error() {
+    let (endpoint, state) = hosted_double().await;
+    state
+        .fail_all
+        .lock()
+        .unwrap()
+        .replace((503, "UPSTREAM_UNAVAILABLE"));
+    let engine = hosted_engine(&endpoint);
+    let failed = engine.erase(whole_tree()).await;
+    assert!(
+        matches!(failed, Err(tinymemory_api::Error::Unavailable(_))),
+        "{failed:?}"
+    );
 }
 
 #[tokio::test]

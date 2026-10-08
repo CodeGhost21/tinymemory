@@ -245,8 +245,10 @@ as prefixes, so they cannot be labelled and are filtered only client-side.
   matches the full filter. Either way the matched events are then removed with
   `selector.memory_ids`, in batches of 100. An empty selector is never sent,
   and neither is `confirm_all`. `forgotten` counts items.
-- **Erase.** Direct only; hosted refuses with `Unsupported`, because the
-  backend proxies no erasure route. Lists the registered kind scopes in reach
+- **Erase.** Hosted erases only the whole tree (`whole_tree`), in one
+  `DELETE memory` that erases the caller's entire hosted memory, and refuses
+  anything narrower with `Unsupported`, because the backend proxies no
+  per-scope erasure. Direct lists the registered kind scopes in reach
   with the complete scope listing, then sends `v1/erasures` with
   `confirm_all` (never a selector) once per scope, deepest first, and
   returns the erasure ids as receipts. CortexDB deletes an erased scope's

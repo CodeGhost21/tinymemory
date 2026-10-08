@@ -191,6 +191,14 @@ impl CortexLog {
                 .extend(gone.iter().map(|e| str_of(e, "/id").to_string()));
             self.idempotency
                 .retain(|_, (_, id)| !gone.iter().any(|e| str_of(e, "/id") == id));
+            // 0.10.4 deletes every derived record citing a forgotten event
+            // (facts, beliefs, episodes, understanding) under `layers:
+            // ["events"]` and `layers: []` alike; another event's survive.
+            self.beliefs.retain(|belief| {
+                !gone
+                    .iter()
+                    .any(|e| str_of(e, "/id") == str_of(belief, "/source"))
+            });
             self.events = kept;
         } else {
             // A scope-wide forget only redacts, so its keys stay held for
@@ -203,6 +211,14 @@ impl CortexLog {
             200,
             json!({ "deleted": { "events": deleted }, "requested": ids.len() }),
         )
+    }
+
+    /// The backend's `DELETE /memory`: every event of the tenant, every
+    /// scope; how many scopes held anything.
+    pub(crate) fn erase_everything(&mut self) -> usize {
+        let scopes = self.scopes("").len();
+        let _ = self.erase(&json!({ "scope": "", "confirm_all": true }));
+        scopes
     }
 
     /// `POST /v1/erasures`, a whole-scope erasure as CortexDB answers it
