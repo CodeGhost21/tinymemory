@@ -544,6 +544,7 @@ async fn a_malformed_hosted_erasure_answer_is_an_error() {
         // Scopes erased, but no receipt for them.
         serde_json::json!({ "erased": true, "scopes": 1, "erasure_ids": [] }),
         serde_json::json!({ "erased": true, "scopes": 2, "erasure_ids": null }),
+        serde_json::json!({ "erased": true, "scopes": 1, "erasure_ids": [""] }),
     ] {
         let (endpoint, state) = hosted_double().await;
         let engine = hosted_engine(&endpoint);
