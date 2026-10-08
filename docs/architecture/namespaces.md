@@ -138,6 +138,17 @@ or `GetRequest::reach` left `None`) reads as `Reach::subtree(Namespace::ROOT)`
 | `Reach::subtree(at)` | no | yes | `at` and everything below it, no ancestors |
 | `Reach::default()` | yes | no | `Reach::of(root)`: **only the root** |
 
+`Reach::within(outer)` is the confinement test a host applies to a
+caller-supplied reach: true when every namespace `self` admits, `outer`
+admits too (so `self` may be used as given; any other would widen `outer`).
+`at` must be in `outer`; with `inherit`, every ancestor of `at` must be in
+`outer` too (inheriting above a subtree's top escapes it); with
+`descendants`, `outer` must read descendants and `at` must lie at or below
+`outer.at`, because the descendants of an ancestor include its siblings. A
+`service:` sandbox below `outer.at` stays out of `outer`'s descendants, as in
+`admits`. A reach at the deepest legal node (depth 8) has no descendants, so
+`descendants` there counts as exact.
+
 `Reach::nodes()` lists the nodes read exactly, root first (`at` and, when
 `inherit`, its ancestors). Descendants cannot be enumerated from the reach;
 an engine reads them as one subtree below `at`.

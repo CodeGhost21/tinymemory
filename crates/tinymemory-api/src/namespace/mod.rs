@@ -411,7 +411,8 @@ impl Reach {
     /// inheriting above a subtree's top is not within it); with
     /// `descendants`, `outer` must read descendants too and `at` must lie at
     /// or below `outer.at` (the descendants of an ancestor of `outer.at`
-    /// include its siblings).
+    /// include its siblings). A reach at the deepest legal node reads no
+    /// descendants (none can exist), so it counts as exact.
     #[must_use]
     pub fn within(&self, outer: &Self) -> bool {
         if !outer.admits(&self.at) {
@@ -426,7 +427,8 @@ impl Reach {
         {
             return false;
         }
-        !self.descendants || (outer.descendants && self.at.is_within(&outer.at))
+        let reads_below = self.descendants && self.at.depth() < MAX_DEPTH;
+        !reads_below || (outer.descendants && self.at.is_within(&outer.at))
     }
 
     /// The nodes read exactly, root first: `at` and, when `inherit`, its
