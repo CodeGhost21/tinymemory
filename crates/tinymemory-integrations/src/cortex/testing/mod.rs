@@ -127,6 +127,8 @@ pub(crate) struct Double {
     /// The hosted double has no `DELETE /memory` route (an older backend):
     /// it answers the router's bare 404.
     pub(crate) erase_all_missing: AtomicBool,
+    /// Replaces the `data` of the `DELETE /memory` answer (a malformed one).
+    pub(crate) erase_all_answer: Mutex<Option<Value>>,
 }
 
 /// The shared handle the routes and tests hold.

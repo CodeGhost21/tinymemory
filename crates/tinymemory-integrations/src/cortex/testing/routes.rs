@@ -375,15 +375,17 @@ async fn erase(
 
 /// The backend's `DELETE /memory`: erases the caller's entire memory.
 async fn erase_all(State(state): State<Shared>, uri: Uri, headers: HeaderMap) -> Reply {
+    // The gate (auth, an outage) answers before the route is looked up, as
+    // the real backend's middleware does.
+    if let Some(early) = gate(&state, "DELETE", &uri, &headers) {
+        return early;
+    }
     if state.erase_all_missing.load(Ordering::SeqCst) {
         // An older backend: Express's unmatched-route 404, no envelope.
         return (
             StatusCode::NOT_FOUND,
             Json(json!({ "message": "Not Found" })),
         );
-    }
-    if let Some(early) = gate(&state, "DELETE", &uri, &headers) {
-        return early;
     }
     state
         .seen
@@ -392,7 +394,13 @@ async fn erase_all(State(state): State<Shared>, uri: Uri, headers: HeaderMap) ->
         .erasures
         .push(json!({ "all": true }));
     let scopes = state.log.lock().unwrap().erase_everything();
-    ok(&state, 200, json!({ "erased": true, "scopes": scopes }))
+    let data = state
+        .erase_all_answer
+        .lock()
+        .unwrap()
+        .clone()
+        .unwrap_or_else(|| json!({ "erased": true, "scopes": scopes }));
+    ok(&state, 200, data)
 }
 
 async fn answer(
