@@ -14,13 +14,13 @@ fn a_digest_is_sixteen_hex_digits_and_stable() {
 
 #[test]
 fn an_item_carries_its_id_label_and_one_per_set_field() {
-    let mut meta = MemoryMeta::from_source(SourceKind::Github, Some("src-1".into()));
+    let mut meta = MemoryMeta::from_source(SourceKind::Folder, Some("src-1".into()));
     meta.repo = Some("a/b".into());
     let labels = for_item("abc", &meta);
     assert_eq!(labels[0], item("abc"));
     assert!(labels.contains(&format!("tm:r:{}", digest("a/b"))));
     assert!(labels.contains(&format!("tm:s:{}", digest("src-1"))));
-    assert!(labels.contains(&format!("tm:k:{}", digest("github"))));
+    assert!(labels.contains(&format!("tm:k:{}", digest("folder"))));
     assert_eq!(labels.len(), 4);
     assert!(labels.iter().all(|l| l.len() <= 24 && !l.contains(',')));
 }
@@ -37,7 +37,7 @@ fn a_filter_narrows_by_its_most_selective_labelled_field() {
         Some(vec![format!("tm:t:{}", digest("t1"))])
     );
     let by_sources = MetaFilter {
-        sources: vec![SourceKind::Rss, SourceKind::Link],
+        sources: vec![SourceKind::File, SourceKind::Import],
         ..MetaFilter::default()
     };
     assert_eq!(narrowing(&by_sources).map(|l| l.len()), Some(2));

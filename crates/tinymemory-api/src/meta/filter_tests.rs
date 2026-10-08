@@ -150,7 +150,7 @@ fn every_exact_field_must_match() {
                 ..Default::default()
             },
             MetaFilter {
-                sources: vec![SourceKind::Rss],
+                sources: vec![SourceKind::File],
                 ..Default::default()
             },
         ),

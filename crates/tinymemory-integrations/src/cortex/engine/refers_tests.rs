@@ -9,7 +9,7 @@ use tinymemory_api::{FetchMode, FetchRequest, MemoryEngine, MemoryMeta, SourceKi
 use crate::cortex::testing::{both, direct_double, direct_engine};
 
 fn on_day(text: &str, day: u32) -> StoreItem {
-    let mut meta = MemoryMeta::from_source(SourceKind::Github, None);
+    let mut meta = MemoryMeta::from_source(SourceKind::Folder, None);
     // 20:00 UTC: already the next day in India, so the zone is exercised.
     meta.observed_at = Utc.with_ymd_and_hms(2026, 10, day, 20, 0, 0).single();
     StoreItem::document(text, meta)

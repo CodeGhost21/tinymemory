@@ -10,7 +10,7 @@ fn event(id: &str, item: &StoreItem) -> Value {
 }
 
 fn doc(text: &str, repo: Option<&str>) -> StoreItem {
-    let mut meta = MemoryMeta::from_source(SourceKind::Github, None);
+    let mut meta = MemoryMeta::from_source(SourceKind::Folder, None);
     meta.repo = repo.map(str::to_owned);
     StoreItem::document(text, meta)
 }

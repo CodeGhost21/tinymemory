@@ -272,13 +272,13 @@ impl Run {
                     "feed",
                     with(&|meta| {
                         meta.source = SourceRef {
-                            kind: SourceKind::Rss,
+                            kind: SourceKind::File,
                             id: None,
                         }
                     }),
                 ),
                 MetaFilter {
-                    sources: vec![SourceKind::Rss],
+                    sources: vec![SourceKind::File],
                     ..base.clone()
                 },
             ),

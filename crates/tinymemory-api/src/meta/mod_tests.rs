@@ -11,7 +11,7 @@ fn a_default_meta_names_the_agent_as_its_source() {
 
 #[test]
 fn unset_fields_are_omitted_and_round_trip() {
-    let mut meta = MemoryMeta::from_source(SourceKind::Github, Some("src_1".into()));
+    let mut meta = MemoryMeta::from_source(SourceKind::Folder, Some("src_1".into()));
     meta.repo = Some("owner/name".into());
     meta.tool_call = Some(ToolCallRef {
         name: "grep".into(),
@@ -23,7 +23,7 @@ fn unset_fields_are_omitted_and_round_trip() {
         serde_json::json!({
             "repo": "owner/name",
             "tool_call": { "name": "grep" },
-            "source": { "kind": "github", "id": "src_1" }
+            "source": { "kind": "folder", "id": "src_1" }
         })
     );
     let back: MemoryMeta = serde_json::from_value(json).expect("deserialise");
@@ -42,4 +42,17 @@ fn source_kind_wire_strings_match_serde() {
         let json = serde_json::to_value(kind).expect("serialise");
         assert_eq!(json, serde_json::json!(kind.as_str()));
     }
+}
+
+#[test]
+fn retired_network_source_kinds_decode_as_import() {
+    for retired in ["link", "github", "rss", "composio"] {
+        let kind: SourceKind =
+            serde_json::from_value(serde_json::json!(retired)).expect("legacy kind decodes");
+        assert_eq!(kind, SourceKind::Import, "{retired}");
+    }
+    assert_eq!(
+        serde_json::to_value(SourceKind::Import).expect("serialise"),
+        serde_json::json!("import")
+    );
 }
