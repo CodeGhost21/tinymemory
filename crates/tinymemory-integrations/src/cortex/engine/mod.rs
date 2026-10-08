@@ -450,6 +450,10 @@ mod tests;
 mod list_tests;
 
 #[cfg(test)]
+#[path = "mod_list_preview_tests.rs"]
+mod list_preview_tests;
+
+#[cfg(test)]
 #[path = "mod_chunk_tests.rs"]
 mod chunk_tests;
 
