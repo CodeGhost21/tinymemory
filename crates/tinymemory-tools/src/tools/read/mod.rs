@@ -80,6 +80,7 @@ pub(crate) async fn fetch(
         cursor: args.string("cursor")?,
         beliefs: 0,
         refers_to: time_hint(&args, "refers_to", scope)?,
+        max_scopes: None,
     };
     Ok(render::fetch(&engine.fetch(request).await?))
 }

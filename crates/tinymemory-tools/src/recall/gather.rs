@@ -114,7 +114,7 @@ pub(super) async fn section(
                 );
                 fetch(
                     engine,
-                    &section.filter,
+                    section,
                     question,
                     fetch_want,
                     0,
@@ -133,16 +133,7 @@ pub(super) async fn section(
             {
                 Some(query) => {
                     let hint = request.refers_to.clone();
-                    fetch(
-                        engine,
-                        &section.filter,
-                        query,
-                        fetch_want,
-                        beliefs,
-                        &keep,
-                        hint,
-                    )
-                    .await
+                    fetch(engine, section, query, fetch_want, beliefs, &keep, hint).await
                 }
                 None => with_listed_beliefs(engine, section, want, &keep).await,
             }
@@ -360,7 +351,7 @@ fn interleave(first: Vec<Hit>, second: impl IntoIterator<Item = Hit>) -> Vec<Hit
 /// newest first instead.
 async fn fetch(
     engine: &dyn MemoryEngine,
-    filter: &MetaFilter,
+    section: &ScopeSection,
     query: &str,
     limit: usize,
     beliefs: usize,
@@ -368,7 +359,10 @@ async fn fetch(
     refers_to: Option<TimeHint>,
 ) -> tinymemory_api::Result<(Vec<Hit>, Vec<Hit>)> {
     let Some(mode) = preferred_mode(engine) else {
-        return Ok((latest(engine, filter, limit, keep).await?, Vec::new()));
+        return Ok((
+            latest(engine, &section.filter, limit, keep).await?,
+            Vec::new(),
+        ));
     };
     // Exclusions (the prompt's thread window, shown ids) are dropped page by
     // page. Only when a page lost hits to them and too few remain is the next
@@ -379,7 +373,8 @@ async fn fetch(
     let mut cursor: Option<String> = None;
     for page_no in 0..FETCH_MAX_PAGES {
         let mut request = FetchRequest::new(query, mode, limit);
-        request.filter = filter.clone();
+        request.filter = section.filter.clone();
+        request.max_scopes = section.max_scopes;
         request.beliefs = if page_no == 0 { beliefs } else { 0 };
         request.cursor = cursor.take();
         request.refers_to = refers_to.clone();

@@ -149,6 +149,14 @@ pub struct FetchRequest {
     /// hint, never a filter (see [`TimeHint`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refers_to: Option<TimeHint>,
+    /// Read at most this many of the scopes the filter reaches; `None`, the
+    /// default, reads them all. For a per-turn read over a tree that holds
+    /// many scopes (one per connector or repository), where each scope is a
+    /// separate ranking: an engine that keeps scopes apart reads the ones the
+    /// query names first, then the most recently written; an engine without
+    /// scopes ignores it. Must be positive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_scopes: Option<usize>,
 }
 
 /// Whether `n` is zero (serde's skip test).
@@ -168,6 +176,7 @@ impl FetchRequest {
             cursor: None,
             beliefs: 0,
             refers_to: None,
+            max_scopes: None,
         }
     }
 
@@ -175,11 +184,14 @@ impl FetchRequest {
     ///
     /// # Errors
     ///
-    /// [`Error::InvalidRequest`] for a blank query, a zero limit or an invalid
-    /// [`TimeHint`].
+    /// [`Error::InvalidRequest`] for a blank query, a zero limit, a zero
+    /// [`FetchRequest::max_scopes`] or an invalid [`TimeHint`].
     pub fn validate(&self) -> Result<()> {
         non_blank("fetch query", &self.query)?;
         positive("fetch limit", self.limit)?;
+        if let Some(scopes) = self.max_scopes {
+            positive("fetch max_scopes", scopes)?;
+        }
         self.refers_to.as_ref().map_or(Ok(()), TimeHint::validate)
     }
 }

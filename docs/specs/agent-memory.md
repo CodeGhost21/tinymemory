@@ -177,8 +177,11 @@ skipped, engine }`.
 
 - **Standard sections**, in priority order: Learnings (the whole tree), one
   section per core scope ([core-scopes.md](core-scopes.md); none by default),
-  Brain (all documents), this agent's history, and team conversations (every
-  agent). A zero limit in `RecallPolicy` leaves a section out.
+  Brain (all documents, reading at most `BRAIN_SCOPES_PER_TURN` (4) scopes:
+  those the query names, then the most recently written), this agent's
+  history, and team conversations (every agent; none in a layout that pools
+  conversations, where they are the history's node). A zero limit in
+  `RecallPolicy` leaves a section out.
 - **`pre_turn` never fails on an engine error.** A failed log is reported in
   `TurnContext::log_error` and the pack is still returned.
 - **`post_turn` reports belief builds.** It returns a `BuildBeliefs` job for

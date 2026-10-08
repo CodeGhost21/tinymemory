@@ -685,3 +685,12 @@ async fn a_ranked_section_reads_past_a_page_the_thread_window_empties() {
         pack.markdown
     );
 }
+
+#[test]
+fn a_section_reading_zero_scopes_is_refused() {
+    let section = ScopeSection::fetch("Docs", docs(), 5);
+    assert_eq!(section.max_scopes, None);
+    assert_eq!(section.clone().with_max_scopes(4).max_scopes, Some(4));
+    let request = HolisticRecall::new(Some("q".into()), vec![section.with_max_scopes(0)]);
+    assert!(request.validate().is_err());
+}
