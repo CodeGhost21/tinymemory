@@ -551,9 +551,22 @@ async fn beliefs(
     ok(&state, 200, json!({ "items": items, "has_more": false }))
 }
 
+/// `v1/auth/whoami`: the configured caller, else 404. Not recorded in
+/// `seen`, so a test counting requests counts the same with or without it.
+async fn whoami(State(state): State<Shared>) -> Reply {
+    match state.whoami_caller.lock().unwrap().clone() {
+        Some(caller) => (StatusCode::OK, Json(json!({ "caller": caller }))),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error_code": "NOT_FOUND" })),
+        ),
+    }
+}
+
 /// CortexDB's own routes.
 pub(super) fn direct(state: Shared) -> Router {
     Router::new()
+        .route("/v1/auth/whoami", get(whoami))
         .route("/v1/experience", post(experience))
         .route("/v1/experience/bulk", post(bulk))
         .route("/v1/events", get(events))

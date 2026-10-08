@@ -182,15 +182,16 @@ impl CortexEngine {
     /// The subject attributed events are about, when attributing: the v3
     /// root's owner, else the caller `whoami` reports. `None` (nothing is
     /// attributed) when attribution is off or refused, on the TinyHumans
-    /// backend, or with no owner known.
+    /// backend, or with no well-formed (`type:id`) owner known.
     async fn attribution_subject(&self) -> Option<String> {
         if !self.attribution.active() || self.wire() != CortexWire::Direct {
             return None;
         }
-        match &self.owner {
-            Some(owner) => Some(owner.clone()),
-            None => self.log.client.caller().await,
-        }
+        let subject = match &self.owner {
+            Some(owner) => owner.clone(),
+            None => self.log.client.caller().await?,
+        };
+        attribution::actor_id(&subject)
     }
 
     /// Writes one item's events. An `attributed` write CortexDB refuses for

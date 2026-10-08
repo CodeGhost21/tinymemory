@@ -124,7 +124,7 @@ fn typed(id: &str) -> Value {
 }
 
 /// `id` as an actor id: `type:id`, both parts present, no whitespace.
-fn actor_id(id: &str) -> Option<String> {
+pub(crate) fn actor_id(id: &str) -> Option<String> {
     let id = id.trim();
     let (kind, rest) = id.split_once(':')?;
     let clean = |part: &str| !part.is_empty() && !part.chars().any(char::is_whitespace);

@@ -182,3 +182,37 @@ async fn a_refused_conversation_is_written_whole_without_attribution() {
     assert!(events[2..].iter().all(|e| actor(e).is_none()));
     assert_eq!(state.log.lock().unwrap().events.len(), 2, "each turn once");
 }
+
+#[tokio::test]
+async fn without_a_root_owner_the_subject_is_the_whoami_caller() {
+    let (endpoint, state) = direct_double().await;
+    *state.whoami_caller.lock().unwrap() = Some("user:local".into());
+    let engine = direct_engine(&endpoint).with_observed_actor(true);
+    engine.store_many(vec![chat()]).await.unwrap();
+    let events = events(&state);
+    assert_eq!(actor(&events[1]), Some("agent:orchestrator"));
+    assert_eq!(events[1]["subject"]["id"], "user:local");
+}
+
+#[tokio::test]
+async fn nothing_is_attributed_without_a_well_formed_subject() {
+    for (owner, caller) in [(None, None), (None, Some("local")), (Some("owner"), None)] {
+        let (endpoint, state) = direct_double().await;
+        *state.whoami_caller.lock().unwrap() = caller.map(str::to_string);
+        let mut engine = direct_engine(&endpoint);
+        if let Some(owner) = owner {
+            engine = engine.with_scope_root("user:42", Some(owner)).unwrap();
+        }
+        let engine = engine.with_observed_actor(true);
+        engine
+            .store_many(vec![chat(), email("see you at noon", true)])
+            .await
+            .unwrap();
+        assert!(
+            events(&state).iter().all(
+                |event| event.get("observed_actor").is_none() && event.get("subject").is_none()
+            ),
+            "owner {owner:?}, caller {caller:?}: written plainly"
+        );
+    }
+}
