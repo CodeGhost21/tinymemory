@@ -210,7 +210,7 @@ async fn a_backend_without_the_erase_route_is_unsupported() {
 }
 
 #[tokio::test]
-async fn a_hosted_erase_without_its_confirmation_is_an_engine_error() {
+async fn a_hosted_outage_on_the_erase_is_unavailable() {
     let (endpoint, state) = hosted_double().await;
     state
         .fail_all
@@ -223,6 +223,86 @@ async fn a_hosted_erase_without_its_confirmation_is_an_engine_error() {
         matches!(failed, Err(tinymemory_api::Error::Unavailable(_))),
         "{failed:?}"
     );
+}
+
+/// Backend contract (tinyhumansai/backend#1409): `DELETE /memory` answers
+/// `{success:true,data:{erased:true,scopes:n}}`, authenticated like the other
+/// memory routes, and fails as `{success:false,error,errorCode}`.
+#[tokio::test]
+async fn the_hosted_erase_reads_the_backend_envelope() {
+    let (endpoint, state) = hosted_double().await;
+    *state.erase_all_answer.lock().unwrap() =
+        Some(serde_json::json!({ "erased": true, "scopes": 3 }));
+    let engine = hosted_engine(&endpoint);
+    let report = engine.erase(whole_tree()).await.unwrap();
+    assert_eq!(report.erased_scopes, 3, "{report:?}");
+    assert!(
+        state.seen.lock().unwrap().auth.iter().all(|a| a.starts_with("Bearer ")),
+        "authenticated like the other memory routes"
+    );
+
+    // An unauthenticated caller gets the error envelope with its code.
+    *state.accept_token.lock().unwrap() = Some("other".to_string());
+    let denied = engine.erase(whole_tree()).await.unwrap_err();
+    assert!(
+        matches!(denied, tinymemory_api::Error::Unauthorized(_) | tinymemory_api::Error::Unavailable(_)),
+        "{denied:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_hosted_erase_answer_without_erased_true_is_an_engine_error() {
+    for data in [
+        serde_json::json!({ "scopes": 2 }),
+        serde_json::json!({ "erased": false, "scopes": 2 }),
+        serde_json::json!({ "erased": "true", "scopes": 2 }),
+    ] {
+        let (endpoint, state) = hosted_double().await;
+        *state.erase_all_answer.lock().unwrap() = Some(data.clone());
+        let failed = hosted_engine(&endpoint).erase(whole_tree()).await;
+        assert!(failed.is_err(), "{data}: {failed:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_hosted_erase_answer_with_a_missing_or_malformed_count_is_an_error() {
+    for data in [
+        serde_json::json!({ "erased": true }),
+        serde_json::json!({ "erased": true, "scopes": "2" }),
+        serde_json::json!({ "erased": true, "scopes": -1 }),
+        serde_json::json!({ "erased": true, "scopes": null }),
+    ] {
+        let (endpoint, state) = hosted_double().await;
+        *state.erase_all_answer.lock().unwrap() = Some(data.clone());
+        let failed = hosted_engine(&endpoint).erase(whole_tree()).await;
+        assert!(failed.is_err(), "{data}: {failed:?}");
+    }
+}
+
+#[tokio::test]
+async fn the_gate_answers_before_a_missing_erase_route() {
+    let (endpoint, state) = hosted_double().await;
+    state
+        .erase_all_missing
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    *state.accept_token.lock().unwrap() = Some("other".to_string());
+    let refused = hosted_engine(&endpoint).erase(whole_tree()).await;
+    assert!(
+        !matches!(refused, Err(tinymemory_api::Error::Unsupported(_))),
+        "an unauthenticated caller is told so, not that the route is missing: {refused:?}"
+    );
+}
+
+#[test]
+fn the_double_erases_every_scope_of_its_log() {
+    let mut log = crate::cortex::testing::Log::default();
+    for (n, scope) in ["a", "a/b", "c"].into_iter().enumerate() {
+        let event = serde_json::json!({ "id": format!("e{n}"), "scope": scope });
+        log.events.push(event);
+    }
+    assert_eq!(log.erase_everything(), 3);
+    assert!(log.events.is_empty());
+    assert_eq!(log.erasures, 3, "one whole-scope erasure per scope");
 }
 
 #[tokio::test]
