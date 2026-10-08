@@ -205,6 +205,14 @@ impl CortexLog {
         )
     }
 
+    /// The backend's `DELETE /memory`: every event of the tenant, every
+    /// scope; how many scopes held anything.
+    pub(crate) fn erase_everything(&mut self) -> usize {
+        let scopes = self.scopes("").len();
+        let _ = self.erase(&json!({ "scope": "", "confirm_all": true }));
+        scopes
+    }
+
     /// `POST /v1/erasures`, a whole-scope erasure as CortexDB answers it
     /// (measured on 0.10.5): `confirm_all` and no selector, else 422. The
     /// scope's own events are deleted and their keys released; a descendant

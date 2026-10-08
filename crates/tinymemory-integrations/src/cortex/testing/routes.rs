@@ -373,6 +373,25 @@ async fn erase(
     relay(&state, result)
 }
 
+/// The backend's `DELETE /memory`: erases the caller's entire memory.
+async fn erase_all(State(state): State<Shared>, uri: Uri, headers: HeaderMap) -> Reply {
+    if state.erase_all_missing.load(Ordering::SeqCst) {
+        // An older backend: Express's unmatched-route 404, no envelope.
+        return (StatusCode::NOT_FOUND, Json(json!({ "message": "Not Found" })));
+    }
+    if let Some(early) = gate(&state, "DELETE", &uri, &headers) {
+        return early;
+    }
+    state
+        .seen
+        .lock()
+        .unwrap()
+        .erasures
+        .push(json!({ "all": true }));
+    let scopes = state.log.lock().unwrap().erase_everything();
+    ok(&state, 200, json!({ "erased": true, "scopes": scopes }))
+}
+
 async fn answer(
     State(state): State<Shared>,
     uri: Uri,
@@ -635,5 +654,6 @@ pub(super) fn hosted(state: Shared) -> Router {
         .route("/memory/forget", post(forget))
         .route("/memory/answer", post(answer))
         .route("/memory/scopes", get(scopes))
+        .route("/memory", axum::routing::delete(erase_all))
         .with_state(state)
 }
