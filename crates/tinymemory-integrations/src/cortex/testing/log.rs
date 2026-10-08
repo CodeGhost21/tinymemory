@@ -36,7 +36,7 @@ pub(crate) struct CortexLog {
     /// Beliefs built, oldest first.
     pub(crate) beliefs: Vec<Value>,
     /// Erasures run.
-    erasures: u64,
+    pub(crate) erasures: u64,
 }
 
 /// Whether `event` carries any one of `wanted` (an empty list keeps all).

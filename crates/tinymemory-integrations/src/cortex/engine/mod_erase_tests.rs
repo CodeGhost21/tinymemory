@@ -237,7 +237,13 @@ async fn the_hosted_erase_reads_the_backend_envelope() {
     let report = engine.erase(whole_tree()).await.unwrap();
     assert_eq!(report.erased_scopes, 3, "{report:?}");
     assert!(
-        state.seen.lock().unwrap().auth.iter().all(|a| a.starts_with("Bearer ")),
+        state
+            .seen
+            .lock()
+            .unwrap()
+            .auth
+            .iter()
+            .all(|a| a.starts_with("Bearer ")),
         "authenticated like the other memory routes"
     );
 
@@ -245,7 +251,10 @@ async fn the_hosted_erase_reads_the_backend_envelope() {
     *state.accept_token.lock().unwrap() = Some("other".to_string());
     let denied = engine.erase(whole_tree()).await.unwrap_err();
     assert!(
-        matches!(denied, tinymemory_api::Error::Unauthorized(_) | tinymemory_api::Error::Unavailable(_)),
+        matches!(
+            denied,
+            tinymemory_api::Error::Unauthorized(_) | tinymemory_api::Error::Unavailable(_)
+        ),
         "{denied:?}"
     );
 }
@@ -295,7 +304,7 @@ async fn the_gate_answers_before_a_missing_erase_route() {
 
 #[test]
 fn the_double_erases_every_scope_of_its_log() {
-    let mut log = crate::cortex::testing::Log::default();
+    let mut log = crate::cortex::testing::CortexLog::default();
     for (n, scope) in ["a", "a/b", "c"].into_iter().enumerate() {
         let event = serde_json::json!({ "id": format!("e{n}"), "scope": scope });
         log.events.push(event);

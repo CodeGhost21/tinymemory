@@ -128,7 +128,7 @@ pub(crate) struct Double {
     /// it answers the router's bare 404.
     pub(crate) erase_all_missing: AtomicBool,
     /// Replaces the `data` of the `DELETE /memory` answer (a malformed one).
-    pub(crate) erase_all_answer: Mutex<Option<Value>>,
+    pub(crate) erase_all_answer: Mutex<Option<serde_json::Value>>,
 }
 
 /// The shared handle the routes and tests hold.

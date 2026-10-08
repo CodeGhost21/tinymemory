@@ -145,9 +145,16 @@ fn a_hosted_409_with_the_conflict_code_is_a_conflict() {
     assert!(matches!(error, Error::Conflict(_)), "{error:?}");
     assert_eq!(error_code(&error), Some("CONFLICT"));
     // The same through the envelope unwrap a failing response takes.
-    let unwrapped =
-        unwrap_envelope("h", "memory/experience", StatusCode::CONFLICT, body.as_bytes());
-    assert!(matches!(unwrapped, Err(Error::Conflict(_))), "{unwrapped:?}");
+    let unwrapped = unwrap_envelope(
+        "h",
+        "memory/experience",
+        StatusCode::CONFLICT,
+        body.as_bytes(),
+    );
+    assert!(
+        matches!(unwrapped, Err(Error::Conflict(_))),
+        "{unwrapped:?}"
+    );
 }
 
 #[test]
