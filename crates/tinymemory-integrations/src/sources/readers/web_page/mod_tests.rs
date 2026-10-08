@@ -9,8 +9,6 @@ fn web_source(url: Option<&str>, selector: Option<&str>) -> MemorySourceEntry {
         kind: SourceKind::WebPage,
         label: "Reference page".into(),
         enabled: true,
-        toolkit: None,
-        connection_id: None,
         path: None,
         glob: None,
         url: url.map(str::to_string),

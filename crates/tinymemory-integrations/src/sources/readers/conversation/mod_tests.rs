@@ -11,8 +11,6 @@ fn conversation_source() -> MemorySourceEntry {
         kind: SourceKind::Conversation,
         label: "Conversations".into(),
         enabled: true,
-        toolkit: None,
-        connection_id: None,
         path: None,
         glob: None,
         url: None,

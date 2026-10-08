@@ -54,17 +54,12 @@ fn base_meta_names_the_source_by_contract_kind_and_entry_id() {
         (SourceKind::WebPage, Api::Link),
         (SourceKind::GithubRepo, Api::Github),
         (SourceKind::RssFeed, Api::Rss),
-        (SourceKind::Composio, Api::Composio),
         (SourceKind::Conversation, Api::Conversation),
     ] {
         let meta = base_meta(&entry(kind));
         assert_eq!(meta.source.kind, api);
         assert_eq!(meta.source.id.as_deref(), Some("src_test"));
     }
-
-    let mut composio = entry(SourceKind::Composio);
-    composio.toolkit = Some("gmail".into());
-    assert_eq!(base_meta(&composio).tags, vec!["gmail".to_string()]);
 }
 
 #[test]
@@ -168,7 +163,7 @@ fn link_items_take_the_page_url() {
 }
 
 #[test]
-fn reader_content_for_local_kinds_and_composio_fills_what_it_can() {
+fn reader_content_for_local_kinds_fills_what_it_can() {
     let mut folder = entry(SourceKind::Folder);
     folder.path = Some("/notes".into());
     let item = content_item(
@@ -212,21 +207,6 @@ fn reader_content_for_local_kinds_and_composio_fills_what_it_can() {
     )
     .unwrap();
     assert_eq!(conversation.meta().thread_id.as_deref(), Some("t1"));
-
-    let mut composio = entry(SourceKind::Composio);
-    composio.toolkit = Some("slack".into());
-    let item = content_item(
-        &composio,
-        content(
-            "c1",
-            "sync data",
-            ContentType::Plaintext,
-            serde_json::json!({}),
-        ),
-        None,
-    )
-    .unwrap();
-    assert_eq!(item.meta().tags, vec!["slack".to_string()]);
 }
 
 #[test]

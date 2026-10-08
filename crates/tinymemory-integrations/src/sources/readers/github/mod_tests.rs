@@ -10,8 +10,6 @@ fn github_source(url: Option<&str>) -> MemorySourceEntry {
         kind: SourceKind::GithubRepo,
         label: "GitHub".into(),
         enabled: true,
-        toolkit: None,
-        connection_id: None,
         path: None,
         glob: None,
         url: url.map(str::to_string),

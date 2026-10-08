@@ -38,8 +38,6 @@ fn rss_source(url: Option<&str>, max_items: Option<u32>) -> MemorySourceEntry {
         label: "Feed".into(),
         kind: SourceKind::RssFeed,
         enabled: true,
-        toolkit: None,
-        connection_id: None,
         path: None,
         glob: None,
         url: url.map(str::to_string),

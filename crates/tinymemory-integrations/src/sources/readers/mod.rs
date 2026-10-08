@@ -123,8 +123,7 @@ pub fn is_locally_readable(kind: &SourceKind) -> bool {
 /// Get the reader for a source kind that is safe to drive on a timer.
 ///
 /// Returns `Some` for [`SourceKind::Folder`], [`SourceKind::File`] and
-/// [`SourceKind::Conversation`]. Network-backed kinds (`composio`,
-/// `github_repo`, `rss_feed`, `web_page`) return `None` so the caller defers to
+/// [`SourceKind::Conversation`]. Network-backed kinds (/// `github_repo`, `rss_feed`, `web_page`) return `None` so the caller defers to
 /// the host's sync runner, which constructs those readers once it has
 /// authorized the fetch.
 #[must_use]
@@ -133,9 +132,7 @@ pub fn reader_for(kind: &SourceKind) -> Option<Box<dyn SourceReader>> {
         SourceKind::Folder => Some(Box::new(folder::FolderReader)),
         SourceKind::File => Some(Box::new(file::FileReader)),
         SourceKind::Conversation => Some(Box::new(conversation::ConversationReader)),
-        SourceKind::GithubRepo
-        | SourceKind::RssFeed
-        | SourceKind::WebPage => None,
+        SourceKind::GithubRepo | SourceKind::RssFeed | SourceKind::WebPage => None,
     }
 }
 
