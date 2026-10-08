@@ -11,7 +11,7 @@ CortexDB engine and the registry are in [cortex.md](cortex.md).
 | --- | --- | --- |
 | `cortex`, `registry`, `config` | `cortex` (default) | [cortex.md](cortex.md) |
 | `documents` | `documents`, `documents-office` | [Documents](#documents) |
-| `sources` | `sources` | [integrations-sources.md](integrations-sources.md) |
+| `sources` | `sources`, `sources-network` | [integrations-sources.md](integrations-sources.md) |
 | `safety` | `safety` | [Safety](#safety) |
 | `import` | `legacy-import` | [Legacy v1 import](#legacy-v1-import) |
 

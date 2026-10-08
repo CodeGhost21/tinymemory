@@ -53,6 +53,10 @@
                 "enum": [
                   "folder",
                   "file",
+                  "link",
+                  "github",
+                  "rss",
+                  "composio",
                   "conversation",
                   "agent",
                   "import"
@@ -184,6 +188,10 @@
                 "enum": [
                   "folder",
                   "file",
+                  "link",
+                  "github",
+                  "rss",
+                  "composio",
                   "conversation",
                   "agent",
                   "import"
@@ -321,6 +329,10 @@
                 "enum": [
                   "folder",
                   "file",
+                  "link",
+                  "github",
+                  "rss",
+                  "composio",
                   "conversation",
                   "agent",
                   "import"
@@ -457,6 +469,10 @@
                 "enum": [
                   "folder",
                   "file",
+                  "link",
+                  "github",
+                  "rss",
+                  "composio",
                   "conversation",
                   "agent",
                   "import"
@@ -666,6 +682,10 @@
                 "enum": [
                   "folder",
                   "file",
+                  "link",
+                  "github",
+                  "rss",
+                  "composio",
                   "conversation",
                   "agent",
                   "import"

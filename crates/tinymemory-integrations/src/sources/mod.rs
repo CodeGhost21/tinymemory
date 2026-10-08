@@ -1,17 +1,23 @@
-//! Source readers for TinyMemory: turn a folder, a file or a local conversation
+//! Source readers for TinyMemory: turn a folder, a file, a web page, a GitHub
+//! repository, an RSS feed, a Composio toolkit payload or a local conversation
 //! into [`StoreItem`](tinymemory_api::StoreItem)s.
 //!
 //! - **Configuration** — what a source *is* ([`MemorySourceEntry`], keyed by
 //!   [`SourceKind`], checked by [`MemorySourceEntry::validate`]). Where the
 //!   host stores its sources, and how it edits them, is the host's business.
 //! - **Readers** — [`readers::SourceReader`] lists a source's items and reads
-//!   one. Every reader (folder, file, conversation) is local; none touches the
-//!   network.
+//!   one. Local readers (folder, file, conversation) are always compiled; the
+//!   network readers (GitHub, RSS, web page) and `fetch` sit behind the
+//!   `sources-network` feature; RSS and web pages fetch through `fetch`,
+//!   behind its one SSRF guard (`fetch::ssrf`).
 //! - **Items** — [`items`] maps reader output to `StoreItem`s with
 //!   [`MemoryMeta`](tinymemory_api::MemoryMeta) filled per kind; every text
 //!   body is converted to markdown through [`crate::documents`].
+//! - **Composio** — [`composio`] normalises toolkit payloads (Gmail, Slack,
+//!   GitHub, Linear, Notion, ClickUp) and maps them to items.
 //!
-//! Scheduling stays with the host: this module reads when asked.
+//! Scheduling, credentials and egress budgets stay with the host: this module
+//! reads when asked.
 //!
 //! # Example
 //!
@@ -51,9 +57,16 @@
 //!
 //! # Feature flags
 //!
-//! - `sources` — everything above. Implies `documents`; links no HTTP stack.
+//! - `sources` — everything above except the network pieces. Implies
+//!   `documents`; links no HTTP stack.
+//! - `sources-network` — the GitHub, RSS and web-page readers, `fetch`,
+//!   `readers::reader_for_request` and the SSRF guard. Without it, a host that
+//!   only reads local sources links no HTTP stack.
 
+pub mod composio;
 pub mod error;
+#[cfg(feature = "sources-network")]
+pub mod fetch;
 pub mod items;
 pub mod readers;
 pub mod types;

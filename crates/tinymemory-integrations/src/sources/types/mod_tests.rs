@@ -5,9 +5,13 @@ use super::*;
 #[test]
 fn source_kind_round_trips_via_serde() {
     for kind in [
+        SourceKind::Composio,
         SourceKind::Conversation,
         SourceKind::Folder,
         SourceKind::File,
+        SourceKind::GithubRepo,
+        SourceKind::RssFeed,
+        SourceKind::WebPage,
     ] {
         let json = serde_json::to_string(&kind).unwrap();
         let decoded: SourceKind = serde_json::from_str(&json).unwrap();
@@ -17,9 +21,33 @@ fn source_kind_round_trips_via_serde() {
 
 #[test]
 fn source_kind_as_str_matches_wire_strings() {
+    assert_eq!(SourceKind::Composio.as_str(), "composio");
     assert_eq!(SourceKind::Conversation.as_str(), "conversation");
     assert_eq!(SourceKind::Folder.as_str(), "folder");
+    assert_eq!(SourceKind::GithubRepo.as_str(), "github_repo");
     assert_eq!(SourceKind::File.as_str(), "file");
+    assert_eq!(SourceKind::RssFeed.as_str(), "rss_feed");
+    assert_eq!(SourceKind::WebPage.as_str(), "web_page");
+}
+
+#[test]
+fn validate_composio_requires_toolkit_and_connection_id() {
+    let entry = MemorySourceEntry {
+        id: "src_1".into(),
+        kind: SourceKind::Composio,
+        label: "Gmail".into(),
+        enabled: true,
+        toolkit: Some("gmail".into()),
+        connection_id: None,
+        ..default_entry()
+    };
+    assert!(entry.validate().is_err());
+
+    let valid = MemorySourceEntry {
+        connection_id: Some("cmp_123".into()),
+        ..entry
+    };
+    assert!(valid.validate().is_ok());
 }
 
 #[test]
@@ -36,6 +64,19 @@ fn validate_folder_requires_path() {
 }
 
 #[test]
+fn validate_github_requires_url() {
+    let entry = MemorySourceEntry {
+        id: "src_3".into(),
+        kind: SourceKind::GithubRepo,
+        label: "Repo".into(),
+        enabled: true,
+        url: Some("https://github.com/org/repo".into()),
+        ..default_entry()
+    };
+    assert!(entry.validate().is_ok());
+}
+
+#[test]
 fn validate_file_requires_path() {
     let entry = MemorySourceEntry::new("src_file", SourceKind::File, "One file");
     assert!(entry.validate().is_err());
@@ -47,24 +88,50 @@ fn validate_file_requires_path() {
 }
 
 #[test]
-fn the_removed_network_kinds_no_longer_decode() {
-    for removed in [
-        "twitter_query",
-        "composio",
-        "github_repo",
-        "rss_feed",
-        "web_page",
-    ] {
-        let decoded = serde_json::from_str::<SourceKind>(&format!("\"{removed}\""));
-        assert!(decoded.is_err(), "{removed} must not decode");
-    }
+fn the_removed_twitter_query_kind_no_longer_decodes() {
+    let decoded = serde_json::from_str::<SourceKind>("\"twitter_query\"");
+    assert!(decoded.is_err());
 }
 
 #[test]
 fn every_config_kind_maps_onto_a_contract_source_kind() {
     use tinymemory_api::SourceKind as Api;
     let mapped: Vec<Api> = SourceKind::ALL.iter().map(SourceKind::api_kind).collect();
-    assert_eq!(mapped, vec![Api::Conversation, Api::Folder, Api::File]);
+    assert_eq!(
+        mapped,
+        vec![
+            Api::Composio,
+            Api::Conversation,
+            Api::Folder,
+            Api::File,
+            Api::Github,
+            Api::Rss,
+            Api::Link,
+        ]
+    );
+}
+
+#[test]
+fn validate_rss_and_web_page_require_url() {
+    let rss = MemorySourceEntry {
+        id: "src_rss".into(),
+        kind: SourceKind::RssFeed,
+        label: "Feed".into(),
+        enabled: true,
+        url: None,
+        ..default_entry()
+    };
+    assert!(rss.validate().is_err());
+
+    let web = MemorySourceEntry {
+        id: "src_web".into(),
+        kind: SourceKind::WebPage,
+        label: "Page".into(),
+        enabled: true,
+        url: Some("https://example.com".into()),
+        ..default_entry()
+    };
+    assert!(web.validate().is_ok());
 }
 
 #[test]
@@ -178,8 +245,18 @@ pub(super) fn default_entry() -> MemorySourceEntry {
         kind: SourceKind::Folder,
         label: String::new(),
         enabled: true,
+        toolkit: None,
+        connection_id: None,
         path: None,
         glob: None,
+        url: None,
+        branch: None,
+        paths: Vec::new(),
+        max_commits: None,
+        max_issues: None,
+        max_prs: None,
+        max_items: None,
+        selector: None,
         max_tokens_per_sync: None,
         max_cost_per_sync_usd: None,
         sync_depth_days: None,
@@ -197,11 +274,21 @@ pub(super) fn default_entry() -> MemorySourceEntry {
 fn source_entry_wire_format_is_pinned() {
     let entry = MemorySourceEntry {
         id: "src_pinned".into(),
-        kind: SourceKind::Folder,
+        kind: SourceKind::GithubRepo,
         label: "Pinned".into(),
         enabled: false,
+        toolkit: Some("gmail".into()),
+        connection_id: Some("conn-1".into()),
         path: Some("/notes".into()),
         glob: Some("**/*.md".into()),
+        url: Some("https://github.com/tinyhumansai/tinymemory".into()),
+        branch: Some("main".into()),
+        paths: vec!["core/src".into()],
+        max_commits: Some(10),
+        max_issues: Some(20),
+        max_prs: Some(30),
+        max_items: Some(40),
+        selector: Some("article".into()),
         max_tokens_per_sync: Some(50_000),
         max_cost_per_sync_usd: Some(1.5),
         sync_depth_days: Some(90),
@@ -211,11 +298,21 @@ fn source_entry_wire_format_is_pinned() {
         serde_json::to_value(&entry).unwrap(),
         serde_json::json!({
             "id": "src_pinned",
-            "kind": "folder",
+            "kind": "github_repo",
             "label": "Pinned",
             "enabled": false,
+            "toolkit": "gmail",
+            "connection_id": "conn-1",
             "path": "/notes",
             "glob": "**/*.md",
+            "url": "https://github.com/tinyhumansai/tinymemory",
+            "branch": "main",
+            "paths": ["core/src"],
+            "max_commits": 10,
+            "max_issues": 20,
+            "max_prs": 30,
+            "max_items": 40,
+            "selector": "article",
             "max_tokens_per_sync": 50000,
             "max_cost_per_sync_usd": 1.5,
             "sync_depth_days": 90

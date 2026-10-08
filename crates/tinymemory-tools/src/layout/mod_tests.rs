@@ -99,7 +99,7 @@ fn source_ids_round_trip() {
     }
     assert_eq!("MD".parse::<BrainSource>().unwrap(), BrainSource::Markdown);
     assert!(" ".parse::<BrainSource>().is_err());
-    assert_eq!(BrainSource::Github.source_kind(), SourceKind::Import);
+    assert_eq!(BrainSource::Github.source_kind(), SourceKind::Github);
 }
 
 #[test]

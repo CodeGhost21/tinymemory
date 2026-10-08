@@ -51,16 +51,124 @@ fn base_meta_names_the_source_by_contract_kind_and_entry_id() {
     for (kind, api) in [
         (SourceKind::Folder, Api::Folder),
         (SourceKind::File, Api::File),
+        (SourceKind::WebPage, Api::Link),
+        (SourceKind::GithubRepo, Api::Github),
+        (SourceKind::RssFeed, Api::Rss),
+        (SourceKind::Composio, Api::Composio),
         (SourceKind::Conversation, Api::Conversation),
     ] {
         let meta = base_meta(&entry(kind));
         assert_eq!(meta.source.kind, api);
         assert_eq!(meta.source.id.as_deref(), Some("src_test"));
     }
+
+    let mut composio = entry(SourceKind::Composio);
+    composio.toolkit = Some("gmail".into());
+    assert_eq!(base_meta(&composio).tags, vec!["gmail".to_string()]);
 }
 
 #[test]
-fn reader_content_for_local_kinds_fills_what_it_can() {
+fn github_commit_items_carry_repo_and_commit() {
+    let item = content_item(
+        &entry(SourceKind::GithubRepo),
+        content(
+            "commit:abc123",
+            "# Fix\n\nbody",
+            ContentType::Markdown,
+            serde_json::json!({ "owner": "acme", "repo": "widgets", "sha": "abc123full" }),
+        ),
+        Some(1_700_000_000_000),
+    )
+    .unwrap();
+    let (title, body, mime, meta) = document_parts(&item);
+    assert_eq!(title.as_deref(), Some("title of commit:abc123"));
+    assert_eq!(body, "# Fix\n\nbody");
+    assert_eq!(mime.as_deref(), Some("text/markdown"));
+    assert_eq!(meta.source.kind, Api::Github);
+    assert_eq!(meta.repo.as_deref(), Some("acme/widgets"));
+    assert_eq!(meta.commit.as_deref(), Some("abc123full"));
+    assert_eq!(meta.url, None);
+    assert_eq!(
+        meta.observed_at.map(|at| at.timestamp()),
+        Some(1_700_000_000)
+    );
+}
+
+#[test]
+fn github_issues_and_prs_carry_their_url() {
+    let metadata = serde_json::json!({ "owner": "acme", "repo": "widgets", "number": 7 });
+    let issue = content_item(
+        &entry(SourceKind::GithubRepo),
+        content("issue:7", "text", ContentType::Markdown, metadata.clone()),
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        issue.meta().url.as_deref(),
+        Some("https://github.com/acme/widgets/issues/7")
+    );
+    assert_eq!(issue.meta().commit, None);
+
+    let pr = content_item(
+        &entry(SourceKind::GithubRepo),
+        content("pr:7", "text", ContentType::Markdown, metadata),
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        pr.meta().url.as_deref(),
+        Some("https://github.com/acme/widgets/pull/7")
+    );
+}
+
+#[test]
+fn rss_items_take_the_entry_link_and_publication_time() {
+    let item = content_item(
+        &entry(SourceKind::RssFeed),
+        content(
+            "guid-1",
+            "<p>Hello <b>feed</b></p>",
+            ContentType::Html,
+            serde_json::json!({
+                "link": "https://blog.example.com/post",
+                "published": "Tue, 21 May 2024 12:00:00 +0000"
+            }),
+        ),
+        None,
+    )
+    .unwrap();
+    let (_, body, mime, meta) = document_parts(&item);
+    assert_eq!(body, "Hello **feed**", "html is converted to markdown");
+    assert_eq!(mime.as_deref(), Some("text/markdown"));
+    assert_eq!(meta.source.kind, Api::Rss);
+    assert_eq!(meta.url.as_deref(), Some("https://blog.example.com/post"));
+    assert_eq!(
+        meta.observed_at.map(|at| at.to_rfc3339()),
+        Some("2024-05-21T12:00:00+00:00".to_string())
+    );
+}
+
+#[test]
+fn link_items_take_the_page_url() {
+    let item = content_item(
+        &entry(SourceKind::WebPage),
+        content(
+            "https://example.com/page",
+            "plain words",
+            ContentType::Plaintext,
+            serde_json::json!({ "url": "https://example.com/page" }),
+        ),
+        None,
+    )
+    .unwrap();
+    let (_, _, mime, meta) = document_parts(&item);
+    assert_eq!(meta.source.kind, Api::Link);
+    assert_eq!(meta.url.as_deref(), Some("https://example.com/page"));
+    assert_eq!(mime.as_deref(), Some("text/plain"));
+}
+
+#[test]
+fn reader_content_for_local_kinds_and_composio_fills_what_it_can() {
     let mut folder = entry(SourceKind::Folder);
     folder.path = Some("/notes".into());
     let item = content_item(
@@ -104,12 +212,27 @@ fn reader_content_for_local_kinds_fills_what_it_can() {
     )
     .unwrap();
     assert_eq!(conversation.meta().thread_id.as_deref(), Some("t1"));
+
+    let mut composio = entry(SourceKind::Composio);
+    composio.toolkit = Some("slack".into());
+    let item = content_item(
+        &composio,
+        content(
+            "c1",
+            "sync data",
+            ContentType::Plaintext,
+            serde_json::json!({}),
+        ),
+        None,
+    )
+    .unwrap();
+    assert_eq!(item.meta().tags, vec!["slack".to_string()]);
 }
 
 #[test]
 fn content_that_converts_to_nothing_is_refused() {
     let error = content_item(
-        &entry(SourceKind::Folder),
+        &entry(SourceKind::WebPage),
         content(
             "u",
             "<script>x()</script>",
@@ -355,7 +478,7 @@ struct BrokenReader;
 #[async_trait]
 impl SourceReader for BrokenReader {
     fn kind(&self) -> SourceKind {
-        SourceKind::Folder
+        SourceKind::WebPage
     }
 
     async fn list_items(&self, _: &MemorySourceEntry, _: &Path) -> Result<Vec<SourceItem>> {
@@ -371,7 +494,7 @@ impl SourceReader for BrokenReader {
 async fn a_failed_listing_fails_the_collect_pass() {
     let error = collect_items(
         &BrokenReader,
-        &entry(SourceKind::Folder),
+        &entry(SourceKind::WebPage),
         Path::new("/unused"),
         &ConverterChain::default(),
     )
@@ -388,7 +511,7 @@ struct FixedReader;
 #[async_trait]
 impl SourceReader for FixedReader {
     fn kind(&self) -> SourceKind {
-        SourceKind::Folder
+        SourceKind::WebPage
     }
 
     async fn list_items(&self, _: &MemorySourceEntry, _: &Path) -> Result<Vec<SourceItem>> {
@@ -413,14 +536,14 @@ impl SourceReader for FixedReader {
 async fn the_default_read_store_item_maps_reader_content() {
     let collected = collect_items(
         &FixedReader,
-        &entry(SourceKind::Folder),
+        &entry(SourceKind::WebPage),
         Path::new("/unused"),
         &ConverterChain::default(),
     )
     .await
     .unwrap();
     let meta = collected.items[0].meta();
-    assert_eq!(meta.source.kind, Api::Folder);
+    assert_eq!(meta.url.as_deref(), Some("https://example.com"));
     assert_eq!(
         meta.observed_at.map(|at| at.timestamp_millis()),
         Some(1_000)

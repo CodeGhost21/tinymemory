@@ -8,16 +8,39 @@
 //!
 //! ## Ownership boundary
 //!
-//! Every reader here is local: [`folder::FolderReader`], [`file::FileReader`]
-//! and [`conversation::ConversationReader`] read the workspace and nothing
-//! else. Network-backed sources (Composio toolkits, GitHub, RSS, web pages)
-//! are not part of this crate. [`is_locally_readable`] and [`reader_for`]
-//! therefore cover every [`SourceKind`].
+//! The local kinds ([`folder::FolderReader`], [`file::FileReader`],
+//! [`conversation::ConversationReader`]) are always compiled. The network
+//! kinds (`github`, `rss`, `web_page`) sit behind the `sources-network`
+//! feature; `rss` and `web_page` fetch through `sources::fetch`. What this module does **not** own is *when* a
+//! network read happens: scheduling, polling cadence, OAuth, credentials,
+//! and egress/cost budgeting stay with the host.
+//!
+//! That is why [`reader_for`] and [`is_locally_readable`] draw their line at
+//! **local vs. network**, not at implemented vs. absent. A network reader is
+//! constructed explicitly (`github::GithubReader`, `rss::RssReader`,
+//! `web_page::WebPageReader`) by a caller that has already decided the fetch is
+//! allowed; it is never handed out by the kind-dispatch that a sync loop drives
+//! on a timer. A `None` from [`reader_for`] therefore means "route this through
+//! the host's sync runner", which keeps the host in charge of the network.
+//!
+//! `composio` is represented by a placeholder reader
+//! ([`composio::ComposioReader`]): its data arrives through the credentialed
+//! provider pipeline, and [`crate::sources::composio`] turns those payloads into items.
+//!
+//! A host servicing an *explicit user request* (not a timer) that wants one
+//! reader for any kind uses `reader_for_request`.
 
+pub mod composio;
 pub mod conversation;
 pub mod file;
 pub mod folder;
+#[cfg(feature = "sources-network")]
+pub mod github;
 pub mod local_file;
+#[cfg(feature = "sources-network")]
+pub mod rss;
+#[cfg(feature = "sources-network")]
+pub mod web_page;
 
 use std::path::Path;
 
@@ -92,8 +115,8 @@ pub trait SourceReader: Send + Sync + std::fmt::Debug {
 
 /// Whether a kind can be read from local state alone, with no network egress.
 ///
-/// Every [`SourceKind`] is local, so this is always `true`; it stays as the
-/// single place a host asks the question.
+/// Network-backed kinds return `false` even when this build ships their reader
+/// (see the module docs): the host decides when a fetch is allowed.
 #[must_use]
 pub fn is_locally_readable(kind: &SourceKind) -> bool {
     matches!(
@@ -102,14 +125,43 @@ pub fn is_locally_readable(kind: &SourceKind) -> bool {
     )
 }
 
-/// Get the reader for a source kind.
+/// Get the reader for a source kind that is safe to drive on a timer.
 ///
-/// Returns the folder, file or conversation reader.
+/// Returns `Some` for [`SourceKind::Folder`], [`SourceKind::File`] and
+/// [`SourceKind::Conversation`]. Network-backed kinds (`composio`,
+/// `github_repo`, `rss_feed`, `web_page`) return `None` so the caller defers to
+/// the host's sync runner, which constructs those readers once it has
+/// authorized the fetch.
 #[must_use]
 pub fn reader_for(kind: &SourceKind) -> Option<Box<dyn SourceReader>> {
     match kind {
         SourceKind::Folder => Some(Box::new(folder::FolderReader)),
         SourceKind::File => Some(Box::new(file::FileReader)),
         SourceKind::Conversation => Some(Box::new(conversation::ConversationReader)),
+        SourceKind::Composio
+        | SourceKind::GithubRepo
+        | SourceKind::RssFeed
+        | SourceKind::WebPage => None,
+    }
+}
+
+/// Get a reader for **any** source kind, for a caller servicing an explicit user
+/// request naming one source (an RPC handler), not a timer.
+///
+/// Unlike [`reader_for`] this hands out the network readers, so the caller has
+/// already decided the fetch is allowed. **Do not reuse it from a polling
+/// loop**: the host stays in charge of egress, OAuth and cost budgeting by
+/// constructing a network reader deliberately there.
+#[cfg(feature = "sources-network")]
+#[must_use]
+pub fn reader_for_request(kind: &SourceKind) -> Box<dyn SourceReader> {
+    match kind {
+        SourceKind::Composio => Box::new(composio::ComposioReader),
+        SourceKind::Conversation => Box::new(conversation::ConversationReader),
+        SourceKind::Folder => Box::new(folder::FolderReader),
+        SourceKind::File => Box::new(file::FileReader),
+        SourceKind::GithubRepo => Box::new(github::GithubReader),
+        SourceKind::RssFeed => Box::new(rss::RssReader::new()),
+        SourceKind::WebPage => Box::new(web_page::WebPageReader),
     }
 }

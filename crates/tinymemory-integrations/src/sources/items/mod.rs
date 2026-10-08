@@ -8,6 +8,10 @@
 //! | Kind | Item | Metadata filled |
 //! | --- | --- | --- |
 //! | folder, file | document | `workspace`, `folder` (containing directory), `file_path`, `language` (by extension), `observed_at` (mtime), `mime` |
+//! | github | document | `repo` (`owner/name`), `commit` (commit items), `url` (issues and PRs), `observed_at` |
+//! | link | document | `url` |
+//! | rss | document | `url` (the entry's link), `observed_at` (published) |
+//! | composio | document | `tags = [toolkit]` (payloads: see [`crate::sources::composio`]) |
 //! | conversation | conversation | `workspace`, `thread_id`, `turns`, `observed_at` (last turn) |
 //!
 //! Every document body is markdown, converted through `crate::documents`:
@@ -34,16 +38,23 @@ use crate::sources::readers::local_file::LocalFile;
 use crate::sources::types::{ContentType, MemorySourceEntry, SourceContent, SourceKind};
 
 /// Metadata naming `entry` as the source: `source.kind` is the entry's kind
-/// mapped onto the contract, `source.id` its id.
+/// mapped onto the contract, `source.id` its id. A Composio entry also gets
+/// its toolkit as a tag.
 #[must_use]
 pub fn base_meta(entry: &MemorySourceEntry) -> MemoryMeta {
-    MemoryMeta {
+    let mut meta = MemoryMeta {
         source: SourceRef {
             kind: entry.kind.api_kind(),
             id: Some(entry.id.clone()),
         },
         ..MemoryMeta::default()
+    };
+    if entry.kind == SourceKind::Composio
+        && let Some(toolkit) = entry.toolkit.as_deref().filter(|t| !t.is_empty())
+    {
+        meta.tags = vec![toolkit.to_string()];
     }
+    meta
 }
 
 /// Convert a local file and wrap it as a document.
@@ -160,6 +171,19 @@ pub fn content_item(
     meta.observed_at = millis(updated_at_ms);
     let metadata = &content.metadata;
     match entry.kind {
+        SourceKind::GithubRepo => github_meta(&mut meta, &content.id, metadata),
+        SourceKind::RssFeed => {
+            meta.url = string_field(metadata, "link");
+            if let Some(published) = string_field(metadata, "published")
+                .as_deref()
+                .and_then(parse_feed_time)
+            {
+                meta.observed_at = Some(published);
+            }
+        }
+        SourceKind::WebPage => {
+            meta.url = string_field(metadata, "url").or_else(|| Some(content.id.clone()));
+        }
         SourceKind::Folder => {
             if let Some(root) = entry.path.as_deref() {
                 let path = Path::new(root).join(&content.id);
@@ -173,6 +197,7 @@ pub fn content_item(
             meta.language = language_for_path(&content.id).map(str::to_string);
         }
         SourceKind::Conversation => meta.thread_id = Some(content.id.clone()),
+        SourceKind::Composio => {}
     }
 
     Ok(StoreItem::Document {
@@ -181,6 +206,30 @@ pub fn content_item(
         mime: Some(mime.to_string()),
         meta,
     })
+}
+
+/// GitHub metadata from a reader item id (`commit:<sha>`, `issue:<n>`,
+/// `pr:<n>`) and its content metadata (`owner`, `repo`, `sha`, `number`).
+fn github_meta(meta: &mut MemoryMeta, item_id: &str, metadata: &serde_json::Value) {
+    let owner = string_field(metadata, "owner");
+    let repo = string_field(metadata, "repo");
+    let slug = owner
+        .zip(repo)
+        .map(|(owner, repo)| format!("{owner}/{repo}"));
+    meta.repo = slug.clone();
+    let number = metadata
+        .get("number")
+        .and_then(serde_json::Value::as_u64)
+        .map(|n| n.to_string());
+    if let Some(sha) = item_id.strip_prefix("commit:") {
+        meta.commit = string_field(metadata, "sha").or_else(|| Some(sha.to_string()));
+    } else if let Some(n) = item_id.strip_prefix("issue:") {
+        let n = number.unwrap_or_else(|| n.to_string());
+        meta.url = slug.map(|slug| format!("https://github.com/{slug}/issues/{n}"));
+    } else if let Some(n) = item_id.strip_prefix("pr:") {
+        let n = number.unwrap_or_else(|| n.to_string());
+        meta.url = slug.map(|slug| format!("https://github.com/{slug}/pull/{n}"));
+    }
 }
 
 /// A non-empty string field of a JSON object.
@@ -196,6 +245,14 @@ fn string_field(value: &serde_json::Value, key: &str) -> Option<String> {
 /// Epoch milliseconds as a UTC instant.
 fn millis(value: Option<i64>) -> Option<DateTime<Utc>> {
     value.and_then(|ms| Utc.timestamp_millis_opt(ms).single())
+}
+
+/// An RSS `pubDate` (RFC 2822) or Atom `updated` (RFC 3339) timestamp.
+fn parse_feed_time(text: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc2822(text)
+        .or_else(|_| DateTime::parse_from_rfc3339(text))
+        .ok()
+        .map(|at| at.with_timezone(&Utc))
 }
 
 /// One item a [`collect_items`] pass could not turn into a `StoreItem`.

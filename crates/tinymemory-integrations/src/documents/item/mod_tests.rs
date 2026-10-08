@@ -26,7 +26,7 @@ async fn html_becomes_a_markdown_document_with_its_title_and_mime() {
         "<html><head><title>Notes</title></head><body><h1>Hi</h1><p>Body.</p></body></html>",
     )
     .with_mime("text/html");
-    let meta = MemoryMeta::from_source(SourceKind::Import, Some("src_1".into()));
+    let meta = MemoryMeta::from_source(SourceKind::Link, Some("src_1".into()));
     let item = document_item(&chain, &document, meta).await.unwrap();
     assert_eq!(item.kind(), ItemKind::Document);
     item.validate().unwrap();
@@ -35,7 +35,7 @@ async fn html_becomes_a_markdown_document_with_its_title_and_mime() {
     assert_eq!(title.as_deref(), Some("Notes"));
     assert_eq!(body, "# Hi\n\nBody.");
     assert_eq!(mime.as_deref(), Some("text/html"));
-    assert_eq!(meta.source.kind, SourceKind::Import);
+    assert_eq!(meta.source.kind, SourceKind::Link);
     assert_eq!(meta.source.id.as_deref(), Some("src_1"));
     assert_eq!(meta.language, None);
 }

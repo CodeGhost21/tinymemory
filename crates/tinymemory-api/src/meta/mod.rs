@@ -150,25 +150,32 @@ pub enum SourceKind {
     Folder,
     /// A single file.
     File,
+    /// A web page.
+    Link,
+    /// A GitHub repository.
+    Github,
+    /// An RSS or Atom feed.
+    Rss,
+    /// A Composio toolkit payload (Gmail, Slack, Notion, ...).
+    Composio,
     /// A host conversation.
     Conversation,
     /// Written by an agent directly; the default.
     #[default]
     Agent,
-    /// Imported from a legacy store, or ingested by hand from a connected app
-    /// or the web.
-    ///
-    /// The retired network kinds (`link`, `github`, `rss`, `composio`) decode
-    /// to this variant, so items stored under them stay readable.
-    #[serde(alias = "link", alias = "github", alias = "rss", alias = "composio")]
+    /// Imported from a legacy store.
     Import,
 }
 
 impl SourceKind {
     /// Every kind, in declaration order.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 9] = [
         Self::Folder,
         Self::File,
+        Self::Link,
+        Self::Github,
+        Self::Rss,
+        Self::Composio,
         Self::Conversation,
         Self::Agent,
         Self::Import,
@@ -180,6 +187,10 @@ impl SourceKind {
         match self {
             Self::Folder => "folder",
             Self::File => "file",
+            Self::Link => "link",
+            Self::Github => "github",
+            Self::Rss => "rss",
+            Self::Composio => "composio",
             Self::Conversation => "conversation",
             Self::Agent => "agent",
             Self::Import => "import",

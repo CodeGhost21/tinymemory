@@ -25,43 +25,69 @@ pub(crate) fn default_true() -> bool {
 
 /// The kind of a configured memory source.
 ///
-/// The wire representation is snake_case (`folder`, `file`, `conversation`) and is
+/// The wire representation is snake_case (`github_repo`, `rss_feed`, …) and is
 /// persisted by hosts; it must stay stable across versions. Each maps
 /// onto one [`tinymemory_api::SourceKind`] through [`SourceKind::api_kind`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceKind {
+    /// A Composio OAuth connector (Gmail, Slack, Notion, …). Network-backed;
+    /// the live fetch is owned by the host, not this module.
+    Composio,
     /// Local agent conversation transcripts stored in the workspace.
     Conversation,
     /// A local folder of files matched by an optional glob.
     Folder,
     /// A single local file.
     File,
+    /// A GitHub repository's project activity (commits, issues, PRs).
+    GithubRepo,
+    /// An RSS/Atom feed.
+    RssFeed,
+    /// A single web page, optionally narrowed by a CSS selector.
+    WebPage,
 }
 
 impl SourceKind {
     /// Every kind, in declaration order.
-    pub const ALL: [Self; 3] = [Self::Conversation, Self::Folder, Self::File];
+    pub const ALL: [Self; 7] = [
+        Self::Composio,
+        Self::Conversation,
+        Self::Folder,
+        Self::File,
+        Self::GithubRepo,
+        Self::RssFeed,
+        Self::WebPage,
+    ];
 
     /// The stable snake_case wire string for this kind.
     #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
+            SourceKind::Composio => "composio",
             SourceKind::Conversation => "conversation",
             SourceKind::Folder => "folder",
             SourceKind::File => "file",
+            SourceKind::GithubRepo => "github_repo",
+            SourceKind::RssFeed => "rss_feed",
+            SourceKind::WebPage => "web_page",
         }
     }
 
     /// The contract's [`tinymemory_api::SourceKind`] for items this kind of
-    /// source produces: each keeps its name.
+    /// source produces: a web page is a `Link`, a GitHub repository `Github`,
+    /// an RSS feed `Rss`; the rest keep their name.
     #[must_use]
     pub fn api_kind(&self) -> tinymemory_api::SourceKind {
         use tinymemory_api::SourceKind as Api;
         match self {
+            SourceKind::Composio => Api::Composio,
             SourceKind::Conversation => Api::Conversation,
             SourceKind::Folder => Api::Folder,
             SourceKind::File => Api::File,
+            SourceKind::GithubRepo => Api::Github,
+            SourceKind::RssFeed => Api::Rss,
+            SourceKind::WebPage => Api::Link,
         }
     }
 }
@@ -83,6 +109,14 @@ pub struct MemorySourceEntry {
     #[serde(default = "default_true")]
     pub enabled: bool,
 
+    // ── Composio ──
+    /// Composio toolkit slug (e.g. `gmail`). Required for `composio`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toolkit: Option<String>,
+    /// Composio connection id. Required for `composio`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connection_id: Option<String>,
+
     // ── Folder / File ──
     /// Filesystem path of the folder or file to read. Required for `folder`
     /// and `file`; a relative path is anchored on the workspace.
@@ -92,6 +126,38 @@ pub struct MemorySourceEntry {
     /// reader takes markdown, plain-text and source-code files.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub glob: Option<String>,
+
+    // ── GithubRepo / RssFeed / WebPage (shared) ──
+    /// Source URL. Required for `github_repo`, `rss_feed`, and `web_page`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+
+    // ── GithubRepo ──
+    /// Branch to read (defaults to the repo default when absent).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    /// Optional path filters within the repo.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub paths: Vec<String>,
+    /// Max commits to pull per sync (default 1000 when absent).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_commits: Option<u32>,
+    /// Max issues to pull per sync (default 1000 when absent).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_issues: Option<u32>,
+    /// Max pull requests to pull per sync (default 1000 when absent).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_prs: Option<u32>,
+
+    // ── RssFeed ──
+    /// Max feed items to pull per sync.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_items: Option<u32>,
+
+    // ── WebPage ──
+    /// Optional CSS selector to narrow extracted content.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selector: Option<String>,
 
     // ── Sync Budget (all source kinds) ──
     /// Maximum tokens to consume per sync run. Sync stops once this budget is hit.
@@ -114,8 +180,18 @@ impl MemorySourceEntry {
             kind,
             label: label.into(),
             enabled: true,
+            toolkit: None,
+            connection_id: None,
             path: None,
             glob: None,
+            url: None,
+            branch: None,
+            paths: Vec::new(),
+            max_commits: None,
+            max_issues: None,
+            max_prs: None,
+            max_items: None,
+            selector: None,
             max_tokens_per_sync: None,
             max_cost_per_sync_usd: None,
             sync_depth_days: None,
@@ -125,8 +201,9 @@ impl MemorySourceEntry {
     /// Validate the fields this entry's [`SourceKind`] requires.
     ///
     /// `id` and `label` are required for every kind, and `id` must not contain
-    /// `:` or control characters. Folders and files need `path`. An empty string
-    /// counts as missing.
+    /// `:` or control characters. Composio needs `toolkit` and
+    /// `connection_id`; folders and files need `path`; GitHub repositories, RSS
+    /// feeds and web pages need `url`. An empty string counts as missing.
     ///
     /// # Errors
     ///
@@ -144,8 +221,15 @@ impl MemorySourceEntry {
             return Err(Error::Invalid("label is required".to_string()));
         }
         match self.kind {
+            SourceKind::Composio => {
+                require_field(&self.toolkit, "toolkit")?;
+                require_field(&self.connection_id, "connection_id")
+            }
             SourceKind::Conversation => Ok(()),
             SourceKind::Folder | SourceKind::File => require_field(&self.path, "path"),
+            SourceKind::GithubRepo | SourceKind::RssFeed | SourceKind::WebPage => {
+                require_field(&self.url, "url")
+            }
         }
     }
 }

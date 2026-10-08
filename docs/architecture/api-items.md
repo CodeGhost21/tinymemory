@@ -165,7 +165,8 @@ namespace are omitted on serialisation.
 | `observed_actor` | `Option<ObservedActor>` | `{ id, name? }`: who said or did it when not the memory's owner, such as an email's sender or a channel's (`id` is `type:id`, `user:priya@acme.com`, `user:+15551234567`). Excluded from the fingerprint; the CortexDB engine sends it only with attribution on. |
 
 `MemoryMeta::from_source(kind, id)` sets only the source. `SourceKind` is
-`folder | file | conversation | agent | import` (`SourceKind::ALL`, `as_str`); `agent` is the default.
+`folder | file | link | github | rss | composio | conversation | agent |
+import` (`SourceKind::ALL`, `as_str`); `agent` is the default.
 
 ## `MetaFilter`
 
@@ -199,7 +200,7 @@ equals the default, so a filter holding only a `reach` is **not** empty),
 {
   "reach": { "at": "team:acme/agent:writer", "inherit": true, "descendants": false },
   "kinds": ["document", "learning"],
-  "sources": ["folder", "file"],
+  "sources": ["folder", "github"],
   "folder": "/notes/rust",
   "tags_any": ["style", "review"],
   "observed_after": "2026-01-01T00:00:00Z",
