@@ -130,7 +130,7 @@ impl CortexEngine {
                 };
                 let envelope = decoded.envelope;
                 if !keeps(filter, scope.kind, &envelope)
-                    || !envelope.part().is_none_or(|index| index == 0)
+                    || envelope.part().is_some_and(|index| index != 0)
                     || !seen.insert(envelope.id.clone())
                 {
                     continue;
