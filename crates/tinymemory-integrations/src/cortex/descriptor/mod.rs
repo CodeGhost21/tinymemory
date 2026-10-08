@@ -155,6 +155,8 @@ impl CortexWire {
             (Self::Direct, Route::BuildBeliefs) => "v1/beliefs/build",
             (Self::Direct, Route::Beliefs) => "v1/beliefs",
             (Self::Direct, Route::Erasures) => "v1/erasures",
+            // Never sent: Direct erases the whole tree scope by scope.
+            (Self::Direct, Route::EraseAll) => "v1/erasures",
             (Self::Direct, Route::Version) => "v1/admin/version",
             (Self::TinyHumans, Route::Experience | Route::Bulk) => "memory/experience",
             (Self::TinyHumans, Route::Events) => "memory/events",
@@ -168,8 +170,11 @@ impl CortexWire {
             // Never sent: hosted beliefs are read through recall only.
             (Self::TinyHumans, Route::Beliefs) => "memory/beliefs",
             // The backend's CortexDB-dialect passthrough (no envelope);
-            // memory-api pins the scope under the tenant's root.
+            // memory-api pins the scope under the tenant's root. An `erase`
+            // narrower than the whole tree goes here, scope by scope.
             (Self::TinyHumans, Route::Erasures) => "memory/v1/erasures",
+            // `DELETE memory`: erases the caller's entire hosted memory.
+            (Self::TinyHumans, Route::EraseAll) => "memory",
             // Never sent: the hosted backend keeps its own tenancy.
             (Self::TinyHumans, Route::RegisterScope | Route::ScopeMembers) => "memory/scopes",
             // Never sent: the hosted wire has no version route, so a date
@@ -207,9 +212,10 @@ pub(crate) enum Route {
     BuildBeliefs,
     /// List one scope's beliefs (Direct only).
     Beliefs,
-    /// Erase a whole scope for good, and (GET `<path>/{id}`) poll the
-    /// erasure until it settles.
+    /// Erase a whole scope for good (Direct only).
     Erasures,
+    /// Erase the caller's entire memory in one request (TinyHumans only).
+    EraseAll,
     /// Build info and the API capabilities the server accepts (Direct only).
     Version,
 }

@@ -228,9 +228,10 @@ pub struct EraseReport { pub erased_scopes: usize, pub receipts: Vec<String> }
 - **CortexDB, Direct wire:** sends one `/v1/erasures` (`confirm_all`) per
   registered kind scope, deepest first, and returns the erasure ids as
   `receipts`.
-- **CortexDB, hosted wire:** the same, through the TinyHumans backend's
-  `memory/v1/erasures` passthrough (memory-api pins each scope under the
-  tenant's root); a `running` erasure is polled until it completes.
+- **CortexDB, hosted wire:** the whole tree in one `DELETE memory`; anything
+  narrower the same as Direct, through the TinyHumans backend's
+  `memory/v1/erasures` passthrough (memory-api's synchronous scoped erasure,
+  pinned under the tenant's root).
 
 ### Bulk store
 

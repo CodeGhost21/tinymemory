@@ -199,8 +199,19 @@ pub(crate) fn hosted_status_error(
         ),
         _ => format!("[{code}] memory API {label} on {host} returned HTTP {status}"),
     };
+    // memory-api's refusal of an already-claimed `Idempotency-Key` is relayed
+    // as `409` with `errorCode: CONFLICT` by the backend since
+    // tinyhumansai/backend#1409, and as `400` with the same code by older
+    // ones (`memoryUpstreamError`). A retried write reads that as the
+    // outcome-unknown conflict it is, whichever status carries it.
+    if status == StatusCode::BAD_REQUEST && code == CONFLICT_CODE {
+        return by_status(StatusCode::CONFLICT, head, &excerpt(&message));
+    }
     by_status(status, head, &excerpt(&message))
 }
+
+/// The backend's `errorCode` for a refused, already-claimed write.
+const CONFLICT_CODE: &str = "CONFLICT";
 
 /// Unwraps `{success:true,data}`. `{success:false}`, a missing `data` and a
 /// body without the envelope are all errors.

@@ -60,6 +60,50 @@ fn fail(state: &Shared, code: u16, error_code: &str) -> Reply {
     }
 }
 
+/// A failure the engine (through memory-api) answered, in the wire's shape.
+///
+/// Direct relays it as is. Hosted relays it the way the backend's
+/// `memoryUpstreamError` does: the backend has its own vocabulary, so most
+/// engine codes are lost and every other 4xx is a `400` (`BAD_REQUEST`).
+/// A 409 keeps its status and its `CONFLICT` code since
+/// tinyhumansai/backend#1409; an older backend answered it as a `400`
+/// (`legacy_conflict_400`).
+fn upstream_fail(state: &Shared, code: u16, error_code: &str) -> Reply {
+    if !state.hosted {
+        return fail(state, code, error_code);
+    }
+    let (code, error_code) = match code {
+        402 => (402, "USER_INSUFFICIENT_CREDITS"),
+        503 => (503, "UPSTREAM_UNAVAILABLE"),
+        401 | 403 => (502, "UPSTREAM_UNAVAILABLE"),
+        404 => (404, "NOT_FOUND"),
+        409 if state.legacy_conflict_400.load(Ordering::SeqCst) => (400, "CONFLICT"),
+        409 => (409, "CONFLICT"),
+        413 => (413, "PAYLOAD_TOO_LARGE"),
+        400..=499 => (400, "BAD_REQUEST"),
+        _ => (502, "UPSTREAM_UNAVAILABLE"),
+    };
+    fail(state, code, error_code)
+}
+
+/// The backend's own rate limiter (`memoryRateLimit`, express-rate-limit):
+/// a 429 whose body is `{error:{message,type}}`, outside the envelope.
+/// Direct answers CortexDB's own 429.
+fn rate_limited(state: &Shared) -> Reply {
+    if !state.hosted {
+        return fail(state, 429, "RATE_LIMITED");
+    }
+    (
+        status(429),
+        Json(json!({
+            "error": {
+                "message": "Rate limit exceeded. Please retry after a brief wait.",
+                "type": "rate_limit_error",
+            }
+        })),
+    )
+}
+
 /// A log result (status, body) in the wire's shape.
 fn relay(state: &Shared, (code, body): (u16, Value)) -> Reply {
     if code < 300 {
@@ -70,7 +114,7 @@ fn relay(state: &Shared, (code, body): (u16, Value)) -> Reply {
             .and_then(Value::as_str)
             .unwrap_or("VALIDATION_ERROR")
             .to_string();
-        fail(state, code, &error_code)
+        upstream_fail(state, code, &error_code)
     }
 }
 
@@ -133,7 +177,7 @@ fn write_one(state: &Shared, headers: &HeaderMap, body: &Value) -> Reply {
     }
     // The backend's rate limiter answers before the memory API: no claim.
     if take_one(&state.rate_limit_experience) {
-        return fail(state, 429, "RATE_LIMITED");
+        return rate_limited(state);
     }
     let claim = headers
         .get("idempotency-key")
@@ -147,7 +191,8 @@ fn write_one(state: &Shared, headers: &HeaderMap, body: &Value) -> Reply {
         && let Some(claim) = claim
         && !state.claimed.lock().unwrap().insert(claim)
     {
-        return fail(state, 409, "CONFLICT");
+        // memory-api refuses a claimed key with 409; the backend relays it.
+        return upstream_fail(state, 409, "CONFLICT");
     }
     if take_one(&state.claim_then_fail) {
         return fail(state, 502, "BAD_GATEWAY");
@@ -253,7 +298,7 @@ async fn events(
         return fail(&state, 400, "VALIDATION_ERROR");
     }
     if take_one(&state.rate_limit_events) {
-        return fail(&state, 429, "RATE_LIMITED");
+        return rate_limited(&state);
     }
     if take_one(&state.state_change_events) {
         return fail(&state, 503, "AUTHORIZATION_STATE_CHANGED");
@@ -307,7 +352,7 @@ async fn forget(
         return refused;
     }
     if take_one(&state.rate_limit_forget) {
-        return fail(&state, 429, "RATE_LIMITED");
+        return rate_limited(&state);
     }
     state.seen.lock().unwrap().forgets.push(body.clone());
     let result = state.log.lock().unwrap().forget(&body);
@@ -327,8 +372,11 @@ async fn erase(
         return refused;
     }
     state.seen.lock().unwrap().erasures.push(body.clone());
-    let result = state.log.lock().unwrap().erase(&body);
-    relay(&state, result)
+    let (code, mut answer) = state.log.lock().unwrap().erase(&body);
+    if code < 300 {
+        answer["status"] = json!(erasure_status(&state));
+    }
+    relay(&state, (code, answer))
 }
 
 /// The erasure's status as this answer reports it: `running` while the
@@ -341,8 +389,11 @@ fn erasure_status(state: &Shared) -> &'static str {
     }
 }
 
-/// `POST /memory/v1/erasures`: the backend's passthrough, answered in
-/// CortexDB's dialect (no envelope), as memory-api pins it.
+/// `POST /memory/v1/erasures`: the backend's passthrough to memory-api's
+/// scoped erasure, answered in its dialect (no envelope): `{scope,
+/// audit_note}` only (any other field is `400 UNKNOWN_FIELD`), the root is
+/// `422 ROOT_ERASURE_REFUSED`, and a synchronous `{erased, scope, scopes,
+/// erasure_ids}`; an incomplete erasure is a retriable `502`.
 async fn hosted_erase(
     State(state): State<Shared>,
     uri: Uri,
@@ -352,20 +403,59 @@ async fn hosted_erase(
     if let Some(early) = gate(&state, "POST", &uri, &headers) {
         return early;
     }
-    if let Some(refused) = refuse_scope(&state, body["scope"].as_str().unwrap_or_default()) {
+    if state.scoped_erase_missing.load(Ordering::SeqCst) {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "message": "Not Found" })),
+        );
+    }
+    if let Some(unknown) = body.as_object().and_then(|map| {
+        map.keys()
+            .find(|k| !matches!(k.as_str(), "scope" | "audit_note"))
+    }) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error_code": "UNKNOWN_FIELD", "message": unknown })),
+        );
+    }
+    let scope = body["scope"].as_str().unwrap_or_default().to_string();
+    if scope.is_empty() || scope == "/" {
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({ "error_code": "ROOT_ERASURE_REFUSED" })),
+        );
+    }
+    if let Some(refused) = refuse_scope(&state, &scope) {
         return refused;
     }
     state.seen.lock().unwrap().erasures.push(body.clone());
-    let (code, mut answer) = state.log.lock().unwrap().erase(&body);
-    if code >= 300 {
-        return (status(code), Json(answer));
+    if take_one(&state.erasure_incomplete_for) {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "erased": false, "error_code": "ERASURE_INCOMPLETE", "retriable": true })),
+        );
     }
-    answer["status"] = json!(erasure_status(&state));
-    (status(code), Json(answer))
+    let held = state.log.lock().unwrap().scopes(&scope).len();
+    let mut ids = Vec::new();
+    if held > 0 {
+        let (code, answer) = state
+            .log
+            .lock()
+            .unwrap()
+            .erase(&json!({ "scope": scope, "confirm_all": true }));
+        if code >= 300 {
+            return (status(code), Json(answer));
+        }
+        ids.push(answer["erasure_id"].clone());
+    }
+    (
+        StatusCode::OK,
+        Json(json!({ "erased": true, "scope": scope, "scopes": ids.len(), "erasure_ids": ids })),
+    )
 }
 
-/// `GET /memory/v1/erasures/{id}`: the erasure's status, unwrapped.
-async fn hosted_erasure(
+/// `GET {erasures}/{id}`: the erasure's status, unwrapped.
+async fn erasure(
     State(state): State<Shared>,
     axum::extract::Path(id): axum::extract::Path<String>,
     uri: Uri,
@@ -378,6 +468,36 @@ async fn hosted_erasure(
         StatusCode::OK,
         Json(json!({ "erasure_id": id, "status": erasure_status(&state) })),
     )
+}
+
+/// The backend's `DELETE /memory`: erases the caller's entire memory.
+async fn erase_all(State(state): State<Shared>, uri: Uri, headers: HeaderMap) -> Reply {
+    // The gate (auth, an outage) answers before the route is looked up, as
+    // the real backend's middleware does.
+    if let Some(early) = gate(&state, "DELETE", &uri, &headers) {
+        return early;
+    }
+    if state.erase_all_missing.load(Ordering::SeqCst) {
+        // An older backend: Express's unmatched-route 404, no envelope.
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "message": "Not Found" })),
+        );
+    }
+    state
+        .seen
+        .lock()
+        .unwrap()
+        .erasures
+        .push(json!({ "all": true }));
+    let scopes = state.log.lock().unwrap().erase_everything();
+    let data = state
+        .erase_all_answer
+        .lock()
+        .unwrap()
+        .clone()
+        .unwrap_or_else(|| json!({ "erased": true, "scopes": scopes }));
+    ok(&state, 200, data)
 }
 
 async fn answer(
@@ -622,6 +742,7 @@ pub(super) fn direct(state: Shared) -> Router {
         .route("/v1/recall", post(recall))
         .route("/v1/forget", post(forget))
         .route("/v1/erasures", post(erase))
+        .route("/v1/erasures/{id}", get(erasure))
         .route("/v1/answer", post(answer))
         .route("/v1/admin/health", get(health))
         .route("/v1/admin/version", get(version))
@@ -642,7 +763,8 @@ pub(super) fn hosted(state: Shared) -> Router {
         .route("/memory/forget", post(forget))
         .route("/memory/answer", post(answer))
         .route("/memory/scopes", get(scopes))
+        .route("/memory", axum::routing::delete(erase_all))
         .route("/memory/v1/erasures", post(hosted_erase))
-        .route("/memory/v1/erasures/{id}", get(hosted_erasure))
+        .route("/memory/v1/erasures/{id}", get(erasure))
         .with_state(state)
 }

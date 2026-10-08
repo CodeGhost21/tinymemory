@@ -4,9 +4,12 @@
 //! Both serve the same [`CortexLog`]. The hosted double additionally wraps
 //! bodies in `{success,data}`, reports failures with `errorCode`, refuses a
 //! scope outside the memory API's grammar, takes an `Idempotency-Key` claim
-//! per write (any replay of a claimed key is a 409, never forwarded),
-//! refuses a repeated `labels=` parameter, and enforces the strict answer
-//! schema. Knobs make either fail the ways the real stacks fail.
+//! per write (any replay of a claimed key is refused, never forwarded),
+//! refuses a repeated `labels=` parameter, enforces the strict answer
+//! schema, relays engine failures through the backend's own vocabulary (a
+//! claimed key's 409 arrives as `400` with `errorCode: CONFLICT`), answers its
+//! rate limit outside the envelope, and erases the whole memory on
+//! `DELETE /memory`. Knobs make either fail the ways the real stacks fail.
 
 mod log;
 mod routes;
@@ -121,8 +124,23 @@ pub(crate) struct Double {
     /// (`app:tinymemory/agent:pad-NNNN/app:learnings`), so a test can make a
     /// scope listing reach CortexDB's clamp.
     pub(crate) padding_scopes: AtomicUsize,
-    /// How many `running` answers an erasure gives (its POST, then its
-    /// status polls) before it settles.
+    /// The hosted double has no `DELETE /memory` route (an older backend):
+    /// it answers the router's bare 404.
+    pub(crate) erase_all_missing: AtomicBool,
+    /// The hosted double relays a refused, already-claimed key as an older
+    /// backend did (`400` + `CONFLICT`); unset it answers `409` as
+    /// tinyhumansai/backend#1409 does.
+    pub(crate) legacy_conflict_400: AtomicBool,
+    /// Replaces the `data` of the `DELETE /memory` answer (a malformed one).
+    pub(crate) erase_all_answer: Mutex<Option<serde_json::Value>>,
+    /// The hosted double has no `/memory/v1/erasures` passthrough (an older
+    /// backend): it answers the router's bare 404.
+    pub(crate) scoped_erase_missing: AtomicBool,
+    /// How many hosted erasures answer `502 ERASURE_INCOMPLETE` (retriable)
+    /// before one completes.
+    pub(crate) erasure_incomplete_for: AtomicUsize,
+    /// How many `running` answers a Direct erasure gives (its POST, then
+    /// its status polls) before it settles.
     pub(crate) erasure_running_for: AtomicUsize,
     /// The status a settled erasure ends with; `completed` when unset.
     pub(crate) erasure_ends: Mutex<Option<&'static str>>,

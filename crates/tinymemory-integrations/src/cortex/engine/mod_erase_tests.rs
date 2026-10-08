@@ -1,7 +1,8 @@
 //! Erase: deepest scope first, so every event is deleted and every write
-//! key released; kinds narrow it. The hosted wire erases through the
-//! backend's `memory/v1/erasures` passthrough and polls a running erasure
-//! until it settles.
+//! key released; kinds narrow it. Hosted, the whole tree is one `DELETE
+//! /memory` and anything narrower goes scope by scope through the backend's
+//! `memory/v1/erasures` passthrough (memory-api's synchronous scoped
+//! erasure, retried while incomplete).
 
 use tinymemory_api::{
     EraseRequest, ItemKind, LearningKind, ListRequest, MemoryMeta, MetaFilter, Namespace, Reach,
@@ -126,7 +127,7 @@ async fn an_erasure_with_nothing_registered_sends_nothing() {
 }
 
 #[tokio::test]
-async fn the_hosted_wire_erases_through_the_backend_passthrough() {
+async fn the_hosted_wire_erases_a_subtree_through_the_backend_passthrough() {
     let (endpoint, state) = hosted_double().await;
     let engine = hosted_engine(&endpoint);
     let (gone, kept) = (node("ws:main/agent:flow"), node("ws:main/agent:chat"));
@@ -140,8 +141,8 @@ async fn the_hosted_wire_erases_through_the_backend_passthrough() {
         .unwrap();
     assert_eq!(report.erased_scopes, 1, "{report:?}");
     assert_eq!(state.count("POST /memory/v1/erasures"), 1);
+    assert_eq!(state.count("DELETE /memory"), 0, "never the whole memory");
     let bodies = state.seen.lock().unwrap().erasures.clone();
-    assert_eq!(bodies[0]["confirm_all"], true);
     assert!(bodies[0].get("selector").is_none(), "{}", bodies[0]);
     assert_eq!(listed(&engine).await, vec!["chat fact".to_string()]);
     let again = engine.store(erased).await.unwrap();
@@ -149,9 +150,57 @@ async fn the_hosted_wire_erases_through_the_backend_passthrough() {
 }
 
 #[tokio::test]
-async fn a_running_hosted_erasure_is_polled_until_it_completes() {
+async fn the_hosted_erasure_names_only_the_fields_memory_api_accepts() {
     let (endpoint, state) = hosted_double().await;
     let engine = hosted_engine(&endpoint);
+    let at = node("agent:assistant");
+    engine.store(learning("a fact", &at)).await.unwrap();
+    engine
+        .erase(EraseRequest::new(Reach::exact(at)))
+        .await
+        .unwrap();
+    let body = state.seen.lock().unwrap().erasures[0].clone();
+    let mut keys: Vec<&String> = body.as_object().unwrap().keys().collect();
+    keys.sort();
+    assert_eq!(keys, ["audit_note", "scope"], "{body}");
+}
+
+#[tokio::test]
+async fn an_incomplete_hosted_erasure_is_retried() {
+    let (endpoint, state) = hosted_double().await;
+    let engine = hosted_engine(&endpoint);
+    let at = node("agent:assistant");
+    engine.store(learning("a fact", &at)).await.unwrap();
+    state.erasure_incomplete_for.store(1, Ordering::SeqCst);
+
+    let report = engine
+        .erase(EraseRequest::new(Reach::exact(at)))
+        .await
+        .unwrap();
+    assert_eq!(report.erased_scopes, 1);
+    assert_eq!(state.count("POST /memory/v1/erasures"), 2);
+    assert!(listed(&engine).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_hosted_erasure_that_stays_incomplete_is_unavailable() {
+    let (endpoint, state) = hosted_double().await;
+    let engine = hosted_engine(&endpoint);
+    let at = node("agent:assistant");
+    engine.store(learning("a fact", &at)).await.unwrap();
+    state.erasure_incomplete_for.store(10, Ordering::SeqCst);
+
+    let failed = engine.erase(EraseRequest::new(Reach::exact(at))).await;
+    assert!(
+        matches!(failed, Err(tinymemory_api::Error::Unavailable(_))),
+        "{failed:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_running_direct_erasure_is_polled_until_it_completes() {
+    let (endpoint, state) = direct_double().await;
+    let engine = direct_engine(&endpoint);
     let at = node("agent:assistant");
     engine.store(learning("a fact", &at)).await.unwrap();
     // The POST and the first two polls answer `running`.
@@ -162,13 +211,13 @@ async fn a_running_hosted_erasure_is_polled_until_it_completes() {
         .await
         .unwrap();
     assert_eq!(report.receipts, vec!["erasure_1".to_string()]);
-    assert_eq!(state.count("GET /memory/v1/erasures/erasure_1"), 3);
+    assert_eq!(state.count("GET /v1/erasures/erasure_1"), 3);
 }
 
 #[tokio::test]
-async fn an_erasure_that_does_not_complete_is_an_error() {
-    let (endpoint, state) = hosted_double().await;
-    let engine = hosted_engine(&endpoint);
+async fn a_direct_erasure_that_does_not_complete_is_an_error() {
+    let (endpoint, state) = direct_double().await;
+    let engine = direct_engine(&endpoint);
     let at = node("agent:assistant");
     engine.store(learning("a fact", &at)).await.unwrap();
     state.erasure_running_for.store(1, Ordering::SeqCst);
@@ -179,6 +228,196 @@ async fn an_erasure_that_does_not_complete_is_an_error() {
         matches!(&refused, Err(tinymemory_api::Error::Engine(m)) if m.contains("failed")),
         "{refused:?}"
     );
+}
+
+#[tokio::test]
+async fn a_backend_without_the_scoped_erasure_route_is_unsupported() {
+    let (endpoint, state) = hosted_double().await;
+    state.scoped_erase_missing.store(true, Ordering::SeqCst);
+    let engine = hosted_engine(&endpoint);
+    let at = node("agent:assistant");
+    engine.store(learning("a fact", &at)).await.unwrap();
+    let refused = engine.erase(EraseRequest::new(Reach::exact(at))).await;
+    assert!(
+        matches!(refused, Err(tinymemory_api::Error::Unsupported(_))),
+        "a caller falls back to forget: {refused:?}"
+    );
+    assert_eq!(listed(&engine).await, vec!["a fact".to_string()]);
+}
+
+fn whole_tree() -> EraseRequest {
+    let mut whole = EraseRequest::new(Reach::subtree(Namespace::ROOT));
+    whole.whole_tree = true;
+    whole
+}
+
+#[tokio::test]
+async fn the_hosted_wire_erases_the_whole_memory_in_one_request() {
+    let (endpoint, state) = hosted_double().await;
+    let engine = hosted_engine(&endpoint);
+    engine
+        .store(learning("a fact", &node("agent:a")))
+        .await
+        .unwrap();
+    engine
+        .store(learning("another fact", &node("agent:b")))
+        .await
+        .unwrap();
+    assert_eq!(listed(&engine).await.len(), 2);
+    let before = state.requests().len();
+
+    let report = engine.erase(whole_tree()).await.unwrap();
+
+    assert_eq!(report.erased_scopes, 2, "{report:?}");
+    assert!(report.receipts.is_empty());
+    assert_eq!(state.requests()[before..], ["DELETE /memory".to_string()]);
+    assert_eq!(state.event_count(), 0);
+    assert!(listed(&engine).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_narrower_hosted_erase_goes_scope_by_scope_not_whole_memory() {
+    let (endpoint, state) = hosted_double().await;
+    let engine = hosted_engine(&endpoint);
+    engine
+        .store(learning("a fact", &node("agent:a")))
+        .await
+        .unwrap();
+    let mut learnings = whole_tree();
+    learnings.kinds = vec![ItemKind::Learning];
+    engine.erase(learnings).await.unwrap();
+    assert_eq!(state.count("DELETE /memory"), 0);
+    assert_eq!(state.count("POST /memory/v1/erasures"), 1);
+
+    let missing_interlock = engine
+        .erase(EraseRequest::new(Reach::subtree(Namespace::ROOT)))
+        .await;
+    assert!(
+        matches!(
+            missing_interlock,
+            Err(tinymemory_api::Error::InvalidRequest(_))
+        ),
+        "{missing_interlock:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_backend_without_the_erase_route_is_unsupported() {
+    let (endpoint, state) = hosted_double().await;
+    state
+        .erase_all_missing
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let engine = hosted_engine(&endpoint);
+    let refused = engine.erase(whole_tree()).await;
+    assert!(
+        matches!(refused, Err(tinymemory_api::Error::Unsupported(_))),
+        "{refused:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_hosted_outage_on_the_erase_is_unavailable() {
+    let (endpoint, state) = hosted_double().await;
+    state
+        .fail_all
+        .lock()
+        .unwrap()
+        .replace((503, "UPSTREAM_UNAVAILABLE"));
+    let engine = hosted_engine(&endpoint);
+    let failed = engine.erase(whole_tree()).await;
+    assert!(
+        matches!(failed, Err(tinymemory_api::Error::Unavailable(_))),
+        "{failed:?}"
+    );
+}
+
+/// Backend contract (tinyhumansai/backend#1409): `DELETE /memory` answers
+/// `{success:true,data:{erased:true,scopes:n}}`, authenticated like the other
+/// memory routes, and fails as `{success:false,error,errorCode}`.
+#[tokio::test]
+async fn the_hosted_erase_reads_the_backend_envelope() {
+    let (endpoint, state) = hosted_double().await;
+    *state.erase_all_answer.lock().unwrap() =
+        Some(serde_json::json!({ "erased": true, "scopes": 3 }));
+    let engine = hosted_engine(&endpoint);
+    let report = engine.erase(whole_tree()).await.unwrap();
+    assert_eq!(report.erased_scopes, 3, "{report:?}");
+    assert!(
+        state
+            .seen
+            .lock()
+            .unwrap()
+            .auth
+            .iter()
+            .all(|a| a.starts_with("Bearer ")),
+        "authenticated like the other memory routes"
+    );
+
+    // An unauthenticated caller gets the error envelope with its code.
+    *state.accept_token.lock().unwrap() = Some("other".to_string());
+    let denied = engine.erase(whole_tree()).await.unwrap_err();
+    assert!(
+        matches!(
+            denied,
+            tinymemory_api::Error::Unauthorized(_) | tinymemory_api::Error::Unavailable(_)
+        ),
+        "{denied:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_hosted_erase_answer_without_erased_true_is_an_engine_error() {
+    for data in [
+        serde_json::json!({ "scopes": 2 }),
+        serde_json::json!({ "erased": false, "scopes": 2 }),
+        serde_json::json!({ "erased": "true", "scopes": 2 }),
+    ] {
+        let (endpoint, state) = hosted_double().await;
+        *state.erase_all_answer.lock().unwrap() = Some(data.clone());
+        let failed = hosted_engine(&endpoint).erase(whole_tree()).await;
+        assert!(failed.is_err(), "{data}: {failed:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_hosted_erase_answer_with_a_missing_or_malformed_count_is_an_error() {
+    for data in [
+        serde_json::json!({ "erased": true }),
+        serde_json::json!({ "erased": true, "scopes": "2" }),
+        serde_json::json!({ "erased": true, "scopes": -1 }),
+        serde_json::json!({ "erased": true, "scopes": null }),
+    ] {
+        let (endpoint, state) = hosted_double().await;
+        *state.erase_all_answer.lock().unwrap() = Some(data.clone());
+        let failed = hosted_engine(&endpoint).erase(whole_tree()).await;
+        assert!(failed.is_err(), "{data}: {failed:?}");
+    }
+}
+
+#[tokio::test]
+async fn the_gate_answers_before_a_missing_erase_route() {
+    let (endpoint, state) = hosted_double().await;
+    state
+        .erase_all_missing
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    *state.accept_token.lock().unwrap() = Some("other".to_string());
+    let refused = hosted_engine(&endpoint).erase(whole_tree()).await;
+    assert!(
+        !matches!(refused, Err(tinymemory_api::Error::Unsupported(_))),
+        "an unauthenticated caller is told so, not that the route is missing: {refused:?}"
+    );
+}
+
+#[test]
+fn the_double_erases_every_scope_of_its_log() {
+    let mut log = crate::cortex::testing::CortexLog::default();
+    for (n, scope) in ["a", "a/b", "c"].into_iter().enumerate() {
+        let event = serde_json::json!({ "id": format!("e{n}"), "scope": scope });
+        log.events.push(event);
+    }
+    assert_eq!(log.erase_everything(), 3);
+    assert!(log.events.is_empty());
+    assert_eq!(log.erasures, 3, "one whole-scope erasure per scope");
 }
 
 #[tokio::test]

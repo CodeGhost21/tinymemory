@@ -9,19 +9,33 @@
 //! first, so a layout that ever put a scope below another would not strand
 //! redacted events behind held keys.
 //!
-//! Both wires erase: Direct at CortexDB's `v1/erasures`, hosted at the
-//! TinyHumans backend's `memory/v1/erasures` passthrough, which memory-api
-//! pins under the tenant's root (see `log::erase`).
+//! On the TinyHumans wire the whole tree (`whole_tree`: the root, its
+//! descendants, every kind) erases in one `DELETE memory` that erases the
+//! caller's entire hosted memory, every scope under its tenant (including any
+//! another layout or client wrote there). A narrower request erases scope by
+//! scope, as Direct does, through the backend's `memory/v1/erasures`
+//! passthrough, which memory-api pins under the tenant's root (see
+//! `log::erase`). A backend without that route answers `Unsupported`, so a
+//! caller can fall back to `forget`.
 
 use tinymemory_api::{EraseReport, EraseRequest, ItemKind};
 
 use super::CortexEngine;
+use crate::cortex::descriptor::CortexWire;
 use crate::cortex::error::Result;
 
 impl CortexEngine {
     /// See the module docs.
     pub(super) async fn erase_scopes(&self, req: EraseRequest) -> Result<EraseReport> {
         req.validate()?;
+        if self.log.client.wire() == CortexWire::TinyHumans && is_whole_tree(&req) {
+            let erased_scopes = self.log.erase_all().await?;
+            log::debug!("[cortex] erased the whole hosted memory ({erased_scopes} scopes)");
+            return Ok(EraseReport {
+                erased_scopes,
+                receipts: Vec::new(),
+            });
+        }
         let kinds: Vec<ItemKind> = if req.kinds.is_empty() {
             ItemKind::ALL.to_vec()
         } else {
@@ -31,11 +45,17 @@ impl CortexEngine {
         scopes.sort_by_key(|scope| std::cmp::Reverse(scope.path.matches('/').count()));
         let mut report = EraseReport::default();
         for scope in scopes {
-            let receipt = self.log.erase(&scope.path).await?;
-            log::debug!("[cortex] erased {} ({receipt})", scope.path);
+            let receipts = self.log.erase(&scope.path).await?;
+            log::debug!("[cortex] erased {} ({receipts:?})", scope.path);
             report.erased_scopes += 1;
-            report.receipts.push(receipt);
+            report.receipts.extend(receipts);
         }
         Ok(report)
     }
+}
+
+/// Whether `req` erases everything: the root, its descendants, every kind.
+/// [`EraseRequest::validate`] has already refused it without `whole_tree`.
+fn is_whole_tree(req: &EraseRequest) -> bool {
+    req.whole_tree && req.reach.at.is_root() && req.reach.descendants && req.kinds.is_empty()
 }
