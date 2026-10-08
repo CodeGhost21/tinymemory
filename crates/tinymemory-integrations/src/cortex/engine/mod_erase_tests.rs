@@ -186,7 +186,10 @@ async fn the_hosted_wire_refuses_a_narrower_erase_without_a_request() {
         .erase(EraseRequest::new(Reach::subtree(Namespace::ROOT)))
         .await;
     assert!(
-        matches!(missing_interlock, Err(tinymemory_api::Error::InvalidRequest(_))),
+        matches!(
+            missing_interlock,
+            Err(tinymemory_api::Error::InvalidRequest(_))
+        ),
         "{missing_interlock:?}"
     );
     assert!(state.seen.lock().unwrap().requests.is_empty());
@@ -209,7 +212,11 @@ async fn a_backend_without_the_erase_route_is_unsupported() {
 #[tokio::test]
 async fn a_hosted_erase_without_its_confirmation_is_an_engine_error() {
     let (endpoint, state) = hosted_double().await;
-    state.fail_all.lock().unwrap().replace((503, "UPSTREAM_UNAVAILABLE"));
+    state
+        .fail_all
+        .lock()
+        .unwrap()
+        .replace((503, "UPSTREAM_UNAVAILABLE"));
     let engine = hosted_engine(&endpoint);
     let failed = engine.erase(whole_tree()).await;
     assert!(

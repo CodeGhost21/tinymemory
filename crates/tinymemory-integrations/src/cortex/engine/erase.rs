@@ -29,8 +29,7 @@ impl CortexEngine {
         if self.log.client.wire() == CortexWire::TinyHumans {
             if !is_whole_tree(&req) {
                 return Err(Error::Unsupported(
-                    "the TinyHumans backend erases only the whole memory (whole_tree)"
-                        .to_string(),
+                    "the TinyHumans backend erases only the whole memory (whole_tree)".to_string(),
                 ));
             }
             let erased_scopes = self.log.erase_all().await?;

@@ -377,7 +377,10 @@ async fn erase(
 async fn erase_all(State(state): State<Shared>, uri: Uri, headers: HeaderMap) -> Reply {
     if state.erase_all_missing.load(Ordering::SeqCst) {
         // An older backend: Express's unmatched-route 404, no envelope.
-        return (StatusCode::NOT_FOUND, Json(json!({ "message": "Not Found" })));
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "message": "Not Found" })),
+        );
     }
     if let Some(early) = gate(&state, "DELETE", &uri, &headers) {
         return early;
