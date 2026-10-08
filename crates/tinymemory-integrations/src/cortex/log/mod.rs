@@ -30,6 +30,12 @@
 //! - **The forget selector's id field is `memory_ids`.** An unrecognised
 //!   field reads as an *empty* selector, which means the whole scope. This
 //!   crate never sends an empty selector and never sends `confirm_all`.
+//! - **A forget by `memory_ids` takes what was derived too.** On 0.10.4,
+//!   `layers: ["events"]` (what this crate sends) and `layers: []` alike
+//!   delete the named raw events *and* every fact, belief, episode and
+//!   understanding record that cites them; records derived from other events
+//!   stay. A `layers` list without `events` deletes nothing. (0.9.9's default
+//!   kept raw events.) It is not a GDPR erasure: that is `v1/erasures`.
 //!
 //! On the TinyHumans wire the backend also rate-limits a user to 300
 //! requests a minute, has no bulk, `?wait=indexed` or health route, and

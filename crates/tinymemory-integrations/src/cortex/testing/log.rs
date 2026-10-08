@@ -191,6 +191,14 @@ impl CortexLog {
                 .extend(gone.iter().map(|e| str_of(e, "/id").to_string()));
             self.idempotency
                 .retain(|_, (_, id)| !gone.iter().any(|e| str_of(e, "/id") == id));
+            // 0.10.4 deletes every derived record citing a forgotten event
+            // (facts, beliefs, episodes, understanding) under `layers:
+            // ["events"]` and `layers: []` alike; another event's survive.
+            self.beliefs.retain(|belief| {
+                !gone
+                    .iter()
+                    .any(|e| str_of(e, "/id") == str_of(belief, "/source"))
+            });
             self.events = kept;
         } else {
             // A scope-wide forget only redacts, so its keys stay held for

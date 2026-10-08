@@ -236,3 +236,59 @@ async fn a_fetch_reads_beliefs_from_its_own_recall_packs() {
     assert!(last["budgets"]["per_layer_limits"].get("beliefs").is_none());
     assert_eq!(last["include"], json!(["events"]));
 }
+
+#[tokio::test]
+async fn forgetting_an_item_takes_the_beliefs_built_from_it_and_keeps_the_rest() {
+    let (endpoint, state) = direct_double().await;
+    let engine = direct_engine(&endpoint);
+    let node = Namespace::agent("coder-42");
+    let meta = MemoryMeta {
+        namespace: node.clone(),
+        ..MemoryMeta::default()
+    };
+    let forgotten = engine
+        .store(StoreItem::document("In this repo always use pnpm.", meta.clone()))
+        .await
+        .unwrap();
+    engine
+        .store(StoreItem::document("Tests run under nextest.", meta))
+        .await
+        .unwrap();
+    engine
+        .consolidate(tinymemory_api::ConsolidateRequest::new(Reach::exact(
+            node.clone(),
+        )))
+        .await
+        .unwrap();
+    let built = engine
+        .beliefs(BeliefsRequest::new(Reach::subtree(Namespace::ROOT), 5))
+        .await
+        .unwrap();
+    assert_eq!(built.len(), 2, "{built:?}");
+
+    engine
+        .forget(tinymemory_api::ForgetTarget::Ids(vec![forgotten.id]))
+        .await
+        .unwrap();
+
+    // The removal names the item's events and the events layer: on 0.10.4
+    // that deletes the raw events and everything derived from them.
+    let forgets = state.seen.lock().unwrap().forgets.clone();
+    assert_eq!(forgets.len(), 1, "{forgets:?}");
+    assert_eq!(forgets[0]["layers"], json!(["events"]));
+    assert!(forgets[0].get("confirm_all").is_none());
+    let left = engine
+        .beliefs(BeliefsRequest::new(Reach::subtree(Namespace::ROOT), 5))
+        .await
+        .unwrap();
+    assert_eq!(left.len(), 1, "{left:?}");
+    assert!(
+        left.iter().all(|hit| !hit.text.contains("pnpm")),
+        "a forgotten item's beliefs are not recallable: {left:?}"
+    );
+    let ranked = engine
+        .beliefs(BeliefsRequest::new(Reach::subtree(Namespace::ROOT), 5).query("pnpm"))
+        .await
+        .unwrap();
+    assert!(ranked.iter().all(|hit| !hit.text.contains("pnpm")), "{ranked:?}");
+}
