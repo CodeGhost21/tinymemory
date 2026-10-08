@@ -45,6 +45,8 @@ for. Both fail with `Error::Unsupported` before any request.
 | Health | `v1/admin/health` | `memory/scopes` | GET |
 | Scopes (registered scopes under a prefix) | `v1/scopes/list` | `memory/scopes` | GET |
 | Build beliefs (one scope) | `v1/beliefs/build` | none (never sent) | POST |
+| Erase (one scope) | `v1/erasures` | `memory/v1/erasures` (unwrapped) | POST |
+| Erasure status | `v1/erasures/{id}` | `memory/v1/erasures/{id}` (unwrapped) | GET |
 | Whoami (Direct only) | `v1/auth/whoami` | | GET |
 
 The endpoint is joined with the route, so a base URL with a path prefix keeps
@@ -215,8 +217,13 @@ strict (an unknown key, or a `null` instructions, is a 400).
 ```json
 { "scope": "...", "layers": ["events"],
   "selector": { "memory_ids": ["evt_1", "evt_2"] },
+  "cascade": "redact_events",
   "audit_note": "tinymemory: forget" }
 ```
+
+The cascade is always named. CortexDB's default, `derived_only`, removes what
+was derived from the events and keeps the events, so a forget that left it out
+would not remove anything written.
 
 At most 100 ids per request. The id field is exactly `memory_ids`: an
 unrecognised or empty selector means *the whole scope* to CortexDB (an empty
@@ -237,7 +244,7 @@ scopes. There is no cursor (v0.10.5): `limit` defaults to 50 and is clamped to
 1000, and `prefix` matches whole segments. At 1000 paths a read logs a warning
 and an export refuses, since some scopes may be missing.
 
-### Erase: `v1/erasures` (Direct only)
+### Erase: `v1/erasures` and `memory/v1/erasures`
 
 ```json
 { "scope": "app:tinymemory/agent:assistant/app:learnings", "confirm_all": true, "audit_note": "tinymemory: erase" }
@@ -254,6 +261,14 @@ re-sent write there replays and stores nothing. A whole-scope erasure of six
 240 KB events took about 8 s on v0.10.5; small scopes take well under a
 second. Every erasure drops every recall pack the server holds, as a forget
 does.
+
+Hosted, the same body goes to the backend's `memory/v1/erasures`
+passthrough, which answers in CortexDB's dialect (memory-api's status and
+body, no `{success,data}` envelope). memory-api pins the scope under the
+caller's tenant root and erases with the tenant's own user-actor token. When
+the answer's `status` is `running` (or `pending`, `queued`, `accepted`), the
+engine polls `GET .../erasures/{id}` until it settles, for at most five
+minutes; any final status but `completed` is an error.
 
 ### Build beliefs: `v1/beliefs/build` (Direct only)
 
