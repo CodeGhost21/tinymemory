@@ -251,7 +251,7 @@ impl CortexLog {
         let (gone, kept): (Vec<Value>, Vec<Value>) =
             std::mem::take(&mut self.events).into_iter().partition(|e| {
                 let at = str_of(e, "/scope");
-                at == scope || at.starts_with(&below)
+                scope.is_empty() || at == scope || at.starts_with(&below)
             });
         let deleted: Vec<String> = gone
             .iter()
