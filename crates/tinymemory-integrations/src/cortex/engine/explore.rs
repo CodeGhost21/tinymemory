@@ -55,10 +55,11 @@ impl CortexEngine {
             scopes.len(),
             req.scan_limit
         );
-        let tallies: Vec<ScopeTally> = stream::iter(scopes.iter())
-            .map(|scope| {
-                self.tally_scope(scope, &req.filter, narrowing.as_deref(), req.scan_limit)
-            })
+        let filter = &req.filter;
+        let narrowing = narrowing.as_deref();
+        let cap = req.scan_limit;
+        let tallies: Vec<ScopeTally> = stream::iter(scopes)
+            .map(|scope| async move { self.tally_scope(&scope, filter, narrowing, cap).await })
             .buffered(SCOPES_AT_ONCE)
             .try_collect()
             .await?;
