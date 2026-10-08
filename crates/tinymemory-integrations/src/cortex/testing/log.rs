@@ -172,10 +172,13 @@ impl CortexLog {
             })
             .unwrap_or_default();
         let selective = !ids.is_empty();
-        let cascade = body
-            .get("cascade")
-            .and_then(Value::as_str)
-            .unwrap_or("derived_only");
+        let cascade = match body.get("cascade") {
+            None => "derived_only",
+            Some(Value::String(cascade)) => cascade.as_str(),
+            // Present but not a string (null, a number): invalid, never
+            // the default.
+            Some(_) => "",
+        };
         if !matches!(cascade, "derived_only" | "redact_events") {
             return (400, json!({ "error_code": "INVALID_CASCADE" }));
         }

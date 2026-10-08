@@ -142,6 +142,10 @@ pub(crate) struct Double {
     /// How many `running` answers a Direct erasure gives (its POST, then
     /// its status polls) before it settles.
     pub(crate) erasure_running_for: AtomicUsize,
+    /// Polled Direct erasure answers (`GET v1/erasures/{id}`) omit `status`.
+    pub(crate) erasure_poll_omits_status: AtomicBool,
+    /// Replaces the answer of a hosted scoped erasure that succeeded.
+    pub(crate) scoped_erase_answer: Mutex<Option<serde_json::Value>>,
     /// The status a settled erasure ends with; `completed` when unset.
     pub(crate) erasure_ends: Mutex<Option<&'static str>>,
 }

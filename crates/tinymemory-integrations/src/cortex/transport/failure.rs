@@ -179,10 +179,15 @@ pub(crate) fn hosted_status_error(
         .as_ref()
         // The backend's own `errorCode`, or memory-api's `error_code` on a
         // route the backend passes through unwrapped (`memory/v1/*`).
-        .and_then(|v| v.get("errorCode").or_else(|| v.get("error_code")))
-        .and_then(Value::as_str)
-        .map(clean_code)
-        .filter(|c| !c.is_empty())
+        // A code that is null, not a string or empty once cleaned does not
+        // shadow the other key.
+        .and_then(|v| {
+            ["errorCode", "error_code"]
+                .iter()
+                .filter_map(|key| v.get(*key).and_then(Value::as_str))
+                .map(clean_code)
+                .find(|c| !c.is_empty())
+        })
         .unwrap_or_else(|| default_code(status));
     let message = parsed.as_ref().and_then(|v| v.get("error")).map_or_else(
         || body.to_string(),

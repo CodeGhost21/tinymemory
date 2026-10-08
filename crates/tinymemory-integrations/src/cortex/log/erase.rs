@@ -24,7 +24,7 @@
 //! `v1/erasures/{id}` until it settles, and anything but `completed` is an
 //! error: an erasure that did not finish must never read as done.
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use serde_json::{Value, json};
 
@@ -32,9 +32,6 @@ use super::{HOSTED_POLL_CEILING, Log};
 use crate::cortex::descriptor::{CortexWire, Route};
 use crate::cortex::error::{Error, Result};
 use crate::cortex::transport::{Attempts, urlencode};
-
-/// How long a running erasure is polled before it is reported as not done.
-const ERASURE_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// How many times a hosted erasure is sent before an incomplete or
 /// transient failure surfaces.
@@ -49,12 +46,24 @@ const PENDING: [&str; 4] = ["running", "pending", "queued", "accepted"];
 /// The audit note every erasure carries.
 const AUDIT_NOTE: &str = "tinymemory: erase";
 
+/// What one scope's erasure removed.
+#[derive(Debug)]
+pub(crate) struct Erased {
+    /// How many scopes the backend erased: one on Direct; on a hosted wire
+    /// what the backend reports (`0` when nothing was left to erase).
+    pub(crate) scopes: usize,
+    /// The erasure ids, once completed.
+    pub(crate) ids: Vec<String>,
+}
+
 impl Log {
-    /// Erases `scope`, returning the erasure ids once it has completed
-    /// (none for a hosted scope that held nothing).
-    pub(crate) async fn erase(&self, scope: &str) -> Result<Vec<String>> {
+    /// Erases `scope`, returning what was erased once it has completed.
+    pub(crate) async fn erase(&self, scope: &str) -> Result<Erased> {
         match self.client.wire() {
-            CortexWire::Direct => self.erase_direct(scope).await.map(|id| vec![id]),
+            CortexWire::Direct => self.erase_direct(scope).await.map(|id| Erased {
+                scopes: 1,
+                ids: vec![id],
+            }),
             CortexWire::TinyHumans => self.erase_hosted(scope).await,
         }
     }
@@ -62,7 +71,7 @@ impl Log {
     /// Hosted: memory-api's synchronous scoped erasure. Retried on a
     /// transient failure (`502 ERASURE_INCOMPLETE` among them), since
     /// erasing a scope again erases only what is left.
-    async fn erase_hosted(&self, scope: &str) -> Result<Vec<String>> {
+    async fn erase_hosted(&self, scope: &str) -> Result<Erased> {
         let body = json!({ "scope": scope, "audit_note": AUDIT_NOTE });
         let path = self.client.wire().path(Route::Erasures);
         let mut attempt = 0;
@@ -91,17 +100,35 @@ impl Log {
                 "the erasure of {scope} answered without `erased: true`"
             )));
         }
-        let ids = answer
-            .get("erasure_ids")
-            .and_then(Value::as_array)
-            .map(|ids| {
-                ids.iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_owned)
-                    .collect()
-            })
-            .unwrap_or_default();
-        Ok(ids)
+        let scopes = answer
+            .get("scopes")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| {
+                Error::Engine(format!(
+                    "the erasure of {scope} answered without a numeric `scopes` count"
+                ))
+            })?;
+        let ids = match answer.get("erasure_ids") {
+            None | Some(Value::Null) => Vec::new(),
+            Some(Value::Array(ids)) => ids
+                .iter()
+                .map(|id| id.as_str().map(str::to_owned))
+                .collect::<Option<Vec<_>>>()
+                .ok_or_else(|| {
+                    Error::Engine(format!(
+                        "the erasure of {scope} answered a non-string entry in `erasure_ids`"
+                    ))
+                })?,
+            Some(_) => {
+                return Err(Error::Engine(format!(
+                    "the erasure of {scope} answered `erasure_ids` that is not an array"
+                )));
+            }
+        };
+        Ok(Erased {
+            scopes: usize::try_from(scopes).unwrap_or(usize::MAX),
+            ids,
+        })
     }
 
     /// Direct: CortexDB's `v1/erasures`, sent once (a failure surfaces),
@@ -124,28 +151,42 @@ impl Log {
             .ok_or_else(|| {
                 Error::Engine(format!("the erasure of {scope} answered no erasure_id"))
             })?;
-        let mut status = status_of(&answer);
-        let started = Instant::now();
+        // The synchronous answer may omit its status (it ran to the end).
+        let mut status = status_of(&answer, true)?;
+        let limit = self.timing.erasure;
+        let deadline = Instant::now() + limit;
         let mut gap = self.timing.poll;
         while PENDING.contains(&status.as_str()) {
-            if started.elapsed() > ERASURE_TIMEOUT {
-                return Err(Error::Unavailable(format!(
-                    "the erasure of {scope} ({id}) was still {status} after {}s",
-                    ERASURE_TIMEOUT.as_secs()
-                )));
+            let unavailable = || {
+                Error::Unavailable(format!(
+                    "the erasure of {scope} ({id}) was still pending after {}ms",
+                    limit.as_millis()
+                ))
+            };
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(unavailable());
             }
-            tokio::time::sleep(gap).await;
+            let poll = async {
+                tokio::time::sleep(gap).await;
+                self.client
+                    .json(
+                        reqwest::Method::GET,
+                        &format!("{path}/{}", urlencode(&id)),
+                        None,
+                        Attempts::RetryTransient,
+                    )
+                    .await
+            };
+            // The deadline bounds the sleep and every retry of the request,
+            // not just the gap between polls.
+            let job = tokio::time::timeout(remaining, poll)
+                .await
+                .map_err(|_| unavailable())??;
             gap = (gap * 2).min(HOSTED_POLL_CEILING);
-            let job = self
-                .client
-                .json(
-                    reqwest::Method::GET,
-                    &format!("{path}/{}", urlencode(&id)),
-                    None,
-                    Attempts::RetryTransient,
-                )
-                .await?;
-            status = status_of(&job);
+            // A polled job must say where it stands: a missing status is
+            // not a completed erasure.
+            status = status_of(&job, false)?;
             log::debug!("[cortex] erasure {id} of {scope} is {status}");
         }
         if status != COMPLETED {
@@ -202,12 +243,17 @@ impl Log {
     }
 }
 
-/// An erasure answer's status. CortexDB's synchronous answer may omit it;
-/// an id with no status is an erasure that ran to completion.
-fn status_of(answer: &Value) -> String {
-    answer
-        .get("status")
-        .and_then(Value::as_str)
-        .unwrap_or(COMPLETED)
-        .to_string()
+/// An erasure answer's status. CortexDB's synchronous POST answer may omit
+/// it (`default_completed`: an id with no status ran to completion); a
+/// polled job must carry a string status, and a status of any other type is
+/// malformed either way.
+fn status_of(answer: &Value, default_completed: bool) -> Result<String> {
+    match answer.get("status") {
+        Some(Value::String(status)) => Ok(status.clone()),
+        None if default_completed => Ok(COMPLETED.to_string()),
+        other => Err(Error::Engine(format!(
+            "an erasure answer carried no usable status ({})",
+            other.map_or_else(|| "missing".to_string(), |v| v.to_string())
+        ))),
+    }
 }

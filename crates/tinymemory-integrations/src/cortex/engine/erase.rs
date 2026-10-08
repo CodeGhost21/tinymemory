@@ -45,10 +45,10 @@ impl CortexEngine {
         scopes.sort_by_key(|scope| std::cmp::Reverse(scope.path.matches('/').count()));
         let mut report = EraseReport::default();
         for scope in scopes {
-            let receipts = self.log.erase(&scope.path).await?;
-            log::debug!("[cortex] erased {} ({receipts:?})", scope.path);
-            report.erased_scopes += 1;
-            report.receipts.extend(receipts);
+            let erased = self.log.erase(&scope.path).await?;
+            log::debug!("[cortex] erased {} ({erased:?})", scope.path);
+            report.erased_scopes += erased.scopes;
+            report.receipts.extend(erased.ids);
         }
         Ok(report)
     }

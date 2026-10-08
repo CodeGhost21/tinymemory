@@ -418,7 +418,13 @@ async fn hosted_erase(
             Json(json!({ "error_code": "UNKNOWN_FIELD", "message": unknown })),
         );
     }
-    let scope = body["scope"].as_str().unwrap_or_default().to_string();
+    // A scope that is not a string is a malformed request, not the root.
+    let Some(scope) = body.get("scope").and_then(Value::as_str).map(str::to_string) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error_code": "INVALID_SCOPE" })),
+        );
+    };
     if scope.is_empty() || scope == "/" {
         return (
             StatusCode::UNPROCESSABLE_ENTITY,
@@ -448,6 +454,9 @@ async fn hosted_erase(
         }
         ids.push(answer["erasure_id"].clone());
     }
+    if let Some(answer) = state.scoped_erase_answer.lock().unwrap().clone() {
+        return (StatusCode::OK, Json(answer));
+    }
     (
         StatusCode::OK,
         Json(json!({ "erased": true, "scope": scope, "scopes": ids.len(), "erasure_ids": ids })),
@@ -464,9 +473,13 @@ async fn erasure(
     if let Some(early) = gate(&state, "GET", &uri, &headers) {
         return early;
     }
+    let status = erasure_status(&state);
+    if state.erasure_poll_omits_status.load(Ordering::SeqCst) {
+        return (StatusCode::OK, Json(json!({ "erasure_id": id })));
+    }
     (
         StatusCode::OK,
-        Json(json!({ "erasure_id": id, "status": erasure_status(&state) })),
+        Json(json!({ "erasure_id": id, "status": status })),
     )
 }
 
