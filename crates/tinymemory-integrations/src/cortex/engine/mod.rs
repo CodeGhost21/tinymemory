@@ -22,6 +22,7 @@ mod forget;
 mod items;
 mod list;
 mod recall;
+mod recency;
 mod refers;
 mod scopes;
 mod store;
@@ -68,6 +69,9 @@ pub struct CortexEngine {
     /// Whether writes name their observed actor (shared by clones, so a
     /// refusal turns it off for all of them).
     attribution: Arc<attribution::Attribution>,
+    /// When each scope was last written (shared by clones), for a capped
+    /// fetch's choice of scopes.
+    recency: Arc<recency::Recency>,
 }
 
 impl std::fmt::Debug for CortexEngine {
@@ -106,6 +110,7 @@ impl CortexEngine {
             registered: Arc::new(AtomicBool::new(false)),
             refers: Arc::default(),
             attribution: Arc::default(),
+            recency: Arc::default(),
         })
     }
 

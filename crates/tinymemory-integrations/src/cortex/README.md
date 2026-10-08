@@ -205,7 +205,11 @@ as prefixes, so they cannot be labelled and are filtered only client-side.
   engine does not answer, a walk past its cap), never with a partial page, so
   a caller retries from its last cursor.
 - **Fetch (hybrid).** One recall per scope read with
-  `budgets.per_layer_limits.events`. Events are decoded to items and the full
+  `budgets.per_layer_limits.events`. A request with `max_scopes` reads at
+  most that many of its scopes (`engine/recency.rs`): those a query word
+  names (a segment id, or a `-`/`_` part of one), then the most recently
+  written (the newest `observed_at` of a short listing, cached ten minutes
+  and set to now by this engine's own writes), read in the usual order. Events are decoded to items and the full
   filter is applied. Each item is kept once, at its best rank, and scopes are
   interleaved rank by rank. A one-turn conversation hit is whole in its pack
   event; only longer conversations are assembled from their turns (four

@@ -144,6 +144,10 @@ impl CortexEngine {
             .saturating_mul(EVENTS_PER_HIT)
             .min(MAX_PACK_EVENTS);
         let scopes = self.scopes_for(&req.filter).await?;
+        let scopes = match req.max_scopes {
+            Some(max) if scopes.len() > max => self.pick_scopes(scopes, &req.query, max).await,
+            _ => scopes,
+        };
         let wanted_beliefs = if offset == 0 { req.beliefs } else { 0 };
         let hint = match &req.refers_to {
             Some(hint) if self.sends_refers().await => Some(refers::temporal(hint)),
