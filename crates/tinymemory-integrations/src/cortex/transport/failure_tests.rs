@@ -110,6 +110,32 @@ fn a_hosted_failure_carries_its_code_and_402_is_insufficient_credits() {
 }
 
 #[test]
+fn a_hosted_400_with_the_conflict_code_is_a_conflict() {
+    // The backend's own envelope for memory-api's 409 (`memoryUpstreamError`).
+    let body = r#"{"success":false,"error":"idempotency key already claimed","errorCode":"CONFLICT"}"#;
+    let error = hosted_status_error("h", "memory/experience", StatusCode::BAD_REQUEST, body);
+    assert!(matches!(error, Error::Conflict(_)), "{error:?}");
+    assert_eq!(error_code(&error), Some("CONFLICT"));
+
+    let other = hosted_status_error(
+        "h",
+        "memory/experience",
+        StatusCode::BAD_REQUEST,
+        r#"{"success":false,"error":"bad scope","errorCode":"BAD_REQUEST"}"#,
+    );
+    assert!(matches!(other, Error::InvalidRequest(_)), "{other:?}");
+
+    // Only the hosted classifier reads the code: CortexDB's own 400 is not a conflict.
+    let direct = direct_status_error(
+        "h",
+        "v1/experience",
+        StatusCode::BAD_REQUEST,
+        r#"{"error_code":"CONFLICT"}"#,
+    );
+    assert!(matches!(direct, Error::InvalidRequest(_)), "{direct:?}");
+}
+
+#[test]
 fn a_hostile_error_code_cannot_break_the_prefix() {
     let error = hosted_status_error(
         "h",
