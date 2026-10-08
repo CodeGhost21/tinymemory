@@ -135,6 +135,13 @@ impl Log {
                 )));
             }
         };
+        // The receipts are the audit trail of a destructive call: scopes
+        // erased without one is an incompatible answer, not a success.
+        if scopes > 0 && ids.is_empty() {
+            return Err(Error::Engine(format!(
+                "the erasure of {scope} erased {scopes} scope(s) but answered no `erasure_ids`"
+            )));
+        }
         Ok(Erased {
             scopes: usize::try_from(scopes).map_err(|_| {
                 Error::Engine(format!(

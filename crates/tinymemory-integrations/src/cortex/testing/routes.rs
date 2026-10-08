@@ -480,13 +480,14 @@ async fn erasure(
     if let Some(early) = gate(&state, "GET", &uri, &headers) {
         return early;
     }
-    let status = erasure_status(&state);
+    // A forced status leaves the running budget alone.
     if let Some(forced) = state.erasure_poll_status.lock().unwrap().clone() {
         return (
             StatusCode::OK,
             Json(json!({ "erasure_id": id, "status": forced })),
         );
     }
+    let status = erasure_status(&state);
     if state.erasure_poll_omits_status.load(Ordering::SeqCst) {
         return (StatusCode::OK, Json(json!({ "erasure_id": id })));
     }
