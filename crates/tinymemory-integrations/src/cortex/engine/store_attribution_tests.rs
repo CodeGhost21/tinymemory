@@ -22,6 +22,16 @@ fn chat() -> StoreItem {
     }
 }
 
+/// [`chat`] with its user turn said by a channel's sender.
+fn sent_chat() -> StoreItem {
+    let mut item = chat();
+    item.meta_mut().observed_actor = Some(ObservedActor {
+        id: "user:+15551234567".into(),
+        name: Some("Priya".into()),
+    });
+    item
+}
+
 fn email(body: &str, sender: bool) -> StoreItem {
     let mut meta = MemoryMeta::default();
     if sender {
@@ -70,14 +80,16 @@ async fn off_writes_the_same_bytes_as_before_the_field_existed() {
         // attributes.
         let (hosted_endpoint, hosted_state) = hosted_double().await;
         let hosted = hosted_engine(&hosted_endpoint).with_observed_actor(on);
-        let items = vec![chat(), email("see you at noon", sender)];
+        let talk = if sender { sent_chat() } else { chat() };
+        let items = vec![talk, email("see you at noon", sender)];
         direct.store_many(items.clone()).await.unwrap();
         hosted.store_many(items).await.unwrap();
         written.push((events(&state), events(&hosted_state)));
     }
     assert!(
         written.iter().all(|w| w.0 == written[0].0),
-        "direct, off: same bodies and idempotency keys with or without a sender"
+        "direct, off: same bodies and idempotency keys with or without a sender \
+         (a turn's or a document's)"
     );
     assert!(
         written.iter().all(|w| w.1 == written[0].1),
@@ -129,6 +141,23 @@ async fn on_names_the_agent_and_the_sender_with_the_owner_as_subject() {
         Some("Priya".to_string()),
         "the sender's name is kept with the item"
     );
+}
+
+#[tokio::test]
+async fn on_names_a_user_turns_sender_and_the_replys_agent() {
+    let (engine, state) = on_direct().await;
+    engine.store_many(vec![sent_chat()]).await.unwrap();
+    let events = events(&state);
+    let actors: Vec<Option<&str>> = events.iter().map(actor).collect();
+    assert_eq!(
+        actors,
+        [Some("user:+15551234567"), Some("agent:orchestrator")],
+        "a phone-number sender is named as it is"
+    );
+    for event in &events {
+        assert_eq!(event["subject"]["id"], "user:42");
+    }
+    assert_eq!(events[0]["observed_actor"]["type"], "user");
 }
 
 #[tokio::test]

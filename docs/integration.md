@@ -92,7 +92,9 @@ root (`"engines": { "cortexdb": { "scope_root": "user:42", "scope_owner":
 
 To record who actually said or did something, set `"observed_actor": true`
 on a `cortexdb` engine and fill `MemoryMeta::observed_actor` on items another
-person wrote (an email's sender, `user:<address>`). Off by default; see
+person wrote (an email's sender, `user:<address>`), or `PreTurn::observed_actor`
+on a user turn someone other than the owner said (a channel's sender,
+`user:+15551234567`). Off by default; see
 [cortex.md](architecture/cortex.md#attribution).
 
 | Engine id | Where it runs | Consolidation (belief builds) |

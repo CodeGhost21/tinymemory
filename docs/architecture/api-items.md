@@ -162,7 +162,7 @@ namespace are omitted on serialisation.
 | `source` | `SourceRef` | `{ kind: SourceKind, id? }`; always present, defaults to kind `agent`. |
 | `tags` | `Vec<String>` | Free-form tags. |
 | `observed_at` | `Option<DateTime<Utc>>` | When the underlying fact was observed, as opposed to stored. Excluded from the fingerprint. |
-| `observed_actor` | `Option<ObservedActor>` | `{ id, name? }`: who said or did it when not the memory's owner, such as an email's sender (`id` is `type:id`, `user:priya@acme.com`). Excluded from the fingerprint; the CortexDB engine sends it only with attribution on. |
+| `observed_actor` | `Option<ObservedActor>` | `{ id, name? }`: who said or did it when not the memory's owner, such as an email's sender or a channel's (`id` is `type:id`, `user:priya@acme.com`, `user:+15551234567`). Excluded from the fingerprint; the CortexDB engine sends it only with attribution on. |
 
 `MemoryMeta::from_source(kind, id)` sets only the source. `SourceKind` is
 `folder | file | link | github | rss | composio | conversation | agent |

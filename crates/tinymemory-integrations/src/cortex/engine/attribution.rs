@@ -10,9 +10,13 @@
 //! With attribution on (`EngineSettings::observed_actor`, direct wire only):
 //!
 //! - an assistant turn is observed from its agent (`agent:<agent_id>`);
-//! - an item naming a [`tinymemory_api::ObservedActor`] (the sender of a
-//!   synced email) is observed from that person;
-//! - anything else is the owner's own and carries neither field;
+//! - a user turn naming a [`tinymemory_api::ObservedActor`] (a channel's
+//!   sender, `user:+15551234567`) is observed from that person, and a user
+//!   turn naming none is the owner's;
+//! - an item naming one (the sender of a synced email) is observed from
+//!   that person;
+//! - anything else (a tool or system turn) is the owner's own and carries
+//!   neither field;
 //! - an attributed event's subject is the memory's owner (the v3 root's
 //!   owner, else the caller `whoami` reports).
 //!
@@ -80,7 +84,8 @@ pub(crate) fn screen(meta: &mut MemoryMeta, attributing: bool) {
 }
 
 /// Who `envelope`'s event is observed from, when someone other than the
-/// memory's owner: an assistant turn's agent, or the item's named actor.
+/// memory's owner: an assistant turn's agent, or for a user turn or an item
+/// that is not a turn, the item's named actor.
 pub(crate) fn actor_of(envelope: &Envelope) -> Option<String> {
     match &envelope.turn {
         Some(turn) if turn.role == Role::Assistant => envelope
@@ -88,8 +93,8 @@ pub(crate) fn actor_of(envelope: &Envelope) -> Option<String> {
             .agent_id
             .as_deref()
             .and_then(|agent| actor_id(&format!("agent:{}", agent.trim()))),
-        Some(_) => None,
-        None => envelope
+        Some(turn) if turn.role != Role::User => None,
+        _ => envelope
             .meta
             .observed_actor
             .as_ref()

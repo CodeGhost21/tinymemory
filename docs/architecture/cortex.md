@@ -120,8 +120,9 @@ engine name them:
 | Event | `observed_actor` | `subject` |
 | --- | --- | --- |
 | an assistant turn with `meta.agent_id` | `agent:<agent_id>` | the owner |
-| an item with `meta.observed_actor` (an email's sender) | its `id`, e.g. `user:priya@acme.com` | the owner |
-| anything else | not sent | not sent |
+| a user turn with `meta.observed_actor` (a channel's sender, `PreTurn::observed_actor`) | its `id`, e.g. `user:+15551234567` | the owner |
+| an item that is not a turn with `meta.observed_actor` (an email's sender) | its `id`, e.g. `user:priya@acme.com` | the owner |
+| anything else (a user turn naming no actor, a tool or system turn) | not sent | not sent |
 
 The owner is the v3 root's owner, else the `whoami` caller; with neither,
 nothing is attributed. Naming another actor needs the credential's
