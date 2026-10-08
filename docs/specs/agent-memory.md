@@ -78,6 +78,10 @@ by default, or a host node such as `team:acme`.
   - `WaitFor::Accepted` may return once the engine has durably accepted the
     item.
   - The default implementation serves both as `store`.
+- **`MemoryEngine::store_many_with(items, WriteOptions { wait })`** is the
+  same for a batch: `WaitFor::Visible` is `store_many`, `WaitFor::Accepted`
+  may return once every item is durably accepted. The default serves both as
+  `store_many`.
 - **`MemoryEngine::consolidate(ConsolidateRequest { reach, kinds })`** asks
   for a belief build and returns as soon as the job is taken.
   - The default refuses with `Unsupported`.

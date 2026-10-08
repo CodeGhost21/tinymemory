@@ -294,6 +294,7 @@ Implement `tinymemory_api::MemoryEngine`.
 | Method | Default | Override when |
 | --- | --- | --- |
 | `store_with` | behaves as `store` | the engine can acknowledge a write before indexing it |
+| `store_many_with` | behaves as `store_many` | the engine can acknowledge a batch before indexing it |
 | `consolidate` | `Unsupported` | the engine builds beliefs (declare it in `descriptor().consolidation`) |
 | `beliefs` | none | the engine keeps beliefs apart from its stored items |
 | `fetch` beliefs (`FetchRequest::beliefs`) | none | as above, served from the same read as the fetch |

@@ -363,3 +363,45 @@ async fn an_answer_whose_pack_expired_recalls_that_scope_again() {
         state.expire_packs.store(0, Ordering::SeqCst);
     }
 }
+
+/// A bulk import that reads nothing back until it ends stores accepted:
+/// every item gets its receipt, in order, with no visibility polling, on
+/// either wire. The same batch stored visible times out on the hidden
+/// listing, which is the wait this skips.
+#[tokio::test]
+async fn an_accepted_batch_returns_without_waiting_to_be_listed() {
+    for (engine, state) in both().await {
+        let wire = engine.wire();
+        let engine = engine.with_test_timing(std::time::Duration::from_millis(50));
+        // Listings never show the writes: a visible store would time out.
+        state.hide_listing_for.store(usize::MAX, Ordering::SeqCst);
+        let listings = |state: &crate::cortex::testing::Shared| {
+            state.count("GET /v1/events") + state.count("GET /memory/events")
+        };
+        let before = listings(&state);
+        let receipts = engine
+            .store_many_with(items(), tinymemory_api::WriteOptions::accepted())
+            .await
+            .unwrap();
+        let ids: Vec<String> = receipts.iter().map(|r| r.id.as_str().to_string()).collect();
+        let wanted: Vec<String> = items().iter().map(StoreItem::fingerprint).collect();
+        assert_eq!(ids, wanted, "{wire:?}: a receipt per item, in order");
+        let polled = listings(&state) - before;
+        assert!(
+            polled <= items().len(),
+            "{wire:?}: only the replay lookups (one per scope), no visibility polling: {polled}"
+        );
+
+        let fresh = vec![StoreItem::document(
+            "Visible stores wait for the listing.",
+            MemoryMeta::default(),
+        )];
+        let visible = engine
+            .store_many_with(fresh, tinymemory_api::WriteOptions::visible())
+            .await;
+        assert!(
+            matches!(visible, Err(Error::Unavailable(_))),
+            "{wire:?}: a visible batch waits for the listing: {visible:?}"
+        );
+    }
+}
