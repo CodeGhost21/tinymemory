@@ -68,7 +68,7 @@ pub use engine::{EngineDescriptor, EngineHealth, MAX_STORE_MANY, MemoryEngine, v
 pub use error::{Error, Result};
 pub use explore::{
     ExplorePage, ExploreRequest, Facet, FacetBucket, GetRequest, MAX_BUCKETS, MAX_GET_IDS,
-    MAX_SCAN_LIMIT,
+    MAX_SCAN_LIMIT, explore_page_of,
 };
 pub use item::{DocumentBody, ItemId, ItemKind, LearningKind, Role, StoreItem, StoreReceipt, Turn};
 pub use meta::{
