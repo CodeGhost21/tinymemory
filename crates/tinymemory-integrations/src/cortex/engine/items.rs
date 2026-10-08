@@ -199,15 +199,24 @@ impl CortexEngine {
         }
         let lookups: Vec<(KindScope, Vec<String>)> = by_node
             .into_iter()
-            .map(|(namespace, ids)| (KindScope::new(&self.layout, namespace.clone(), kind), ids))
+            .flat_map(|(namespace, ids)| {
+                KindScope::read(&self.layout, namespace, kind)
+                    .into_iter()
+                    .map(move |scope| (scope, ids.clone()))
+            })
             .collect();
         let found: Vec<HashMap<String, Vec<Decoded>>> = stream::iter(lookups)
             .map(|(scope, ids)| async move { self.item_events(&scope, &ids).await })
             .buffer_unordered(LOOKUPS_AT_ONCE)
             .try_collect()
             .await?;
+        // An item held below both the root and a retired root is rebuilt from
+        // the events of one of them, never from both at once.
         let mut out = HashMap::new();
         for (id, events) in found.into_iter().flatten() {
+            if out.contains_key(&id) {
+                continue;
+            }
             let envelopes: Vec<Envelope> = events.into_iter().map(|d| d.envelope).collect();
             if let Some(item) = rebuild_whole(&envelopes) {
                 out.insert(id, item);

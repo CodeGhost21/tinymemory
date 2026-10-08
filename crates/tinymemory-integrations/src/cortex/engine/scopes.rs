@@ -11,7 +11,11 @@
 //!   was written to lists empty.
 //! - **A subtree reach, or no reach at all,** needs the nodes below, which
 //!   only the engine knows: they are discovered once per call from the
-//!   registered scopes under the TinyMemory root. The root's own kind scopes
+//!   registered scopes under the TinyMemory root.
+//! - **A retired root** (`ScopeLayout::with_retired_root`) doubles every
+//!   scope read: each node and kind is read below the root and below the
+//!   retired root, so memory not yet moved stays readable and forgettable.
+//!   Reads merge by item id, so an item held in both is one item. The root's own kind scopes
 //!   are always read. Neither enters a service sandbox below its node
 //!   ([`Reach::admitted_by`]); only [`CortexEngine::every_scope`], which looks
 //!   ids up wherever they live, does.
@@ -59,9 +63,34 @@ impl KindScope {
             kind,
         }
     }
+
+    /// Every scope `kind` at `namespace` is read from in `layout`: the one
+    /// [`KindScope::new`] writes, then its twin below the retired root while
+    /// the layout has one.
+    pub(crate) fn read(layout: &ScopeLayout, namespace: &Namespace, kind: ItemKind) -> Vec<Self> {
+        layout
+            .paths(namespace, kind)
+            .into_iter()
+            .map(|path| Self::listed(namespace.clone(), kind, path))
+            .collect()
+    }
+
+    /// The scope at `path`, read back as `kind` at `namespace`.
+    pub(crate) fn listed(namespace: Namespace, kind: ItemKind, path: String) -> Self {
+        Self {
+            order: ItemKind::ALL
+                .iter()
+                .position(|k| *k == kind)
+                .unwrap_or_default(),
+            namespace,
+            kind,
+            path,
+        }
+    }
 }
 
-/// The scopes `reach` reads exactly (no discovery): its nodes for each kind.
+/// The scopes `reach` reads exactly (no discovery): its nodes for each kind,
+/// below the retired root too while the layout has one.
 pub(crate) fn known(layout: &ScopeLayout, reach: &Reach, kinds: &[ItemKind]) -> Vec<KindScope> {
     let mut scopes: Vec<KindScope> = reach
         .nodes()
@@ -69,7 +98,7 @@ pub(crate) fn known(layout: &ScopeLayout, reach: &Reach, kinds: &[ItemKind]) -> 
         .flat_map(|node| {
             kinds
                 .iter()
-                .map(move |kind| KindScope::new(layout, node.clone(), *kind))
+                .flat_map(move |kind| KindScope::read(layout, &node, *kind))
         })
         .collect();
     scopes.sort();
@@ -128,12 +157,16 @@ impl CortexEngine {
     /// wasted model time.
     pub(super) async fn held(&self, reach: &Reach, kinds: &[ItemKind]) -> Result<Vec<KindScope>> {
         let mut found = BTreeSet::new();
-        for path in self.log.scopes(self.layout.root()).await? {
+        let mut paths = Vec::new();
+        for root in self.layout.roots() {
+            paths.extend(self.log.scopes(root).await?);
+        }
+        for path in paths {
             let Some((namespace, kind)) = self.layout.parse(&path) else {
                 continue;
             };
             if reach.admits(&namespace) && kinds.contains(&kind) {
-                found.insert(KindScope::new(&self.layout, namespace, kind));
+                found.insert(KindScope::listed(namespace, kind, path));
             }
         }
         Ok(found.into_iter().collect())
@@ -161,7 +194,7 @@ impl CortexEngine {
                 continue;
             };
             if reach.admits(&namespace) && kinds.contains(&kind) {
-                found.insert(KindScope::new(&self.layout, namespace, kind));
+                found.insert(KindScope::listed(namespace, kind, path));
             }
         }
         Ok(found.into_iter().collect())
@@ -194,7 +227,7 @@ impl CortexEngine {
                 continue;
             };
             if Reach::admitted_by(reach, &namespace) && kinds.contains(&kind) {
-                found.insert(KindScope::new(&self.layout, namespace, kind));
+                found.insert(KindScope::listed(namespace, kind, path));
             }
         }
         Ok(found.into_iter().collect())
@@ -214,9 +247,13 @@ impl CortexEngine {
             known(&self.layout, &Reach::exact(Namespace::ROOT), &ItemKind::ALL)
                 .into_iter()
                 .collect();
-        for path in self.log.all_scopes(self.layout.root()).await? {
+        let mut paths = Vec::new();
+        for root in self.layout.roots() {
+            paths.extend(self.log.all_scopes(root).await?);
+        }
+        for path in paths {
             if let Some((namespace, kind)) = self.layout.parse(&path) {
-                found.insert(KindScope::new(&self.layout, namespace, kind));
+                found.insert(KindScope::listed(namespace, kind, path));
             }
         }
         Ok(found.into_iter().collect())
