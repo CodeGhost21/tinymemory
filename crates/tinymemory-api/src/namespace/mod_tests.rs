@@ -191,3 +191,41 @@ fn refuses_a_child_past_the_depth_limit() {
         .unwrap_err();
     assert!(matches!(error, Error::InvalidRequest(_)), "{error}");
 }
+
+#[test]
+fn a_reach_inside_a_subtree_is_within_it() {
+    let team = Reach::subtree(ns("team:acme"));
+    assert!(team.within(&team));
+    assert!(Reach::subtree(ns("team:acme/agent:writer")).within(&team));
+    assert!(Reach::exact(ns("team:acme/agent:writer")).within(&team));
+    assert!(Reach::exact(ns("team:acme")).within(&team));
+    // Everything is within the root's subtree, except a service sandbox.
+    let all = Reach::subtree(Namespace::ROOT);
+    assert!(Reach::of(ns("team:acme/agent:writer")).within(&all));
+    assert!(Reach::subtree(ns("team:acme")).within(&all));
+    assert!(!Reach::exact(ns("service:flows")).within(&all));
+}
+
+#[test]
+fn a_reach_leaving_a_subtree_is_not_within_it() {
+    let team = Reach::subtree(ns("team:acme"));
+    // A sibling, the root, an ancestor's subtree.
+    assert!(!Reach::subtree(ns("team:other")).within(&team));
+    assert!(!Reach::exact(Namespace::ROOT).within(&team));
+    assert!(!Reach::subtree(Namespace::ROOT).within(&team));
+    // Inheriting reads the root above the subtree's top.
+    assert!(!Reach::of(ns("team:acme/agent:writer")).within(&team));
+    // A service sandbox below the subtree is not read by it.
+    assert!(!Reach::exact(ns("team:acme/service:flows")).within(&team));
+}
+
+#[test]
+fn descendants_need_descendants_and_a_node_at_or_below() {
+    let agent = Reach::of(ns("team:acme/agent:writer"));
+    assert!(Reach::exact(ns("team:acme")).within(&agent));
+    assert!(Reach::of(ns("team:acme")).within(&agent));
+    // The team's subtree holds every other member's memory.
+    assert!(!Reach::subtree(ns("team:acme")).within(&agent));
+    assert!(!Reach::subtree(ns("team:acme/agent:writer")).within(&agent));
+    assert!(!Reach::exact(ns("team:acme/agent:editor")).within(&agent));
+}
