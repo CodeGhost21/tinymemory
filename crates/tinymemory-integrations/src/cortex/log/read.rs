@@ -168,11 +168,18 @@ impl Log {
 
     /// The listing, and whether it reached [`SCOPES_LIMIT`].
     async fn scopes_listing(&self, prefix: &str) -> Result<(Vec<String>, bool)> {
-        let path = format!(
-            "{base}?prefix={prefix}&limit={SCOPES_LIMIT}",
-            base = self.client.wire().path(Route::Scopes),
-            prefix = urlencode(prefix),
-        );
+        // An empty prefix (the hosted tenant's own root) sends none: the
+        // backend bounds an unprefixed listing to the caller's tenant, and
+        // refuses an empty one.
+        let base = self.client.wire().path(Route::Scopes);
+        let path = if prefix.is_empty() {
+            format!("{base}?limit={SCOPES_LIMIT}")
+        } else {
+            format!(
+                "{base}?prefix={prefix}&limit={SCOPES_LIMIT}",
+                prefix = urlencode(prefix),
+            )
+        };
         let listed = match self
             .client
             .json(Method::GET, &path, None, Attempts::RetryTransient)

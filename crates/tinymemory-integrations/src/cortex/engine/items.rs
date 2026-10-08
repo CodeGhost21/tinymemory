@@ -168,7 +168,9 @@ impl CortexEngine {
             for (id, events) in self.item_events(&scope, &ids).await? {
                 let envelopes: Vec<Envelope> = events.into_iter().map(|d| d.envelope).collect();
                 if let Some(item) = rebuild_whole(&envelopes) {
-                    found.insert(ItemId::new(id.clone()), hit(&id, &item, 0.0));
+                    found
+                        .entry(ItemId::new(id.clone()))
+                        .or_insert_with(|| hit(&id, &item, 0.0));
                 }
             }
         }

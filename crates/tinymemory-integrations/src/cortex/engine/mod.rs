@@ -117,7 +117,7 @@ impl CortexEngine {
 
     /// The same engine, laying its scopes out below `root` (layout v3)
     /// instead of the legacy `app:tinymemory` tree: one person's memory as
-    /// one subtree (`user:<id>`), each kind under a leaf of its own (see the
+    /// one subtree (`org:<id>`), each kind under a leaf of its own (see the
     /// `envelope` module docs). With an `owner` actor (`user:<id>`), a
     /// direct engine registers the root as owned by it before its first
     /// write, so the person owns their root rather than whichever key wrote
@@ -141,6 +141,43 @@ impl CortexEngine {
         Ok(self)
     }
 
+    /// The same engine in layout v3 relative to the hosted tenant's root:
+    /// no root segment is sent, and the TinyHumans backend pins its own
+    /// (`org:<id>`), so a person's chats are stored at
+    /// `org:<id>/ws:main/app:conversations`. See the `envelope` module docs.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Config`] on the direct wire, where nothing pins a root and
+    /// every install would share one tree.
+    pub fn with_tenant_root(mut self) -> Result<Self> {
+        if self.wire() != CortexWire::TinyHumans {
+            return Err(Error::Config(
+                "only the TinyHumans wire has a tenant root; name a scope root".to_string(),
+            ));
+        }
+        self.layout = ScopeLayout::tenant();
+        self.owner = None;
+        self.registered = Arc::new(AtomicBool::new(false));
+        Ok(self)
+    }
+
+    /// The same v3 engine, also reading and forgetting below `retired`
+    /// (`user:<id>`, where an earlier layout wrote), while writing only
+    /// below its root: the transition until that memory has moved. Every
+    /// read merges both by item id; a forget or erasure removes from both.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Config`] without a scope root (call
+    /// [`CortexEngine::with_scope_root`] or [`CortexEngine::with_tenant_root`]
+    /// first), or for a retired root that is not a valid v3 root or is the
+    /// root itself.
+    pub fn with_retired_root(mut self, retired: &str) -> Result<Self> {
+        self.layout = self.layout.with_retired_root(retired)?;
+        Ok(self)
+    }
+
     /// Registers the v3 root as owned by its owner, once, before a write.
     /// Already registered (`409`), the root's record is read and the owner
     /// added to its members when it is not an owner yet, so a `409` never
@@ -154,6 +191,9 @@ impl CortexEngine {
         let (ScopeLayout::V3 { root, .. }, Some(owner)) = (&self.layout, &self.owner) else {
             return;
         };
+        if root.is_empty() {
+            return;
+        }
         if self.wire() != CortexWire::Direct || self.registered.load(Ordering::Acquire) {
             return;
         }
