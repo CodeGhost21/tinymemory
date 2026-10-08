@@ -71,10 +71,18 @@ async fn a_conversation_previews_as_its_first_turn() {
         store_mixed(&engine).await;
         let preview = all(&engine, 50, true).await;
         let whole = all(&engine, 50, false).await;
+        let ours = preview
+            .iter()
+            .filter(|p| matches!(p.meta.thread_id.as_deref(), Some("a" | "b" | "c")))
+            .count();
+        assert_eq!(ours, 3);
         for (p, w) in preview
             .iter()
             .zip(&whole)
-            .filter(|(p, _)| p.kind == ItemKind::Conversation)
+            .filter(|(p, _)| {
+                p.kind == ItemKind::Conversation
+                    && matches!(p.meta.thread_id.as_deref(), Some("a" | "b" | "c"))
+            })
         {
             assert!(p.text.contains("turn 0"), "{}", p.text);
             assert!(!p.text.contains("turn 1"), "{}", p.text);
