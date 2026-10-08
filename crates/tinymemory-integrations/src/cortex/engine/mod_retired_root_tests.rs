@@ -162,7 +162,10 @@ async fn reads_merge_both_roots_by_item_id_and_writes_go_only_to_the_new_one() {
     // A get by id finds an item held only below the retired root.
     let old_id = learning("only old", "").fingerprint();
     let got = engine
-        .get(GetRequest::new(vec![old_id.into()]))
+        .get(GetRequest {
+            ids: vec![old_id.into()],
+            reach: None,
+        })
         .await
         .unwrap();
     assert_eq!(got.len(), 1);
