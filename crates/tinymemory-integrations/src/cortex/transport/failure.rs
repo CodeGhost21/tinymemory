@@ -177,10 +177,17 @@ pub(crate) fn hosted_status_error(
     let parsed: Option<Value> = serde_json::from_str(body).ok();
     let code = parsed
         .as_ref()
-        .and_then(|v| v.get("errorCode"))
-        .and_then(Value::as_str)
-        .map(clean_code)
-        .filter(|c| !c.is_empty())
+        // The backend's own `errorCode`, or memory-api's `error_code` on a
+        // route the backend passes through unwrapped (`memory/v1/*`).
+        // A code that is null, not a string or empty once cleaned does not
+        // shadow the other key.
+        .and_then(|v| {
+            ["errorCode", "error_code"]
+                .iter()
+                .filter_map(|key| v.get(*key).and_then(Value::as_str))
+                .map(clean_code)
+                .find(|c| !c.is_empty())
+        })
         .unwrap_or_else(|| default_code(status));
     let message = parsed.as_ref().and_then(|v| v.get("error")).map_or_else(
         || body.to_string(),
@@ -197,8 +204,19 @@ pub(crate) fn hosted_status_error(
         ),
         _ => format!("[{code}] memory API {label} on {host} returned HTTP {status}"),
     };
+    // memory-api's refusal of an already-claimed `Idempotency-Key` is relayed
+    // as `409` with `errorCode: CONFLICT` by the backend since
+    // tinyhumansai/backend#1409, and as `400` with the same code by older
+    // ones (`memoryUpstreamError`). A retried write reads that as the
+    // outcome-unknown conflict it is, whichever status carries it.
+    if status == StatusCode::BAD_REQUEST && code == CONFLICT_CODE {
+        return by_status(StatusCode::CONFLICT, head, &excerpt(&message));
+    }
     by_status(status, head, &excerpt(&message))
 }
+
+/// The backend's `errorCode` for a refused, already-claimed write.
+const CONFLICT_CODE: &str = "CONFLICT";
 
 /// Unwraps `{success:true,data}`. `{success:false}`, a missing `data` and a
 /// body without the envelope are all errors.

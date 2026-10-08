@@ -266,14 +266,19 @@ impl CortexEngine {
 }
 
 /// Merges per-scope rankings rank by rank: every scope's best, then every
-/// scope's second, and so on.
+/// scope's second, and so on, each item once.
 pub(super) fn interleave(mut lists: Vec<Vec<Envelope>>) -> Vec<Envelope> {
     let longest = lists.iter().map(Vec::len).max().unwrap_or(0);
     let mut iters: Vec<_> = lists.iter_mut().map(|list| list.drain(..)).collect();
     let mut out = Vec::new();
+    // An item held below both the root and a retired root is one hit, at its
+    // best rank.
+    let mut seen = HashSet::new();
     for _ in 0..longest {
         for iter in &mut iters {
-            if let Some(envelope) = iter.next() {
+            if let Some(envelope) = iter.next()
+                && seen.insert(envelope.id.clone())
+            {
                 out.push(envelope);
             }
         }

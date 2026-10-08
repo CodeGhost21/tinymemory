@@ -194,7 +194,7 @@ with fast test timing (5ms polls and backoff, a 2s visibility budget);
 
 Both doubles serve the same in-memory `CortexLog`, which is deliberately
 **unaccommodating**, because a tidy double proves nothing. It reproduces every
-behaviour in [the wire page](cortex-wire.md#cortexdb-behaviours-the-engine-is-shaped-around):
+behaviour in [the wire page](cortex-wire-envelope.md#cortexdb-behaviours-the-engine-is-shaped-around):
 
 - append-only, a body `idempotency_key` remembered (same key, same body is a
   replay; same key, different body is `409 IDEMPOTENCY_CONFLICT`); forget by
@@ -211,8 +211,14 @@ behaviour in [the wire page](cortex-wire.md#cortexdb-behaviours-the-engine-is-sh
 The **hosted** double additionally wraps bodies in `{success,data}`, reports
 failures with `errorCode`, refuses a scope outside the memory API's grammar
 (`type:id` segments), takes an `Idempotency-Key` claim per write (any replay of
-a claimed key is a 409, never forwarded), refuses a repeated `labels=`
-parameter, and enforces the strict answer schema.
+a claimed key is refused, never forwarded), refuses a repeated `labels=`
+parameter, and enforces the strict answer schema. It relays engine failures
+the way the backend's `memoryUpstreamError` does (a claimed key's 409 arrives
+as `400` with `errorCode: CONFLICT`, other 4xx as `400 BAD_REQUEST`), answers
+its own rate limit as express-rate-limit does (`429`, `{error:{message,type}}`,
+no envelope), and serves `DELETE /memory` (the whole memory, or a bare 404
+with `erase_all_missing`). A forget by `memory_ids` also drops the beliefs
+built from the forgotten events, as 0.10.4 does.
 
 **Knobs** make either fail the ways the real stacks fail, so tests aim at one
 failure at a time: `fail_all` (every request), `accept_token` (the only token

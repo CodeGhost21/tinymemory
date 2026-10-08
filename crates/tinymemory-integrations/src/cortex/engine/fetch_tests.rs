@@ -103,3 +103,16 @@ fn a_pack_budget_fits_each_event_whole_up_to_a_ceiling() {
     assert_eq!(whole_items_budget(MAX_PACK_EVENTS), MAX_PACK_TOKENS);
     assert_eq!(whole_items_budget(usize::MAX), MAX_PACK_TOKENS);
 }
+
+#[test]
+fn an_item_ranked_in_two_scopes_is_one_hit_at_its_best_rank() {
+    // The same item below the root and below a retired root.
+    let envelope =
+        |text: &str, id: &str| Envelope::for_item(&doc(text, None), id).unwrap().remove(0);
+    let merged = interleave(vec![
+        vec![envelope("a", "same"), envelope("b", "b")],
+        vec![envelope("c", "c"), envelope("a again", "same")],
+    ]);
+    let ids: Vec<_> = merged.iter().map(|e| e.id.as_str()).collect();
+    assert_eq!(ids, vec!["same", "c", "b"]);
+}

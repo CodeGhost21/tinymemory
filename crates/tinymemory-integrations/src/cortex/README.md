@@ -89,10 +89,15 @@ app:tinymemory/team:acme/agent:writer/app:learnings                     a team m
 
 That is the legacy layout, the default. With a scope root
 (`EngineSettings::scope_root`, `CortexEngine::with_scope_root`), such as one
-person's `user:<id>`, every item is laid out below that root instead, each
-kind under a leaf of its own (`user:42/ws:main/app:conversations`,
-`user:42/app:brain/source:gmail`), and a direct engine registers the root
-with its owner before the first write. See
+person's `org:<id>`, every item is laid out below that root instead, each
+kind under a leaf of its own (`org:42/ws:main/app:conversations`,
+`org:42/app:brain/source:gmail`), and a direct engine registers the root
+with its owner (the actor `user:<id>`) before the first write. On the
+hosted wire the root is the tenant's own (`EngineSettings::tenant_root`):
+the engine sends `ws:main/app:conversations` and the backend stores it at
+`org:<id>/ws:main/app:conversations`. A retired root
+(`EngineSettings::retired_scope_root`, the earlier `user:<id>`) is still
+read and forgotten, never written, until its memory has moved. See
 [cortex-layout.md](../../../../docs/architecture/cortex-layout.md).
 
 The hosted backend also re-roots every scope under the caller's tenant.
@@ -243,10 +248,15 @@ as prefixes, so they cannot be labelled and are filtered only client-side.
 - **Forget.** `Ids` looks the items' labels up in every scope the engine
   holds. `Filter` (which must be non-empty) walks the scopes it reads and
   matches the full filter. Either way the matched events are then removed with
-  `selector.memory_ids`, in batches of 100. An empty selector is never sent,
-  and neither is `confirm_all`. `forgotten` counts items.
-- **Erase.** Direct only; hosted refuses with `Unsupported`, because the
-  backend proxies no erasure route. Lists the registered kind scopes in reach
+  `selector.memory_ids` and `cascade: "redact_events"`, in batches of 100.
+  The cascade is always named: CortexDB's default, `derived_only`, keeps the
+  events. An empty selector is never sent, and neither is `confirm_all`. `forgotten` counts items.
+- **Erase.** Hosted erases the whole tree (`whole_tree`) in one
+  `DELETE memory` that erases the caller's entire hosted memory. Anything
+  narrower goes scope by scope, as on Direct, through the backend's
+  `memory/v1/erasures` passthrough (`{scope, audit_note}`, memory-api's
+  synchronous scoped erasure, unwrapped; a retriable `502
+  ERASURE_INCOMPLETE` is retried; a missing route is `Unsupported`). Direct lists the registered kind scopes in reach
   with the complete scope listing, then sends `v1/erasures` with
   `confirm_all` (never a selector) once per scope, deepest first, and
   returns the erasure ids as receipts. CortexDB deletes an erased scope's

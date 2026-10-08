@@ -6,6 +6,11 @@
 //! needs `confirm_all`, and `confirm_all` with a selector is refused), and
 //! this crate never writes `confirm_all` at all, so the two mistakes cannot
 //! meet.
+//!
+//! Every removal names its cascade, [`FORGET_CASCADE`]. CortexDB's default
+//! is `derived_only`, which drops what was derived from the events and
+//! leaves the events themselves in place, so a removal that left the
+//! cascade out would not remove anything a user wrote.
 
 use serde_json::json;
 
@@ -16,6 +21,11 @@ use crate::cortex::transport::Attempts;
 
 /// The most event ids one removal names, so each body stays small.
 pub(crate) const FORGET_BATCH: usize = 100;
+
+/// The cascade every removal sends: the named events go, with everything
+/// derived from them. Never left to the engine's default (`derived_only`),
+/// which keeps the events.
+pub(crate) const FORGET_CASCADE: &str = "redact_events";
 
 /// How many times a hosted removal is sent before a transient fault surfaces.
 const HOSTED_FORGET_ATTEMPTS: u32 = 3;
@@ -41,6 +51,7 @@ impl Log {
             "scope": scope,
             "layers": ["events"],
             "selector": { "memory_ids": ids },
+            "cascade": FORGET_CASCADE,
             "audit_note": "tinymemory: forget",
         });
         let path = self.client.wire().path(Route::Forget);

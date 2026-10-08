@@ -66,7 +66,9 @@ pub fn list_engines() -> Vec<EngineDescriptor> {
 /// endpoint that is not an HTTP(S) URL, a credentialed cleartext
 /// (`http://`) endpoint that is not loopback, a consolidation the engine
 /// cannot serve ([`CortexEngine::with_consolidation`]), or an invalid scope
-/// root or owner ([`CortexEngine::with_scope_root`]).
+/// root or owner ([`CortexEngine::with_scope_root`]), a tenant root off the
+/// TinyHumans wire ([`CortexEngine::with_tenant_root`]), or a retired root
+/// without a v3 layout ([`CortexEngine::with_retired_root`]).
 pub fn build_engine(
     id: &str,
     settings: &EngineSettings,
@@ -100,12 +102,21 @@ pub fn build_engine(
     if let Some(consolidation) = settings.consolidation {
         engine = engine.with_consolidation(consolidation)?;
     }
-    if let Some(root) = settings
+    if settings.tenant_root {
+        engine = engine.with_tenant_root()?;
+    } else if let Some(root) = settings
         .scope_root
         .as_deref()
         .filter(|root| !root.trim().is_empty())
     {
         engine = engine.with_scope_root(root, settings.scope_owner.as_deref())?;
+    }
+    if let Some(retired) = settings
+        .retired_scope_root
+        .as_deref()
+        .filter(|retired| !retired.trim().is_empty())
+    {
+        engine = engine.with_retired_root(retired)?;
     }
     engine = engine.with_observed_actor(settings.observed_actor);
     Ok(Arc::new(engine))

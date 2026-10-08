@@ -358,9 +358,11 @@ impl HttpClient {
         }
         let bytes = body::read_capped(response, label).await?;
         match self.wire {
-            CortexWire::TinyHumans => failure::unwrap_envelope(self.host(), label, status, &bytes),
-            CortexWire::Direct if bytes.is_empty() => Ok(Value::Null),
-            CortexWire::Direct => serde_json::from_slice(&bytes).map_err(|_| {
+            CortexWire::TinyHumans if !speaks_cortex(path) => {
+                failure::unwrap_envelope(self.host(), label, status, &bytes)
+            }
+            _ if bytes.is_empty() => Ok(Value::Null),
+            _ => serde_json::from_slice(&bytes).map_err(|_| {
                 Error::Engine(format!(
                     "memory API {label} on {} returned invalid JSON",
                     self.host()
@@ -368,6 +370,17 @@ impl HttpClient {
             }),
         }
     }
+}
+
+/// The TinyHumans backend's passthrough of CortexDB's own `/v1` dialect,
+/// mounted under `memory/`: memory-api's status and body, no
+/// `{success,data}` envelope.
+pub(crate) const HOSTED_CORTEX_PREFIX: &str = "memory/v1/";
+
+/// Whether a hosted `path` is answered in CortexDB's own dialect rather
+/// than the backend's envelope.
+fn speaks_cortex(path: &str) -> bool {
+    path.starts_with(HOSTED_CORTEX_PREFIX)
 }
 
 /// The route part of a path, for messages: query strings carry scopes and

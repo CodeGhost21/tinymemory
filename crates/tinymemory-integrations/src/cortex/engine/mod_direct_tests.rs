@@ -125,6 +125,26 @@ async fn forget_batches_event_ids_at_one_hundred() {
 }
 
 #[tokio::test]
+async fn every_forget_names_the_cascade_that_removes_the_events() {
+    // CortexDB's default cascade (`derived_only`) keeps the events, so a
+    // forget that left it to the default would delete nothing written.
+    let (endpoint, state) = direct_double().await;
+    let engine = direct_engine(&endpoint);
+    let item = sample_items().remove(0);
+    engine.store(item.clone()).await.unwrap();
+    engine
+        .forget(ForgetTarget::Ids(vec![item.fingerprint().into()]))
+        .await
+        .unwrap();
+    let forgets = state.seen.lock().unwrap().forgets.clone();
+    assert!(!forgets.is_empty());
+    for body in &forgets {
+        assert_eq!(body["cascade"], "redact_events", "{body}");
+    }
+    assert_eq!(state.event_count(), 0);
+}
+
+#[tokio::test]
 async fn a_partially_applied_conversation_completes_on_retry() {
     let (endpoint, state) = direct_double().await;
     let engine = direct_engine(&endpoint);
@@ -278,4 +298,19 @@ async fn reads_wait_out_a_scope_authorization_change() {
         6,
         "six attempts, then it gives up"
     );
+}
+
+#[test]
+fn the_double_refuses_a_cascade_that_is_not_a_known_string() {
+    let mut log = crate::cortex::testing::CortexLog::default();
+    for cascade in [
+        serde_json::json!(null),
+        serde_json::json!(123),
+        serde_json::json!("nope"),
+    ] {
+        let (code, answer) = log.forget(&serde_json::json!({
+            "scope": "app:x", "confirm_all": true, "cascade": cascade
+        }));
+        assert_eq!(code, 400, "{cascade}: {answer}");
+    }
 }

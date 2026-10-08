@@ -177,6 +177,24 @@ route has no keyword/vector switch, so both wires declare hybrid fetch only. See
 [`docs/architecture/cortex.md`](docs/architecture/cortex.md) and
 [`crates/tinymemory-integrations/src/cortex/README.md`](crates/tinymemory-integrations/src/cortex/README.md).
 
+### Where a person's memory lives
+
+One root per person, `org:<id>`, and no `user:` segment below it (`user:<id>`
+is the person's actor, never a scope):
+
+```text
+org:<id>/app:learnings                         learnings
+org:<id>/app:brain/source:gmail                a connector's documents
+org:<id>/ws:main/app:conversations             chats
+org:<id>/ws:main/app:flows/service:<flow>/…    a workflow's memory
+```
+
+A direct `cortexdb` engine gets `scope_root = "org:<id>"`; a `tinyhumans`
+engine gets `tenant_root = true` and sends paths relative to the tenant root
+the backend pins. Memory an earlier layout wrote below `user:<id>` stays
+readable and forgettable through `retired_scope_root` until it has moved. See
+[`docs/architecture/cortex-layout.md`](docs/architecture/cortex-layout.md).
+
 ### Adding an engine
 
 An engine is a module of `tinymemory-integrations` behind a feature named after

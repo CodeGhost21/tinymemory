@@ -12,6 +12,9 @@
 //! - the forget selector reads only `memory_ids`; an empty selector without
 //!   `confirm_all` is refused, and a selector with `confirm_all` is refused
 //!   as ambiguous;
+//! - the forget `cascade` defaults to `derived_only`, which drops the
+//!   beliefs built from the named events and **keeps the events**; only
+//!   `redact_events` removes them, and any other cascade is a 400;
 //! - recall returns each event with its stored text (no `[role] ` marker,
 //!   as 0.10.3 and 0.10.4 do in `layers.events`), honours `view:
 //!   "descend"`, metadata label filters and the events budget;
@@ -36,7 +39,7 @@ pub(crate) struct CortexLog {
     /// Beliefs built, oldest first.
     pub(crate) beliefs: Vec<Value>,
     /// Erasures run.
-    erasures: u64,
+    pub(crate) erasures: u64,
 }
 
 /// Whether `event` carries any one of `wanted` (an empty list keeps all).
@@ -169,6 +172,16 @@ impl CortexLog {
             })
             .unwrap_or_default();
         let selective = !ids.is_empty();
+        let cascade = match body.get("cascade") {
+            None => "derived_only",
+            Some(Value::String(cascade)) => cascade.as_str(),
+            // Present but not a string (null, a number): invalid, never
+            // the default.
+            Some(_) => "",
+        };
+        if !matches!(cascade, "derived_only" | "redact_events") {
+            return (400, json!({ "error_code": "INVALID_CASCADE" }));
+        }
         if selective && confirm_all {
             return (
                 400,
@@ -181,6 +194,25 @@ impl CortexLog {
                 json!({ "error_code": "EMPTY_SELECTOR_WITHOUT_CONFIRMATION" }),
             );
         }
+        if cascade == "derived_only" {
+            // What was derived goes; the events stay.
+            let named = |e: &Value| {
+                str_of(e, "/scope") == scope
+                    && (!selective || ids.iter().any(|id| id == str_of(e, "/id")))
+            };
+            let sources: Vec<String> = self
+                .events
+                .iter()
+                .filter(|e| named(e))
+                .map(|e| str_of(e, "/id").to_string())
+                .collect();
+            self.beliefs
+                .retain(|belief| !sources.iter().any(|id| id == str_of(belief, "/source")));
+            return (
+                200,
+                json!({ "deleted": { "events": 0 }, "requested": ids.len() }),
+            );
+        }
         let before = self.events.len();
         if selective {
             let (gone, kept): (Vec<Value>, Vec<Value>) =
@@ -191,6 +223,14 @@ impl CortexLog {
                 .extend(gone.iter().map(|e| str_of(e, "/id").to_string()));
             self.idempotency
                 .retain(|_, (_, id)| !gone.iter().any(|e| str_of(e, "/id") == id));
+            // 0.10.4 deletes every derived record citing a forgotten event
+            // (facts, beliefs, episodes, understanding) under `layers:
+            // ["events"]` and `layers: []` alike; another event's survive.
+            self.beliefs.retain(|belief| {
+                !gone
+                    .iter()
+                    .any(|e| str_of(e, "/id") == str_of(belief, "/source"))
+            });
             self.events = kept;
         } else {
             // A scope-wide forget only redacts, so its keys stay held for
@@ -203,6 +243,20 @@ impl CortexLog {
             200,
             json!({ "deleted": { "events": deleted }, "requested": ids.len() }),
         )
+    }
+
+    /// The backend's `DELETE /memory`: every event of the tenant, every
+    /// scope; how many scopes held anything.
+    pub(crate) fn erase_everything(&mut self) -> usize {
+        // Deepest first, one whole-scope erasure each, as CortexDB erases:
+        // an erasure of a scope only redacts what is below it, so a parent
+        // first would leave its descendants' write keys held.
+        let mut scopes = self.scopes("");
+        scopes.reverse();
+        for scope in &scopes {
+            let _ = self.erase(&json!({ "scope": scope, "confirm_all": true }));
+        }
+        scopes.len()
     }
 
     /// `POST /v1/erasures`, a whole-scope erasure as CortexDB answers it
@@ -233,7 +287,7 @@ impl CortexLog {
             });
         let deleted: Vec<String> = gone
             .iter()
-            .filter(|e| scope.is_empty() || str_of(e, "/scope") == scope)
+            .filter(|e| str_of(e, "/scope") == scope)
             .map(|e| str_of(e, "/id").to_string())
             .collect();
         self.idempotency
