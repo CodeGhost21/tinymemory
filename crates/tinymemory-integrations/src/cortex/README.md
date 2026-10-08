@@ -66,7 +66,8 @@ cortex/
 ├── credential/     CortexCredential, BearerSource, StaticBearer
 ├── descriptor/     the two registrations, CortexWire and its route table
 ├── engine/         CortexEngine and one file per operation:
-│                   store, list, fetch, recall, forget, items (get), scopes, cursor
+│                   store, list, fetch, recall, forget, items (get), scopes, cursor,
+│                   attribution (observed_actor and subject on a write)
 ├── envelope/       the v2 event envelope, scope paths, lookup labels, rebuild
 ├── log/            the event log: write, read (list, scopes, recall, answer),
 │                   visibility waits, forget
@@ -277,6 +278,11 @@ These were measured against a live CortexDB by the v1 adapter. The doubles in
   decoding.
 - **The forget selector field is `memory_ids`.** An empty or unrecognised
   selector means the whole scope.
+- **Attribution needs capabilities** (0.10.5 API reference, not measured): an `observed_actor` other
+  than the caller needs `scope.write.on_behalf_of`, a `subject` other than
+  it `scope.write.about_other`, else `403 POLICY_DENIED`, a bulk write whole.
+  With `with_observed_actor(true)` a refused write is sent again without
+  them (`engine/attribution.rs`); off, nothing is sent.
 
 ## Transport
 

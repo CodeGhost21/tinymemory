@@ -118,6 +118,15 @@ fn gate(state: &Shared, method: &str, uri: &Uri, headers: &HeaderMap) -> Option<
 }
 
 /// Applies one write with every write knob.
+/// The configured refusal, when any of `bodies` is attributed.
+fn refuse_attribution(state: &Shared, bodies: &[Value]) -> Option<Reply> {
+    let (code, error_code) = (*state.refuse_attribution.lock().unwrap())?;
+    bodies
+        .iter()
+        .any(|body| body.get("observed_actor").is_some() || body.get("subject").is_some())
+        .then(|| fail(state, code, error_code))
+}
+
 fn write_one(state: &Shared, headers: &HeaderMap, body: &Value) -> Reply {
     if let Some(refused) = refuse_scope(state, body["scope"].as_str().unwrap_or_default()) {
         return refused;
@@ -168,6 +177,9 @@ async fn experience(
         return early;
     }
     state.seen.lock().unwrap().writes.push(body.clone());
+    if let Some(refused) = refuse_attribution(&state, std::slice::from_ref(&body)) {
+        return refused;
+    }
     write_one(&state, &headers, &body)
 }
 
@@ -181,14 +193,12 @@ async fn bulk(
         return early;
     }
     state.seen.lock().unwrap().writes.push(body.clone());
+    let items = body["items"].as_array().cloned().unwrap_or_default();
+    if let Some(refused) = refuse_attribution(&state, &items) {
+        return refused;
+    }
     let mut results = Vec::new();
-    for (index, item) in body["items"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default()
-        .iter()
-        .enumerate()
-    {
+    for (index, item) in items.iter().enumerate() {
         let (code, Json(receipt)) = write_one(&state, &headers, item);
         if !code.is_success() {
             return (code, Json(receipt));
@@ -541,9 +551,22 @@ async fn beliefs(
     ok(&state, 200, json!({ "items": items, "has_more": false }))
 }
 
+/// `v1/auth/whoami`: the configured caller, else 404. Not recorded in
+/// `seen`, so a test counting requests counts the same with or without it.
+async fn whoami(State(state): State<Shared>) -> Reply {
+    match state.whoami_caller.lock().unwrap().clone() {
+        Some(caller) => (StatusCode::OK, Json(json!({ "caller": caller }))),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error_code": "NOT_FOUND" })),
+        ),
+    }
+}
+
 /// CortexDB's own routes.
 pub(super) fn direct(state: Shared) -> Router {
     Router::new()
+        .route("/v1/auth/whoami", get(whoami))
         .route("/v1/experience", post(experience))
         .route("/v1/experience/bulk", post(bulk))
         .route("/v1/events", get(events))

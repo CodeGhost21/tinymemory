@@ -90,6 +90,11 @@ root (`"engines": { "cortexdb": { "scope_root": "user:42", "scope_owner":
 [cortex-layout.md](architecture/cortex-layout.md). Without one, the legacy
 `app:tinymemory` tree is kept. Switching moves nothing.
 
+To record who actually said or did something, set `"observed_actor": true`
+on a `cortexdb` engine and fill `MemoryMeta::observed_actor` on items another
+person wrote (an email's sender, `user:<address>`). Off by default; see
+[cortex.md](architecture/cortex.md#attribution).
+
 | Engine id | Where it runs | Consolidation (belief builds) |
 | --- | --- | --- |
 | `cortexdb` | a CortexDB server, `v1/*` routes | automatic on the managed API (`api-v1.cortexdb.ai`), on demand elsewhere: `v1/beliefs/build`, built within the request; `EngineSettings::consolidation` overrides |

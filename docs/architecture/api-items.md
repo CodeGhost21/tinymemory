@@ -112,7 +112,7 @@ enforce (`Namespace` is checked when parsed).
 
 `fingerprint()` is a stable 40-character lowercase hex string: the first 20
 bytes of the SHA-256 of the item's JSON serialisation, with
-`meta.observed_at` cleared first. It covers **everything else**: kind, text,
+`meta.observed_at` and `meta.observed_actor` cleared first. It covers **everything else**: kind, text,
 title, turns, learning kind, confidence, evidence, and every metadata field
 including `namespace` (a root namespace is not serialised, so root items hash
 as they did before namespaces existed).
@@ -120,6 +120,9 @@ as they did before namespaces existed).
 `observed_at` is excluded because it records *when* the item was seen, not
 *what* it is. A host stamps it on every store; hashing it would turn a retried
 learning, or an unchanged file re-synced, into a new item each time.
+`observed_actor` says *who* said it, which an engine sends only with
+attribution on; hashing it would store the same email again once that is
+turned on.
 
 Two items with the same fingerprint are the same item. Engines derive
 idempotency from it: the reference engine uses the fingerprint as the item id.
@@ -159,6 +162,7 @@ namespace are omitted on serialisation.
 | `source` | `SourceRef` | `{ kind: SourceKind, id? }`; always present, defaults to kind `agent`. |
 | `tags` | `Vec<String>` | Free-form tags. |
 | `observed_at` | `Option<DateTime<Utc>>` | When the underlying fact was observed, as opposed to stored. Excluded from the fingerprint. |
+| `observed_actor` | `Option<ObservedActor>` | `{ id, name? }`: who said or did it when not the memory's owner, such as an email's sender (`id` is `type:id`, `user:priya@acme.com`). Excluded from the fingerprint; the CortexDB engine sends it only with attribution on. |
 
 `MemoryMeta::from_source(kind, id)` sets only the source. `SourceKind` is
 `folder | file | link | github | rss | composio | conversation | agent |

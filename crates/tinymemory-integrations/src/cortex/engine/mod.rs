@@ -12,6 +12,7 @@
 //! - `forget` — look the items' events up, remove them by `memory_ids`;
 //! - `consolidate` — one `v1/beliefs/build` per held scope in reach.
 
+mod attribution;
 mod beliefs;
 mod consolidate;
 mod cursor;
@@ -64,6 +65,9 @@ pub struct CortexEngine {
     /// Whether the v3 root is registered (shared by clones).
     registered: Arc<AtomicBool>,
     refers: Arc<refers::RefersSupport>,
+    /// Whether writes name their observed actor (shared by clones, so a
+    /// refusal turns it off for all of them).
+    attribution: Arc<attribution::Attribution>,
 }
 
 impl std::fmt::Debug for CortexEngine {
@@ -101,6 +105,7 @@ impl CortexEngine {
             owner: None,
             registered: Arc::new(AtomicBool::new(false)),
             refers: Arc::default(),
+            attribution: Arc::default(),
         })
     }
 
@@ -221,6 +226,17 @@ impl CortexEngine {
             )
             .await
             .map(|_| ())
+    }
+
+    /// The same engine, attributing each write to who said or did it when
+    /// `on` (CortexDB's `observed_actor`, with the owner as `subject`): an
+    /// assistant turn to its agent, an item naming an observed actor to that
+    /// person. Only the direct wire attributes; off, or on the TinyHumans
+    /// backend, nothing on the wire changes. See the `attribution` module.
+    #[must_use]
+    pub fn with_observed_actor(mut self, on: bool) -> Self {
+        self.attribution = Arc::new(attribution::Attribution::new(on));
+        self
     }
 
     /// The same engine, declaring `consolidation` instead of the endpoint's

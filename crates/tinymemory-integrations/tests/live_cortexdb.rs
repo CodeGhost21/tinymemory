@@ -260,6 +260,65 @@ async fn a_write_never_claims_a_v3_root_before_its_owner() {
     assert!(owners.contains(&root.as_str()), "{record}");
 }
 
+/// Attribution on against the real server: whether it accepts
+/// `observed_actor` and `subject`, ignores them, or refuses them for want of
+/// a capability, every write lands, and the sender stays on the item.
+/// Direct only: the hosted wire never attributes.
+#[tokio::test]
+async fn attributed_writes_land_whatever_the_server_allows() {
+    let _alone = ONE_AT_A_TIME.lock().await;
+    let Ok(url) = std::env::var("TINYMEMORY_LIVE_CORTEXDB_URL") else {
+        eprintln!("TINYMEMORY_LIVE_CORTEXDB_URL unset; skipping");
+        return;
+    };
+    let key = std::env::var("TINYMEMORY_TEST_CORTEX_KEY").unwrap_or_else(|_| DEFAULT_KEY.into());
+    let root = format!("user:{}", run_id());
+    let engine = CortexEngine::direct(&url, CortexCredential::api_key(key))
+        .expect("a valid live CortexDB endpoint")
+        .with_scope_root(&root, Some(&root))
+        .expect("a valid scope root")
+        .with_observed_actor(true);
+    let chat = StoreItem::Conversation {
+        turns: vec![
+            Turn::new(Role::User, "lunch tomorrow?"),
+            Turn::new(Role::Assistant, "Booked a table at noon."),
+        ],
+        meta: MemoryMeta {
+            agent_id: Some("orchestrator".into()),
+            ..MemoryMeta::default()
+        },
+    };
+    let email = StoreItem::document(
+        "Lunch is on me.",
+        MemoryMeta {
+            observed_actor: Some(tinymemory_api::ObservedActor {
+                id: "user:priya@acme.com".into(),
+                name: Some("Priya".into()),
+            }),
+            ..MemoryMeta::default()
+        },
+    );
+    let receipts = engine
+        .store_many(vec![chat, email])
+        .await
+        .expect("attributed writes land");
+    let back = engine
+        .get(tinymemory_api::GetRequest {
+            ids: receipts.iter().map(|receipt| receipt.id.clone()).collect(),
+            reach: Some(tinymemory_api::Reach::exact(
+                tinymemory_api::Namespace::ROOT,
+            )),
+        })
+        .await
+        .expect("get them back");
+    assert_eq!(back.len(), 2, "both items read back: {back:?}");
+    let sender = back
+        .iter()
+        .find_map(|hit| hit.meta.observed_actor.clone())
+        .expect("the email keeps its sender");
+    assert_eq!(sender.id, "user:priya@acme.com");
+}
+
 #[tokio::test]
 async fn every_kind_is_exported_whole_across_pages() {
     let _alone = ONE_AT_A_TIME.lock().await;

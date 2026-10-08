@@ -61,6 +61,13 @@ pub(crate) struct Double {
     pub(crate) seen: Mutex<Seen>,
     /// When set, every request fails with this status and code.
     pub(crate) fail_all: Mutex<Option<(u16, &'static str)>>,
+    /// The `caller` `v1/auth/whoami` reports; `None` answers 404, as a
+    /// server before the actor model does.
+    pub(crate) whoami_caller: Mutex<Option<String>>,
+    /// When set, every write naming an `observed_actor` or `subject` fails
+    /// with this status and code, a bulk write whole, as CortexDB refuses a
+    /// credential without the capabilities to attribute.
+    pub(crate) refuse_attribution: Mutex<Option<(u16, &'static str)>>,
     /// When set, every scope registration fails with this status and code.
     pub(crate) fail_registration: Mutex<Option<(u16, &'static str)>>,
     /// The only token accepted; `None` accepts any non-empty bearer.

@@ -107,6 +107,22 @@ fn fingerprints_ignore_when_an_item_was_observed() {
 }
 
 #[test]
+fn fingerprints_ignore_who_an_item_is_attributed_to() {
+    let plain = StoreItem::document("hello", MemoryMeta::default());
+    let mut attributed = plain.clone();
+    attributed.meta_mut().observed_actor = Some(crate::ObservedActor {
+        id: "user:priya@acme.com".into(),
+        name: Some("Priya".into()),
+    });
+    assert_eq!(plain.fingerprint(), attributed.fingerprint());
+    let json = serde_json::to_value(plain.meta()).unwrap();
+    assert!(
+        json.get("observed_actor").is_none(),
+        "unset, not serialized"
+    );
+}
+
+#[test]
 fn items_serialise_with_a_type_tag_and_round_trip() {
     let item = StoreItem::learning("tea", LearningKind::Preference, 0.9, MemoryMeta::default());
     let json = serde_json::to_value(&item).expect("serialise");
