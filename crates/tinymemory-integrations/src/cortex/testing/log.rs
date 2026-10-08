@@ -12,6 +12,9 @@
 //! - the forget selector reads only `memory_ids`; an empty selector without
 //!   `confirm_all` is refused, and a selector with `confirm_all` is refused
 //!   as ambiguous;
+//! - the forget `cascade` defaults to `derived_only`, which drops the
+//!   beliefs built from the named events and **keeps the events**; only
+//!   `redact_events` removes them, and any other cascade is a 400;
 //! - recall returns each event with its stored text (no `[role] ` marker,
 //!   as 0.10.3 and 0.10.4 do in `layers.events`), honours `view:
 //!   "descend"`, metadata label filters and the events budget;
@@ -169,6 +172,13 @@ impl CortexLog {
             })
             .unwrap_or_default();
         let selective = !ids.is_empty();
+        let cascade = body
+            .get("cascade")
+            .and_then(Value::as_str)
+            .unwrap_or("derived_only");
+        if !matches!(cascade, "derived_only" | "redact_events") {
+            return (400, json!({ "error_code": "INVALID_CASCADE" }));
+        }
         if selective && confirm_all {
             return (
                 400,
@@ -179,6 +189,25 @@ impl CortexLog {
             return (
                 422,
                 json!({ "error_code": "EMPTY_SELECTOR_WITHOUT_CONFIRMATION" }),
+            );
+        }
+        if cascade == "derived_only" {
+            // What was derived goes; the events stay.
+            let named = |e: &Value| {
+                str_of(e, "/scope") == scope
+                    && (!selective || ids.iter().any(|id| id == str_of(e, "/id")))
+            };
+            let sources: Vec<String> = self
+                .events
+                .iter()
+                .filter(|e| named(e))
+                .map(|e| str_of(e, "/id").to_string())
+                .collect();
+            self.beliefs
+                .retain(|belief| !sources.iter().any(|id| id == str_of(belief, "/source")));
+            return (
+                200,
+                json!({ "deleted": { "events": 0 }, "requested": ids.len() }),
             );
         }
         let before = self.events.len();
