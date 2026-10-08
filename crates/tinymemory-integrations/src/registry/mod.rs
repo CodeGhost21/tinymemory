@@ -107,6 +107,7 @@ pub fn build_engine(
     {
         engine = engine.with_scope_root(root, settings.scope_owner.as_deref())?;
     }
+    engine = engine.with_observed_actor(settings.observed_actor);
     Ok(Arc::new(engine))
 }
 

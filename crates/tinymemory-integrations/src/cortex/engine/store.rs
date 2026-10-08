@@ -24,6 +24,10 @@
 //! is skipped only on the turn-logging hot path ([`looks_up`]): a Direct,
 //! accepted-only store of one single-turn conversation, which the agent
 //! lifecycle makes twice per turn, and where a retry is the replay to catch.
+//!
+//! With attribution on, an event observed from someone other than the owner
+//! names them, and a write refused for it is sent once more without
+//! (`attribution` module).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Instant;
@@ -31,6 +35,7 @@ use std::time::Instant;
 use tinymemory_api::{ItemId, StoreItem, StoreReceipt, WaitFor, validate_many};
 
 use super::CortexEngine;
+use super::attribution;
 use super::scopes::KindScope;
 use crate::cortex::descriptor::CortexWire;
 use crate::cortex::envelope::{Encoded, Envelope};
@@ -68,6 +73,11 @@ impl CortexEngine {
             )));
         }
         self.register_root().await;
+        let subject = self.attribution_subject().await;
+        let mut items = items;
+        for item in &mut items {
+            attribution::screen(item.meta_mut(), subject.is_some());
+        }
         let ids: Vec<String> = items.iter().map(StoreItem::fingerprint).collect();
         // Every event of the batch is laid out and size-checked before any is
         // sent, so an item CortexDB would refuse leaves nothing half-written.
@@ -112,17 +122,29 @@ impl CortexEngine {
         for (events, id) in planned.into_iter().zip(ids) {
             let present = held.get(&id);
             let mut requests = Vec::new();
+            let mut attributed = false;
             if !written_here.contains(&id) {
                 for (part, envelope, encoded) in events {
                     if present.is_some_and(|present| present.contains(&part)) {
                         continue;
                     }
-                    requests.push(envelope.request(&encoded, &self.layout));
+                    let mut request = envelope.request(&encoded, &self.layout);
+                    if let Some(subject) = &subject
+                        && let Some(actor) = attribution::actor_of(&envelope)
+                        && actor != *subject
+                    {
+                        attribution::attribute(&mut request, &actor, subject);
+                        attributed = true;
+                    }
+                    requests.push(request);
                 }
             }
             let mut replayed = requests.is_empty();
             sent += requests.len();
-            if let Some(written) = self.log.write(&requests, wait).await? {
+            if let Some(written) = self
+                .write_attributed(&mut requests, attributed, wait)
+                .await?
+            {
                 replayed = written.replayed;
                 last_per_scope.retain(|w| w.scope != written.scope);
                 last_per_scope.push(written);
@@ -156,6 +178,46 @@ impl CortexEngine {
     }
 }
 
+impl CortexEngine {
+    /// The subject attributed events are about, when attributing: the v3
+    /// root's owner, else the caller `whoami` reports. `None` (nothing is
+    /// attributed) when attribution is off or refused, on the TinyHumans
+    /// backend, or with no owner known.
+    async fn attribution_subject(&self) -> Option<String> {
+        if !self.attribution.active() || self.wire() != CortexWire::Direct {
+            return None;
+        }
+        match &self.owner {
+            Some(owner) => Some(owner.clone()),
+            None => self.log.client.caller().await,
+        }
+    }
+
+    /// Writes one item's events. An `attributed` write CortexDB refuses for
+    /// its credential or its body is written once more without attribution;
+    /// a credential refusal the plain write gets past turns attribution off.
+    async fn write_attributed(
+        &self,
+        requests: &mut [serde_json::Value],
+        attributed: bool,
+        wait: WaitFor,
+    ) -> Result<Option<Written>> {
+        let first = self.log.write(requests, wait).await;
+        match first {
+            Err(error @ (Error::Unauthorized(_) | Error::InvalidRequest(_))) if attributed => {
+                log::debug!("[cortex] attributed write refused, writing it plainly: {error}");
+                requests.iter_mut().for_each(attribution::strip);
+                let written = self.log.write(requests, wait).await?;
+                if let Error::Unauthorized(reason) = &error {
+                    self.attribution.refuse(reason);
+                }
+                Ok(written)
+            }
+            other => other,
+        }
+    }
+}
+
 /// Whether a store looks its items up before writing. Always, except on the
 /// turn-logging hot path: a Direct store of one single-turn conversation
 /// that waits only for acceptance. There the body key catches a retry
@@ -173,3 +235,7 @@ fn looks_up(wire: CortexWire, items: &[StoreItem], wait: WaitFor) -> bool {
 #[cfg(test)]
 #[path = "store_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "store_attribution_tests.rs"]
+mod attribution_tests;

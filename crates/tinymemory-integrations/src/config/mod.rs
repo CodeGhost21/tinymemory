@@ -96,6 +96,14 @@ pub struct EngineSettings {
     /// write. Ignored without a root.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope_owner: Option<String>,
+    /// Attribute events to who actually said or did them (CortexDB's
+    /// `observed_actor`, with the memory's owner as `subject`): an assistant
+    /// turn to its agent, an item naming a [`tinymemory_api::ObservedActor`]
+    /// to that person. Off by default, and off nothing on the wire changes.
+    /// Only a direct `cortexdb` engine honours it; a write CortexDB refuses
+    /// for it is sent again without it (see the cortex README).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub observed_actor: bool,
 }
 
 #[cfg(test)]

@@ -109,6 +109,35 @@ caches (shared across clones):
 
 The TinyHumans wire never sends the header; the backend names the actor.
 
+### Attribution
+
+CortexDB 0.10.5 records who an event was observed from (`observed_actor`,
+`{id, type}`) and whom it is about (`subject`), both defaulting to the
+caller. `EngineSettings::observed_actor` (or
+`CortexEngine::with_observed_actor`), **off by default**, makes a direct
+engine name them:
+
+| Event | `observed_actor` | `subject` |
+| --- | --- | --- |
+| an assistant turn with `meta.agent_id` | `agent:<agent_id>` | the owner |
+| an item with `meta.observed_actor` (an email's sender) | its `id`, e.g. `user:priya@acme.com` | the owner |
+| anything else | not sent | not sent |
+
+The owner is the v3 root's owner, else the `whoami` caller; with neither,
+nothing is attributed. Naming another actor needs the credential's
+`scope.write.on_behalf_of`, another subject `scope.write.about_other`; a
+write refused for them (401/403, or 400/413/422) is sent once more without
+the fields, keyed by its plain body. A permission refusal the plain write
+gets past turns attribution off for the engine's life; a validation
+refusal only for that write.
+
+Off, and always on the TinyHumans wire, nothing on the wire changes: the
+fields are not sent and `meta.observed_actor` is cleared before the events
+are laid out, so bodies and idempotency keys are byte-identical to an item
+without it. It is never part of the fingerprint, so turning attribution on
+does not re-store anything. An actor id that looks like a phone number is
+dropped, and so is a display name holding seven or more digits.
+
 ## Transport
 
 `HttpClient` (`cortex/transport/`) is shared by both wires.
@@ -241,6 +270,7 @@ passes one to `build`, so a config file can be shared or logged.
 | `engine` | string | the selected engine id; `DEFAULT_ENGINE` is `tinyhumans` |
 | `engines` | map id to `EngineSettings` | per-engine settings; optional; an absent engine uses its defaults |
 | `engines.<id>.endpoint` | string, optional | base URL; absent or blank uses the engine's default |
+| `engines.<id>.observed_actor` | bool, default `false` | attribute writes to who said or did them ([Attribution](#attribution)); `cortexdb` only |
 
 TOML:
 

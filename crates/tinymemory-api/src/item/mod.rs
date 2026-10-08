@@ -262,17 +262,21 @@ impl StoreItem {
     }
 
     /// A stable hex digest of the whole item, metadata included, except
-    /// `meta.observed_at`.
+    /// `meta.observed_at` and `meta.observed_actor`.
     ///
     /// Two items with the same fingerprint are the same item: an engine
     /// derives its idempotency from this, so an identical retry is a replay.
     /// `observed_at` records *when* the item was seen, not *what* it is: a
     /// host stamps it on every store, so hashing it would make a retried
     /// learning, or an unchanged file re-synced, a new item each time.
+    /// `observed_actor` says who said it, which an engine sends only when
+    /// attribution is on: hashing it would make the same email a second
+    /// item once attribution is turned on.
     #[must_use]
     pub fn fingerprint(&self) -> String {
         let mut identity = self.clone();
         identity.meta_mut().observed_at = None;
+        identity.meta_mut().observed_actor = None;
         // Serialising a struct cannot fail: every field is a plain string,
         // number, enum or timestamp. The fallback keeps the function total.
         let bytes =

@@ -82,6 +82,24 @@ pub struct MemoryMeta {
     /// fingerprint is the same as before the field existed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub derive: Option<bool>,
+    /// Who actually said or did what the item records, when that is someone
+    /// other than the person whose memory it is: the sender of a synced
+    /// email. `None`, the default, means the memory's owner. An engine that
+    /// can attribute an event to its actor may send it as such; any other
+    /// ignores it. Unset, it is not serialized, and it is never part of an
+    /// item's fingerprint, so setting it does not change the item's id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observed_actor: Option<ObservedActor>,
+}
+
+/// A person (or system) an item is attributed to: [`MemoryMeta::observed_actor`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObservedActor {
+    /// `type:id`, as CortexDB names actors: `user:priya@acme.com`.
+    pub id: String,
+    /// The display name, when the source gives one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 impl MemoryMeta {

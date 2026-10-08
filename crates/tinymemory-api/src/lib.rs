@@ -71,7 +71,9 @@ pub use explore::{
     MAX_SCAN_LIMIT,
 };
 pub use item::{DocumentBody, ItemId, ItemKind, LearningKind, Role, StoreItem, StoreReceipt, Turn};
-pub use meta::{MemoryMeta, MetaFilter, SourceKind, SourceRef, ToolCallRef, TurnRange};
+pub use meta::{
+    MemoryMeta, MetaFilter, ObservedActor, SourceKind, SourceRef, ToolCallRef, TurnRange,
+};
 pub use namespace::{Namespace, Reach, Segment, SegmentKind};
 pub use query::{
     Citation, EraseReport, EraseRequest, ExportPage, Exported, FetchMode, FetchPage, FetchRequest,

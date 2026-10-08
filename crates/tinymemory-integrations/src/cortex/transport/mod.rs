@@ -281,6 +281,12 @@ impl HttpClient {
             .map(|_| ())
     }
 
+    /// The actor this client's credential acts as (`whoami`'s `caller`),
+    /// direct wire only.
+    pub(crate) async fn caller(&self) -> Option<String> {
+        self.actor().await?.to_str().ok().map(str::to_string)
+    }
+
     /// The `X-Cortex-Actor` value to send (direct wire only), asking
     /// `v1/auth/whoami` the first time. See `actor`.
     async fn actor(&self) -> Option<HeaderValue> {
