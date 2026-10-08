@@ -63,7 +63,7 @@ else on request, so a host pays only for what it uses.
 | `documents` | `documents` | Format sniffing and conversion to markdown, producing `StoreItem::Document` |
 | `documents-office` | `documents::OfficeConverter` | PDF, DOCX, PPTX and XLSX to markdown (implies `documents`) |
 | `brain` | `brain` | Files into `tinymemory_tools::BrainDocument`s, by the source type their format implies (implies `documents`) |
-| `sources` | `sources` | Folder, file and conversation readers, Composio normalisers (implies `documents`) |
+| `sources` | `sources` | Folder, file and conversation readers (implies `documents`) |
 | `sources-network` | `sources::fetch` and the network readers | GitHub, RSS and web-page readers and `fetch_url`, behind the SSRF guard (implies `sources`) |
 | `safety` | `safety` | Secret and PII scrubbing of a `StoreItem` |
 | `legacy-import` | `import` | Migrating a v1 (embedded TinyCortex) workspace into any engine |

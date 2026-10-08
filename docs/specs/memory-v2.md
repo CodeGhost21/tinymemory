@@ -30,7 +30,7 @@ Three crates, one directory each under `crates/`. Their relationships are in
 | --- | --- |
 | `tinymemory-api` | The contract: `MemoryEngine`, request/response types, `MemoryMeta`, `MetaFilter`, namespaces, `EngineDescriptor`, `Error`. No I/O. Feature `conformance`: the behavioural suite every engine must pass, plus a reference in-memory engine. |
 | `tinymemory-tools` | The agent tool spec `MemoryTools` (seven tools, host-fixed namespace and reach) and `context`, the `ContextCompiler` that builds `context.md` from an engine. |
-| `tinymemory-integrations` | Everything that talks to the outside world, each behind a feature: `cortex` (default; the CortexDB engine, registered twice as `cortexdb` and `tinyhumans`, plus the registry `list_engines`/`build_engine` and `MemoryConfig`), `documents` and `documents-office` (format sniffing and conversion to markdown, emitting `StoreItem::Document`; PDF/DOCX/PPTX/XLSX via `OfficeConverter` or a host `DocumentConverter`), `sources` and `sources-network` (readers for folder, file, link, GitHub, RSS, Composio payloads and conversations, with the SSRF guard), `safety` (secret/PII scrubbing applied to every item before `store`), and `legacy-import` (reads a v1 TinyCortex workspace and migrates it into any engine). |
+| `tinymemory-integrations` | Everything that talks to the outside world, each behind a feature: `cortex` (default; the CortexDB engine, registered twice as `cortexdb` and `tinyhumans`, plus the registry `list_engines`/`build_engine` and `MemoryConfig`), `documents` and `documents-office` (format sniffing and conversion to markdown, emitting `StoreItem::Document`; PDF/DOCX/PPTX/XLSX via `OfficeConverter` or a host `DocumentConverter`), `sources` and `sources-network` (readers for folder, file, link, GitHub, RSS and conversations, with the SSRF guard), `safety` (secret/PII scrubbing applied to every item before `store`), and `legacy-import` (reads a v1 TinyCortex workspace and migrates it into any engine). |
 
 Deleted: the earlier `tinymemory` facade, `tinymemory-cortex`,
 `tinymemory-documents`, `tinymemory-sources`, `tinymemory-safety`,
@@ -91,7 +91,7 @@ pub struct MemoryMeta {
     pub tags: Vec<String>,
     pub observed_at: Option<DateTime<Utc>>,
 }
-pub enum SourceKind { Folder, File, Link, Github, Rss, Composio, Conversation, Agent, Import }
+pub enum SourceKind { Folder, File, Link, Github, Rss, Conversation, Agent, Import }
 ```
 
 `MetaFilter` has the same optional fields (each an exact match, `folder` and

@@ -2,7 +2,7 @@
 
 `tinymemory_integrations::sources` (features `sources` and `sources-network`):
 readers that turn a source into `StoreItem`s — a folder, a single file, a web
-page, a GitHub repository, an RSS feed, a Composio toolkit payload, or the
+page, a GitHub repository, an RSS feed, or the
 host's local conversation threads. Conversion to markdown and language
 detection come from the sibling [`documents`](../documents/README.md) module.
 Architecture overview:
@@ -21,7 +21,6 @@ checks it with `MemorySourceEntry::validate`, nothing more.
 | `fetch` | one URL into a `RawDocument` or a link item (`sources-network`); the RSS and web-page readers fetch through it with their own body caps |
 | `fetch::ssrf` | the SSRF guard: scheme and host policy, one address classifier for literal and resolved addresses, a public-only DNS resolver, per-hop redirect checks, and a capped body reader |
 | `items` | reader output to `StoreItem`s with `MemoryMeta` filled per kind; `collect_items` drives a reader end to end |
-| `composio` | toolkit normalisers (Gmail, Slack, GitHub, Linear, Notion, ClickUp), the `fields::pick_str` lookup they share, `normalise_payload` and `payload_items`. `readers::composio::ComposioReader` is only a placeholder reader |
 | `error` | the module `Error`, mapped onto `tinymemory_api::Error` |
 
 ## Kinds and metadata
@@ -35,7 +34,6 @@ Every item's `meta.source` is `SourceRef { kind, id: Some(entry.id) }`.
 | `web_page` | `Link` | document | `url` |
 | `github_repo` | `Github` | document | `repo` (`owner/name`), `commit` (commits), `url` (issues, PRs), `observed_at` |
 | `rss_feed` | `Rss` | document | `url` (the entry's link), `observed_at` (published) |
-| `composio` | `Composio` | document | `tags = [toolkit]`; payloads add `url`, `observed_at`, `thread_id`, `repo` |
 | `conversation` | `Conversation` | conversation | `workspace`, `thread_id`, `turns`, `observed_at` (last turn) |
 
 ## Folder selection
@@ -74,7 +72,7 @@ named and numeric entities decode the same way everywhere.
 
 ## Features
 
-- `sources` — the local readers, `items`, `composio` and `types`; implies
+- `sources` — the local readers, `items` and `types`; implies
   `documents`. Links no HTTP stack.
 - `sources-network` — adds the GitHub, RSS and web-page readers, `fetch`, and
   the SSRF guard.

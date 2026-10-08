@@ -22,7 +22,6 @@ optional fields are required; `validate()` checks them.
 | `web_page` | `url` | `selector` | `Link` |
 | `github_repo` | `url` | `branch`, `paths`, `max_commits`, `max_issues`, `max_prs` (default 1000 each) | `Github` |
 | `rss_feed` | `url` | `max_items` (default 50) | `Rss` |
-| `composio` | `toolkit`, `connection_id` | | `Composio` |
 
 Every entry also needs a non-blank `id` (no `:` or control characters) and a
 non-empty `label`, and carries `enabled` and optional sync-budget fields
@@ -52,7 +51,6 @@ for a host servicing an explicit user request, never a polling loop.
 | `WebPageReader` | one: the page URL | With a CSS `selector`, only the text of matching elements (plain text; only the last compound of a descendant chain is honoured). Otherwise the whole page as markdown. 10 MiB body cap. |
 | `RssReader` | one per feed entry (RSS or Atom), up to `max_items` | The parsed feed is cached for 60 seconds so a list-then-read pass downloads it once. 5 MiB cap; non-UTF-8 bodies are refused. |
 | `GithubReader` | `commit:<sha>`, `issue:<n>`, `pr:<n>` | See below. |
-| `ComposioReader` | one: the connection | A placeholder; see Composio. |
 
 ### local_file and ensure_within_base
 
@@ -96,7 +94,6 @@ are rejected). It combines three transports:
 | github | document | `repo` (`owner/name`), `commit` (commits), `url` (issues and PRs), `observed_at` |
 | web page | document | `url` |
 | rss | document | `url` (entry link), `observed_at` (published) |
-| composio | document | `tags = [toolkit]`; payloads add `url`, `observed_at`, `thread_id`, `repo` |
 | conversation | conversation | `workspace`, `thread_id`, `turns` (`0..=n-1`), `observed_at` (last turn, else mtime) |
 
 `collect_items(reader, entry, workspace, converter)` lists and reads every
@@ -104,48 +101,6 @@ item, returning `Collected { items, skipped }`. One bad item lands in `skipped`
 with its error and the pass continues; only a listing failure is an `Err`.
 Other entry points: `file_item` (a path with no source), `conversation_item`,
 `content_item` and `items::local_file_item`.
-
-## Composio
-
-Composio data does not arrive item by item. A host runs toolkit actions with
-its own credentials and hands the raw responses to `sources::composio`, which
-holds no credential, opens no socket and decides nothing about when to sync.
-
-1. **Normalisers**, pure `serde_json::Value` transforms, one module per
-   toolkit. They walk Composio's envelope variants (top level, under `data`,
-   under `data.data`) and return the first array found: `clickup`
-   (`extract_tasks`), `github` (`extract_issues`), `linear`
-   (`extract_issues`), `notion` (`extract_results`, `extract_page_markdown`),
-   each with title, id and updated-time helpers. `fields::pick_str` is the
-   shared lookup: it tries dotted paths, descends only through objects, and
-   rejects non-string leaves.
-2. **Post-processors the host must call** for two toolkits, because their raw
-   responses are too verbose:
-   - `gmail_post_process::post_process(slug, arguments, &mut data)` rewrites a
-     `GMAIL_FETCH_EMAILS` response into slim `messages[]` (other Gmail slugs
-     pass through; `raw_html: true` in the arguments skips the reshape). If the
-     response carries a response-level `markdownFormatted` string, call
-     `apply_response_level_markdown(&mut data, markdown)` **before**
-     `post_process`; it is a no-op unless the split count matches the message
-     count. `format_email_local_time` renders in the host's local timezone;
-     the raw UTC fields are preserved.
-   - `slack_post_process::post_process(slug, arguments, &mut data)` reshapes
-     `SLACK_FETCH_CONVERSATION_HISTORY`, `SLACK_LIST_CONVERSATIONS` and
-     `SLACK_SEARCH_MESSAGES`; unknown slugs are no-ops. `channel_id` for history
-     is injected by the host (it is in the request, not the response), and user
-     ids are resolved by the host.
-3. `normalise_payload(toolkit, &data)` returns `ComposioDocument`s (id, title,
-   markdown body, url, `observed_at`, `thread_id`, `repo`), dispatching on the
-   case-insensitive toolkit slug: `gmail`, `slack`, `github`, `linear`,
-   `notion`, `clickup`; any other toolkit falls back to each record as fenced
-   JSON, so a new toolkit is ingested verbosely rather than dropped. Records
-   with no text are skipped. `payload_items(toolkit, source_id, &data)` wraps
-   them as `StoreItem::Document` with `source.kind = Composio`,
-   `source.id = source_id` and `tags = [toolkit]`.
-
-`readers::composio::ComposioReader` is only a placeholder so
-`reader_for_request` can serve every kind: `list_items` returns the connection
-as one sync target.
 
 ## Fetching and the SSRF guard (sources-network)
 

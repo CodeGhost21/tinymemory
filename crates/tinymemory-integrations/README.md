@@ -17,7 +17,7 @@ wants one integration enables one feature and links nothing else.
 | `cortex`, `registry`, `config` | `cortex` (default) | `CortexEngine` over two wires (`cortexdb`, `tinyhumans`); `list_engines`, `build_engine`, `EngineCredential`; `MemoryConfig` | [`src/cortex/README.md`](src/cortex/README.md) |
 | `documents` | `documents` | Format sniffing and conversion to markdown, producing `StoreItem::Document`. No I/O. | [`src/documents/README.md`](src/documents/README.md) |
 | `documents::OfficeConverter` | `documents-office` | PDF, DOCX, PPTX and XLSX to markdown, in process | (same) |
-| `sources` | `sources` | Readers for folders, files and conversations; Composio payload normalisers; `collect_items`. Links no HTTP stack. | [`src/sources/README.md`](src/sources/README.md) |
+| `sources` | `sources` | Readers for folders, files and conversations; `collect_items`. Links no HTTP stack. | [`src/sources/README.md`](src/sources/README.md) |
 | `sources::fetch`, GitHub, RSS and web-page readers | `sources-network` | The network readers and `fetch_url`, all behind the SSRF guard | (same) |
 | `safety` | `safety` | Secret and PII scrubbing of a `StoreItem` before it is stored | [`src/safety/README.md`](src/safety/README.md) |
 | `import` | `legacy-import` | Reads a v1 (embedded TinyCortex) workspace and migrates it into any engine, resumably | [`src/import/README.md`](src/import/README.md) |

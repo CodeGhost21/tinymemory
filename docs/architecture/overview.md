@@ -55,7 +55,7 @@ alone, so the contract is the only coupling point.
 | `tinymemory-integrations` | `cortex` (default) | `cortex::CortexEngine` (both wires), `registry` (`list_engines`, `build_engine`), `config` (`MemoryConfig`) |
 | | `documents` | Format sniffing and conversion to markdown |
 | | `documents-office` | PDF, DOCX, PPTX, XLSX conversion (implies `documents`) |
-| | `sources` | Readers for folders, files, conversations; Composio normalisers (implies `documents`) |
+| | `sources` | Readers for folders, files, conversations (implies `documents`) |
 | | `sources-network` | GitHub, RSS and web-page readers behind the SSRF guard (implies `sources`) |
 | | `safety` | Secret and PII scrubbing of a `StoreItem` |
 | | `legacy-import` | Reading a v1 workspace; `import::migrate` and `migrate_with` |
@@ -72,7 +72,7 @@ source reader ──▶ documents ──▶ safety ──▶ engine.store ──
 ```
 
 1. **Source reader** (`sources`): lists a configured source (folder, file,
-   link, GitHub, RSS, Composio payload, conversation) and reads each entry.
+   link, GitHub, RSS, conversation) and reads each entry.
    `sources::collect_items` does this for one source; one bad entry lands in
    `Collected::skipped` instead of aborting the pass.
 2. **Documents conversion** (`documents`): sniffs the format and converts the

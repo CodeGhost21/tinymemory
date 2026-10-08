@@ -165,7 +165,7 @@ namespace are omitted on serialisation.
 | `observed_actor` | `Option<ObservedActor>` | `{ id, name? }`: who said or did it when not the memory's owner, such as an email's sender or a channel's (`id` is `type:id`, `user:priya@acme.com`, `user:+15551234567`). Excluded from the fingerprint; the CortexDB engine sends it only with attribution on. |
 
 `MemoryMeta::from_source(kind, id)` sets only the source. `SourceKind` is
-`folder | file | link | github | rss | composio | conversation | agent |
+`folder | file | link | github | rss | conversation | agent |
 import` (`SourceKind::ALL`, `as_str`); `agent` is the default.
 
 ## `MetaFilter`
