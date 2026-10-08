@@ -48,7 +48,13 @@ fn validate_file_requires_path() {
 
 #[test]
 fn the_removed_network_kinds_no_longer_decode() {
-    for removed in ["twitter_query", "composio", "github_repo", "rss_feed", "web_page"] {
+    for removed in [
+        "twitter_query",
+        "composio",
+        "github_repo",
+        "rss_feed",
+        "web_page",
+    ] {
         let decoded = serde_json::from_str::<SourceKind>(&format!("\"{removed}\""));
         assert!(decoded.is_err(), "{removed} must not decode");
     }
@@ -58,10 +64,7 @@ fn the_removed_network_kinds_no_longer_decode() {
 fn every_config_kind_maps_onto_a_contract_source_kind() {
     use tinymemory_api::SourceKind as Api;
     let mapped: Vec<Api> = SourceKind::ALL.iter().map(SourceKind::api_kind).collect();
-    assert_eq!(
-        mapped,
-        vec![Api::Conversation, Api::Folder, Api::File]
-    );
+    assert_eq!(mapped, vec![Api::Conversation, Api::Folder, Api::File]);
 }
 
 #[test]
