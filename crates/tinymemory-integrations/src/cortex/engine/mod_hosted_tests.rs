@@ -257,7 +257,34 @@ async fn write_claims_are_random_per_call_and_never_the_content_key() {
 
 #[tokio::test]
 async fn a_write_applied_before_its_response_was_lost_is_recovered() {
+    recovered_after_a_lost_response(false).await;
+}
+
+/// An older backend relays the refused retry as `400` + `CONFLICT`.
+#[tokio::test]
+async fn a_lost_response_is_recovered_through_a_legacy_400_conflict() {
+    recovered_after_a_lost_response(true).await;
+}
+
+#[tokio::test]
+async fn a_conflict_reaches_the_client_as_a_409_or_a_legacy_400() {
+    for (status, code) in [(409, "CONFLICT"), (400, "CONFLICT")] {
+        let (endpoint, state) = hosted_double().await;
+        *state.fail_all.lock().unwrap() = Some((status, code));
+        let error = hosted_engine(&endpoint)
+            .list(tinymemory_api::ListRequest::new(MetaFilter::default(), 1))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, tinymemory_api::Error::Conflict(_)),
+            "{status}: {error:?}"
+        );
+    }
+}
+
+async fn recovered_after_a_lost_response(legacy: bool) {
     let (endpoint, state) = hosted_double().await;
+    state.legacy_conflict_400.store(legacy, Ordering::SeqCst);
     state.apply_then_fail.store(1, Ordering::SeqCst);
     let receipt = hosted_engine(&endpoint)
         .store(sample_items().remove(0))
