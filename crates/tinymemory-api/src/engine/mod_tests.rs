@@ -94,3 +94,29 @@ async fn an_engine_that_does_not_export_refuses_as_unsupported() {
         "a malformed request is refused before Unsupported: {invalid:?}"
     );
 }
+
+#[tokio::test]
+async fn store_many_with_defaults_to_store_many_whatever_the_wait() {
+    let engine = Bare(descriptor(vec![FetchMode::Hybrid]));
+    let items = || {
+        vec![
+            StoreItem::document("one", crate::MemoryMeta::default()),
+            StoreItem::document("two", crate::MemoryMeta::default()),
+        ]
+    };
+    let bulk = engine.store_many(items()).await.expect("store_many");
+    for options in [WriteOptions::accepted(), WriteOptions::visible()] {
+        let with = engine
+            .store_many_with(items(), options)
+            .await
+            .expect("store_many_with");
+        assert_eq!(with, bulk, "{options:?}");
+    }
+    assert!(
+        engine
+            .store_many_with(Vec::new(), WriteOptions::accepted())
+            .await
+            .is_err(),
+        "an empty batch is refused, as by store_many"
+    );
+}

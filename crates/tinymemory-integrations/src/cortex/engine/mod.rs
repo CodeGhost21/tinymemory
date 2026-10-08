@@ -362,6 +362,16 @@ impl MemoryEngine for CortexEngine {
         self.store_items(items, WaitFor::Visible).await
     }
 
+    /// [`WaitFor::Accepted`] returns once CortexDB captured every event,
+    /// without `?wait=indexed` and without the visibility waits.
+    async fn store_many_with(
+        &self,
+        items: Vec<StoreItem>,
+        options: WriteOptions,
+    ) -> Result<Vec<StoreReceipt>> {
+        self.store_items(items, options.wait).await
+    }
+
     async fn forget(&self, target: ForgetTarget) -> Result<ForgetReport> {
         self.forget_items(target).await
     }

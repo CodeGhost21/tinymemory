@@ -91,6 +91,27 @@ pub trait MemoryEngine: Send + Sync {
         Ok(receipts)
     }
 
+    /// Stores several items, in order, returning as soon as `options` allows
+    /// (see [`crate::write`]). With [`crate::WaitFor::Visible`] this is
+    /// exactly [`MemoryEngine::store_many`]; with [`crate::WaitFor::Accepted`]
+    /// an engine may return once every item is durably accepted, before they
+    /// are readable: a bulk import that reads nothing back until it ends.
+    ///
+    /// The default serves every option as `store_many`, which is always
+    /// correct.
+    ///
+    /// # Errors
+    ///
+    /// As [`MemoryEngine::store_many`].
+    async fn store_many_with(
+        &self,
+        items: Vec<StoreItem>,
+        options: WriteOptions,
+    ) -> Result<Vec<StoreReceipt>> {
+        let _ = options;
+        self.store_many(items).await
+    }
+
     /// Removes items by id or by a non-empty filter.
     ///
     /// # Errors
