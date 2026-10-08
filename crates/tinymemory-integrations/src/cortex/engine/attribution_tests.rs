@@ -57,29 +57,25 @@ fn a_document_is_its_named_senders() {
 }
 
 #[test]
-fn off_clears_the_named_actor_and_on_keeps_it_without_phone_numbers() {
+fn off_clears_the_named_actor_and_on_keeps_any_well_formed_one() {
     let mut meta = sender("user:priya@acme.com", Some("Priya"));
     screen(&mut meta, false);
     assert_eq!(meta.observed_actor, None, "off: never laid out");
 
-    let mut meta = sender("user:priya@acme.com", Some("Priya"));
-    screen(&mut meta, true);
-    assert_eq!(meta, sender("user:priya@acme.com", Some("Priya")));
-
-    for phone in [
-        "user:+1 (555) 123-4567",
-        "user:15551234567",
-        "nocolon",
-        "user:",
+    for kept in [
+        sender("user:priya@acme.com", Some("Priya")),
+        sender("user:+15551234567", Some("Mum +44 7700 900123")),
     ] {
-        let mut meta = sender(phone, None);
+        let mut meta = kept.clone();
         screen(&mut meta, true);
-        assert_eq!(meta.observed_actor, None, "{phone}");
+        assert_eq!(meta, kept, "a phone number is kept as it is");
     }
 
-    let mut meta = sender("user:priya@acme.com", Some("Priya +44 7700 900123"));
-    screen(&mut meta, true);
-    assert_eq!(meta, sender("user:priya@acme.com", None), "the name goes");
+    for malformed in ["nocolon", "user:", ":priya", "user:+1 555 123 4567"] {
+        let mut meta = sender(malformed, None);
+        screen(&mut meta, true);
+        assert_eq!(meta.observed_actor, None, "{malformed}");
+    }
 }
 
 #[test]

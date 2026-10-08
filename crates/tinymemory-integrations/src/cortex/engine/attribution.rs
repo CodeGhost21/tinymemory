@@ -26,8 +26,7 @@
 //! Off, nothing on the wire changes: no field is sent, and an item's
 //! `observed_actor` is cleared before its events are laid out, so their
 //! text and idempotency keys are what they were before the field existed.
-//! A phone number is never sent or stored through it: an actor whose id
-//! looks like one is dropped, and so is a name holding one.
+//! An actor whose id is not `type:id` is dropped.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -67,20 +66,14 @@ impl Attribution {
     }
 }
 
-/// Keeps `meta.observed_actor` only when attributing, and only without a
-/// phone number in it.
+/// Keeps `meta.observed_actor` only when attributing, and only with a
+/// well-formed id.
 pub(crate) fn screen(meta: &mut MemoryMeta, attributing: bool) {
-    if !attributing {
-        meta.observed_actor = None;
-        return;
-    }
-    if let Some(actor) = meta.observed_actor.as_mut() {
-        actor.name = actor.name.take().filter(|name| !holds_phone(name));
-    }
-    if meta
-        .observed_actor
-        .as_ref()
-        .is_some_and(|actor| actor_id(&actor.id).is_none())
+    if !attributing
+        || meta
+            .observed_actor
+            .as_ref()
+            .is_some_and(|actor| actor_id(&actor.id).is_none())
     {
         meta.observed_actor = None;
     }
@@ -130,26 +123,12 @@ fn typed(id: &str) -> Value {
     json!({ "id": id, "type": kind })
 }
 
-/// `id` as an actor id: `type:id`, both parts present, no whitespace, and
-/// not a phone number.
+/// `id` as an actor id: `type:id`, both parts present, no whitespace.
 fn actor_id(id: &str) -> Option<String> {
     let id = id.trim();
     let (kind, rest) = id.split_once(':')?;
     let clean = |part: &str| !part.is_empty() && !part.chars().any(char::is_whitespace);
-    (clean(kind) && clean(rest) && !looks_like_phone(rest)).then(|| id.to_string())
-}
-
-/// Only phone characters, with enough digits to dial.
-fn looks_like_phone(text: &str) -> bool {
-    text.chars()
-        .all(|c| c.is_ascii_digit() || "+-(). ".contains(c))
-        && holds_phone(text)
-}
-
-/// Seven or more digits: enough to be a phone number. A display name has
-/// no business holding that many.
-fn holds_phone(text: &str) -> bool {
-    text.chars().filter(char::is_ascii_digit).count() >= 7
+    (clean(kind) && clean(rest)).then(|| id.to_string())
 }
 
 #[cfg(test)]

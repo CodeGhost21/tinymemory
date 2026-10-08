@@ -135,8 +135,9 @@ Off, and always on the TinyHumans wire, nothing on the wire changes: the
 fields are not sent and `meta.observed_actor` is cleared before the events
 are laid out, so bodies and idempotency keys are byte-identical to an item
 without it. It is never part of the fingerprint, so turning attribution on
-does not re-store anything. An actor id that looks like a phone number is
-dropped, and so is a display name holding seven or more digits.
+does not re-store anything. An actor id that is not `type:id` (no colon,
+an empty part, or whitespace) is dropped; any address is kept as it is,
+a phone number (`user:+15551234567`) included.
 
 ## Transport
 
