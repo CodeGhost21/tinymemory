@@ -62,6 +62,11 @@ impl Log {
         let deadline = tokio::time::Instant::now() + self.timing.visibility;
         let mut delay = self.timing.poll;
         let labels = [label.to_string()];
+        // What the polls saw, so a timeout says whether the event was missing
+        // from the listing or the listing could not be read (rate limited).
+        let mut without = 0;
+        let mut transient = 0;
+        let mut last_fault = String::new();
         loop {
             // Newest first, so one page is enough to see a write just made.
             match self.page(scope, Some(&labels), None, PAGE_SIZE).await {
@@ -73,15 +78,25 @@ impl Log {
                 {
                     return Ok(());
                 }
-                Ok(_) => {}
+                Ok(_) => without += 1,
                 Err(error)
-                    if self.client.wire() == CortexWire::TinyHumans && error.is_transient() => {}
+                    if self.client.wire() == CortexWire::TinyHumans && error.is_transient() =>
+                {
+                    transient += 1;
+                    last_fault = error.to_string();
+                }
                 Err(error) => return Err(error),
             }
             if tokio::time::Instant::now() >= deadline {
+                let fault = if last_fault.is_empty() {
+                    String::new()
+                } else {
+                    format!(", the last: {last_fault}")
+                };
                 return Err(Error::Unavailable(format!(
                     "event `{event_id}` was accepted into scope `{scope}` but did not become \
-                     readable within {:?}; reporting the write as done would break \
+                     readable within {:?} ({without} polls answered without it, {transient} \
+                     failed transiently{fault}); reporting the write as done would break \
                      read-after-write",
                     self.timing.visibility
                 )));

@@ -422,3 +422,40 @@ async fn recovery_does_not_take_another_turn_with_the_same_words_for_the_lost_on
     assert!(matches!(error, Error::Unavailable(_)), "{error:?}");
     assert_eq!(state.event_count(), 1, "the lost turn is still missing");
 }
+
+/// A visibility timeout says what the polls saw, so a log tells a listing
+/// that never showed the event from one that could not be read.
+#[tokio::test]
+async fn a_visibility_timeout_says_whether_the_listing_was_rate_limited() {
+    let (endpoint, state) = hosted_double().await;
+    // Every listing after the write answers 429.
+    *state.arm_after_write.lock().unwrap() = Some((usize::MAX, 0));
+    let limited = hosted_engine(&endpoint)
+        .store(sample_items().remove(0))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        limited.contains("(0 polls answered without it"),
+        "{limited}"
+    );
+    assert!(
+        limited.contains("failed transiently, the last: "),
+        "{limited}"
+    );
+    assert!(!limited.contains(" 0 failed transiently"), "{limited}");
+
+    let (endpoint, state) = hosted_double().await;
+    // Every listing after the write answers, without the event.
+    *state.arm_after_write.lock().unwrap() = Some((0, usize::MAX));
+    let missing = hosted_engine(&endpoint)
+        .store(sample_items().remove(0))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(missing.contains(" 0 failed transiently)"), "{missing}");
+    assert!(
+        !missing.contains("(0 polls answered without it"),
+        "{missing}"
+    );
+}

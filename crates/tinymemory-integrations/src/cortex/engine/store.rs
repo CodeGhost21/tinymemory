@@ -26,6 +26,7 @@
 //! lifecycle makes twice per turn, and where a retry is the replay to catch.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::time::Instant;
 
 use tinymemory_api::{ItemId, StoreItem, StoreReceipt, WaitFor, validate_many};
 
@@ -93,6 +94,7 @@ impl CortexEngine {
                 .push(id.clone());
         }
         let lookup = looks_up(self.wire(), &items, wait);
+        let looking = Instant::now();
         for (scope, of_scope) in by_scope.iter().filter(|_| lookup) {
             for (id, events) in self.item_events(scope, of_scope).await? {
                 held.entry(id)
@@ -100,6 +102,10 @@ impl CortexEngine {
                     .extend(events.iter().map(|decoded| decoded.envelope.part()));
             }
         }
+        let lookup_ms = looking.elapsed().as_millis();
+        let looked_up = if lookup { by_scope.len() } else { 0 };
+        let writing = Instant::now();
+        let mut sent = 0;
         let mut receipts = Vec::with_capacity(items.len());
         let mut written_here: HashSet<String> = HashSet::new();
         let mut last_per_scope: Vec<Written> = Vec::new();
@@ -115,6 +121,7 @@ impl CortexEngine {
                 }
             }
             let mut replayed = requests.is_empty();
+            sent += requests.len();
             if let Some(written) = self.log.write(&requests, wait).await? {
                 replayed = written.replayed;
                 last_per_scope.retain(|w| w.scope != written.scope);
@@ -126,15 +133,25 @@ impl CortexEngine {
                 replayed,
             });
         }
+        let writes_ms = writing.elapsed().as_millis();
+        let stored = receipts.len();
+        log::debug!(
+            "[cortex] store of {stored} items: lookup {lookup_ms} ms over {looked_up} scopes, \
+             {sent} events written in {writes_ms} ms ({wait:?})"
+        );
         if wait == WaitFor::Accepted {
             return Ok(receipts);
         }
+        let waiting = Instant::now();
         let final_index = last_per_scope.len().saturating_sub(1);
         for (index, written) in last_per_scope.iter().enumerate() {
             self.log
                 .await_written(written, index == final_index)
                 .await?;
         }
+        let await_ms = waiting.elapsed().as_millis();
+        let awaited = last_per_scope.len();
+        log::debug!("[cortex] store of {stored} items: waited {await_ms} ms for {awaited} scopes");
         Ok(receipts)
     }
 }

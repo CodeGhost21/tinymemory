@@ -92,7 +92,15 @@ Polling starts at 250ms. Direct keeps that gap; TinyHumans doubles it up to a
 2s ceiling (a fixed 250ms poll would spend a fifth of the backend's 300
 requests per minute on one write). On TinyHumans a 429 or 5xx while waiting
 for the listing means "not yet" and the wait continues to its deadline; on
-Direct such an error is returned.
+Direct such an error is returned. A timeout says how many polls answered
+without the event and how many failed transiently (with the last fault), so
+a listing that never showed the event is told apart from one that could not
+be read.
+
+**Rate limits.** A `429` whose `Retry-After` (else `RateLimit-Reset`) gives a
+wait in seconds holds every later request of that client back until it has
+passed, at most 10s (`transport/pause.rs`): retrying sooner only spends the
+next attempt on another `429`.
 
 ### Hosted writes and outcome-unknown recovery
 
