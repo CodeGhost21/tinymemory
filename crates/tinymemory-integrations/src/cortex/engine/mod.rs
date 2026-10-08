@@ -17,6 +17,7 @@ mod beliefs;
 mod consolidate;
 mod cursor;
 mod erase;
+mod explore;
 mod fetch;
 mod forget;
 mod items;
@@ -33,9 +34,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use async_trait::async_trait;
 use tinymemory_api::{
     BeliefsRequest, ConsolidateReceipt, ConsolidateRequest, Consolidation, EngineDescriptor,
-    EngineHealth, EraseReport, EraseRequest, ExportPage, FetchPage, FetchRequest, ForgetReport,
-    ForgetTarget, GetRequest, Hit, ListPage, ListRequest, MemoryEngine, RecallAnswer,
-    RecallRequest, StoreItem, StoreReceipt, WaitFor, WriteOptions,
+    EngineHealth, EraseReport, EraseRequest, ExplorePage, ExploreRequest, ExportPage, FetchPage,
+    FetchRequest, ForgetReport, ForgetTarget, GetRequest, Hit, ListPage, ListRequest, MemoryEngine,
+    RecallAnswer, RecallRequest, StoreItem, StoreReceipt, WaitFor, WriteOptions,
 };
 
 use crate::cortex::credential::{BearerSource, CortexCredential};
@@ -401,12 +402,24 @@ impl MemoryEngine for CortexEngine {
         self.list_page(req).await
     }
 
+    /// A conversation or chunked document from the event that starts it,
+    /// without assembling it (see `list`).
+    async fn list_preview(&self, req: ListRequest) -> Result<ListPage> {
+        self.list_preview_page(req).await
+    }
+
     async fn export(&self, req: ListRequest) -> Result<ExportPage> {
         self.export_page(req).await
     }
 
     async fn erase(&self, req: EraseRequest) -> Result<EraseReport> {
         self.erase_scopes(req).await
+    }
+
+    /// From each item's first event, without assembling conversations or
+    /// chunked documents (see `explore`).
+    async fn explore(&self, req: ExploreRequest) -> Result<ExplorePage> {
+        self.explore_items(req).await
     }
 
     /// By the items' id labels, one lookup per kind, rather than a scan.
@@ -434,6 +447,10 @@ mod tests;
 #[cfg(test)]
 #[path = "mod_list_tests.rs"]
 mod list_tests;
+
+#[cfg(test)]
+#[path = "mod_list_preview_tests.rs"]
+mod list_preview_tests;
 
 #[cfg(test)]
 #[path = "mod_chunk_tests.rs"]

@@ -126,6 +126,23 @@ pub trait MemoryEngine: Send + Sync {
     /// Invalid requests, and the engine's own failures.
     async fn list(&self, req: ListRequest) -> Result<ListPage>;
 
+    /// Pages through stored items like [`MemoryEngine::list`], for a view
+    /// that shows a snippet of each and reads one whole with
+    /// [`MemoryEngine::get`] when it is opened. The items, their order, ids,
+    /// metadata and cursors are the listing's; only a hit's text may be the
+    /// start of the item (a conversation's first turn, a chunked document's
+    /// first piece), which spares an engine that stores those as several
+    /// events from assembling each one.
+    ///
+    /// The default is [`MemoryEngine::list`], whose text is always whole.
+    ///
+    /// # Errors
+    ///
+    /// Invalid requests, and the engine's own failures.
+    async fn list_preview(&self, req: ListRequest) -> Result<ListPage> {
+        self.list(req).await
+    }
+
     /// Pages through stored items like [`MemoryEngine::list`], handing each
     /// back whole as the [`StoreItem`] it was stored as, for moving memory:
     /// to another engine, or to another node (a new namespace is a new item,

@@ -16,6 +16,11 @@
 //! ordered, so a conversation whose store failed part-way still has its
 //! turn 0 and lists with the turns it holds.
 //!
+//! **Previews.** [`CortexEngine::list_preview_page`] walks the same scopes
+//! and returns the same items, but takes a conversation or chunked document
+//! from the event that starts it (its first turn, its first piece) instead
+//! of assembling it, so a page costs only its listing pages.
+//!
 //! **Duplicates.** The engine emits each event twice in a row; a copy equal
 //! to the previous raw event is skipped, across page boundaries too (the
 //! cursor remembers the last id). A page that ends mid-way is resumed by
@@ -51,11 +56,31 @@ enum Pending {
 /// whose events could not be assembled whole.
 type ItemsPage = (Vec<(String, Option<StoreItem>)>, Option<String>);
 
+/// How a walk reads items.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Walk {
+    /// Every item whole, over the scopes the engine lists leniently.
+    Listing,
+    /// Every item whole, refusing when a scope cannot be listed (export).
+    Complete,
+    /// Each item from the event that starts it (see the module docs).
+    Preview,
+}
+
 impl CortexEngine {
     /// See the module docs. An item that cannot be assembled whole is left
     /// out.
     pub(super) async fn list_page(&self, req: ListRequest) -> Result<ListPage> {
-        let (items, next_cursor) = self.items_page(req, false).await?;
+        self.hits_page(req, Walk::Listing).await
+    }
+
+    /// [`Self::list_page`] without assembling: see the module docs.
+    pub(super) async fn list_preview_page(&self, req: ListRequest) -> Result<ListPage> {
+        self.hits_page(req, Walk::Preview).await
+    }
+
+    async fn hits_page(&self, req: ListRequest, walk: Walk) -> Result<ListPage> {
+        let (items, next_cursor) = self.items_page(req, walk).await?;
         Ok(ListPage {
             items: items
                 .into_iter()
@@ -76,7 +101,7 @@ impl CortexEngine {
     /// engine fails to answer, and a walk past its page cap. Nothing is
     /// returned partially on an error; the caller retries from its cursor.
     pub(super) async fn export_page(&self, req: ListRequest) -> Result<ExportPage> {
-        let (items, next_cursor) = self.items_page(req, true).await?;
+        let (items, next_cursor) = self.items_page(req, Walk::Complete).await?;
         let mut page = ExportPage {
             next_cursor,
             ..ExportPage::default()
@@ -93,11 +118,11 @@ impl CortexEngine {
         Ok(page)
     }
 
-    /// One page of the walk the module docs describe; `complete` refuses
-    /// when the engine cannot list every scope.
-    async fn items_page(&self, req: ListRequest, complete: bool) -> Result<ItemsPage> {
+    /// One page of the walk the module docs describe; [`Walk::Complete`]
+    /// refuses when the engine cannot list every scope.
+    async fn items_page(&self, req: ListRequest, walk: Walk) -> Result<ItemsPage> {
         req.validate()?;
-        let scopes = if complete {
+        let scopes = if walk == Walk::Complete {
             self.all_scopes_for(&req.filter).await?
         } else {
             self.scopes_for(&req.filter).await?
@@ -155,7 +180,9 @@ impl CortexEngine {
                         continue;
                     }
                     at.last = id.map(str::to_owned);
-                    if let Some(found) = self.admit(kind, &req, event, &mut seen) {
+                    if let Some(found) =
+                        self.admit(kind, &req, event, &mut seen, walk == Walk::Preview)
+                    {
                         pending.push(found);
                         if pending.len() == req.limit {
                             let exhausted = at.offset == len
@@ -186,13 +213,15 @@ impl CortexEngine {
         Ok((self.resolve(pending).await?, next))
     }
 
-    /// Whether one raw event starts an item this listing returns.
+    /// Whether one raw event starts an item this listing returns; with
+    /// `preview`, the item is taken from that event alone.
     fn admit(
         &self,
         kind: ItemKind,
         req: &ListRequest,
         event: &Value,
         seen: &mut HashSet<String>,
+        preview: bool,
     ) -> Option<Pending> {
         let envelope = decode_event(event)?.envelope;
         if !keeps(&req.filter, kind, &envelope) {
@@ -202,7 +231,7 @@ impl CortexEngine {
         if !starts || !seen.insert(envelope.id.clone()) {
             return None;
         }
-        if kind == ItemKind::Conversation || envelope.chunk.is_some() {
+        if !preview && (kind == ItemKind::Conversation || envelope.chunk.is_some()) {
             return Some(Pending::Assembled(
                 kind,
                 envelope.id,

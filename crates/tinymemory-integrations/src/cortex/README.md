@@ -66,7 +66,7 @@ cortex/
 ├── credential/     CortexCredential, BearerSource, StaticBearer
 ├── descriptor/     the two registrations, CortexWire and its route table
 ├── engine/         CortexEngine and one file per operation:
-│                   store, list, fetch, recall, forget, items (get), scopes, cursor,
+│                   store, list, explore, fetch, recall, forget, items (get), scopes, cursor,
 │                   attribution (observed_actor and subject on a write)
 ├── envelope/       the v2 event envelope, scope paths, lookup labels, rebuild
 ├── log/            the event log: write, read (list, scopes, recall, answer),
@@ -230,7 +230,16 @@ as prefixes, so they cannot be labelled and are filtered only client-side.
   `score: None`. `model` is `diagnostics.answer_model`.
 - **Get.** Overridden: by the items' id labels, one lookup per scope read,
   rather than a scan.
-- **Explore.** Not overridden: the contract's default pages through `list`.
+- **Explore.** Overridden: counts each item from the event that starts it
+  (turn 0, piece 0, or its only event, all of which carry the item's full
+  metadata), walking the scopes in reach four at a time, so no conversation
+  or chunked document is assembled. Same buckets as the contract's listing
+  walk, except that a chunked document missing a piece is counted where
+  `list` leaves it out. A scope that reaches the page cap marks the page
+  `truncated` instead of refusing.
+- **List preview.** Overridden: the `list` walk, with each conversation and
+  chunked document taken from its first event (its first turn, its first
+  piece) instead of being assembled; same items, order and cursors.
 - **Forget.** `Ids` looks the items' labels up in every scope the engine
   holds. `Filter` (which must be non-empty) walks the scopes it reads and
   matches the full filter. Either way the matched events are then removed with
