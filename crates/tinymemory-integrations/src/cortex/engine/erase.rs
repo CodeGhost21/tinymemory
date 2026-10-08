@@ -47,7 +47,7 @@ impl CortexEngine {
         for scope in scopes {
             let erased = self.log.erase(&scope.path).await?;
             log::debug!("[cortex] erased {} ({erased:?})", scope.path);
-            report.erased_scopes += erased.scopes;
+            report.erased_scopes = report.erased_scopes.saturating_add(erased.scopes);
             report.receipts.extend(erased.ids);
         }
         Ok(report)

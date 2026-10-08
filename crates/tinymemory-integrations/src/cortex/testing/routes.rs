@@ -374,7 +374,10 @@ async fn erase(
     state.seen.lock().unwrap().erasures.push(body.clone());
     let (code, mut answer) = state.log.lock().unwrap().erase(&body);
     if code < 300 {
-        answer["status"] = json!(erasure_status(&state));
+        let status = erasure_status(&state);
+        if !state.erasure_post_omits_status.load(Ordering::SeqCst) {
+            answer["status"] = json!(status);
+        }
     }
     relay(&state, (code, answer))
 }

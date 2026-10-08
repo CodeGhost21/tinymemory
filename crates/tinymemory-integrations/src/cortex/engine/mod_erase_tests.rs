@@ -473,17 +473,15 @@ async fn a_direct_erasure_that_stays_running_times_out_as_unavailable() {
     // Running for far longer than the test's erasure deadline.
     state.erasure_running_for.store(100_000, Ordering::SeqCst);
 
-    let started = std::time::Instant::now();
     let refused = engine.erase(EraseRequest::new(Reach::exact(at))).await;
     assert!(
         matches!(&refused, Err(tinymemory_api::Error::Unavailable(m)) if m.contains("pending")),
         "{refused:?}"
     );
-    assert!(
-        started.elapsed() < std::time::Duration::from_secs(5),
-        "the deadline bounds the whole poll loop"
-    );
-    assert!(state.count("GET /v1/erasures/erasure_1") >= 1);
+    // Polls back off from 5ms against a 300ms deadline: a bounded few, not
+    // the thousands a loop that ignored the deadline would make.
+    let polls = state.count("GET /v1/erasures/erasure_1");
+    assert!((1..=20).contains(&polls), "{polls} polls");
 }
 
 #[tokio::test]
@@ -557,4 +555,26 @@ async fn a_malformed_hosted_erasure_answer_is_an_error() {
             "{answer}: {refused:?}"
         );
     }
+}
+
+#[tokio::test]
+async fn a_synchronous_erasure_answer_without_a_status_is_completed() {
+    let (endpoint, state) = direct_double().await;
+    let engine = direct_engine(&endpoint);
+    let at = node("agent:assistant");
+    engine.store(learning("a fact", &at)).await.unwrap();
+    state
+        .erasure_post_omits_status
+        .store(true, Ordering::SeqCst);
+
+    let report = engine
+        .erase(EraseRequest::new(Reach::exact(at)))
+        .await
+        .unwrap();
+    assert_eq!(report.erased_scopes, 1);
+    assert_eq!(
+        state.count("GET /v1/erasures/erasure_1"),
+        0,
+        "nothing to poll"
+    );
 }

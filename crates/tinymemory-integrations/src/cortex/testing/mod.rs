@@ -142,6 +142,8 @@ pub(crate) struct Double {
     /// How many `running` answers a Direct erasure gives (its POST, then
     /// its status polls) before it settles.
     pub(crate) erasure_running_for: AtomicUsize,
+    /// The Direct erasure POST answer omits `status` (CortexDB may).
+    pub(crate) erasure_post_omits_status: AtomicBool,
     /// Polled Direct erasure answers (`GET v1/erasures/{id}`) omit `status`.
     pub(crate) erasure_poll_omits_status: AtomicBool,
     /// Replaces the answer of a hosted scoped erasure that succeeded.

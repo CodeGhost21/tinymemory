@@ -16,7 +16,7 @@
 //! answers synchronously in its own dialect (no `{success,data}` envelope;
 //! see `transport`): `{erased: true, scopes, erasure_ids}`, where `scopes:
 //! 0` (nothing stored) is still success. `502 ERASURE_INCOMPLETE` is
-//! retriable and retried; re-erasing a scope is safe. A backend without the
+//! the only failure retried (any other leaves the outcome unknown); re-erasing a scope is safe. A backend without the
 //! route answers 404, reported as [`Error::Unsupported`]: nothing was erased.
 //!
 //! A Direct erasure is a job. CortexDB answers `completed` when it ran to
@@ -30,12 +30,15 @@ use serde_json::{Value, json};
 
 use super::{HOSTED_POLL_CEILING, Log};
 use crate::cortex::descriptor::{CortexWire, Route};
-use crate::cortex::error::{Error, Result};
+use crate::cortex::error::{Error, Result, error_code};
 use crate::cortex::transport::{Attempts, urlencode};
 
 /// How many times a hosted erasure is sent before an incomplete or
 /// transient failure surfaces.
 const HOSTED_ERASE_ATTEMPTS: u32 = 3;
+
+/// The code of the retriable `502` that says an erasure did not finish.
+const ERASURE_INCOMPLETE: &str = "ERASURE_INCOMPLETE";
 
 /// The one status that means the scope is gone.
 const COMPLETED: &str = "completed";
@@ -88,7 +91,14 @@ impl Log {
                         "the TinyHumans backend has no scoped erasure route ({message})"
                     )));
                 }
-                Err(error) if error.is_transient() && attempt < HOSTED_ERASE_ATTEMPTS => {
+                // Only an answer that proves the erasure incomplete is
+                // retried (re-erasing erases what is left). Any other
+                // failure leaves the outcome unknown, and a repeated
+                // destructive request would hide it, so it surfaces.
+                Err(error)
+                    if error_code(&error) == Some(ERASURE_INCOMPLETE)
+                        && attempt < HOSTED_ERASE_ATTEMPTS =>
+                {
                     log::debug!("[cortex] erasure of {scope} incomplete; retrying ({attempt})");
                     tokio::time::sleep(self.timing.poll * 2_u32.pow(attempt - 1)).await;
                 }
