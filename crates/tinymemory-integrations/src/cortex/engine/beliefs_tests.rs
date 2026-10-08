@@ -247,7 +247,10 @@ async fn forgetting_an_item_takes_the_beliefs_built_from_it_and_keeps_the_rest()
         ..MemoryMeta::default()
     };
     let forgotten = engine
-        .store(StoreItem::document("In this repo always use pnpm.", meta.clone()))
+        .store(StoreItem::document(
+            "In this repo always use pnpm.",
+            meta.clone(),
+        ))
         .await
         .unwrap();
     engine
@@ -290,5 +293,8 @@ async fn forgetting_an_item_takes_the_beliefs_built_from_it_and_keeps_the_rest()
         .beliefs(BeliefsRequest::new(Reach::subtree(Namespace::ROOT), 5).query("pnpm"))
         .await
         .unwrap();
-    assert!(ranked.iter().all(|hit| !hit.text.contains("pnpm")), "{ranked:?}");
+    assert!(
+        ranked.iter().all(|hit| !hit.text.contains("pnpm")),
+        "{ranked:?}"
+    );
 }
