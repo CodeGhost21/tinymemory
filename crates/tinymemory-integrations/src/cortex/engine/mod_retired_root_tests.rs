@@ -116,9 +116,16 @@ async fn a_hosted_tenant_engine_reads_the_retired_user_segment_too() {
     let exact = new.list(ListRequest::new(at_main, 10)).await.unwrap();
     assert_eq!(exact.items.len(), 2, "an exact reach reads both roots");
 
-    // Without the retired root, the old path is not read.
+    // Without the retired root, the old path is no longer read at the
+    // person's own nodes.
     let off = hosted_engine(&endpoint).with_tenant_root().unwrap();
-    assert_eq!(texts(&off).await.len(), 1);
+    let at_main = MetaFilter {
+        reach: Some(Reach::exact("ws:main".parse().unwrap())),
+        ..MetaFilter::default()
+    };
+    let exact = off.list(ListRequest::new(at_main, 10)).await.unwrap();
+    assert_eq!(exact.items.len(), 1);
+    assert_eq!(exact.items[0].text, "written after");
 }
 
 #[test]
