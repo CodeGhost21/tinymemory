@@ -253,7 +253,11 @@ fn the_tenant_layout_names_no_root() {
             ItemKind::Conversation,
             "ws:main/app:conversations",
         ),
-        (ns("source:gmail"), ItemKind::Document, "app:brain/source:gmail"),
+        (
+            ns("source:gmail"),
+            ItemKind::Document,
+            "app:brain/source:gmail",
+        ),
         (
             ns("ws:main/service:nl"),
             ItemKind::Learning,
@@ -321,7 +325,10 @@ fn a_retired_root_doubles_every_read_but_not_the_write() {
 #[test]
 fn a_retired_root_is_checked() {
     assert!(ScopeLayout::default().with_retired_root("user:42").is_err());
-    assert!(v3().with_retired_root("user:42").is_err(), "the root itself");
+    assert!(
+        v3().with_retired_root("user:42").is_err(),
+        "the root itself"
+    );
     assert!(v3().with_retired_root("kb:x").is_err());
     assert!(v3().with_retired_root("").is_err());
     assert_eq!(ScopeLayout::tenant().retired(), None);

@@ -100,13 +100,17 @@ async fn a_hosted_tenant_engine_reads_the_retired_user_segment_too() {
     let old = hosted_engine(&endpoint)
         .with_scope_root("user:6512ab0f", None)
         .unwrap();
-    old.store(learning("written before", "ws:main")).await.unwrap();
+    old.store(learning("written before", "ws:main"))
+        .await
+        .unwrap();
     let new = hosted_engine(&endpoint)
         .with_tenant_root()
         .unwrap()
         .with_retired_root("user:6512ab0f")
         .unwrap();
-    new.store(learning("written after", "ws:main")).await.unwrap();
+    new.store(learning("written after", "ws:main"))
+        .await
+        .unwrap();
     assert!(scopes_written(&state).contains("ws:main/app:learnings"));
     assert_eq!(texts(&new).await, ["written after", "written before"]);
     let at_main = MetaFilter {
@@ -159,7 +163,10 @@ async fn reads_merge_both_roots_by_item_id_and_writes_go_only_to_the_new_one() {
         .unwrap();
 
     let written = scopes_written(&state);
-    assert!(written.contains("org:42/ws:main/app:learnings"), "{written:?}");
+    assert!(
+        written.contains("org:42/ws:main/app:learnings"),
+        "{written:?}"
+    );
     assert!(written.contains("org:42/app:learnings"), "{written:?}");
     assert_eq!(
         texts(&engine).await,
@@ -244,7 +251,13 @@ async fn an_erasure_removes_both_roots() {
         .iter()
         .map(|e| e.to_string())
         .collect();
-    assert!(erased.iter().any(|e| e.contains("org:42/ws:main")), "{erased:?}");
-    assert!(erased.iter().any(|e| e.contains("user:42/ws:main")), "{erased:?}");
+    assert!(
+        erased.iter().any(|e| e.contains("org:42/ws:main")),
+        "{erased:?}"
+    );
+    assert!(
+        erased.iter().any(|e| e.contains("user:42/ws:main")),
+        "{erased:?}"
+    );
     assert!(texts(&engine).await.is_empty());
 }
