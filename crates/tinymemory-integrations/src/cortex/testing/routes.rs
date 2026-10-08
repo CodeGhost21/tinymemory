@@ -60,6 +60,47 @@ fn fail(state: &Shared, code: u16, error_code: &str) -> Reply {
     }
 }
 
+/// A failure the engine (through memory-api) answered, in the wire's shape.
+///
+/// Direct relays it as is. Hosted relays it the way the backend's
+/// `memoryUpstreamError` does: the backend has its own vocabulary, so most
+/// engine codes are lost and every other 4xx, a 409 included, is a `400`
+/// (`CONFLICT` keeps its code, everything else is `BAD_REQUEST`).
+fn upstream_fail(state: &Shared, code: u16, error_code: &str) -> Reply {
+    if !state.hosted {
+        return fail(state, code, error_code);
+    }
+    let (code, error_code) = match code {
+        402 => (402, "USER_INSUFFICIENT_CREDITS"),
+        503 => (503, "UPSTREAM_UNAVAILABLE"),
+        401 | 403 => (502, "UPSTREAM_UNAVAILABLE"),
+        404 => (404, "NOT_FOUND"),
+        409 => (400, "CONFLICT"),
+        413 => (413, "PAYLOAD_TOO_LARGE"),
+        400..=499 => (400, "BAD_REQUEST"),
+        _ => (502, "UPSTREAM_UNAVAILABLE"),
+    };
+    fail(state, code, error_code)
+}
+
+/// The backend's own rate limiter (`memoryRateLimit`, express-rate-limit):
+/// a 429 whose body is `{error:{message,type}}`, outside the envelope.
+/// Direct answers CortexDB's own 429.
+fn rate_limited(state: &Shared) -> Reply {
+    if !state.hosted {
+        return fail(state, 429, "RATE_LIMITED");
+    }
+    (
+        status(429),
+        Json(json!({
+            "error": {
+                "message": "Rate limit exceeded. Please retry after a brief wait.",
+                "type": "rate_limit_error",
+            }
+        })),
+    )
+}
+
 /// A log result (status, body) in the wire's shape.
 fn relay(state: &Shared, (code, body): (u16, Value)) -> Reply {
     if code < 300 {
@@ -70,7 +111,7 @@ fn relay(state: &Shared, (code, body): (u16, Value)) -> Reply {
             .and_then(Value::as_str)
             .unwrap_or("VALIDATION_ERROR")
             .to_string();
-        fail(state, code, &error_code)
+        upstream_fail(state, code, &error_code)
     }
 }
 
@@ -133,7 +174,7 @@ fn write_one(state: &Shared, headers: &HeaderMap, body: &Value) -> Reply {
     }
     // The backend's rate limiter answers before the memory API: no claim.
     if take_one(&state.rate_limit_experience) {
-        return fail(state, 429, "RATE_LIMITED");
+        return rate_limited(state);
     }
     let claim = headers
         .get("idempotency-key")
@@ -147,7 +188,8 @@ fn write_one(state: &Shared, headers: &HeaderMap, body: &Value) -> Reply {
         && let Some(claim) = claim
         && !state.claimed.lock().unwrap().insert(claim)
     {
-        return fail(state, 409, "CONFLICT");
+        // memory-api refuses a claimed key with 409; the backend relays it.
+        return upstream_fail(state, 409, "CONFLICT");
     }
     if take_one(&state.claim_then_fail) {
         return fail(state, 502, "BAD_GATEWAY");
@@ -307,7 +349,7 @@ async fn forget(
         return refused;
     }
     if take_one(&state.rate_limit_forget) {
-        return fail(&state, 429, "RATE_LIMITED");
+        return rate_limited(&state);
     }
     state.seen.lock().unwrap().forgets.push(body.clone());
     let result = state.log.lock().unwrap().forget(&body);
