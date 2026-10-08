@@ -372,8 +372,129 @@ async fn erase(
         return refused;
     }
     state.seen.lock().unwrap().erasures.push(body.clone());
-    let result = state.log.lock().unwrap().erase(&body);
-    relay(&state, result)
+    let (code, mut answer) = state.log.lock().unwrap().erase(&body);
+    if code < 300 {
+        let status = erasure_status(&state);
+        if !state.erasure_post_omits_status.load(Ordering::SeqCst) {
+            answer["status"] = json!(status);
+        }
+    }
+    relay(&state, (code, answer))
+}
+
+/// The erasure's status as this answer reports it: `running` while the
+/// test's running budget lasts, then how it ends.
+fn erasure_status(state: &Shared) -> &'static str {
+    if take_one(&state.erasure_running_for) {
+        "running"
+    } else {
+        state.erasure_ends.lock().unwrap().unwrap_or("completed")
+    }
+}
+
+/// `POST /memory/v1/erasures`: the backend's passthrough to memory-api's
+/// scoped erasure, answered in its dialect (no envelope): `{scope,
+/// audit_note}` only (any other field is `400 UNKNOWN_FIELD`), the root is
+/// `422 ROOT_ERASURE_REFUSED`, and a synchronous `{erased, scope, scopes,
+/// erasure_ids}`; an incomplete erasure is a retriable `502`.
+async fn hosted_erase(
+    State(state): State<Shared>,
+    uri: Uri,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Reply {
+    if let Some(early) = gate(&state, "POST", &uri, &headers) {
+        return early;
+    }
+    if state.scoped_erase_missing.load(Ordering::SeqCst) {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "message": "Not Found" })),
+        );
+    }
+    if let Some(unknown) = body.as_object().and_then(|map| {
+        map.keys()
+            .find(|k| !matches!(k.as_str(), "scope" | "audit_note"))
+    }) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error_code": "UNKNOWN_FIELD", "message": unknown })),
+        );
+    }
+    // A scope that is not a string is a malformed request, not the root.
+    let Some(scope) = body
+        .get("scope")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+    else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error_code": "INVALID_SCOPE" })),
+        );
+    };
+    if scope.is_empty() || scope == "/" {
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({ "error_code": "ROOT_ERASURE_REFUSED" })),
+        );
+    }
+    if let Some(refused) = refuse_scope(&state, &scope) {
+        return refused;
+    }
+    state.seen.lock().unwrap().erasures.push(body.clone());
+    if take_one(&state.erasure_incomplete_for) {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "erased": false, "error_code": "ERASURE_INCOMPLETE", "retriable": true })),
+        );
+    }
+    let held = state.log.lock().unwrap().scopes(&scope).len();
+    let mut ids = Vec::new();
+    if held > 0 {
+        let (code, answer) = state
+            .log
+            .lock()
+            .unwrap()
+            .erase(&json!({ "scope": scope, "confirm_all": true }));
+        if code >= 300 {
+            return (status(code), Json(answer));
+        }
+        ids.push(answer["erasure_id"].clone());
+    }
+    if let Some(answer) = state.scoped_erase_answer.lock().unwrap().clone() {
+        return (StatusCode::OK, Json(answer));
+    }
+    (
+        StatusCode::OK,
+        Json(json!({ "erased": true, "scope": scope, "scopes": ids.len(), "erasure_ids": ids })),
+    )
+}
+
+/// `GET {erasures}/{id}`: the erasure's status, unwrapped.
+async fn erasure(
+    State(state): State<Shared>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    uri: Uri,
+    headers: HeaderMap,
+) -> Reply {
+    if let Some(early) = gate(&state, "GET", &uri, &headers) {
+        return early;
+    }
+    // A forced status leaves the running budget alone.
+    if let Some(forced) = state.erasure_poll_status.lock().unwrap().clone() {
+        return (
+            StatusCode::OK,
+            Json(json!({ "erasure_id": id, "status": forced })),
+        );
+    }
+    let status = erasure_status(&state);
+    if state.erasure_poll_omits_status.load(Ordering::SeqCst) {
+        return (StatusCode::OK, Json(json!({ "erasure_id": id })));
+    }
+    (
+        StatusCode::OK,
+        Json(json!({ "erasure_id": id, "status": status })),
+    )
 }
 
 /// The backend's `DELETE /memory`: erases the caller's entire memory.
@@ -648,6 +769,7 @@ pub(super) fn direct(state: Shared) -> Router {
         .route("/v1/recall", post(recall))
         .route("/v1/forget", post(forget))
         .route("/v1/erasures", post(erase))
+        .route("/v1/erasures/{id}", get(erasure))
         .route("/v1/answer", post(answer))
         .route("/v1/admin/health", get(health))
         .route("/v1/admin/version", get(version))
@@ -669,5 +791,7 @@ pub(super) fn hosted(state: Shared) -> Router {
         .route("/memory/answer", post(answer))
         .route("/memory/scopes", get(scopes))
         .route("/memory", axum::routing::delete(erase_all))
+        .route("/memory/v1/erasures", post(hosted_erase))
+        .route("/memory/v1/erasures/{id}", get(erasure))
         .with_state(state)
 }

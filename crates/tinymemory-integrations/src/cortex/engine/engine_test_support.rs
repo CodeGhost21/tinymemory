@@ -11,6 +11,7 @@ impl CortexEngine {
             visibility,
             settle: visibility,
             poll: Duration::from_millis(5),
+            erasure: Duration::from_millis(300),
         };
         self.log.client.set_read_backoff(Duration::from_millis(5));
         self

@@ -122,7 +122,8 @@ pub enum CortexWire {
     /// and a bulk append route.
     Direct,
     /// CortexDB behind the TinyHumans backend's `/memory/*` routes:
-    /// `{success,data}` envelopes, typed `errorCode` failures, a strict answer
+    /// `{success,data}` envelopes (except the `/memory/v1/*` passthrough,
+    /// which answers in CortexDB's dialect), typed `errorCode` failures, a strict answer
     /// schema, `Idempotency-Key` claims on writes, and no bulk, wait or health
     /// route.
     TinyHumans,
@@ -168,10 +169,10 @@ impl CortexWire {
             (Self::TinyHumans, Route::BuildBeliefs) => "memory/beliefs/build",
             // Never sent: hosted beliefs are read through recall only.
             (Self::TinyHumans, Route::Beliefs) => "memory/beliefs",
-            // Never sent: the backend proxies no per-scope erasure route, so
-            // an `erase` narrower than the whole tree refuses on this wire
-            // without a request.
-            (Self::TinyHumans, Route::Erasures) => "memory/erasures",
+            // The backend's CortexDB-dialect passthrough (no envelope);
+            // memory-api pins the scope under the tenant's root. An `erase`
+            // narrower than the whole tree goes here, scope by scope.
+            (Self::TinyHumans, Route::Erasures) => "memory/v1/erasures",
             // `DELETE memory`: erases the caller's entire hosted memory.
             (Self::TinyHumans, Route::EraseAll) => "memory",
             // Never sent: the hosted backend keeps its own tenancy.

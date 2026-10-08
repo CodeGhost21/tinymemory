@@ -45,6 +45,8 @@ for. Both fail with `Error::Unsupported` before any request.
 | Health | `v1/admin/health` | `memory/scopes` | GET |
 | Scopes (registered scopes under a prefix) | `v1/scopes/list` | `memory/scopes` | GET |
 | Build beliefs (one scope) | `v1/beliefs/build` | none (never sent) | POST |
+| Erase (one scope) | `v1/erasures` | `memory/v1/erasures` (unwrapped) | POST |
+| Erasure status (Direct only) | `v1/erasures/{id}` | | GET |
 | Whoami (Direct only) | `v1/auth/whoami` | | GET |
 
 The endpoint is joined with the route, so a base URL with a path prefix keeps
@@ -215,8 +217,15 @@ strict (an unknown key, or a `null` instructions, is a 400).
 ```json
 { "scope": "...", "layers": ["events"],
   "selector": { "memory_ids": ["evt_1", "evt_2"] },
+  "cascade": "redact_events",
   "audit_note": "tinymemory: forget" }
 ```
+
+The cascade is always named. CortexDB's default, `derived_only`, removes what
+was derived from the events and keeps the events, so a forget that left it out
+would not remove anything written. memory-api tombstones a forget by
+`memory_ids` (not one by labels or time range), so this is the forget to use
+for a real delete.
 
 At most 100 ids per request. The id field is exactly `memory_ids`: an
 unrecognised or empty selector means *the whole scope* to CortexDB (an empty
@@ -246,7 +255,7 @@ scopes. There is no cursor (v0.10.5): `limit` defaults to 50 and is clamped to
 1000, and `prefix` matches whole segments. At 1000 paths a read logs a warning
 and an export refuses, since some scopes may be missing.
 
-### Erase: `v1/erasures` (Direct only)
+### Erase: `v1/erasures` and `memory/v1/erasures`
 
 ```json
 { "scope": "app:tinymemory/agent:assistant/app:learnings", "confirm_all": true, "audit_note": "tinymemory: erase" }
@@ -262,19 +271,36 @@ Scopes below it are only redacted and keep their keys for 24 hours, so a
 re-sent write there replays and stores nothing. A whole-scope erasure of six
 240 KB events took about 8 s on v0.10.5; small scopes take well under a
 second. Every erasure drops every recall pack the server holds, as a forget
-does.
+does. A `running` answer is polled at `GET v1/erasures/{id}` until it
+settles (five minutes at most); any final status but `completed` is an error.
+
+Hosted, an erase narrower than the whole tree posts each kind scope to the
+backend's `memory/v1/erasures` passthrough of memory-api's scoped erasure:
+
+```json
+{ "scope": "app:tinymemory/agent:assistant/app:learnings", "audit_note": "tinymemory: erase" }
+```
+
+No `confirm_all` (memory-api refuses an unknown field with `400
+UNKNOWN_FIELD`). memory-api pins the scope under the tenant root, erases it and
+everything below it with the tenant's user-actor token, and answers
+synchronously and unwrapped:
+`{"erased": true, "scope": "...", "scopes": <n>, "erasure_ids": [...]}`
+(`scopes: 0` means nothing was stored, still a success). `502
+ERASURE_INCOMPLETE` (`retriable: true`) is retried up to three times; the root
+is `422 ROOT_ERASURE_REFUSED`. A backend without the route (404) is reported as
+`Unsupported`, so a caller can fall back to a forget.
 
 ### Erase everything: `DELETE memory` (TinyHumans only)
 
-The backend proxies no per-scope erasure, so the hosted engine erases only
-the whole tree (`EraseRequest` with `whole_tree`, the root with its
-descendants, every kind), in one `DELETE memory` with no body. It erases the
+The hosted engine erases the whole tree (`EraseRequest` with `whole_tree`,
+the root with its descendants, every kind) in one `DELETE memory` with no body. It erases the
 caller's **entire** hosted memory, every scope under their tenant, whichever
 layout or client wrote it, and answers
 `{"success": true, "data": {"erased": true, "scopes": <n>}}`;
 `EraseReport.erased_scopes` is `n` and there are no receipts. It is sent once.
-A narrower erase refuses with `Unsupported` before any request, and a backend
-without the route (404) is reported as `Unsupported` too.
+A narrower erase goes through `memory/v1/erasures` (above). A backend without
+the route (404) is reported as `Unsupported`.
 
 ### Build beliefs: `v1/beliefs/build` (Direct only)
 

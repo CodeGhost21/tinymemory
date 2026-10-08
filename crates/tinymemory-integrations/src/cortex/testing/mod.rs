@@ -133,6 +133,25 @@ pub(crate) struct Double {
     pub(crate) legacy_conflict_400: AtomicBool,
     /// Replaces the `data` of the `DELETE /memory` answer (a malformed one).
     pub(crate) erase_all_answer: Mutex<Option<serde_json::Value>>,
+    /// The hosted double has no `/memory/v1/erasures` passthrough (an older
+    /// backend): it answers the router's bare 404.
+    pub(crate) scoped_erase_missing: AtomicBool,
+    /// How many hosted erasures answer `502 ERASURE_INCOMPLETE` (retriable)
+    /// before one completes.
+    pub(crate) erasure_incomplete_for: AtomicUsize,
+    /// How many `running` answers a Direct erasure gives (its POST, then
+    /// its status polls) before it settles.
+    pub(crate) erasure_running_for: AtomicUsize,
+    /// Replaces the `status` of polled Direct erasure answers.
+    pub(crate) erasure_poll_status: Mutex<Option<serde_json::Value>>,
+    /// The Direct erasure POST answer omits `status` (CortexDB may).
+    pub(crate) erasure_post_omits_status: AtomicBool,
+    /// Polled Direct erasure answers (`GET v1/erasures/{id}`) omit `status`.
+    pub(crate) erasure_poll_omits_status: AtomicBool,
+    /// Replaces the answer of a hosted scoped erasure that succeeded.
+    pub(crate) scoped_erase_answer: Mutex<Option<serde_json::Value>>,
+    /// The status a settled erasure ends with; `completed` when unset.
+    pub(crate) erasure_ends: Mutex<Option<&'static str>>,
 }
 
 /// The shared handle the routes and tests hold.

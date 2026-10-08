@@ -76,6 +76,9 @@ pub(crate) struct Timing {
     /// First gap between polls. Direct polls at this gap; hosted doubles it
     /// up to [`HOSTED_POLL_CEILING`].
     pub(crate) poll: Duration,
+    /// How long a running Direct erasure is polled before it is reported
+    /// as not done (the status requests included).
+    pub(crate) erasure: Duration,
 }
 
 /// Longest gap between hosted polls. A fixed 250ms poll would spend a fifth
@@ -88,6 +91,7 @@ impl Default for Timing {
             visibility: Duration::from_secs(30),
             settle: Duration::from_secs(10),
             poll: Duration::from_millis(250),
+            erasure: Duration::from_secs(300),
         }
     }
 }

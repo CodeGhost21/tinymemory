@@ -9,29 +9,26 @@
 //! first, so a layout that ever put a scope below another would not strand
 //! redacted events behind held keys.
 //!
-//! On the TinyHumans wire only the whole tree erases (`whole_tree`: the
-//! root, its descendants, every kind), in one `DELETE memory` that erases the
+//! On the TinyHumans wire the whole tree (`whole_tree`: the root, its
+//! descendants, every kind) erases in one `DELETE memory` that erases the
 //! caller's entire hosted memory, every scope under its tenant (including any
-//! another layout or client wrote there). The backend proxies no per-scope
-//! erasure, so a narrower request refuses with `Unsupported` and sends
-//! nothing.
+//! another layout or client wrote there). A narrower request erases scope by
+//! scope, as Direct does, through the backend's `memory/v1/erasures`
+//! passthrough, which memory-api pins under the tenant's root (see
+//! `log::erase`). A backend without that route answers `Unsupported`, so a
+//! caller can fall back to `forget`.
 
 use tinymemory_api::{EraseReport, EraseRequest, ItemKind};
 
 use super::CortexEngine;
 use crate::cortex::descriptor::CortexWire;
-use crate::cortex::error::{Error, Result};
+use crate::cortex::error::Result;
 
 impl CortexEngine {
     /// See the module docs.
     pub(super) async fn erase_scopes(&self, req: EraseRequest) -> Result<EraseReport> {
         req.validate()?;
-        if self.log.client.wire() == CortexWire::TinyHumans {
-            if !is_whole_tree(&req) {
-                return Err(Error::Unsupported(
-                    "the TinyHumans backend erases only the whole memory (whole_tree)".to_string(),
-                ));
-            }
+        if self.log.client.wire() == CortexWire::TinyHumans && is_whole_tree(&req) {
             let erased_scopes = self.log.erase_all().await?;
             log::debug!("[cortex] erased the whole hosted memory ({erased_scopes} scopes)");
             return Ok(EraseReport {
@@ -48,10 +45,10 @@ impl CortexEngine {
         scopes.sort_by_key(|scope| std::cmp::Reverse(scope.path.matches('/').count()));
         let mut report = EraseReport::default();
         for scope in scopes {
-            let receipt = self.log.erase(&scope.path).await?;
-            log::debug!("[cortex] erased {} ({receipt})", scope.path);
-            report.erased_scopes += 1;
-            report.receipts.push(receipt);
+            let erased = self.log.erase(&scope.path).await?;
+            log::debug!("[cortex] erased {} ({erased:?})", scope.path);
+            report.erased_scopes = report.erased_scopes.saturating_add(erased.scopes);
+            report.receipts.extend(erased.ids);
         }
         Ok(report)
     }

@@ -248,12 +248,15 @@ as prefixes, so they cannot be labelled and are filtered only client-side.
 - **Forget.** `Ids` looks the items' labels up in every scope the engine
   holds. `Filter` (which must be non-empty) walks the scopes it reads and
   matches the full filter. Either way the matched events are then removed with
-  `selector.memory_ids`, in batches of 100. An empty selector is never sent,
-  and neither is `confirm_all`. `forgotten` counts items.
-- **Erase.** Hosted erases only the whole tree (`whole_tree`), in one
-  `DELETE memory` that erases the caller's entire hosted memory, and refuses
-  anything narrower with `Unsupported`, because the backend proxies no
-  per-scope erasure. Direct lists the registered kind scopes in reach
+  `selector.memory_ids` and `cascade: "redact_events"`, in batches of 100.
+  The cascade is always named: CortexDB's default, `derived_only`, keeps the
+  events. An empty selector is never sent, and neither is `confirm_all`. `forgotten` counts items.
+- **Erase.** Hosted erases the whole tree (`whole_tree`) in one
+  `DELETE memory` that erases the caller's entire hosted memory. Anything
+  narrower goes scope by scope, as on Direct, through the backend's
+  `memory/v1/erasures` passthrough (`{scope, audit_note}`, memory-api's
+  synchronous scoped erasure, unwrapped; a retriable `502
+  ERASURE_INCOMPLETE` is retried; a missing route is `Unsupported`). Direct lists the registered kind scopes in reach
   with the complete scope listing, then sends `v1/erasures` with
   `confirm_all` (never a selector) once per scope, deepest first, and
   returns the erasure ids as receipts. CortexDB deletes an erased scope's
