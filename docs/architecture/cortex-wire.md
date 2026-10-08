@@ -264,6 +264,18 @@ re-sent write there replays and stores nothing. A whole-scope erasure of six
 second. Every erasure drops every recall pack the server holds, as a forget
 does.
 
+### Erase everything: `DELETE memory` (TinyHumans only)
+
+The backend proxies no per-scope erasure, so the hosted engine erases only
+the whole tree (`EraseRequest` with `whole_tree`, the root with its
+descendants, every kind), in one `DELETE memory` with no body. It erases the
+caller's **entire** hosted memory, every scope under their tenant, whichever
+layout or client wrote it, and answers
+`{"success": true, "data": {"erased": true, "scopes": <n>}}`;
+`EraseReport.erased_scopes` is `n` and there are no receipts. It is sent once.
+A narrower erase refuses with `Unsupported` before any request, and a backend
+without the route (404) is reported as `Unsupported` too.
+
 ### Build beliefs: `v1/beliefs/build` (Direct only)
 
 `consolidate` resolves its reach and kinds to the kind scopes that CortexDB
