@@ -135,10 +135,12 @@ pub struct ThreadWindow {
 }
 
 impl ThreadWindow {
-    /// Whether `hit` lies inside the window.
+    /// Whether `hit` lies inside the window. The thread is compared with
+    /// [`tinymemory_api::same_id`], so a turn an engine stored under a
+    /// redacted thread id is still recognised as this thread's.
     #[must_use]
     pub fn covers(&self, hit: &Hit) -> bool {
-        hit.meta.thread_id.as_deref() == Some(self.thread_id.as_str())
+        tinymemory_api::same_id(hit.meta.thread_id.as_deref(), &self.thread_id)
             && hit
                 .meta
                 .turns

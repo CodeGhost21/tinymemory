@@ -1,7 +1,7 @@
 //! Tests for the v2 envelope: layout, round trip, and foreign events.
 
 use super::*;
-use tinymemory_api::{SourceKind, Turn};
+use tinymemory_api::{MetaFilter, SourceKind, Turn};
 
 fn meta() -> MemoryMeta {
     let mut meta = MemoryMeta::from_source(SourceKind::Folder, Some("notes".into()));
@@ -546,4 +546,100 @@ fn a_tool_turn_asks_to_extract_nothing_and_other_turns_do_not() {
         extract,
         [Value::Null, json!({ "extract": [] }), Value::Null]
     );
+}
+
+/// The labels and text a document stored with `meta` is sent with.
+fn sent(meta: MemoryMeta) -> (Envelope, Vec<String>, String) {
+    let item = StoreItem::document("Refunds take five days.", meta);
+    let envelope = Envelope::for_item(&item, &item.fingerprint())
+        .unwrap()
+        .remove(0);
+    let encoded = envelope.encode_checked().unwrap();
+    (envelope, encoded.labels, encoded.text)
+}
+
+#[test]
+fn readable_labels_name_the_agent_and_an_app_thread_only() {
+    let app = "thread-0b6e1d8a-3f2c-4c1e-9a7b-5d2e8f1a6c3b";
+    let mut meta = meta();
+    meta.agent_id = Some("orchestrator".into());
+    meta.thread_id = Some(app.into());
+    let (_, labels, _) = sent(meta);
+    assert!(
+        labels.contains(&"agent:orchestrator".to_string()),
+        "{labels:?}"
+    );
+    assert!(labels.contains(&format!("thread:{app}")), "{labels:?}");
+
+    for channel in [
+        "channel:email_jane.doe@example.com_inbox",
+        "channel:slack_U02ABC123_C03DEF456",
+        "worker-7f9c2d1e-8a4b-4c3d-9e2f-1a0b5c6d7e8f",
+        "THREAD-0B6E1D8A-3F2C-4C1E-9A7B-5D2E8F1A6C3B",
+    ] {
+        let mut meta = meta();
+        meta.thread_id = Some(channel.into());
+        let (_, labels, _) = sent(meta);
+        assert!(
+            !labels.iter().any(|label| label.starts_with("thread:")),
+            "{channel}: {labels:?}"
+        );
+    }
+
+    let (_, labels, _) = sent(meta());
+    assert!(!labels.iter().any(|label| label.starts_with("agent:")));
+}
+
+#[test]
+fn a_phone_number_in_a_thread_or_source_id_is_sent_only_as_its_digest() {
+    for (id, number) in [
+        ("channel:whatsapp_+15551234567_+15551234567", "5551234567"),
+        ("channel:sms_15551234567", "15551234567"),
+        (
+            "channel:whatsapp_15551234567@s.whatsapp.net_reply",
+            "15551234567",
+        ),
+    ] {
+        let mut meta = MemoryMeta::from_source(SourceKind::Conversation, Some(id.into()));
+        meta.thread_id = Some(id.into());
+        let (envelope, labels, text) = sent(meta);
+        let redacted = tinymemory_api::redacted_id(id);
+        assert_eq!(envelope.meta.thread_id.as_deref(), Some(redacted.as_str()));
+        assert_eq!(envelope.meta.source.id.as_deref(), Some(redacted.as_str()));
+        assert!(
+            labels
+                .iter()
+                .chain([&text])
+                .all(|sent| !sent.contains(number)),
+            "{id}: {labels:?}"
+        );
+        assert!(labels.contains(&format!("tm:t:{}", labels::digest(&redacted))));
+
+        let wanted = MetaFilter {
+            thread_id: Some(id.into()),
+            source_id: Some(id.into()),
+            ..MetaFilter::default()
+        };
+        assert!(wanted.matches(ItemKind::Document, &envelope.meta), "{id}");
+        let narrowed = labels::narrowing(&wanted).unwrap();
+        assert!(narrowed.iter().any(|label| labels.contains(label)), "{id}");
+        assert!(
+            narrowed.contains(&format!("tm:t:{}", labels::digest(id))),
+            "memory stored raw before redaction is still found"
+        );
+    }
+}
+
+#[test]
+fn an_email_or_app_thread_id_is_sent_as_it_is() {
+    for id in [
+        "channel:email_jane.doe@example.com_inbox",
+        "thread-12345678-1234-1234-1234-123456789012",
+    ] {
+        let mut meta = MemoryMeta::from_source(SourceKind::Conversation, Some(id.into()));
+        meta.thread_id = Some(id.into());
+        let (envelope, _, _) = sent(meta);
+        assert_eq!(envelope.meta.thread_id.as_deref(), Some(id));
+        assert_eq!(envelope.meta.source.id.as_deref(), Some(id));
+    }
 }

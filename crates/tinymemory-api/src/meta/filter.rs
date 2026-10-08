@@ -119,14 +119,14 @@ impl MetaFilter {
             && exact(self.repo.as_deref(), meta.repo.as_deref())
             && exact(self.commit.as_deref(), meta.commit.as_deref())
             && exact(self.url.as_deref(), meta.url.as_deref())
-            && exact(self.thread_id.as_deref(), meta.thread_id.as_deref())
+            && same(self.thread_id.as_deref(), meta.thread_id.as_deref())
             && self.turns.is_none_or(|turns| meta.turns == Some(turns))
             && exact(self.agent_id.as_deref(), meta.agent_id.as_deref())
             && exact(
                 self.tool_call.as_deref(),
                 meta.tool_call.as_ref().map(|call| call.name.as_str()),
             )
-            && exact(self.source_id.as_deref(), meta.source.id.as_deref())
+            && same(self.source_id.as_deref(), meta.source.id.as_deref())
             && (self.sources.is_empty() || self.sources.contains(&meta.source.kind))
             && (self.tags_any.is_empty() || self.tags_any.iter().any(|t| meta.tags.contains(t)))
             && self.in_window(meta.observed_at)
@@ -146,6 +146,11 @@ impl MetaFilter {
 
 fn exact(wanted: Option<&str>, held: Option<&str>) -> bool {
     wanted.is_none_or(|wanted| held == Some(wanted))
+}
+
+/// [`exact`] for an id an engine may store redacted ([`super::same_id`]).
+fn same(wanted: Option<&str>, held: Option<&str>) -> bool {
+    wanted.is_none_or(|wanted| super::same_id(held, wanted))
 }
 
 fn path_prefix(wanted: Option<&str>, held: Option<&str>) -> bool {

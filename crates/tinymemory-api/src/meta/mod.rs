@@ -11,8 +11,10 @@
 //! item kinds, source kinds, a tag set and an observation window.
 
 mod filter;
+mod redact;
 
 pub use filter::MetaFilter;
+pub use redact::{REDACTED_PREFIX, holds_phone_number, redacted_id, same_id};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

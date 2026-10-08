@@ -129,11 +129,19 @@ pub(crate) fn for_item(id: &str, meta: &MemoryMeta) -> Vec<String> {
 /// The one label filter that narrows a read for `filter`, if any field of it
 /// is labelled: the first set field of [`META_FIELDS`], else the source
 /// kinds. The engine keeps events carrying any one of the returned labels,
-/// so only labels of one field may be sent together.
+/// so only labels of one field may be sent together. A wanted id holding a
+/// phone number is sent both as itself and as its redacted form (see the
+/// envelope's `stored_id`), so events stored before and after redaction are
+/// both found.
 pub(crate) fn narrowing(filter: &MetaFilter) -> Option<Vec<String>> {
     for field in &META_FIELDS {
         if let Some(value) = (field.wanted)(filter) {
-            return Some(vec![format!("{}{}", field.prefix, digest(value))]);
+            let mut labels = vec![format!("{}{}", field.prefix, digest(value))];
+            if tinymemory_api::holds_phone_number(value) {
+                let redacted = tinymemory_api::redacted_id(value);
+                labels.push(format!("{}{}", field.prefix, digest(&redacted)));
+            }
+            return Some(labels);
         }
     }
     (!filter.sources.is_empty()).then(|| {
