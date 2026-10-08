@@ -232,3 +232,28 @@ fn a_scope_root_is_applied_and_checked() {
         key(),
     ));
 }
+
+#[test]
+fn a_tenant_root_is_hosted_only_and_a_retired_root_needs_a_layout() {
+    let key = || EngineCredential::Static("key".to_string());
+    let tenant = EngineSettings {
+        tenant_root: true,
+        retired_scope_root: Some("user:6512ab0f".to_string()),
+        ..EngineSettings::default()
+    };
+    assert!(build_engine("tinyhumans", &tenant, key()).is_ok());
+    let message = config_error(build_engine("cortexdb", &tenant, key()));
+    assert!(message.contains("tenant root"), "{message}");
+    let direct = EngineSettings {
+        scope_root: Some("org:6512ab0f".to_string()),
+        scope_owner: Some("user:6512ab0f".to_string()),
+        retired_scope_root: Some("user:6512ab0f".to_string()),
+        ..EngineSettings::default()
+    };
+    assert!(build_engine("cortexdb", &direct, key()).is_ok());
+    let legacy = EngineSettings {
+        retired_scope_root: Some("user:6512ab0f".to_string()),
+        ..EngineSettings::default()
+    };
+    config_error(build_engine("cortexdb", &legacy, key()));
+}

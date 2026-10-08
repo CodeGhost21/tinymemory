@@ -13,7 +13,7 @@ use tinymemory_api::{
 use super::CortexEngine;
 use super::scopes::KindScope;
 use crate::cortex::envelope::{Decoded, Envelope, decode_event, labels, rebuild, rebuild_whole};
-use crate::cortex::error::Result;
+use crate::cortex::error::{Error, Result};
 
 /// The kinds `filter` admits, in the fixed order
 /// [`ItemKind::ALL`] lists them.
@@ -168,7 +168,9 @@ impl CortexEngine {
             for (id, events) in self.item_events(&scope, &ids).await? {
                 let envelopes: Vec<Envelope> = events.into_iter().map(|d| d.envelope).collect();
                 if let Some(item) = rebuild_whole(&envelopes) {
-                    found.insert(ItemId::new(id.clone()), hit(&id, &item, 0.0));
+                    found
+                        .entry(ItemId::new(id.clone()))
+                        .or_insert_with(|| hit(&id, &item, 0.0));
                 }
             }
         }
@@ -199,15 +201,31 @@ impl CortexEngine {
         }
         let lookups: Vec<(KindScope, Vec<String>)> = by_node
             .into_iter()
-            .map(|(namespace, ids)| (KindScope::new(&self.layout, namespace.clone(), kind), ids))
+            .flat_map(|(namespace, ids)| {
+                KindScope::read(&self.layout, namespace, kind)
+                    .into_iter()
+                    .map(move |scope| (scope, ids.clone()))
+            })
             .collect();
-        let found: Vec<HashMap<String, Vec<Decoded>>> = stream::iter(lookups)
-            .map(|(scope, ids)| async move { self.item_events(&scope, &ids).await })
+        let mut found: Vec<(usize, HashMap<String, Vec<Decoded>>)> = stream::iter(lookups)
+            .enumerate()
+            .map(|(order, (scope, ids))| async move {
+                Ok::<_, Error>((order, self.item_events(&scope, &ids).await?))
+            })
             .buffer_unordered(LOOKUPS_AT_ONCE)
             .try_collect()
             .await?;
+        // An item held below both the root and a retired root is rebuilt from
+        // the events of one of them, never from both at once: the root's
+        // (lookups are in read order, root first), whichever lookup answered
+        // first; the retired root's only when the root's copy cannot be
+        // rebuilt.
+        found.sort_by_key(|(order, _)| *order);
         let mut out = HashMap::new();
-        for (id, events) in found.into_iter().flatten() {
+        for (id, events) in found.into_iter().flat_map(|(_, found)| found) {
+            if out.contains_key(&id) {
+                continue;
+            }
             let envelopes: Vec<Envelope> = events.into_iter().map(|d| d.envelope).collect();
             if let Some(item) = rebuild_whole(&envelopes) {
                 out.insert(id, item);

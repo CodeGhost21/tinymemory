@@ -85,10 +85,19 @@ actor header and the headers the HTTP stack sets, so the credential stays
 the `EngineCredential`'s alone.
 
 To keep one person's memory as one subtree, give a CortexDB engine a scope
-root (`"engines": { "cortexdb": { "scope_root": "user:42", "scope_owner":
+root (`"engines": { "cortexdb": { "scope_root": "org:42", "scope_owner":
 "user:42" } }`, or `CortexEngine::with_scope_root`): layout v3, see
-[cortex-layout.md](architecture/cortex-layout.md). Without one, the legacy
-`app:tinymemory` tree is kept. Switching moves nothing.
+[cortex-layout.md](architecture/cortex-layout.md). A `tinyhumans` engine
+takes `"tenant_root": true` instead, since the backend pins the tenant's
+`org:<id>`. Without a root, the legacy `app:tinymemory` tree is kept.
+Switching moves nothing.
+
+Memory an earlier layout wrote below a `user:<id>` root stays readable and
+forgettable only while the engine names that root as well, so during the move
+configure both: `"engines": { "cortexdb": { "scope_root": "org:42",
+"scope_owner": "user:42", "retired_scope_root": "user:42" } }` (or
+`CortexEngine::with_retired_root`). Writes go to the new root only; once the
+memory has moved, drop `retired_scope_root`.
 
 To record who actually said or did something, set `"observed_actor": true`
 on a `cortexdb` engine and fill `MemoryMeta::observed_actor` on items another
