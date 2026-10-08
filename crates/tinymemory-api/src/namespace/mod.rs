@@ -401,6 +401,36 @@ impl Reach {
         }
     }
 
+    /// Whether `self` reads nothing `outer` does not: every namespace `self`
+    /// admits, `outer` admits too.
+    ///
+    /// This is how a host confines a caller-supplied reach to the one it
+    /// allows (an agent's or an identity's subtree): a reach `within` the
+    /// allowed one may be used as given; any other would widen it. `at` must
+    /// be in `outer`; with `inherit`, so must every ancestor of `at` (a reach
+    /// inheriting above a subtree's top is not within it); with
+    /// `descendants`, `outer` must read descendants too and `at` must lie at
+    /// or below `outer.at` (the descendants of an ancestor of `outer.at`
+    /// include its siblings). A reach at the deepest legal node reads no
+    /// descendants (none can exist), so it counts as exact.
+    #[must_use]
+    pub fn within(&self, outer: &Self) -> bool {
+        if !outer.admits(&self.at) {
+            return false;
+        }
+        if self.inherit
+            && !self
+                .at
+                .ancestors_and_self()
+                .iter()
+                .all(|node| outer.admits(node))
+        {
+            return false;
+        }
+        let reads_below = self.descendants && self.at.depth() < MAX_DEPTH;
+        !reads_below || (outer.descendants && self.at.is_within(&outer.at))
+    }
+
     /// The nodes read exactly, root first: `at` and, when `inherit`, its
     /// ancestors. Descendants are not enumerable here; an engine reads them
     /// as one subtree below `at`.
