@@ -297,112 +297,101 @@ fn render(root: &str, namespace: &Namespace, kind: ItemKind) -> String {
     if !root.is_empty() {
         parts.push(root.to_string());
     }
-        let (mut brain, mut flows) = (false, false);
+    let (mut brain, mut flows) = (false, false);
+    for segment in namespace.segments() {
+        if segment.kind() == SegmentKind::Service && !flows {
+            parts.push(FLOWS.to_string());
+            flows = true;
+        }
+        if segment.kind() == SegmentKind::Source && kind == ItemKind::Document && !brain {
+            parts.push(BRAIN.to_string());
+            brain = true;
+        }
+        parts.push(segment.to_string());
+    }
+    match kind {
+        ItemKind::Learning => parts.push(LEARNINGS.to_string()),
+        ItemKind::Conversation => parts.push(CONVERSATIONS.to_string()),
+        ItemKind::Document if !brain => parts.push(DOCUMENTS.to_string()),
+        ItemKind::Document => {}
+    }
+    parts.join("/")
+}
+
+/// [`ScopeLayout::node_prefixes`] below one `root` (none when empty).
+fn node_prefixes_below(root: &str, namespace: &Namespace) -> Vec<String> {
+    let render = |brain: bool| {
+        let mut parts = Vec::new();
+        if !root.is_empty() {
+            parts.push(root.to_string());
+        }
+        let (mut grouped_brain, mut grouped_flows) = (false, false);
         for segment in namespace.segments() {
-            if segment.kind() == SegmentKind::Service && !flows {
+            if segment.kind() == SegmentKind::Service && !grouped_flows {
                 parts.push(FLOWS.to_string());
-                flows = true;
+                grouped_flows = true;
             }
-            if segment.kind() == SegmentKind::Source && kind == ItemKind::Document && !brain {
+            if brain && segment.kind() == SegmentKind::Source && !grouped_brain {
                 parts.push(BRAIN.to_string());
-                brain = true;
+                grouped_brain = true;
             }
             parts.push(segment.to_string());
         }
-        match kind {
-            ItemKind::Learning => parts.push(LEARNINGS.to_string()),
-            ItemKind::Conversation => parts.push(CONVERSATIONS.to_string()),
-            ItemKind::Document if !brain => parts.push(DOCUMENTS.to_string()),
-            ItemKind::Document => {}
-        }
         parts.join("/")
+    };
+    let sourced = namespace
+        .segments()
+        .iter()
+        .any(|segment| segment.kind() == SegmentKind::Source);
+    if sourced {
+        vec![render(false), render(true)]
+    } else {
+        vec![render(false)]
     }
+}
 
-    /// The prefixes the scopes at or below `namespace` are listed under.
-    /// Legacy: the node's own path. V3: the node's path with its grouping
-    /// nodes (`app:flows` before a `service:`), and, for a node holding a
-    /// `source:`, the same with `app:brain` before it too, where that
-    /// node's sourced documents sit. A node without a `source:` needs one
-    /// prefix, since a sourced document below it is grouped after it.
-    pub(crate) fn node_prefixes(&self, namespace: &Namespace) -> Vec<String> {
-        let Self::V3 { root, .. } = self else {
-            if namespace.is_root() {
-                return vec![ROOT_SCOPE.to_string()];
-            }
-            let mut path = scope_path(namespace, ItemKind::Document);
-            path.truncate(path.rfind('/').unwrap_or(path.len()));
-            return vec![path];
-        };
-        let render = |brain: bool| {
-            let mut parts = vec![root.clone()];
-            let (mut grouped_brain, mut grouped_flows) = (false, false);
-            for segment in namespace.segments() {
-                if segment.kind() == SegmentKind::Service && !grouped_flows {
-                    parts.push(FLOWS.to_string());
-                    grouped_flows = true;
-                }
-                if brain && segment.kind() == SegmentKind::Source && !grouped_brain {
-                    parts.push(BRAIN.to_string());
-                    grouped_brain = true;
-                }
-                parts.push(segment.to_string());
-            }
-            parts.join("/")
-        };
-        let sourced = namespace
-            .segments()
-            .iter()
-            .any(|segment| segment.kind() == SegmentKind::Source);
-        if sourced {
-            vec![render(false), render(true)]
-        } else {
-            vec![render(false)]
-        }
-    }
-
-    /// The namespace and kind of a scope path of this layout, wherever it is
-    /// rooted (the hosted backend prefixes the caller's tenant); `None` for
-    /// any other scope, including one of the other layout. Unprefixed (the
-    /// direct wire), a path must start at the root, so a namespace that
-    /// begins like the root (`user:42/user:42/app:learnings`) is read as
-    /// that namespace. Prefixed (hosted), the root is matched at its last
-    /// occurrence, so a tenant prefix spelled like the root reads as a
-    /// prefix; only there would a namespace repeating the root's own
-    /// segments read back as the root, and a layout never builds one.
-    pub(crate) fn parse(&self, path: &str) -> Option<(Namespace, ItemKind)> {
-        let Self::V3 { root, prefixed } = self else {
-            return parse_scope(path);
-        };
-        let parts: Vec<&str> = path.split('/').collect();
+/// [`ScopeLayout::parse`] below one `root`: an empty root starts at the
+/// path's first segment.
+fn parse_below(root: &str, prefixed: bool, path: &str) -> Option<(Namespace, ItemKind)> {
+    let parts: Vec<&str> = path.split('/').collect();
+    let start = if root.is_empty() {
+        0
+    } else {
         let wanted: Vec<&str> = root.split('/').collect();
-        let start = if *prefixed {
+        let start = if prefixed {
             parts
                 .windows(wanted.len())
                 .rposition(|window| window == wanted.as_slice())?
         } else {
             parts.starts_with(&wanted).then_some(0)?
         };
-        let rest = &parts[start + wanted.len()..];
-        let (kind, nodes) = match rest.split_last()? {
-            (&LEARNINGS, nodes) => (ItemKind::Learning, nodes),
-            (&CONVERSATIONS, nodes) => (ItemKind::Conversation, nodes),
-            (&DOCUMENTS, nodes) => (ItemKind::Document, nodes),
-            _ if rest.contains(&BRAIN) => (ItemKind::Document, rest),
-            _ => return None,
-        };
-        let namespace: Namespace = nodes
-            .iter()
-            .filter(|part| **part != BRAIN && **part != FLOWS)
-            .copied()
-            .collect::<Vec<_>>()
-            .join("/")
-            .parse()
-            .ok()?;
-        // Only the one canonical spelling reads back: a grouping node out of
-        // place is somebody else's scope.
-        let canonical = self.path(&namespace, kind);
-        (canonical == parts[start..].join("/")).then_some((namespace, kind))
-    }
+        start + wanted.len()
+    };
+    let rest = &parts[start..];
+    let (kind, nodes) = match rest.split_last()? {
+        (&LEARNINGS, nodes) => (ItemKind::Learning, nodes),
+        (&CONVERSATIONS, nodes) => (ItemKind::Conversation, nodes),
+        (&DOCUMENTS, nodes) => (ItemKind::Document, nodes),
+        _ if rest.contains(&BRAIN) => (ItemKind::Document, rest),
+        _ => return None,
+    };
+    let namespace: Namespace = nodes
+        .iter()
+        .filter(|part| **part != BRAIN && **part != FLOWS)
+        .copied()
+        .collect::<Vec<_>>()
+        .join("/")
+        .parse()
+        .ok()?;
+    // Only the one canonical spelling reads back: a grouping node out of
+    // place is somebody else's scope.
+    let canonical = render(root, &namespace, kind);
+    let own = if root.is_empty() {
+        path.to_string()
+    } else {
+        parts[start - root.split('/').count()..].join("/")
+    };
+    (canonical == own).then_some((namespace, kind))
 }
 
 #[cfg(test)]
