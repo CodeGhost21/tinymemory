@@ -120,3 +120,12 @@ async fn store_many_with_defaults_to_store_many_whatever_the_wait() {
         "an empty batch is refused, as by store_many"
     );
 }
+
+#[tokio::test]
+async fn list_preview_defaults_to_list() {
+    let engine = Bare(descriptor(vec![FetchMode::Hybrid]));
+    let req = || ListRequest::new(crate::MetaFilter::default(), 5);
+    let list = engine.list(req()).await.expect("list");
+    let preview = engine.list_preview(req()).await.expect("list_preview");
+    assert_eq!(preview, list);
+}

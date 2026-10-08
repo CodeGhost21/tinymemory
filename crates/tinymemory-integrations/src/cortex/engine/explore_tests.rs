@@ -51,7 +51,10 @@ async fn counts_match_the_listing_walk_for_every_facet() {
     for (engine, _state) in both().await {
         store_mixed(&engine).await;
         for facet in [Facet::Kind, Facet::Agent, Facet::Thread, Facet::Namespace] {
-            let fast = engine.explore(ExploreRequest::new(facet, 50)).await.unwrap();
+            let fast = engine
+                .explore(ExploreRequest::new(facet, 50))
+                .await
+                .unwrap();
             let slow = explore_by_listing(&engine, ExploreRequest::new(facet, 50))
                 .await
                 .unwrap();

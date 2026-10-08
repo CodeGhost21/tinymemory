@@ -35,9 +35,8 @@ use async_trait::async_trait;
 use tinymemory_api::{
     BeliefsRequest, ConsolidateReceipt, ConsolidateRequest, Consolidation, EngineDescriptor,
     EngineHealth, EraseReport, EraseRequest, ExplorePage, ExploreRequest, ExportPage, FetchPage,
-    FetchRequest, ForgetReport,
-    ForgetTarget, GetRequest, Hit, ListPage, ListRequest, MemoryEngine, RecallAnswer,
-    RecallRequest, StoreItem, StoreReceipt, WaitFor, WriteOptions,
+    FetchRequest, ForgetReport, ForgetTarget, GetRequest, Hit, ListPage, ListRequest, MemoryEngine,
+    RecallAnswer, RecallRequest, StoreItem, StoreReceipt, WaitFor, WriteOptions,
 };
 
 use crate::cortex::credential::{BearerSource, CortexCredential};

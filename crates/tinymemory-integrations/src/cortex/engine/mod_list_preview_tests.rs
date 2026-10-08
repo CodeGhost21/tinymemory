@@ -24,7 +24,10 @@ async fn store_mixed(engine: &CortexEngine) {
         engine.store(item).await.unwrap();
     }
     engine
-        .store(StoreItem::document("word ".repeat(40_000), thread_meta("big")))
+        .store(StoreItem::document(
+            "word ".repeat(40_000),
+            thread_meta("big"),
+        ))
         .await
         .unwrap();
 }
@@ -76,14 +79,10 @@ async fn a_conversation_previews_as_its_first_turn() {
             .filter(|p| matches!(p.meta.thread_id.as_deref(), Some("a" | "b" | "c")))
             .count();
         assert_eq!(ours, 3);
-        for (p, w) in preview
-            .iter()
-            .zip(&whole)
-            .filter(|(p, _)| {
-                p.kind == ItemKind::Conversation
-                    && matches!(p.meta.thread_id.as_deref(), Some("a" | "b" | "c"))
-            })
-        {
+        for (p, w) in preview.iter().zip(&whole).filter(|(p, _)| {
+            p.kind == ItemKind::Conversation
+                && matches!(p.meta.thread_id.as_deref(), Some("a" | "b" | "c"))
+        }) {
             assert!(p.text.contains("turn 0"), "{}", p.text);
             assert!(!p.text.contains("turn 1"), "{}", p.text);
             assert!(w.text.contains("turn 29"));
