@@ -121,6 +121,11 @@ pub(crate) struct Double {
     /// (`app:tinymemory/agent:pad-NNNN/app:learnings`), so a test can make a
     /// scope listing reach CortexDB's clamp.
     pub(crate) padding_scopes: AtomicUsize,
+    /// How many `running` answers an erasure gives (its POST, then its
+    /// status polls) before it settles.
+    pub(crate) erasure_running_for: AtomicUsize,
+    /// The status a settled erasure ends with; `completed` when unset.
+    pub(crate) erasure_ends: Mutex<Option<&'static str>>,
 }
 
 /// The shared handle the routes and tests hold.

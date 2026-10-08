@@ -331,6 +331,55 @@ async fn erase(
     relay(&state, result)
 }
 
+/// The erasure's status as this answer reports it: `running` while the
+/// test's running budget lasts, then how it ends.
+fn erasure_status(state: &Shared) -> &'static str {
+    if take_one(&state.erasure_running_for) {
+        "running"
+    } else {
+        state.erasure_ends.lock().unwrap().unwrap_or("completed")
+    }
+}
+
+/// `POST /memory/v1/erasures`: the backend's passthrough, answered in
+/// CortexDB's dialect (no envelope), as memory-api pins it.
+async fn hosted_erase(
+    State(state): State<Shared>,
+    uri: Uri,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Reply {
+    if let Some(early) = gate(&state, "POST", &uri, &headers) {
+        return early;
+    }
+    if let Some(refused) = refuse_scope(&state, body["scope"].as_str().unwrap_or_default()) {
+        return refused;
+    }
+    state.seen.lock().unwrap().erasures.push(body.clone());
+    let (code, mut answer) = state.log.lock().unwrap().erase(&body);
+    if code >= 300 {
+        return (status(code), Json(answer));
+    }
+    answer["status"] = json!(erasure_status(&state));
+    (status(code), Json(answer))
+}
+
+/// `GET /memory/v1/erasures/{id}`: the erasure's status, unwrapped.
+async fn hosted_erasure(
+    State(state): State<Shared>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    uri: Uri,
+    headers: HeaderMap,
+) -> Reply {
+    if let Some(early) = gate(&state, "GET", &uri, &headers) {
+        return early;
+    }
+    (
+        StatusCode::OK,
+        Json(json!({ "erasure_id": id, "status": erasure_status(&state) })),
+    )
+}
+
 async fn answer(
     State(state): State<Shared>,
     uri: Uri,
@@ -593,5 +642,7 @@ pub(super) fn hosted(state: Shared) -> Router {
         .route("/memory/forget", post(forget))
         .route("/memory/answer", post(answer))
         .route("/memory/scopes", get(scopes))
+        .route("/memory/v1/erasures", post(hosted_erase))
+        .route("/memory/v1/erasures/{id}", get(hosted_erasure))
         .with_state(state)
 }
