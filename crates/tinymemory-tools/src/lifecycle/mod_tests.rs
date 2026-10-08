@@ -820,12 +820,13 @@ async fn pooled_agents_log_to_one_node_and_keep_their_own_history() {
         .unwrap();
     assert_eq!(listed.items.len(), 2, "both agents' turns at ws:main");
 
+    // Each agent's history is its own turns of the pool; a pooled layout
+    // has no team section, so another agent's turn stays out of the pack.
     let md = support.recall("refund").await.unwrap().markdown;
     let history = md.find("## This agent's history").unwrap();
-    let team = md.find("## Team conversations").unwrap();
-    assert!(md[history..team].contains("refund delayed"), "{md}");
-    assert!(!md[history..team].contains("deploy failed"), "{md}");
-    assert!(md[team..].contains("deploy failed"), "{md}");
+    assert!(md[history..].contains("refund delayed"), "{md}");
+    assert!(!md.contains("## Team conversations"), "{md}");
+    assert!(!md.contains("deploy failed"), "{md}");
 }
 
 #[test]

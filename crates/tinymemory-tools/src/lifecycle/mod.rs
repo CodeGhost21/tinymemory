@@ -581,11 +581,12 @@ impl AgentMemory {
             LEARNINGS_HEADING,
             self.layout.learnings_filter(),
             policy.learnings_limit,
+            None,
         );
         let core = self
             .core
             .iter()
-            .map(|scope| (scope.heading.as_str(), scope.filter(), scope.limit));
+            .map(|scope| (scope.heading.as_str(), scope.filter(), scope.limit, None));
         let team_limit = if self.layout.pools_conversations() {
             0
         } else {
@@ -596,28 +597,30 @@ impl AgentMemory {
                 BRAIN_HEADING,
                 self.layout.brain_filter(None),
                 policy.brain_limit,
+                Some(BRAIN_SCOPES_PER_TURN),
             ),
             (
                 HISTORY_HEADING,
                 self.layout.conversations_filter(Some(&self.agent_id)),
                 policy.history_limit,
+                None,
             ),
             (
                 TEAM_HEADING,
                 self.layout.conversations_filter(None),
                 team_limit,
+                None,
             ),
         ];
         std::iter::once(learnings)
             .chain(core)
             .chain(layout)
-            .filter(|(_, _, limit)| *limit > 0)
-            .map(|(heading, filter, limit)| {
+            .filter(|(_, _, limit, _)| *limit > 0)
+            .map(|(heading, filter, limit, max_scopes)| {
                 let section = ScopeSection::fetch(heading, filter, limit);
-                if heading == BRAIN_HEADING {
-                    section.with_max_scopes(BRAIN_SCOPES_PER_TURN)
-                } else {
-                    section
+                match max_scopes {
+                    Some(scopes) => section.with_max_scopes(scopes),
+                    None => section,
                 }
             })
             .collect()

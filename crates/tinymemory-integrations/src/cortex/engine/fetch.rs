@@ -134,9 +134,12 @@ impl CortexEngine {
     pub(super) async fn fetch_page(&self, req: FetchRequest) -> Result<FetchPage> {
         self.descriptor.ensure_mode(req.mode)?;
         req.validate()?;
-        let offset = match &req.cursor {
-            Some(raw) => cursor::decode::<FetchCursor>(TAG, raw)?.offset,
-            None => 0,
+        let (offset, chosen) = match &req.cursor {
+            Some(raw) => {
+                let cursor = cursor::decode::<FetchCursor>(TAG, raw)?;
+                (cursor.offset, cursor.scopes)
+            }
+            None => (0, None),
         };
         let end = offset.saturating_add(req.limit);
         let events = end
@@ -144,9 +147,21 @@ impl CortexEngine {
             .saturating_mul(EVENTS_PER_HIT)
             .min(MAX_PACK_EVENTS);
         let scopes = self.scopes_for(&req.filter).await?;
-        let scopes = match req.max_scopes {
-            Some(max) if scopes.len() > max => self.pick_scopes(scopes, &req.query, max).await,
-            _ => scopes,
+        let (scopes, chosen) = match (req.max_scopes, chosen) {
+            // A later page reads the scopes the first page chose.
+            (Some(_), Some(paths)) => {
+                let kept = scopes
+                    .into_iter()
+                    .filter(|scope| paths.contains(&scope.path))
+                    .collect();
+                (kept, Some(paths))
+            }
+            (Some(max), None) if scopes.len() > max => {
+                let kept = self.pick_scopes(scopes, &req.query, max).await;
+                let paths = kept.iter().map(|scope| scope.path.clone()).collect();
+                (kept, Some(paths))
+            }
+            _ => (scopes, None),
         };
         let wanted_beliefs = if offset == 0 { req.beliefs } else { 0 };
         let hint = match &req.refers_to {
@@ -232,7 +247,13 @@ impl CortexEngine {
             })
             .collect();
         let next_cursor = if more {
-            Some(cursor::encode(TAG, &FetchCursor { offset: end })?)
+            Some(cursor::encode(
+                TAG,
+                &FetchCursor {
+                    offset: end,
+                    scopes: chosen,
+                },
+            )?)
         } else {
             None
         };

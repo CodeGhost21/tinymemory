@@ -816,6 +816,66 @@ async fn a_service_node_round_trips() {
     }
 }
 
+/// A capped fetch reads the scopes its query names, then the most recently
+/// written: four sources, each newer than the last, read two at a time.
+#[tokio::test]
+async fn a_capped_fetch_reads_the_named_then_the_newest_scopes() {
+    let _alone = ONE_AT_A_TIME.lock().await;
+    for (wire, engine) in live_engines() {
+        let root = run_id();
+        let mut ids = Vec::new();
+        // Stored oldest first: each write makes its scope the newest.
+        for source in ["gmail", "notion", "slack", "files"] {
+            let node: tinymemory_api::Namespace = format!("ws:{root}/source:{source}")
+                .parse()
+                .expect("a valid source node");
+            let receipt = engine
+                .store(StoreItem::document(
+                    format!("The launch plan is kept in {source}"),
+                    MemoryMeta {
+                        namespace: node,
+                        ..MemoryMeta::default()
+                    },
+                ))
+                .await
+                .unwrap_or_else(|error| panic!("{wire} stores in {source}: {error}"));
+            ids.push(receipt.id);
+        }
+        let reach: tinymemory_api::Namespace = format!("ws:{root}").parse().expect("a valid root");
+        let mut request =
+            FetchRequest::new("where is the launch plan in gmail", FetchMode::Hybrid, 10);
+        request.filter = MetaFilter {
+            reach: Some(tinymemory_api::Reach::subtree(reach)),
+            ..MetaFilter::kinds([ItemKind::Document])
+        };
+        request.max_scopes = Some(2);
+        // Ranked recall may lag the writes; read until both scopes answer.
+        let deadline = Instant::now() + VISIBILITY;
+        let sources = loop {
+            let hits = engine.fetch(request.clone()).await.expect("fetch").hits;
+            let mut sources: Vec<String> = hits
+                .iter()
+                .filter_map(|hit| {
+                    let last = hit.meta.namespace.segments().last()?;
+                    Some(last.id().to_string())
+                })
+                .collect();
+            sources.sort();
+            sources.dedup();
+            if sources.len() >= 2 || Instant::now() >= deadline {
+                break sources;
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        };
+        // `gmail` by name, `files` as the newest; never `notion` or `slack`.
+        assert_eq!(sources, ["files", "gmail"], "{wire}");
+        engine
+            .forget(ForgetTarget::Ids(ids))
+            .await
+            .expect("forget the run's documents");
+    }
+}
+
 /// A turn logged on the hot path (one single-turn conversation, accepted
 /// only) skips the lookup, so a retry is caught by CortexDB itself: the
 /// same body is the same idempotency key, answered as a replay of the

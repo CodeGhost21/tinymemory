@@ -14,9 +14,13 @@
 //!
 //! What is kept is read in the fetch's own scope order. A scope's recency is
 //! learned once from one short listing (newest first, no embedding), kept
-//! for [`TTL`], and set to now by every write this engine makes, so a warm
-//! engine adds no request to a turn. A listing that fails leaves the scope
-//! with no recency: it is kept only when the others leave room.
+//! for [`TTL`], and set to now by every write this engine makes (a listing
+//! never overwrites a newer write), so a warm engine adds no request to a
+//! turn. A listing that fails learns nothing: the scope is ranked as
+//! undated, kept only when the others leave room, and listed again next
+//! time. A capped fetch's later pages read the scopes its first page chose
+//! (the fetch cursor carries them), so a write between pages cannot shift
+//! the ranking.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -43,10 +47,13 @@ const LISTINGS_AT_ONCE: usize = 8;
 /// The shortest query word that can name a scope.
 const MIN_WORD: usize = 3;
 
+/// Each scope's recency and when it was learned.
+type Seen = HashMap<String, (Option<DateTime<Utc>>, Instant)>;
+
 /// The last known write time of each scope (shared by clones).
 #[derive(Debug, Default)]
 pub(super) struct Recency {
-    seen: Mutex<HashMap<String, (Option<DateTime<Utc>>, Instant)>>,
+    seen: Mutex<Seen>,
 }
 
 impl Recency {
@@ -67,6 +74,21 @@ impl Recency {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .insert(scope.to_string(), (at, Instant::now()));
+    }
+
+    /// Records a listing's recency for `scope`, unless a fresh, newer time
+    /// is already known (a write this engine made while the listing ran).
+    fn learn(&self, scope: &str, at: Option<DateTime<Utc>>) {
+        let mut seen = self
+            .seen
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let newer = seen
+            .get(scope)
+            .is_some_and(|(held, learned)| learned.elapsed() < TTL && *held > at);
+        if !newer {
+            seen.insert(scope.to_string(), (at, Instant::now()));
+        }
     }
 
     /// Records that this engine has just written to `scope`.
@@ -91,14 +113,12 @@ impl CortexEngine {
             .collect();
         stream::iter(unknown)
             .for_each_concurrent(LISTINGS_AT_ONCE, |path| async move {
-                let at = match self.log.page(&path, None, None, LISTED_EVENTS).await {
-                    Ok(page) => newest(&page.items),
-                    Err(error) => {
-                        log::debug!("[cortex] recency of {path} unknown: {error}");
-                        None
-                    }
-                };
-                self.recency.set(&path, at);
+                // A failed listing learns nothing: the scope stays unknown,
+                // ranked as undated, and is listed again next time.
+                match self.log.page(&path, None, None, LISTED_EVENTS).await {
+                    Ok(page) => self.recency.learn(&path, newest(&page.items)),
+                    Err(error) => log::debug!("[cortex] recency of {path} unknown: {error}"),
+                }
             })
             .await;
         let total = scopes.len();

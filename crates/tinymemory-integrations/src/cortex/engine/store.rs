@@ -147,7 +147,9 @@ impl CortexEngine {
             {
                 replayed = written.replayed;
                 last_per_scope.retain(|w| w.scope != written.scope);
-                self.recency.touch(&written.scope);
+                if !written.replayed {
+                    self.recency.touch(&written.scope);
+                }
                 last_per_scope.push(written);
             }
             written_here.insert(id.clone());

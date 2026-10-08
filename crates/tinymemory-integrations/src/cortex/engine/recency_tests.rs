@@ -89,3 +89,17 @@ fn a_write_makes_a_scope_known_and_recent() {
     recency.touch("p");
     assert!(recency.get("p").flatten().is_some());
 }
+
+#[test]
+fn a_listing_never_overwrites_a_newer_write() {
+    let recency = Recency::default();
+    recency.touch("p");
+    let written = recency.get("p").flatten();
+    // A listing that started before the write finishes after it.
+    recency.learn("p", at(1));
+    assert_eq!(recency.get("p").flatten(), written);
+    // A newer listing still replaces an older one.
+    recency.learn("q", at(1));
+    recency.learn("q", at(2));
+    assert_eq!(recency.get("q").flatten(), at(2));
+}
