@@ -229,3 +229,13 @@ fn descendants_need_descendants_and_a_node_at_or_below() {
     assert!(!Reach::subtree(ns("team:acme/agent:writer")).within(&agent));
     assert!(!Reach::exact(ns("team:acme/agent:editor")).within(&agent));
 }
+
+#[test]
+fn a_subtree_at_the_depth_limit_is_a_singleton() {
+    let deep = ns(&["agent:a"; MAX_DEPTH].join("/"));
+    // Nothing can exist below the deepest node, so its subtree is exact.
+    assert!(Reach::subtree(deep.clone()).within(&Reach::exact(deep.clone())));
+    // Still confined: a different node of that depth is outside.
+    let other = ns(&["agent:b"; MAX_DEPTH].join("/"));
+    assert!(!Reach::subtree(other).within(&Reach::exact(deep)));
+}
