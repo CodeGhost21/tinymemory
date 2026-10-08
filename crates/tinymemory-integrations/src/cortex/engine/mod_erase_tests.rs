@@ -1,11 +1,14 @@
-//! Erase on the Direct wire: deepest scope first, so every event is deleted
-//! and every write key released; kinds narrow it; the hosted wire refuses
-//! without a request.
+//! Erase: deepest scope first, so every event is deleted and every write
+//! key released; kinds narrow it. The hosted wire erases through the
+//! backend's `memory/v1/erasures` passthrough and polls a running erasure
+//! until it settles.
 
 use tinymemory_api::{
     EraseRequest, ItemKind, LearningKind, ListRequest, MemoryMeta, MetaFilter, Namespace, Reach,
     StoreItem,
 };
+
+use std::sync::atomic::Ordering;
 
 use super::*;
 use crate::cortex::testing::{direct_double, direct_engine, hosted_double, hosted_engine};
@@ -123,17 +126,59 @@ async fn an_erasure_with_nothing_registered_sends_nothing() {
 }
 
 #[tokio::test]
-async fn the_hosted_wire_refuses_to_erase_without_a_request() {
+async fn the_hosted_wire_erases_through_the_backend_passthrough() {
     let (endpoint, state) = hosted_double().await;
     let engine = hosted_engine(&endpoint);
-    let refused = engine
-        .erase(EraseRequest::new(Reach::subtree(node("agent:x"))))
-        .await;
+    let (gone, kept) = (node("ws:main/agent:flow"), node("ws:main/agent:chat"));
+    let erased = learning("flow fact", &gone);
+    engine.store(erased.clone()).await.unwrap();
+    engine.store(learning("chat fact", &kept)).await.unwrap();
+
+    let report = engine
+        .erase(EraseRequest::new(Reach::subtree(gone)))
+        .await
+        .unwrap();
+    assert_eq!(report.erased_scopes, 1, "{report:?}");
+    assert_eq!(state.count("POST /memory/v1/erasures"), 1);
+    let bodies = state.seen.lock().unwrap().erasures.clone();
+    assert_eq!(bodies[0]["confirm_all"], true);
+    assert!(bodies[0].get("selector").is_none(), "{}", bodies[0]);
+    assert_eq!(listed(&engine).await, vec!["chat fact".to_string()]);
+    let again = engine.store(erased).await.unwrap();
+    assert!(!again.replayed, "an erased item's key was released");
+}
+
+#[tokio::test]
+async fn a_running_hosted_erasure_is_polled_until_it_completes() {
+    let (endpoint, state) = hosted_double().await;
+    let engine = hosted_engine(&endpoint);
+    let at = node("agent:assistant");
+    engine.store(learning("a fact", &at)).await.unwrap();
+    // The POST and the first two polls answer `running`.
+    state.erasure_running_for.store(3, Ordering::SeqCst);
+
+    let report = engine
+        .erase(EraseRequest::new(Reach::exact(at)))
+        .await
+        .unwrap();
+    assert_eq!(report.receipts, vec!["erasure_1".to_string()]);
+    assert_eq!(state.count("GET /memory/v1/erasures/erasure_1"), 3);
+}
+
+#[tokio::test]
+async fn an_erasure_that_does_not_complete_is_an_error() {
+    let (endpoint, state) = hosted_double().await;
+    let engine = hosted_engine(&endpoint);
+    let at = node("agent:assistant");
+    engine.store(learning("a fact", &at)).await.unwrap();
+    state.erasure_running_for.store(1, Ordering::SeqCst);
+    *state.erasure_ends.lock().unwrap() = Some("failed");
+
+    let refused = engine.erase(EraseRequest::new(Reach::exact(at))).await;
     assert!(
-        matches!(refused, Err(tinymemory_api::Error::Unsupported(_))),
+        matches!(&refused, Err(tinymemory_api::Error::Engine(m)) if m.contains("failed")),
         "{refused:?}"
     );
-    assert!(state.seen.lock().unwrap().requests.is_empty());
 }
 
 #[tokio::test]
