@@ -404,3 +404,39 @@ async fn an_https_client_never_reaches_plain_http_but_loopback_http_still_works(
     assert!(response.status().is_success());
     assert_eq!(hits.load(Ordering::SeqCst), 1);
 }
+
+#[tokio::test]
+async fn a_rate_limited_read_waits_as_long_as_the_server_asks() {
+    let hits: Arc<std::sync::Mutex<Vec<std::time::Instant>>> = Arc::default();
+    let seen = hits.clone();
+    let app = Router::new()
+        .route("/v1/auth/whoami", any(|| async { StatusCode::NOT_FOUND }))
+        .fallback(any(move || {
+            let seen = seen.clone();
+            async move {
+                let mut seen = seen.lock().unwrap();
+                seen.push(std::time::Instant::now());
+                if seen.len() == 1 {
+                    (
+                        StatusCode::TOO_MANY_REQUESTS,
+                        [("retry-after", "1")],
+                        "slow down",
+                    )
+                } else {
+                    (StatusCode::OK, [("retry-after", "0")], "{}")
+                }
+            }
+        }));
+    let endpoint = serve(app).await;
+    let read = client(&endpoint)
+        .json(Method::GET, "v1/events", None, Attempts::RetryTransient)
+        .await;
+    assert!(read.is_ok(), "{read:?}");
+    let hits = hits.lock().unwrap();
+    assert_eq!(hits.len(), 2, "one 429, then the retry");
+    let gap = hits[1] - hits[0];
+    assert!(
+        gap >= Duration::from_millis(950),
+        "the retry waited out Retry-After, not the 1 ms backoff: {gap:?}"
+    );
+}

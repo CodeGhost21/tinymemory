@@ -14,6 +14,7 @@
 mod actor;
 mod body;
 mod failure;
+mod pause;
 
 use std::time::Duration;
 
@@ -66,6 +67,8 @@ pub(crate) struct HttpClient {
     wire: CortexWire,
     read_backoff: Duration,
     actor: actor::ActorCache,
+    /// When the last `429` said requests may resume (see `pause`).
+    pause: pause::RatePause,
     /// Fixed headers the host attaches to every request (see
     /// [`default_headers`]).
     default_headers: HeaderMap,
@@ -184,6 +187,7 @@ impl HttpClient {
             wire,
             read_backoff: READ_BACKOFF,
             actor: actor::ActorCache::default(),
+            pause: pause::RatePause::default(),
             default_headers: HeaderMap::new(),
         })
     }
@@ -322,11 +326,16 @@ impl HttpClient {
         if let Some(body) = body {
             request = request.json(body);
         }
+        // A rate limit answered to any request holds this one back too.
+        self.pause.wait().await;
         let response = request
             .send()
             .await
             .map_err(|error| failure::transport_error(self.host(), &error))?;
         let status = response.status();
+        if status.as_u16() == 429 {
+            self.pause.note(response.headers());
+        }
         if !status.is_success() {
             if matches!(status.as_u16(), 401 | 403) {
                 self.actor.forget();
