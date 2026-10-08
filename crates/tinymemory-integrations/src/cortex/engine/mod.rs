@@ -34,7 +34,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use async_trait::async_trait;
 use tinymemory_api::{
     BeliefsRequest, ConsolidateReceipt, ConsolidateRequest, Consolidation, EngineDescriptor,
-    EngineHealth, EraseReport, EraseRequest, ExportPage, FetchPage, FetchRequest, ForgetReport,
+    EngineHealth, EraseReport, EraseRequest, ExplorePage, ExploreRequest, ExportPage, FetchPage,
+    FetchRequest, ForgetReport,
     ForgetTarget, GetRequest, Hit, ListPage, ListRequest, MemoryEngine, RecallAnswer,
     RecallRequest, StoreItem, StoreReceipt, WaitFor, WriteOptions,
 };
