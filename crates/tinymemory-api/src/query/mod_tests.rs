@@ -70,3 +70,16 @@ fn requests_deserialise_with_defaults() {
     assert!(request.filter.is_empty());
     assert_eq!(request.cursor, None);
 }
+
+#[test]
+fn a_fetch_reads_every_scope_unless_capped_and_never_zero() {
+    let mut request = FetchRequest::new("q", FetchMode::Hybrid, 3);
+    assert_eq!(request.max_scopes, None);
+    request.max_scopes = Some(4);
+    assert!(request.validate().is_ok());
+    request.max_scopes = Some(0);
+    assert!(request.validate().is_err());
+    // An uncapped request keeps its old wire shape.
+    let json = serde_json::to_value(FetchRequest::new("q", FetchMode::Hybrid, 3)).unwrap();
+    assert!(json.get("max_scopes").is_none());
+}

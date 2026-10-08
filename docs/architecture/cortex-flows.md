@@ -163,22 +163,28 @@ Only `Hybrid`. Other modes fail `Error::Unsupported` before any request.
 
 1. Decode the cursor (an offset into the merged ranking) and compute the
    page end `offset + limit`.
-2. For **each scope** the filter reads, ask recall for a pack with
+2. With `max_scopes` set and more scopes than that, keep only that many:
+   the scopes a query word names first (a segment id, or a `-`/`_` part of
+   one), then the most recently written (the newest `observed_at` of one
+   short listing per scope, cached ten minutes, set to now by this engine's
+   own writes), then the usual order; the kept ones are read in the usual
+   order.
+3. For **each scope** the filter reads, ask recall for a pack with
    `events = min((end + 1) * 3, 1000)`, narrowed by one label when possible.
    (Three raw events per wanted hit, because a conversation contributes
    several turns and the client-side filter drops some. 1000 events is the
    deepest a fetch page can go.)
-3. Decode each pack's events, apply the **full filter** client-side, keep each
+4. Decode each pack's events, apply the **full filter** client-side, keep each
    item once at its best rank.
-4. **Interleave** the scopes rank by rank: every scope's best, then every
+5. **Interleave** the scopes rank by rank: every scope's best, then every
    scope's second, and so on.
-5. Take the page `[offset, end)`. A conversation hit carries the whole
+6. Take the page `[offset, end)`. A conversation hit carries the whole
    conversation. A one-turn conversation (`turn.count == 1`, as every turn a
    host logs per item is) is whole in its pack event and needs no lookup; a
    longer one is assembled from all its turns, one lookup per namespace node,
    four nodes at a time.
-6. Score each hit `1 / (1 + rank)`, since CortexDB reports no score.
-7. `next_cursor` is `offset = end` when the merged ranking held more than `end`
+7. Score each hit `1 / (1 + rank)`, since CortexDB reports no score.
+8. `next_cursor` is `offset = end` when the merged ranking held more than `end`
    items, else none. The next page asks again with a larger budget.
 
 ## Recall

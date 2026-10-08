@@ -820,10 +820,41 @@ async fn pooled_agents_log_to_one_node_and_keep_their_own_history() {
         .unwrap();
     assert_eq!(listed.items.len(), 2, "both agents' turns at ws:main");
 
+    // Each agent's history is its own turns of the pool; a pooled layout
+    // has no team section, so another agent's turn stays out of the pack.
     let md = support.recall("refund").await.unwrap().markdown;
     let history = md.find("## This agent's history").unwrap();
-    let team = md.find("## Team conversations").unwrap();
-    assert!(md[history..team].contains("refund delayed"), "{md}");
-    assert!(!md[history..team].contains("deploy failed"), "{md}");
-    assert!(md[team..].contains("deploy failed"), "{md}");
+    assert!(md[history..].contains("refund delayed"), "{md}");
+    assert!(!md.contains("## Team conversations"), "{md}");
+    assert!(!md.contains("deploy failed"), "{md}");
+}
+
+#[test]
+fn the_brain_reads_few_scopes_and_pooled_chats_have_no_team_section() {
+    let engine = Arc::new(ReferenceEngine::new());
+    let sections = memory(&engine, "s").standard_sections();
+    for section in &sections {
+        let want = (section.heading == BRAIN_HEADING).then_some(BRAIN_SCOPES_PER_TURN);
+        assert_eq!(section.max_scopes, want, "{}", section.heading);
+    }
+    assert!(
+        sections
+            .iter()
+            .any(|section| section.heading == TEAM_HEADING)
+    );
+
+    // Pooled, every agent's history is the team's node: no team section.
+    let pooled = MemoryLayout::default()
+        .with_pooled_conversations(&"ws:main".parse().unwrap())
+        .unwrap();
+    let headings: Vec<String> = AgentMemory::new(engine, pooled, "s")
+        .unwrap()
+        .standard_sections()
+        .into_iter()
+        .map(|section| section.heading)
+        .collect();
+    assert_eq!(
+        headings,
+        [LEARNINGS_HEADING, BRAIN_HEADING, HISTORY_HEADING]
+    );
 }

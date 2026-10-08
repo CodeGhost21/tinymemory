@@ -111,6 +111,13 @@ impl MemoryLayout {
         Ok(self)
     }
 
+    /// Whether every agent's conversations are kept at one node
+    /// ([`MemoryLayout::with_pooled_conversations`]).
+    #[must_use]
+    pub fn pools_conversations(&self) -> bool {
+        self.pooled.is_some()
+    }
+
     /// The layout's root: `core`.
     #[must_use]
     pub fn root(&self) -> &Namespace {

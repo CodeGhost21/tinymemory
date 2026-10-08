@@ -53,9 +53,20 @@ pub struct ScopeSection {
     pub limit: usize,
     /// How the section is filled.
     pub query: SectionQuery,
+    /// Read at most this many of the scopes the filter reaches (see
+    /// [`tinymemory_api::FetchRequest::max_scopes`]); `None` reads them all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_scopes: Option<usize>,
 }
 
 impl ScopeSection {
+    /// This section, reading at most `scopes` of the scopes it reaches.
+    #[must_use]
+    pub fn with_max_scopes(mut self, scopes: usize) -> Self {
+        self.max_scopes = Some(scopes);
+        self
+    }
+
     /// A section of ranked hits for the pack's query.
     #[must_use]
     pub fn fetch(heading: impl Into<String>, filter: MetaFilter, limit: usize) -> Self {
@@ -64,6 +75,7 @@ impl ScopeSection {
             filter,
             limit,
             query: SectionQuery::Fetch { query: None },
+            max_scopes: None,
         }
     }
 
@@ -84,6 +96,7 @@ impl ScopeSection {
                 instructions: None,
                 fallback_to_fetch: false,
             },
+            max_scopes: None,
         }
     }
 
@@ -95,6 +108,7 @@ impl ScopeSection {
             filter,
             limit,
             query: SectionQuery::Latest,
+            max_scopes: None,
         }
     }
 
@@ -107,6 +121,12 @@ impl ScopeSection {
         if self.limit == 0 {
             return Err(Error::InvalidRequest(format!(
                 "recall section `{}` has a zero limit",
+                self.heading
+            )));
+        }
+        if self.max_scopes == Some(0) {
+            return Err(Error::InvalidRequest(format!(
+                "recall section `{}` reads zero scopes",
                 self.heading
             )));
         }

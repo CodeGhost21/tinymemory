@@ -132,6 +132,7 @@ fn holistic(spec: &ContextSpec) -> HolisticRecall {
                     instructions: Some(BRIEF_INSTRUCTIONS.to_string()),
                     fallback_to_fetch: false,
                 },
+                max_scopes: None,
             }
         })
         .collect();

@@ -39,10 +39,14 @@ impl ListCursor {
     }
 }
 
-/// Where a fetch stopped: how many ranked hits were already returned.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// Where a fetch stopped: how many ranked hits were already returned, and,
+/// for a capped fetch, the scopes its first page chose, which every later
+/// page reads again.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) struct FetchCursor {
     pub(super) offset: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) scopes: Option<Vec<String>>,
 }
 
 /// Encodes `state` behind `tag`.

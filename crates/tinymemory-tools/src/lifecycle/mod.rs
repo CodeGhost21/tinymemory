@@ -104,6 +104,13 @@ pub const BRAIN_HEADING: &str = "Brain";
 pub const HISTORY_HEADING: &str = "This agent's history";
 /// Heading of the other agents' conversations.
 pub const TEAM_HEADING: &str = "Team conversations";
+/// The most brain scopes a turn's pack reads: the ones its query names
+/// first, then the most recently written
+/// ([`tinymemory_api::FetchRequest::max_scopes`]). Each scope is a separate
+/// ranking on an engine that keeps scopes apart, so a brain split per
+/// connector and repository would otherwise cost a read per scope on every
+/// turn.
+pub const BRAIN_SCOPES_PER_TURN: usize = 4;
 /// Heading of a resumed thread's own turns.
 pub const THREAD_HEADING: &str = "Earlier in this thread";
 /// Heading of a compaction's summary.
@@ -515,6 +522,7 @@ impl AgentMemory {
                 instructions: Some(SUMMARY_INSTRUCTIONS.to_string()),
                 fallback_to_fetch: true,
             },
+            max_scopes: None,
         };
         let mut sections = vec![summary];
         sections.extend(self.standard_sections());
@@ -550,8 +558,11 @@ impl AgentMemory {
         }
     }
 
-    /// Learnings, each core scope, brain, this agent's history, then the
-    /// team's, each filled by fetch; a zero limit leaves its section out.
+    /// Learnings, each core scope, brain (at most
+    /// [`BRAIN_SCOPES_PER_TURN`] scopes), this agent's history, then the
+    /// team's, each filled by fetch; a zero limit leaves its section out. A
+    /// layout that pools conversations has no team section: it would read
+    /// the same node as the history.
     /// The thread's own latest turns, up to `limit`.
     fn thread_section(&self, thread_id: &str, limit: usize) -> ScopeSection {
         ScopeSection::latest(
@@ -570,33 +581,48 @@ impl AgentMemory {
             LEARNINGS_HEADING,
             self.layout.learnings_filter(),
             policy.learnings_limit,
+            None,
         );
         let core = self
             .core
             .iter()
-            .map(|scope| (scope.heading.as_str(), scope.filter(), scope.limit));
+            .map(|scope| (scope.heading.as_str(), scope.filter(), scope.limit, None));
+        let team_limit = if self.layout.pools_conversations() {
+            0
+        } else {
+            policy.team_limit
+        };
         let layout = [
             (
                 BRAIN_HEADING,
                 self.layout.brain_filter(None),
                 policy.brain_limit,
+                Some(BRAIN_SCOPES_PER_TURN),
             ),
             (
                 HISTORY_HEADING,
                 self.layout.conversations_filter(Some(&self.agent_id)),
                 policy.history_limit,
+                None,
             ),
             (
                 TEAM_HEADING,
                 self.layout.conversations_filter(None),
-                policy.team_limit,
+                team_limit,
+                None,
             ),
         ];
         std::iter::once(learnings)
             .chain(core)
             .chain(layout)
-            .filter(|(_, _, limit)| *limit > 0)
-            .map(|(heading, filter, limit)| ScopeSection::fetch(heading, filter, limit))
+            .filter(|(_, _, limit, _)| *limit > 0)
+            .map(|(heading, filter, limit, max_scopes)| {
+                let section = ScopeSection::fetch(heading, filter, limit);
+                match max_scopes {
+                    Some(scopes) => section.with_max_scopes(scopes),
+                    None => section,
+                }
+            })
             .collect()
     }
 
