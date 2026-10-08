@@ -543,6 +543,7 @@ async fn a_malformed_hosted_erasure_answer_is_an_error() {
         serde_json::json!({ "erased": true, "scopes": 1, "erasure_ids": [123] }),
         serde_json::json!({ "erased": true, "scopes": 1, "erasure_ids": "x" }),
         serde_json::json!({ "erased": true, "erasure_ids": [] }),
+        serde_json::json!({ "erased": true, "scopes": "1", "erasure_ids": [] }),
     ] {
         let (endpoint, state) = hosted_double().await;
         let engine = hosted_engine(&endpoint);

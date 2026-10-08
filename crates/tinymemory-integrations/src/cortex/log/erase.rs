@@ -136,7 +136,11 @@ impl Log {
             }
         };
         Ok(Erased {
-            scopes: usize::try_from(scopes).unwrap_or(usize::MAX),
+            scopes: usize::try_from(scopes).map_err(|_| {
+                Error::Engine(format!(
+                    "the erasure of {scope} answered a `scopes` count ({scopes}) beyond this platform's range"
+                ))
+            })?,
             ids,
         })
     }
