@@ -86,7 +86,8 @@ pub struct EngineSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub consolidation: Option<Consolidation>,
     /// The scope every item is laid out below (layout v3), such as one
-    /// person's `user:<id>`; unset keeps the legacy `app:tinymemory` tree.
+    /// person's `org:<id>`; unset keeps the legacy `app:tinymemory` tree
+    /// (unless [`EngineSettings::tenant_root`]).
     /// Switching it moves nothing: memory under the other layout is no
     /// longer read until a host moves it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -96,6 +97,17 @@ pub struct EngineSettings {
     /// write. Ignored without a root.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope_owner: Option<String>,
+    /// Layout v3 relative to the hosted tenant's own root, which the
+    /// TinyHumans backend pins (`org:<id>`): no root segment is sent.
+    /// `tinyhumans` engine only; overrides [`EngineSettings::scope_root`].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub tenant_root: bool,
+    /// A root an earlier v3 layout wrote below (`user:<id>`), still read
+    /// and forgotten, never written, until its memory has moved. Needs a
+    /// v3 layout ([`EngineSettings::scope_root`] or
+    /// [`EngineSettings::tenant_root`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retired_scope_root: Option<String>,
     /// Attribute events to who actually said or did them (CortexDB's
     /// `observed_actor`, with the memory's owner as `subject`): an assistant
     /// turn to its agent, a user turn or an item naming a
