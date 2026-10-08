@@ -49,6 +49,37 @@ fn an_assistant_turn_is_its_agents_and_a_user_turn_the_owners() {
 }
 
 #[test]
+fn a_user_turn_is_its_named_senders_and_other_turns_keep_their_rule() {
+    let meta = MemoryMeta {
+        agent_id: Some("orchestrator".into()),
+        ..sender("user:+15551234567", Some("Priya"))
+    };
+    let chat = StoreItem::Conversation {
+        turns: vec![
+            Turn::new(Role::User, "is my order shipped"),
+            Turn::new(Role::Assistant, "It ships today."),
+            Turn::new(Role::Tool, "result"),
+            Turn::new(Role::System, "note"),
+        ],
+        meta,
+    };
+    assert_eq!(
+        actors(&chat),
+        [
+            Some("user:+15551234567".to_string()),
+            Some("agent:orchestrator".to_string()),
+            None,
+            None,
+        ]
+    );
+    let malformed = StoreItem::Conversation {
+        turns: vec![Turn::new(Role::User, "hi")],
+        meta: sender("+15551234567", None),
+    };
+    assert_eq!(actors(&malformed), [None], "an actor id must be type:id");
+}
+
+#[test]
 fn a_document_is_its_named_senders() {
     let email = StoreItem::document("lunch?", sender("user:priya@acme.com", Some("Priya")));
     assert_eq!(actors(&email), [Some("user:priya@acme.com".to_string())]);

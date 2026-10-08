@@ -2,7 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tinymemory_api::{StoreReceipt, ToolCallRef, Turn};
+use tinymemory_api::{ObservedActor, StoreReceipt, ToolCallRef, Turn};
 
 use crate::background::BackgroundJob;
 use crate::recall::ContextPack;
@@ -79,6 +79,14 @@ pub struct PreTurn {
     /// the time of the call), so a retried turn stays a replay.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub at: Option<DateTime<Utc>>,
+    /// Who said it, when that is someone other than the memory's owner: a
+    /// channel's sender (`user:+15551234567`). Logged as the turn's
+    /// [`tinymemory_api::MemoryMeta::observed_actor`], which an engine that
+    /// attributes may send; it is not part of the turn's id, so a retried
+    /// turn stays a replay with or without it. `None` (the default) is the
+    /// owner.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_actor: Option<ObservedActor>,
 }
 
 impl PreTurn {
@@ -96,6 +104,7 @@ impl PreTurn {
             user_text: user_text.into(),
             in_prompt_from: 0,
             at: None,
+            observed_actor: None,
         }
     }
 }

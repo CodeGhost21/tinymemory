@@ -858,3 +858,60 @@ fn the_brain_reads_few_scopes_and_pooled_chats_have_no_team_section() {
         [LEARNINGS_HEADING, BRAIN_HEADING, HISTORY_HEADING]
     );
 }
+
+#[tokio::test]
+async fn a_user_turn_is_logged_with_its_observed_actor_under_the_same_id() {
+    let engine = Arc::new(ReferenceEngine::new());
+    let support = memory(&engine, "support-01");
+    let sender = ObservedActor {
+        id: "user:+15551234567".into(),
+        name: Some("Priya".into()),
+    };
+    let said = support
+        .pre_turn(PreTurn {
+            observed_actor: Some(sender.clone()),
+            ..PreTurn::new("t1", 0, "is my order shipped")
+        })
+        .await
+        .unwrap()
+        .logged
+        .unwrap();
+    let listed = engine
+        .list(ListRequest::new(
+            MetaFilter::kinds([ItemKind::Conversation]),
+            10,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(listed.items.len(), 1);
+    assert_eq!(listed.items[0].meta.observed_actor, Some(sender));
+
+    let again = support
+        .pre_turn(PreTurn::new("t1", 0, "is my order shipped"))
+        .await
+        .unwrap()
+        .logged
+        .unwrap();
+    assert_eq!(again.id, said.id, "the actor is not part of the turn's id");
+
+    let replied = support
+        .post_turn(PostTurn::new("t1", 1, "It ships today."))
+        .await
+        .unwrap();
+    let listed = engine
+        .list(ListRequest::new(
+            MetaFilter::kinds([ItemKind::Conversation]),
+            10,
+        ))
+        .await
+        .unwrap();
+    let reply = listed
+        .items
+        .iter()
+        .find(|hit| hit.id == replied.receipt.id)
+        .unwrap();
+    assert_eq!(
+        reply.meta.observed_actor, None,
+        "a reply is the agent's own"
+    );
+}

@@ -77,9 +77,9 @@ use std::sync::Arc;
 
 use futures::future::join;
 use tinymemory_api::{
-    ConsolidateRequest, Error, ItemKind, MemoryEngine, MemoryMeta, MetaFilter, Namespace, Reach,
-    Result, Role, SourceKind, SourceRef, StoreItem, StoreReceipt, TimeHint, Turn, TurnRange,
-    WriteOptions,
+    ConsolidateRequest, Error, ItemKind, MemoryEngine, MemoryMeta, MetaFilter, Namespace,
+    ObservedActor, Reach, Result, Role, SourceKind, SourceRef, StoreItem, StoreReceipt, TimeHint,
+    Turn, TurnRange, WriteOptions,
 };
 
 use crate::background::{BackgroundJob, BackgroundRunner, JobReport, builds_on_its_own};
@@ -411,6 +411,7 @@ impl AgentMemory {
                 at: turn.at,
                 ..Turn::new(Role::User, text)
             },
+            turn.observed_actor.clone(),
         );
         let id = tinymemory_api::ItemId::new(item.fingerprint());
         let window = ThreadWindow {
@@ -468,6 +469,7 @@ impl AgentMemory {
                 tool_calls: turn.tool_calls.clone(),
                 ..Turn::new(Role::Assistant, text)
             },
+            None,
         );
         let receipt = self
             .engine
@@ -643,8 +645,15 @@ impl AgentMemory {
     }
 
     /// One turn of `thread_id` as a one-turn conversation at this agent's
-    /// node.
-    fn turn_item(&self, thread_id: &str, index: u32, turn: Turn) -> StoreItem {
+    /// node, observed from `observed_actor` when someone other than the
+    /// owner said it.
+    fn turn_item(
+        &self,
+        thread_id: &str,
+        index: u32,
+        turn: Turn,
+        observed_actor: Option<ObservedActor>,
+    ) -> StoreItem {
         StoreItem::Conversation {
             meta: MemoryMeta {
                 namespace: self.node.clone(),
@@ -659,6 +668,7 @@ impl AgentMemory {
                     id: Some(thread_id.to_string()),
                 },
                 observed_at: turn.at,
+                observed_actor,
                 ..MemoryMeta::default()
             },
             turns: vec![turn],

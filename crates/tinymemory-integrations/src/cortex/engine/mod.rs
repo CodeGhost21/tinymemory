@@ -235,8 +235,8 @@ impl CortexEngine {
 
     /// The same engine, attributing each write to who said or did it when
     /// `on` (CortexDB's `observed_actor`, with the owner as `subject`): an
-    /// assistant turn to its agent, an item naming an observed actor to that
-    /// person. Only the direct wire attributes; off, or on the TinyHumans
+    /// assistant turn to its agent, a user turn or an item naming an
+    /// observed actor to that person. Only the direct wire attributes; off, or on the TinyHumans
     /// backend, nothing on the wire changes. See the `attribution` module.
     #[must_use]
     pub fn with_observed_actor(mut self, on: bool) -> Self {
