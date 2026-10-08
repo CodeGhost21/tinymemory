@@ -173,6 +173,7 @@ impl CortexEngine {
                 if len > 0 {
                     filled_pages += 1;
                 }
+                let shadowed = self.shadowed(scope, &page.items).await?;
                 for (position, event) in page.items.iter().enumerate().skip(at.offset) {
                     at.offset = position + 1;
                     let id = event.get("id").and_then(Value::as_str);
@@ -181,7 +182,7 @@ impl CortexEngine {
                     }
                     at.last = id.map(str::to_owned);
                     if let Some(found) =
-                        self.admit(kind, &req, event, &mut seen, walk == Walk::Preview)
+                        self.admit(kind, &req, event, &mut seen, &shadowed, walk == Walk::Preview)
                     {
                         pending.push(found);
                         if pending.len() == req.limit {
@@ -213,6 +214,25 @@ impl CortexEngine {
         Ok((self.resolve(pending).await?, next))
     }
 
+    /// The ids of the items on `events` (a page of `scope`) that the root
+    /// also holds, when `scope` is below the retired root: the root's copy is
+    /// the one listed, so an item held below both is one item on every page,
+    /// not one per root. Empty for any other scope.
+    async fn shadowed(&self, scope: &KindScope, events: &[Value]) -> Result<HashSet<String>> {
+        if !self.layout.is_retired(&scope.path) {
+            return Ok(HashSet::new());
+        }
+        let ids: Vec<String> = events
+            .iter()
+            .filter_map(|event| decode_event(event))
+            .map(|decoded| decoded.envelope.id)
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        let active = KindScope::new(&self.layout, scope.namespace.clone(), scope.kind);
+        Ok(self.item_events(&active, &ids).await?.into_keys().collect())
+    }
+
     /// Whether one raw event starts an item this listing returns; with
     /// `preview`, the item is taken from that event alone.
     fn admit(
@@ -221,10 +241,11 @@ impl CortexEngine {
         req: &ListRequest,
         event: &Value,
         seen: &mut HashSet<String>,
+        shadowed: &HashSet<String>,
         preview: bool,
     ) -> Option<Pending> {
         let envelope = decode_event(event)?.envelope;
-        if !keeps(&req.filter, kind, &envelope) {
+        if !keeps(&req.filter, kind, &envelope) || shadowed.contains(&envelope.id) {
             return None;
         }
         let starts = envelope.part().is_none_or(|index| index == 0);

@@ -13,7 +13,7 @@ use tinymemory_api::{
 use super::CortexEngine;
 use super::scopes::KindScope;
 use crate::cortex::envelope::{Decoded, Envelope, decode_event, labels, rebuild, rebuild_whole};
-use crate::cortex::error::Result;
+use crate::cortex::error::{Error, Result};
 
 /// The kinds `filter` admits, in the fixed order
 /// [`ItemKind::ALL`] lists them.
