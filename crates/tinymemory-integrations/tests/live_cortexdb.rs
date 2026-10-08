@@ -432,7 +432,8 @@ async fn every_kind_is_exported_whole_across_pages() {
     }
 }
 
-/// Direct only: the hosted wire has no erasure route.
+/// Direct only for now: the hosted `memory/v1/erasures` passthrough is
+/// covered by the wire double until it is live on the backend.
 #[tokio::test]
 async fn an_erased_node_is_gone_and_its_items_store_anew() {
     let _alone = ONE_AT_A_TIME.lock().await;
