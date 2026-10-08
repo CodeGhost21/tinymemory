@@ -157,6 +157,7 @@ async fn reads_merge_both_roots_by_item_id_and_writes_go_only_to_the_new_one() {
         .await
         .unwrap();
     let engine = transitional(&endpoint);
+    let before = scopes_written(&state);
     engine
         .store_many(vec![shared.clone(), learning("only new", "")])
         .await
@@ -168,6 +169,13 @@ async fn reads_merge_both_roots_by_item_id_and_writes_go_only_to_the_new_one() {
         "{written:?}"
     );
     assert!(written.contains("org:42/app:learnings"), "{written:?}");
+    // The transitional write adds scopes below the new root only.
+    let added: Vec<_> = written.difference(&before).collect();
+    assert!(!added.is_empty(), "{written:?}");
+    assert!(
+        added.iter().all(|scope| scope.starts_with("org:42")),
+        "a write went below the retired root: {added:?}"
+    );
     assert_eq!(
         texts(&engine).await,
         ["held in both", "only new", "only old"],
@@ -260,4 +268,34 @@ async fn an_erasure_removes_both_roots() {
         "{erased:?}"
     );
     assert!(texts(&engine).await.is_empty());
+}
+
+#[tokio::test]
+async fn an_item_held_in_both_roots_is_listed_once_across_pages() {
+    let (endpoint, _state) = direct_double().await;
+    let shared = learning("held in both", "ws:main");
+    retired(&endpoint)
+        .store_many(vec![shared.clone(), learning("only old", "ws:main")])
+        .await
+        .unwrap();
+    let engine = transitional(&endpoint);
+    engine
+        .store_many(vec![shared, learning("only new", "ws:main")])
+        .await
+        .unwrap();
+
+    // One item per page: the cursor, not a per-page set, must keep the twin
+    // from coming back on a later page.
+    let mut seen = Vec::new();
+    let mut request = ListRequest::new(MetaFilter::default(), 1);
+    for _ in 0..10 {
+        let page = engine.list(request.clone()).await.unwrap();
+        seen.extend(page.items.into_iter().map(|hit| hit.text));
+        match page.next_cursor {
+            Some(cursor) => request.cursor = Some(cursor),
+            None => break,
+        }
+    }
+    seen.sort();
+    assert_eq!(seen, ["held in both", "only new", "only old"]);
 }

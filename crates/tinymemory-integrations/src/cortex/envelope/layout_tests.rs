@@ -333,3 +333,40 @@ fn a_retired_root_is_checked() {
     assert!(v3().with_retired_root("").is_err());
     assert_eq!(ScopeLayout::tenant().retired(), None);
 }
+
+#[test]
+fn a_hosted_tenant_prefix_is_stripped_before_a_tenant_root_path_is_parsed() {
+    let layout = ScopeLayout::tenant();
+    for (path, namespace, kind) in [
+        (
+            "org:u-tenant/ws:main/agent:a/app:learnings",
+            ns("ws:main/agent:a"),
+            ItemKind::Learning,
+        ),
+        (
+            "org:u-tenant/app:conversations",
+            Namespace::ROOT,
+            ItemKind::Conversation,
+        ),
+        (
+            "org:u-tenant/app:brain/source:gmail",
+            ns("source:gmail"),
+            ItemKind::Document,
+        ),
+    ] {
+        assert_eq!(layout.parse(path), Some((namespace, kind)), "{path}");
+    }
+    // A grouping node out of place behind the prefix is still foreign.
+    assert_eq!(
+        layout.parse("org:u-tenant/app:flows/ws:main/app:learnings"),
+        None
+    );
+    // With a retired root, its paths behind the prefix read back too.
+    let transitional = ScopeLayout::tenant().with_retired_root("user:42").unwrap();
+    assert!(transitional.is_retired("org:u-tenant/user:42/ws:main/app:learnings"));
+    assert!(!transitional.is_retired("org:u-tenant/ws:main/app:learnings"));
+    assert_eq!(
+        transitional.parse("org:u-tenant/user:42/ws:main/app:learnings"),
+        Some((ns("ws:main"), ItemKind::Learning))
+    );
+}

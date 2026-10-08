@@ -181,9 +181,14 @@ impl CortexEngine {
                         continue;
                     }
                     at.last = id.map(str::to_owned);
-                    if let Some(found) =
-                        self.admit(kind, &req, event, &mut seen, &shadowed, walk == Walk::Preview)
-                    {
+                    if let Some(found) = self.admit(
+                        kind,
+                        &req,
+                        event,
+                        &mut seen,
+                        &shadowed,
+                        walk == Walk::Preview,
+                    ) {
                         pending.push(found);
                         if pending.len() == req.limit {
                             let exhausted = at.offset == len
@@ -224,7 +229,7 @@ impl CortexEngine {
         }
         let ids: Vec<String> = events
             .iter()
-            .filter_map(|event| decode_event(event))
+            .filter_map(decode_event)
             .map(|decoded| decoded.envelope.id)
             .collect::<HashSet<_>>()
             .into_iter()
