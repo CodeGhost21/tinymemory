@@ -403,6 +403,12 @@ impl MemoryEngine for CortexEngine {
         self.list_page(req).await
     }
 
+    /// A conversation or chunked document from the event that starts it,
+    /// without assembling it (see `list`).
+    async fn list_preview(&self, req: ListRequest) -> Result<ListPage> {
+        self.list_preview_page(req).await
+    }
+
     async fn export(&self, req: ListRequest) -> Result<ExportPage> {
         self.export_page(req).await
     }
