@@ -17,6 +17,7 @@ mod beliefs;
 mod consolidate;
 mod cursor;
 mod erase;
+mod explore;
 mod fetch;
 mod forget;
 mod items;
@@ -407,6 +408,12 @@ impl MemoryEngine for CortexEngine {
 
     async fn erase(&self, req: EraseRequest) -> Result<EraseReport> {
         self.erase_scopes(req).await
+    }
+
+    /// From each item's first event, without assembling conversations or
+    /// chunked documents (see `explore`).
+    async fn explore(&self, req: ExploreRequest) -> Result<ExplorePage> {
+        self.explore_items(req).await
     }
 
     /// By the items' id labels, one lookup per kind, rather than a scan.
