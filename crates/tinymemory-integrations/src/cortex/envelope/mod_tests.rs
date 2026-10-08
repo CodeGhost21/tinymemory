@@ -547,3 +547,45 @@ fn a_tool_turn_asks_to_extract_nothing_and_other_turns_do_not() {
         [Value::Null, json!({ "extract": [] }), Value::Null]
     );
 }
+
+/// The labels a document stored with `meta` is sent with.
+fn sent(meta: MemoryMeta) -> Vec<String> {
+    let item = StoreItem::document("Refunds take five days.", meta);
+    let envelope = Envelope::for_item(&item, &item.fingerprint())
+        .unwrap()
+        .remove(0);
+    envelope.encode_checked().unwrap().labels
+}
+
+#[test]
+fn readable_labels_name_the_agent_and_an_app_thread_only() {
+    let app = "thread-0b6e1d8a-3f2c-4c1e-9a7b-5d2e8f1a6c3b";
+    let mut held = meta();
+    held.agent_id = Some("orchestrator".into());
+    held.thread_id = Some(app.into());
+    let labels = sent(held);
+    assert!(
+        labels.contains(&"agent:orchestrator".to_string()),
+        "{labels:?}"
+    );
+    assert!(labels.contains(&format!("thread:{app}")), "{labels:?}");
+
+    for channel in [
+        "channel:whatsapp_+15551234567_+15551234567",
+        "channel:email_jane.doe@example.com_inbox",
+        "channel:slack_U02ABC123_C03DEF456",
+        "worker-7f9c2d1e-8a4b-4c3d-9e2f-1a0b5c6d7e8f",
+        "THREAD-0B6E1D8A-3F2C-4C1E-9A7B-5D2E8F1A6C3B",
+    ] {
+        let mut held = meta();
+        held.thread_id = Some(channel.into());
+        let labels = sent(held);
+        assert!(
+            !labels.iter().any(|label| label.starts_with("thread:")),
+            "{channel}: {labels:?}"
+        );
+    }
+
+    let labels = sent(meta());
+    assert!(!labels.iter().any(|label| label.starts_with("agent:")));
+}

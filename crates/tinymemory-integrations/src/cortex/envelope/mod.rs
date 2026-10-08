@@ -516,11 +516,23 @@ impl Envelope {
     }
 
     /// Labels a person reading the events can make sense of: the item kind,
-    /// and for a document its file, and a piece's pages and section. Never
-    /// filtered on (the lookup labels are), and left out when longer than
-    /// [`MAX_LABEL_BYTES`].
+    /// the agent (`agent:<id>`), an app thread (`thread:thread-<uuid>`, never
+    /// a channel's thread), and for a document its file, and a piece's pages
+    /// and section. Never filtered on (the lookup labels are), and left out
+    /// when longer than [`MAX_LABEL_BYTES`].
     fn readable_labels(&self) -> Vec<String> {
         let mut out = vec![format!("kind:{}", self.kind.as_str())];
+        if let Some(agent) = self
+            .meta
+            .agent_id
+            .as_deref()
+            .filter(|a| !a.trim().is_empty())
+        {
+            out.push(format!("agent:{agent}"));
+        }
+        if let Some(thread) = self.meta.thread_id.as_deref().filter(|t| app_thread(t)) {
+            out.push(format!("thread:{thread}"));
+        }
         if let Some(path) = &self.meta.file_path {
             out.push(format!("file:{path}"));
         }
@@ -607,6 +619,23 @@ fn wire_meta(meta: &MemoryMeta) -> MemoryMeta {
             .filter(|workspace| !is_absolute(workspace)),
         ..meta.clone()
     }
+}
+
+/// Whether `thread_id` is an app thread's opaque id, `thread-<uuid>`, the
+/// only thread id written as a readable label. Any other (a channel's can
+/// name the person at the other end) is labelled by its digest alone.
+fn app_thread(thread_id: &str) -> bool {
+    let Some(uuid) = thread_id.strip_prefix("thread-") else {
+        return false;
+    };
+    let groups: Vec<&str> = uuid.split('-').collect();
+    groups.len() == 5
+        && groups.iter().zip([8, 4, 4, 4, 12]).all(|(group, len)| {
+            group.len() == len
+                && group
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        })
 }
 
 /// Whether `path` is absolute on any system: `/…`, `~…`, `\\…` or `C:…`.

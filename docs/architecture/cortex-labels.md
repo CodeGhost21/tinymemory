@@ -38,3 +38,15 @@ The label only ever narrows. Every reader **always** re-applies the full
 and never a wrong answer. `folder` and `file_path` match as prefixes, which a
 label cannot, so they are filtered client-side only. No local path is sent:
 see [cortex-local-paths.md](cortex-local-paths.md).
+
+## Readable labels
+
+Beside the lookup labels, a v3 event carries labels a person browsing the
+events can read. They are never filtered on.
+
+| Label | When |
+| --- | --- |
+| `kind:<kind>` | every event |
+| `agent:<agent_id>` | `meta.agent_id` is set |
+| `thread:<thread_id>` | `meta.thread_id` is an app thread, `thread-<uuid>` (lowercase hex). A channel's thread (`channel:…`) never gets one: it can name the person at the other end |
+| `file:<name>`, `page:<n>[-<m>]`, `section:<title>` | a document, a piece |
