@@ -685,37 +685,3 @@ async fn a_ranked_section_reads_past_a_page_the_thread_window_empties() {
         pack.markdown
     );
 }
-
-#[test]
-fn a_thread_window_covers_a_turn_stored_under_the_redacted_id() {
-    let thread = "channel:whatsapp_+15551234567_+15551234567";
-    let window = ThreadWindow {
-        thread_id: thread.to_string(),
-        from_turn: 2,
-    };
-    let turn = |thread_id: String, at: u32| tinymemory_api::Hit {
-        id: tinymemory_api::ItemId::new(format!("turn-{at}")),
-        kind: ItemKind::Conversation,
-        text: "hi".to_string(),
-        meta: MemoryMeta {
-            thread_id: Some(thread_id),
-            turns: Some(tinymemory_api::TurnRange {
-                first: at,
-                last: at,
-            }),
-            ..MemoryMeta::default()
-        },
-        score: 0.0,
-        confidence: None,
-    };
-    assert!(window.covers(&turn(tinymemory_api::redacted_id(thread), 3)));
-    assert!(window.covers(&turn(thread.to_string(), 3)), "stored before");
-    assert!(
-        !window.covers(&turn(tinymemory_api::redacted_id(thread), 1)),
-        "before the window"
-    );
-    assert!(!window.covers(&turn(
-        tinymemory_api::redacted_id("channel:sms_15557654321"),
-        3
-    )));
-}

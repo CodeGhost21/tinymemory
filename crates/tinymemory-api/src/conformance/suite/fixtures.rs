@@ -29,16 +29,7 @@ impl Run {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or_default();
-        // Letters only (hex with its digits spelled `g`..`p`): an id built
-        // from the nonce must never hold a run of digits an engine could
-        // take for a phone number and store redacted (`holds_phone_number`).
-        let nonce: String = format!("{nanos:x}{:x}", SEQ.fetch_add(1, Ordering::Relaxed))
-            .chars()
-            .map(|c| match c.to_digit(10) {
-                Some(digit) => char::from(b'g' + u8::try_from(digit).unwrap_or(0)),
-                None => c,
-            })
-            .collect();
+        let nonce = format!("{nanos:x}{:x}", SEQ.fetch_add(1, Ordering::Relaxed));
         let workspace = format!("tinymemory-conformance/{nonce}");
         Self {
             probe_workspace: format!("{workspace}/probes"),

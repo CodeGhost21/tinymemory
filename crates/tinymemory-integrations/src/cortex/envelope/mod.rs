@@ -522,10 +522,12 @@ impl Envelope {
     /// when longer than [`MAX_LABEL_BYTES`].
     fn readable_labels(&self) -> Vec<String> {
         let mut out = vec![format!("kind:{}", self.kind.as_str())];
-        let agent = self.meta.agent_id.as_deref().filter(|agent| {
-            !agent.trim().is_empty() && !agent.starts_with(tinymemory_api::REDACTED_PREFIX)
-        });
-        if let Some(agent) = agent {
+        if let Some(agent) = self
+            .meta
+            .agent_id
+            .as_deref()
+            .filter(|a| !a.trim().is_empty())
+        {
             out.push(format!("agent:{agent}"));
         }
         if let Some(thread) = self.meta.thread_id.as_deref().filter(|t| app_thread(t)) {
@@ -608,8 +610,6 @@ impl Envelope {
 /// no `folder`, and no absolute `workspace` (local paths, which name a
 /// person's home folder).
 fn wire_meta(meta: &MemoryMeta) -> MemoryMeta {
-    let mut source = meta.source.clone();
-    source.id = source.id.as_deref().map(stored_id);
     MemoryMeta {
         file_path: meta.file_path.as_deref().and_then(file_name),
         folder: None,
@@ -617,28 +617,13 @@ fn wire_meta(meta: &MemoryMeta) -> MemoryMeta {
             .workspace
             .clone()
             .filter(|workspace| !is_absolute(workspace)),
-        thread_id: meta.thread_id.as_deref().map(stored_id),
-        agent_id: meta.agent_id.as_deref().map(stored_id),
-        source,
         ..meta.clone()
-    }
-}
-
-/// How a thread, source or agent id is stored: unchanged, or as its
-/// [`tinymemory_api::redacted_id`] when it holds a phone number, so no
-/// phone number is sent. Filters and reads compare with
-/// [`tinymemory_api::same_id`], so either form is still found by the id.
-fn stored_id(id: &str) -> String {
-    if tinymemory_api::holds_phone_number(id) {
-        tinymemory_api::redacted_id(id)
-    } else {
-        id.to_string()
     }
 }
 
 /// Whether `thread_id` is an app thread's opaque id, `thread-<uuid>`, the
 /// only thread id written as a readable label. Any other (a channel's can
-/// hold a phone number or an address) is labelled by its digest alone.
+/// name the person at the other end) is labelled by its digest alone.
 fn app_thread(thread_id: &str) -> bool {
     let Some(uuid) = thread_id.strip_prefix("thread-") else {
         return false;
