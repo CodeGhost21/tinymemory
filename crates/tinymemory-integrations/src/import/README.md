@@ -119,8 +119,18 @@ row can land in (documents, learnings, `global`). The tag rides in the item's
 metadata, which a CortexDB engine stores whole, so the host can read it back on
 recall. The decode fails closed like v1's: an unknown or empty value is
 external. A store from before the `taint` column is read as all `internal`,
-which is how v1 read it. `episodic_log`, `user_profile` and the chunk store
-have no taint in v1 and get no tag.
+which is how v1 read it. `episodic_log` and `user_profile` have no taint in v1
+and get no tag.
+
+The chunk store has no taint column either (v1's chunk tier refused
+`ExternalSync`), yet it holds most synced content: a Gmail sync files every
+message there under the owner `gmail-sync:<connection>`. In v2 those chunks
+sit beside the user's own memory, so their `owner` decides instead: a chunk
+source is tagged `taint:external_sync` unless every chunk's owner is one the
+host writes itself, `cron` (or `cron:<id>`) or the archivist's session key (a
+JSON object with a `thread_id`). Connector owners, an agent's own label and a
+blank owner are all external, failing closed. A chunk store without the
+`owner` column gets no tag.
 
 ### Documents
 

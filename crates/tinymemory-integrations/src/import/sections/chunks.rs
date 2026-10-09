@@ -10,6 +10,15 @@
 //! people rather than the assistant. Every other source kind (`document`,
 //! `email`) becomes one document whose body is its chunks joined by blank
 //! lines.
+//!
+//! v1 kept no taint on chunks (its chunk tier refused `ExternalSync`), but a
+//! chunk's `owner` says where it came from. A source is tagged
+//! [`EXTERNAL_SYNC_TAG`] unless every chunk's owner is one the host itself
+//! writes: `cron` (or `cron:<id>`) and the archivist's session key, a JSON
+//! object with a `thread_id`. Anything else, a connector sync such as
+//! `gmail-sync:<connection>`, an agent's own label, or a blank owner, is
+//! external, failing closed as the `memory_docs` decode does. A store without
+//! the `owner` column has nothing to read and gets no tag.
 
 use std::io::ErrorKind;
 use std::path::{Component, Path};
@@ -17,7 +26,7 @@ use std::path::{Component, Path};
 use rusqlite::params;
 use tinymemory_api::{DocumentBody, Role, StoreItem, Turn, TurnRange};
 
-use super::{Mark, Scanned, import_meta, push_unique, sql_limit};
+use super::{EXTERNAL_SYNC_TAG, Mark, Scanned, import_meta, push_unique, sql_limit};
 use crate::import::checkpoint::ChunkCursor;
 use crate::import::convert;
 use crate::import::error::{Error, Result};
@@ -29,6 +38,8 @@ struct Chunk {
     text: String,
     timestamp_ms: i64,
     tags_json: String,
+    /// `owner`, or `None` when the store has no such column.
+    owner: Option<String>,
 }
 
 /// The next page of sources after `after`; empty when the workspace has no
@@ -117,6 +128,13 @@ fn source_item(
         }
     }
     push_unique(&mut tags, format!("source_kind:{}", source.source_kind));
+    if store.owner
+        && !chunks
+            .iter()
+            .all(|chunk| is_host_owner(chunk.owner.as_deref()))
+    {
+        push_unique(&mut tags, EXTERNAL_SYNC_TAG.to_string());
+    }
     meta.tags = tags;
     meta.observed_at = chunks
         .iter()
@@ -158,8 +176,9 @@ fn chunks(store: &ChunkStore, source: &ChunkCursor) -> Result<Vec<Chunk>> {
     } else {
         "NULL"
     };
+    let owner = if store.owner { "owner" } else { "NULL" };
     let sql = format!(
-        "SELECT content, {content_path}, timestamp_ms, tags_json FROM mem_tree_chunks \
+        "SELECT content, {content_path}, timestamp_ms, tags_json, {owner} FROM mem_tree_chunks \
          WHERE source_kind = ?1 AND source_id = ?2 ORDER BY seq_in_source, id"
     );
     let mut stmt = store.conn.prepare(&sql)?;
@@ -169,11 +188,12 @@ fn chunks(store: &ChunkStore, source: &ChunkCursor) -> Result<Vec<Chunk>> {
             row.get::<_, Option<String>>(1)?,
             row.get::<_, Option<i64>>(2)?.unwrap_or_default(),
             row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+            row.get::<_, Option<String>>(4)?,
         ))
     })?;
     let mut chunks = Vec::new();
     for row in rows {
-        let (preview, path, timestamp_ms, tags_json) = row?;
+        let (preview, path, timestamp_ms, tags_json, owner) = row?;
         let full = match path.as_deref() {
             Some(path) => full_body(&store.content_dir, path)?,
             None => None,
@@ -186,9 +206,27 @@ fn chunks(store: &ChunkStore, source: &ChunkCursor) -> Result<Vec<Chunk>> {
             text,
             timestamp_ms,
             tags_json,
+            owner,
         });
     }
     Ok(chunks)
+}
+
+/// Whether `owner` is one the host writes for its own content: `cron` (or
+/// `cron:<id>`), or the archivist's session key, a JSON object carrying a
+/// `thread_id`. A missing or blank owner is not.
+fn is_host_owner(owner: Option<&str>) -> bool {
+    let Some(owner) = owner.map(str::trim).filter(|owner| !owner.is_empty()) else {
+        return false;
+    };
+    if owner == "cron" || owner.starts_with("cron:") {
+        return true;
+    }
+    serde_json::from_str::<serde_json::Value>(owner).is_ok_and(|value| {
+        value
+            .get("thread_id")
+            .is_some_and(serde_json::Value::is_string)
+    })
 }
 
 /// Reads `content_dir/<relative>`; `None` when the path is not a plain

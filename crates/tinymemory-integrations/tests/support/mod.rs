@@ -158,7 +158,7 @@ pub(crate) fn chunk_store(root: &Path) -> Connection {
     conn
 }
 
-/// Inserts a chunk.
+/// Inserts a chunk owned by the host's own `cron`.
 #[allow(clippy::too_many_arguments, reason = "mirrors the table's columns")]
 pub(crate) fn chunk(
     conn: &Connection,
@@ -175,7 +175,7 @@ pub(crate) fn chunk(
         "INSERT INTO mem_tree_chunks (id, source_kind, source_id, owner, timestamp_ms,
            time_range_start_ms, time_range_end_ms, tags_json, content, token_count,
            seq_in_source, created_at_ms, content_path)
-         VALUES (?1, ?2, ?3, 'me', ?4, ?4, ?4, ?5, ?6, 1, ?7, ?4, ?8)",
+         VALUES (?1, ?2, ?3, 'cron', ?4, ?4, ?4, ?5, ?6, 1, ?7, ?4, ?8)",
         params![
             id,
             kind,
@@ -188,4 +188,23 @@ pub(crate) fn chunk(
         ],
     )
     .expect("insert chunk");
+}
+
+/// Inserts a one-line chunk at `seq` of `source`, owned by `owner`.
+pub(crate) fn owned_chunk(
+    conn: &Connection,
+    id: &str,
+    kind: &str,
+    source: &str,
+    seq: i64,
+    owner: &str,
+) {
+    conn.execute(
+        "INSERT INTO mem_tree_chunks (id, source_kind, source_id, owner, timestamp_ms,
+           time_range_start_ms, time_range_end_ms, content, token_count, seq_in_source,
+           created_at_ms)
+         VALUES (?1, ?2, ?3, ?4, 1000, 1000, 1000, ?1, 1, ?5, 1000)",
+        params![id, kind, source, owner, seq],
+    )
+    .expect("insert owned chunk");
 }

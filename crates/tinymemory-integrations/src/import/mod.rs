@@ -27,7 +27,8 @@
 //! `episodic_log:lesson:<id>`, `graph_global:<rowid>`, `graph_namespace:<rowid>`,
 //! `file:<path>`), and
 //! `meta.workspace` is the workspace path. A `memory_docs` row v1 marked as
-//! synced from an external service also carries [`EXTERNAL_SYNC_TAG`]. The
+//! synced from an external service, and a chunk source whose owner is not
+//! the host's own, also carries [`EXTERNAL_SYNC_TAG`]. The
 //! module's `README.md` details every mapping decision.
 //!
 //! Import is resumable: each [`ImportedItem`] carries the [`Checkpoint`] to

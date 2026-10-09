@@ -44,8 +44,9 @@ const SECTION_PREFIXES: [&str; 9] = [
 ];
 
 /// The tag on every item from a `memory_docs` row v1 marked as synced from an
-/// external service (Gmail, Slack, Notion, Composio, MCP, ...): content the
-/// user did not write, which v1 kept out of external-effect tool decisions.
+/// external service (Gmail, Slack, Notion, Composio, MCP, ...), and on every
+/// chunk source whose owner is not the host's own: content the user did not
+/// write, which v1 kept out of external-effect tool decisions.
 pub const EXTERNAL_SYNC_TAG: &str = "taint:external_sync";
 
 /// One `memory_docs` row.

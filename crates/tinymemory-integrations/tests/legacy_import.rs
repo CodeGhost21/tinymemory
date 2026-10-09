@@ -8,7 +8,7 @@ mod support;
 
 use std::path::Path;
 
-use support::{OLD_MEMORY_DDL, chunk, chunk_store, doc, facet, turn, workspace};
+use support::{OLD_MEMORY_DDL, chunk, chunk_store, doc, facet, owned_chunk, turn, workspace};
 use tinymemory_api::{
     DocumentBody, LearningKind, Role, SourceKind, StoreItem, ToolCallRef, TurnRange,
 };
@@ -864,6 +864,106 @@ fn a_store_without_the_taint_column_reads_as_internal() {
             .iter()
             .any(|t| t == EXTERNAL_SYNC_TAG)
     }));
+}
+
+/// Whether the item imported from `legacy_id` carries [`EXTERNAL_SYNC_TAG`].
+fn is_external(items: &[ImportedItem], legacy_id: &str) -> bool {
+    find(items, legacy_id)
+        .meta()
+        .tags
+        .iter()
+        .any(|t| t == EXTERNAL_SYNC_TAG)
+}
+
+#[test]
+fn chunk_sources_a_connector_synced_are_tagged_external() {
+    let dir = tempfile::tempdir().unwrap();
+    let chunks = chunk_store(dir.path());
+    owned_chunk(
+        &chunks,
+        "k1",
+        "email",
+        "gmail:me|them",
+        0,
+        "gmail-sync:ca_1",
+    );
+    owned_chunk(&chunks, "k2", "document", "gmail:msg", 0, "gmail-sync:ca_1");
+    owned_chunk(&chunks, "k3", "chat", "slack:c1", 0, "slack:conn");
+    owned_chunk(&chunks, "k4", "chat", "cron-out", 0, "cron");
+    owned_chunk(&chunks, "k5", "chat", "cron-job", 0, "cron:job-7");
+    owned_chunk(
+        &chunks,
+        "k6",
+        "chat",
+        "conversations:agent",
+        0,
+        r#"{"client_id":"c","thread_id":"thread-1"}"#,
+    );
+    drop(chunks);
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let items = all(&ws);
+    assert!(is_external(&items, "mem_tree_chunks:email:gmail:me|them"));
+    assert!(is_external(&items, "mem_tree_chunks:document:gmail:msg"));
+    assert!(is_external(&items, "mem_tree_chunks:chat:slack:c1"));
+    assert!(!is_external(&items, "mem_tree_chunks:chat:cron-out"));
+    assert!(!is_external(&items, "mem_tree_chunks:chat:cron-job"));
+    assert!(!is_external(
+        &items,
+        "mem_tree_chunks:chat:conversations:agent"
+    ));
+    let StoreItem::Document { meta, .. } = find(&items, "mem_tree_chunks:email:gmail:me|them")
+    else {
+        panic!("email is a document");
+    };
+    assert_eq!(meta.tags, ["source_kind:email", EXTERNAL_SYNC_TAG]);
+}
+
+#[test]
+fn a_chunk_owner_the_host_does_not_write_fails_closed() {
+    let dir = tempfile::tempdir().unwrap();
+    let chunks = chunk_store(dir.path());
+    // One synced chunk taints the whole source.
+    owned_chunk(&chunks, "k1", "chat", "mixed", 0, "cron");
+    owned_chunk(&chunks, "k2", "chat", "mixed", 1, "slack:conn");
+    owned_chunk(&chunks, "k3", "document", "blank", 0, "  ");
+    owned_chunk(&chunks, "k4", "document", "label", 0, "agent-notes");
+    owned_chunk(&chunks, "k5", "document", "crony", 0, "cronjob");
+    owned_chunk(&chunks, "k6", "document", "json", 0, r#"{"client_id":"c"}"#);
+    drop(chunks);
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let items = all(&ws);
+    for id in [
+        "chat:mixed",
+        "document:blank",
+        "document:label",
+        "document:crony",
+        "document:json",
+    ] {
+        assert!(
+            is_external(&items, &format!("mem_tree_chunks:{id}")),
+            "{id}"
+        );
+    }
+}
+
+#[test]
+fn a_chunk_store_without_the_owner_column_gets_no_taint() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("memory_tree")).unwrap();
+    let chunks = rusqlite::Connection::open(dir.path().join("memory_tree/chunks.db")).unwrap();
+    chunks
+        .execute_batch(
+            "CREATE TABLE mem_tree_chunks (id TEXT PRIMARY KEY, source_kind TEXT NOT NULL,
+               source_id TEXT NOT NULL, timestamp_ms INTEGER NOT NULL,
+               tags_json TEXT NOT NULL DEFAULT '[]', content TEXT NOT NULL,
+               seq_in_source INTEGER NOT NULL);
+             INSERT INTO mem_tree_chunks VALUES ('k1', 'email', 'e1', 1000, '[]', 'hello', 0);",
+        )
+        .unwrap();
+    drop(chunks);
+    let ws = LegacyWorkspace::open(dir.path()).unwrap();
+    let items = all(&ws);
+    assert!(!is_external(&items, "mem_tree_chunks:email:e1"));
 }
 
 #[test]
